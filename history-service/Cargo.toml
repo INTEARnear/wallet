@@ -1,0 +1,19 @@
+[package]
+name = "history-service"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = { version = "0.8.3", features = ["macros"] }
+tokio = { version = "1.44.2", features = ["full"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+reqwest = { version = "0.12.15", features = ["json"] }
+tower-http = { version = "0.6.2", features = ["cors"] }
+near-min-api = { path = "../near-min-api" }
+chrono = "0.4.40"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+futures = "0.3.31"
+hyper = { version = "1.6.0", features = ["full"] }
+rocksdb = "0.23.0"

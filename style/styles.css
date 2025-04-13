@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+@theme {
+    --breakpoint-sm: 32rem;
+    --breakpoint-md: 40rem;
+    --breakpoint-lg: 60rem;
+}
+
+.slide-in {
+    --slide-transform: 0%;
+    --slide-opacity: 1;
+    transition: transform 150ms ease-in, opacity 150ms ease-in;
+}
+
+.slide-in-enter {
+    --slide-transform: 40%;
+    --slide-opacity: 0;
+}
+
+.slide-out {
+    --slide-transform: 0%;
+    --slide-opacity: 1;
+    transition: transform 150ms ease-in, opacity 150ms ease-in;
+}
+
+.slide-out-enter {
+    --slide-transform: -20%;
+    --slide-opacity: 0;
+}
+
+html,
+body {
+    /* prevent flickering when refreshing */
+    background-color: #000000;
+}
+
+@media (hover: none) {
+    .hover-capable-only {
+        display: none;
+    }
+}
+
+@media (hover: hover) {
+    .hover-incapable-only {
+        display: none;
+    }
+}
+
+@media (min-width: 60rem) {
+    .nav-indicator-first {
+        border-bottom-left-radius: 1.5rem;
+    }
+    .nav-indicator-last {
+        border-bottom-right-radius: 1.5rem;
+    }
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+
+.scrollbar-hide {
+    scrollbar-width: none;
+}

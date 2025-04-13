@@ -1,0 +1,5 @@
+target
+/dist
+transaction_cache
+.env
+node_modules

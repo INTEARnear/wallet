@@ -1,0 +1,67 @@
+[package]
+name = "intear-wallet"
+version = "0.1.0"
+edition = "2021"
+authors = ["Slime <4sliman4@gmail.com>"]
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+leptos = { version = "0.7.8", features = ["csr", "nightly"] }
+leptos_meta = { version = "0.7.8" }
+leptos_router = { version = "0.7.8", features = ["nightly"] }
+console_log = "1.0.0"
+log = "0.4.27"
+console_error_panic_hook = "0.1.7"
+leptos_icons = "0.5.0"
+icondata = { version = "0.5.0", features = [
+    "lucide",
+], default-features = false }
+wasm-bindgen = "0.2.100"
+web-sys = { version = "0.3.77", features = [
+    "Document",
+    "Window",
+    "Navigator",
+    "Clipboard",
+    "Storage",
+    "StorageEvent",
+    "Performance",
+    "TouchEvent",
+    "Touch",
+    "TouchList",
+] }
+serde = { version = "1.0.219", features = ["derive"] }
+reqwest = { version = "0.12.15", features = ["json"] }
+serde_json = "1.0.140"
+futures-util = "0.3.31"
+lazy_static = "1.5.0"
+# Not actually needed for the wallet, but need to add a feature in transitive dependencies
+getrandom = { version = "0.2", features = ["js"] }
+near-min-api = { path = "./near-min-api" }
+rand = "0.8.5"
+chrono = "0.4.40"
+futures-timer = { version = "3", features = ["wasm-bindgen"] }
+cached = { version = "0.55.1", features = ["wasm", "async"] }
+base64 = "0.22.1"
+bip39 = { version = "2.1.0", features = ["rand"] }
+ed25519-dalek = { version = "2.1.1", default-features = false }
+slipped10 = "0.4.6"
+leptos-use = { version = "0.15.7", features = ["use_websocket"] }
+codee = "0.3.0"
+json-filter = "0.1.1"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3.50"
+
+[profile.release]
+opt-level = 'z'
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[workspace]
+members = [
+    "near-min-api",
+    "history-service",
+    "account-creation-service",
+    "account-creation-service",
+]
