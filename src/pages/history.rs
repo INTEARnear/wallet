@@ -52,7 +52,8 @@ async fn fetch_transactions() -> Vec<TransactionResponse> {
     };
 
     reqwest::get(format!(
-        "http://localhost:3001/api/transactions/{selected_account}"
+        "{}/api/transactions/{selected_account}",
+        dotenvy_macro::dotenv!("HISTORY_SERVICE_ADDR")
     ))
     .await
     .unwrap()
@@ -106,10 +107,7 @@ pub fn History() -> impl IntoView {
             }>
                 {move || {
                     if let Some(transactions) = transactions.get() {
-                        let mut grouped_transactions: HashMap<
-                            String,
-                            Vec<TransactionResponse>,
-                        > = HashMap::new();
+                        let mut grouped_transactions: HashMap<String, Vec<TransactionResponse>> = HashMap::new();
                         let now = Local::now();
                         let today = now.date_naive();
                         let yesterday = today.pred_opt().unwrap();

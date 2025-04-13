@@ -7,11 +7,12 @@ pub struct RpcContext {
 }
 
 pub fn provide_rpc_context() {
-    let client = RpcClient::new([
-        "https://rpc.intear.tech",
-        "https://rpc.shitzuapes.xyz",
-        "https://rpc.near.org",
-    ]);
+    let client = RpcClient::new(
+        dotenvy_macro::dotenv!("RPC_URLS")
+            .split(',')
+            .map(String::from)
+            .collect::<Vec<_>>(),
+    );
     let client = RwSignal::new(client);
     provide_context(RpcContext { client });
 }

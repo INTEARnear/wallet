@@ -14,6 +14,7 @@ use near_min_api::{
 use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
@@ -105,12 +106,18 @@ async fn main() {
     let db = Arc::new(db);
 
     let rpc_client = Arc::new({
-        let mut rpc_client = RpcClient::new([
-            "https://rpc.intear.tech",
-            "https://archival-rpc.mainnet.near.org",
-            "https://rpc.shitzuapes.xyz",
-            "https://rpc.near.org",
-        ]);
+        let mut rpc_client = RpcClient::new(
+            env::var("RPC_URLS")
+                .map(|urls| urls.split(',').map(String::from).collect::<Vec<_>>())
+                .unwrap_or_else(|_| {
+                    vec![
+                        "https://rpc.intear.tech".to_string(),
+                        "https://archival-rpc.mainnet.near.org".to_string(),
+                        "https://rpc.shitzuapes.xyz".to_string(),
+                        "https://rpc.near.org".to_string(),
+                    ]
+                }),
+        );
         rpc_client.set_client(
             reqwest::Client::builder()
                 .timeout(Duration::from_secs(1))
@@ -133,7 +140,9 @@ async fn main() {
         .layer(CorsLayer::permissive())
         .with_state(state);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
+    let addr = env::var("HISTORY_SERVICE_BIND")
+        .map(|s| s.parse().expect("Invalid HISTORY_SERVICE_BIND format"))
+        .unwrap_or_else(|_| SocketAddr::from(([127, 0, 0, 1], 3001)));
     tracing::info!("Server listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();

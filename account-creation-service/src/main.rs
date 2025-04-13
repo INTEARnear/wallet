@@ -81,12 +81,18 @@ async fn main() {
             .collect::<HashMap<_, _>>(),
     );
 
-    let rpc_client = Arc::new(RpcClient::new([
-        "https://rpc.intear.tech",
-        "https://rpc.near.org",
-        "https://rpc.shitzuapes.xyz",
-        "https://archival-rpc.mainnet.near.org",
-    ]));
+    let rpc_client = Arc::new(RpcClient::new(
+        env::var("RPC_URLS")
+            .map(|urls| urls.split(',').map(String::from).collect::<Vec<_>>())
+            .unwrap_or_else(|_| {
+                vec![
+                    "https://rpc.intear.tech".to_string(),
+                    "https://rpc.near.org".to_string(),
+                    "https://rpc.shitzuapes.xyz".to_string(),
+                    "https://archival-rpc.mainnet.near.org".to_string(),
+                ]
+            }),
+    ));
 
     let state = AppState {
         rpc_client,
@@ -100,7 +106,12 @@ async fn main() {
         .layer(CorsLayer::permissive())
         .with_state(state);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3002));
+    let addr = env::var("ACCOUNT_CREATION_SERVICE_BIND")
+        .map(|s| {
+            s.parse()
+                .expect("Invalid ACCOUNT_CREATION_SERVICE_BIND format")
+        })
+        .unwrap_or_else(|_| SocketAddr::from(([127, 0, 0, 1], 3002)));
     tracing::info!("Server listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr)

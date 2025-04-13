@@ -417,7 +417,10 @@ fn AccountCreationForm(
 
             let client = reqwest::Client::new();
             let response = client
-                .post("http://localhost:3002/create")
+                .post(format!(
+                    "{}/create",
+                    dotenvy_macro::dotenv!("ACCOUNT_CREATION_SERVICE_ADDR")
+                ))
                 .json(&serde_json::json!({
                     "account_id": account_id.to_string(),
                     "public_key": public_key.to_string(),
