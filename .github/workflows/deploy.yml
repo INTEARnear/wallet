@@ -10,12 +10,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Create .env file
+        run: cp .env.example .env
+      
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      
+      - name: Cache Trunk installation
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/bin/trunk
+          key: ${{ runner.os }}-trunk-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-trunk-
+      
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
       
       - name: Install Trunk
+        if: steps.cache-trunk.outputs.cache-hit != 'true'
         run: cargo install trunk
       
       - name: Add WASM target
