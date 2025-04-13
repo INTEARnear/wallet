@@ -110,60 +110,85 @@ fn LoginForm(set_modal_state: WriteSignal<ModalState>, show_back_button: bool) -
             return;
         }
 
-        if let (Ok(secret_key), _) | (_, Some(secret_key)) =
+        let secret_key = if let (Ok(secret_key), _) | (_, Some(secret_key)) =
             (key.parse::<SecretKey>(), seed_phrase_to_key(&key))
         {
-            let public_key = secret_key.public_key();
+            secret_key
+        } else {
+            set_error.set(Some("Invalid seed phrase".to_string()));
+            set_is_valid.set(None);
+            return;
+        };
+        let public_key = secret_key.public_key();
 
-            spawn_local(async move {
-                match reqwest::get(format!(
-                    "https://api.fastnear.com/v0/public_key/{public_key}"
-                ))
-                .await
-                {
-                    Ok(response) => {
-                        if let Ok(data) = response.json::<serde_json::Value>().await {
-                            if let Some(account_ids) =
-                                data.get("account_ids").and_then(|ids| ids.as_array())
-                            {
-                                let accounts: Vec<AccountId> = account_ids
-                                    .iter()
-                                    .filter_map(|id| {
-                                        id.as_str().and_then(|s| s.parse::<AccountId>().ok())
-                                    })
-                                    .collect();
+        spawn_local(async move {
+            match reqwest::get(format!(
+                "https://api.fastnear.com/v0/public_key/{public_key}"
+            ))
+            .await
+            {
+                Ok(response) => {
+                    if let Ok(data) = response.json::<serde_json::Value>().await {
+                        if let Some(account_ids) =
+                            data.get("account_ids").and_then(|ids| ids.as_array())
+                        {
+                            let accounts: Vec<AccountId> = account_ids
+                                .iter()
+                                .filter_map(|id| {
+                                    id.as_str().and_then(|s| s.parse::<AccountId>().ok())
+                                })
+                                .filter(|id| {
+                                    !accounts_context
+                                        .accounts
+                                        .get_untracked()
+                                        .accounts
+                                        .iter()
+                                        .any(|a| a.account_id == *id)
+                                })
+                                .collect();
+                            if accounts.is_empty() {
                                 set_available_accounts.set(accounts);
-                                set_is_valid.set(Some(secret_key));
-                            } else {
                                 set_error.set(Some("No accounts found for this key".to_string()));
                                 set_is_valid.set(None);
+                            } else {
+                                set_available_accounts.set(accounts);
+                                set_is_valid.set(Some(secret_key));
                             }
                         } else {
-                            set_error.set(Some("Failed to parse API response".to_string()));
+                            set_error.set(Some("No accounts found for this key".to_string()));
                             set_is_valid.set(None);
                         }
-                    }
-                    Err(e) => {
-                        set_error.set(Some(format!("Failed to fetch accounts: {}", e)));
+                    } else {
+                        set_error.set(Some("Failed to parse API response".to_string()));
                         set_is_valid.set(None);
                     }
                 }
-            });
-        } else {
-            set_error.set(Some(
-                "Invalid seed phrase format, should be 12 words".to_string(),
-            ));
-            set_is_valid.set(None);
-        }
+                Err(e) => {
+                    set_error.set(Some(format!("Failed to fetch accounts: {}", e)));
+                    set_is_valid.set(None);
+                }
+            }
+        });
     };
 
     let import_account = move || {
         if let Some(account_id) = selected_account.get() {
             let mut accounts = accounts_context.accounts.get();
+            let user_input = private_key.get();
+            let (secret_key, seed_phrase) = if let Ok(secret_key) = user_input.parse::<SecretKey>()
+            {
+                (secret_key, None)
+            } else if let Some(secret_key) = seed_phrase_to_key(&user_input) {
+                (secret_key, Some(user_input))
+            } else {
+                set_error.set(Some("Invalid seed phrase".to_string()));
+                set_is_valid.set(None);
+                return;
+            };
             accounts.accounts.push(Account {
                 account_id: account_id.clone(),
-                secret_key: private_key.get().parse().unwrap(),
-                seed_phrase: None,
+                secret_key,
+                seed_phrase,
             });
             accounts.selected_account = Some(account_id);
             accounts_context.set_accounts.set(accounts);
@@ -276,7 +301,7 @@ fn LoginForm(set_modal_state: WriteSignal<ModalState>, show_back_button: bool) -
                                 }
                                     .into_any()
                             } else {
-                                view! { <div class="hidden"></div> }.into_any()
+                                ().into_any()
                             }
                         }}
                         <div class="flex gap-2">
@@ -291,7 +316,7 @@ fn LoginForm(set_modal_state: WriteSignal<ModalState>, show_back_button: bool) -
                                     }
                                 }
                                 disabled=move || {
-                                    !is_valid.get().is_some() || selected_account.get().is_none()
+                                    is_valid.get().is_none() || selected_account.get().is_none()
                                 }
                                 on:click=move |_| import_account()
                                 on:mouseenter=move |_| set_is_hovered.set(true)

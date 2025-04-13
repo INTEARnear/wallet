@@ -108,8 +108,7 @@ pub fn TrendingTokensSection() -> impl IntoView {
                         .map(|tokens| {
                             let displayed_tokens = tokens
                                 .iter()
-                                .cloned()
-                                .take(if show_all.get() { 10 } else { 3 })
+                                .take(if show_all.get() { 10 } else { 3 }).cloned()
                                 .collect::<Vec<_>>();
 
                             view! {

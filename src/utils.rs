@@ -472,7 +472,7 @@ pub async fn get_ft_metadata(ft_contract_id: AccountId) -> Result<FtMetadata, St
     if !metadata
         .icon
         .as_ref()
-        .map_or(false, |icon| icon.starts_with("data:"))
+        .is_some_and(|icon| icon.starts_with("data:"))
     {
         metadata.icon = None;
     }

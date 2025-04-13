@@ -8,6 +8,7 @@ use axum::{
 use futures::future::join_all;
 use near_min_api::{
     types::{AccountId, CryptoHash},
+    utils::dec_format,
     ExperimentalTxDetails, RpcClient,
 };
 use rocksdb::{Options, DB};
@@ -35,14 +36,16 @@ enum TransactionType {
 
 #[derive(Debug, Deserialize)]
 struct HistoricalSignerTransaction {
-    block_timestamp_nanosec: String,
+    #[serde(with = "dec_format")]
+    block_timestamp_nanosec: u64,
     receiver_id: AccountId,
     transaction_id: CryptoHash,
 }
 
 #[derive(Debug, Deserialize)]
 struct HistoricalReceiverTransaction {
-    block_timestamp_nanosec: String,
+    #[serde(with = "dec_format")]
+    block_timestamp_nanosec: u64,
     signer_id: AccountId,
     transaction_id: CryptoHash,
 }
@@ -220,10 +223,7 @@ async fn get_transactions(
     // Process signer transactions
     for tx in signer_response.into_iter().take(50) {
         if seen_transactions.insert(tx.transaction_id) {
-            let timestamp = tx
-                .block_timestamp_nanosec
-                .parse::<u64>()
-                .unwrap_or_default();
+            let timestamp = tx.block_timestamp_nanosec;
             transaction_metadata.push(TransactionMetadata {
                 timestamp,
                 account_id: tx.receiver_id,
@@ -236,10 +236,7 @@ async fn get_transactions(
     // Process receiver transactions
     for tx in receiver_response.into_iter().take(50) {
         if seen_transactions.insert(tx.transaction_id) {
-            let timestamp = tx
-                .block_timestamp_nanosec
-                .parse::<u64>()
-                .unwrap_or_default();
+            let timestamp = tx.block_timestamp_nanosec;
             transaction_metadata.push(TransactionMetadata {
                 timestamp,
                 account_id: tx.signer_id,
@@ -281,12 +278,7 @@ async fn get_transactions(
     .await;
 
     tracing::info!("Successfully processed request for account: {}", account_id);
-    Ok(Json(
-        transactions
-            .into_iter()
-            .filter_map(|t| t)
-            .collect::<Vec<_>>(),
-    ))
+    Ok(Json(transactions.into_iter().flatten().collect::<Vec<_>>()))
 }
 
 async fn fetch_transaction_details(
@@ -299,7 +291,6 @@ async fn fetch_transaction_details(
     // Try to get from cache first using blocking thread
     let cached_result = tokio::task::spawn_blocking({
         let db = db.clone();
-        let transaction_id = transaction_id.clone();
         move || {
             db.get(transaction_id.as_ref())
                 .map_err(|e| {
@@ -337,7 +328,6 @@ async fn fetch_transaction_details(
     if tx_details.final_execution_outcome.is_some() {
         // Cache the result using blocking thread
         let db = db.clone();
-        let transaction_id = transaction_id.clone();
         let serialized = serde_json::to_vec(&tx_details).unwrap();
 
         tokio::task::spawn_blocking(move || {

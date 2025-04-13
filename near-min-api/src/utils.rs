@@ -54,9 +54,6 @@ pub mod dec_format_option {
         E: Display,
     {
         let opt = Option::deserialize(deserializer)?;
-        Ok(opt
-            .map(T::from_str)
-            .transpose()
-            .map_err(de::Error::custom)?)
+        opt.map(T::from_str).transpose().map_err(de::Error::custom)
     }
 }

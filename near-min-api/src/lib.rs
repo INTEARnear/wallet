@@ -128,7 +128,7 @@ impl RpcClient {
                                         RpcQueryError::GarbageCollectedBlock { .. }
                                         | RpcQueryError::UnknownBlock { .. }
                                         | RpcQueryError::UnavailableShard { .. }
-                                        | RpcQueryError::NoSyncedBlocks { .. }
+                                        | RpcQueryError::NoSyncedBlocks
                                         | RpcQueryError::TooLargeContractState { .. },
                                     )
                                     | HandlerError::RpcReceiptError(
@@ -145,7 +145,7 @@ impl RpcClient {
                                         | RpcTransactionError::TimeoutError
                                     )
                                     | HandlerError::RpcLightClientProofError(
-                                        RpcLightClientProofError::UnknownBlock { .. }
+                                        RpcLightClientProofError::UnknownBlock
                                         | RpcLightClientProofError::InconsistentState { .. }
                                         | RpcLightClientProofError::NotConfirmed { .. }
                                         | RpcLightClientProofError::UnknownTransactionOrReceipt { .. }
@@ -214,7 +214,7 @@ impl RpcClient {
                     .map_err(CallError::ArgsSerialization)?
                     .into(),
             },
-            finality: finality,
+            finality,
         };
         let response: QueryResponse = self
             .request(rpc_method, rpc_params)

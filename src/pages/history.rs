@@ -300,15 +300,15 @@ fn display_transaction(
     match tx_type {
         TransactionType::TxSigner | TransactionType::TxReceiver => {
             let mut actions = Vec::<AnyView>::new();
-            add_storage_actions(&mut actions, &transaction, &me, actions_config);
+            add_storage_actions(&mut actions, transaction, &me, actions_config);
             add_lnc_actions(&mut actions, &me, transaction, actions_config);
-            add_harvestmoon_actions(&mut actions, &me, &transaction, actions_config);
-            add_wrap_actions(&mut actions, &transaction, &me, actions_config);
-            add_dex_actions(&mut actions, &transaction, &me, actions_config);
-            add_ft_actions(&mut actions, &transaction, &me, actions_config);
-            add_staking_actions(&mut actions, &transaction, &me, actions_config);
-            add_near_actions(&mut actions, &transaction, &me, actions_config);
-            add_key_actions(&mut actions, &transaction, &me, actions_config);
+            add_harvestmoon_actions(&mut actions, &me, transaction, actions_config);
+            add_wrap_actions(&mut actions, transaction, &me, actions_config);
+            add_dex_actions(&mut actions, transaction, &me, actions_config);
+            add_ft_actions(&mut actions, transaction, &me, actions_config);
+            add_staking_actions(&mut actions, transaction, &me, actions_config);
+            add_near_actions(&mut actions, transaction, &me, actions_config);
+            add_key_actions(&mut actions, transaction, &me, actions_config);
             view! { <div class="flex flex-col gap-2">{actions}</div> }.into_any()
         }
         TransactionType::FtReceiver => view! { <div>Receive token</div> }.into_any(), // TODO
@@ -810,19 +810,17 @@ fn add_dex_actions(
                 .iter()
             {
                 if let Ok(log) = EventLogData::<VeaxSwapLog>::deserialize(log) {
-                    if log.validate() {
-                        if log.data.user == me {
-                            actions_config.write().short_ft_events = true;
-                            actions.push(
-                                view! {
-                                    <div class="flex items-center gap-2">
-                                        <img src="/history-veax.svg" width="40" height="40" />
-                                        <span>"Swap"</span>
-                                    </div>
-                                }
-                                .into_any(),
-                            );
-                        }
+                    if log.validate() && log.data.user == me {
+                        actions_config.write().short_ft_events = true;
+                        actions.push(
+                            view! {
+                                <div class="flex items-center gap-2">
+                                    <img src="/history-veax.svg" width="40" height="40" />
+                                    <span>"Swap"</span>
+                                </div>
+                            }
+                            .into_any(),
+                        );
                     }
                 }
             }
@@ -1306,7 +1304,7 @@ fn add_lnc_actions(
                             let num = log
                                 .chars()
                                 .rev()
-                                .take_while(|c| c.is_digit(10))
+                                .take_while(|c| c.is_ascii_digit())
                                 .collect::<String>();
                             let nlearns = num.parse::<Balance>().unwrap_or_default();
                             let nlearns = if let Some(rest) = log.strip_suffix(&num) {
