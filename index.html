@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <link rel="icon" href="/favicon-e9cbd8f50cc65bf2.ico" integrity="sha384-YobgLXwtz0GhXVUTHml49p32guapVFlEG8UpQdDVN3kekOqkQi+qSXEpwp+yM4BW"/>
+  <link rel="stylesheet" href="/styles-cabcb1f47b7374be.css" integrity="sha384-Khc/EGg6G+tGuvz18DFroZPk/Lqig8acycfNGX3ZFysqMPWx2o5UfcGTifPPMHEU"/>
+  
+<script type="module">
+import init, * as bindings from '/intear-wallet-2a29f0015bed97fc.js';
+const wasm = await init({ module_or_path: '/intear-wallet-2a29f0015bed97fc_bg.wasm' });
+
+
+window.wasmBindings = bindings;
+
+
+dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
+
+</script>
+  
+<link rel="modulepreload" href="/intear-wallet-2a29f0015bed97fc.js" crossorigin="anonymous" integrity="sha384-pKZ3craR+2Bj0o2x5D0vfd9+ETaRXkgKIsqhg6zTlHx4y3nrBvAwYWy04i3mrS2R"><link rel="preload" href="/intear-wallet-2a29f0015bed97fc_bg.wasm" crossorigin="anonymous" integrity="sha384-KtseLUQvTztxhLmyAUSV1SBpXG2Uii7wCpIRLeXwAjsJN6EEctQn0sKrMnwU4jJR" as="fetch" type="application/wasm"></head>
+
+<body></body>
+
+</html>
