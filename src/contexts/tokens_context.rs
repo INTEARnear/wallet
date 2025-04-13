@@ -168,10 +168,10 @@ pub fn provide_token_context() {
 
         if mint_ready_state.get() == ConnectionReadyState::Open {
             if let Some(account_id) = &accounts_context.accounts.get().selected_account {
-                let filter = Filter::new(
+                let filter = Operator::And(vec![Filter::new(
                     "owner_id",
                     Operator::Equals(serde_json::json!(account_id.to_string())),
-                );
+                )]);
 
                 let filter_json = serde_json::to_string(&filter).unwrap();
                 mint_send(&filter_json);
@@ -180,10 +180,10 @@ pub fn provide_token_context() {
 
         if burn_ready_state.get() == ConnectionReadyState::Open {
             if let Some(account_id) = &accounts_context.accounts.get().selected_account {
-                let filter = Filter::new(
+                let filter = Operator::And(vec![Filter::new(
                     "owner_id",
                     Operator::Equals(serde_json::json!(account_id.to_string())),
-                );
+                )]);
 
                 let filter_json = serde_json::to_string(&filter).unwrap();
                 burn_send(&filter_json);
