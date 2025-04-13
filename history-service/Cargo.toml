@@ -17,3 +17,4 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 futures = "0.3.31"
 hyper = { version = "1.6.0", features = ["full"] }
 rocksdb = "0.23.0"
+dotenvy = "0.15.7"

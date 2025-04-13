@@ -11,7 +11,7 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Create .env file
-        run: cp .env.example .env
+        run: cp .env.prod .env
       
       - name: Cache Rust dependencies
         uses: actions/cache@v3
@@ -32,6 +32,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-trunk-
       
+      - name: Cache npm dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+      
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -40,6 +48,9 @@ jobs:
       - name: Install Trunk
         if: steps.cache-trunk.outputs.cache-hit != 'true'
         run: cargo install trunk
+      
+      - name: Install npm dependencies
+        run: npm install --save-dev
       
       - name: Add WASM target
         run: rustup target add wasm32-unknown-unknown
