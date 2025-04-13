@@ -50,12 +50,14 @@ jobs:
         run: cargo install trunk
       
       - name: Install Tailwind CLI
-        run: npm install tailwindcss@4.1.3 @tailwindcss/cli@4.1.3
+        run: npm install tailwindcss@4.1.3 @tailwindcss/cli@4.1.3 && npm install -g @tailwindcss/cli@4.1.3
       
       - name: Add WASM target
         run: rustup target add wasm32-unknown-unknown
       
       - name: Build with Trunk
+        env:
+          TRUNK_TOOLS_TAILWINDCSS: tailwindcss
         run: trunk build --release
       
       - name: Deploy to dist branch
