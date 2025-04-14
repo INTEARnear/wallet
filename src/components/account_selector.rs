@@ -70,7 +70,7 @@ fn get_secret_key_from_seed(
     master_seed_phrase: &str,
     password: Option<&str>,
 ) -> Option<SecretKey> {
-    let master_mnemonic = bip39::Mnemonic::parse(master_seed_phrase).ok()?;
+    let master_mnemonic = bip39::Mnemonic::parse(master_seed_phrase.to_lowercase()).ok()?;
     get_secret_key_from_mnemonic(seed_phrase_hd_path, master_mnemonic, password)
 }
 
@@ -547,7 +547,14 @@ fn AccountCreationForm(
                                     }
                                     prop:value=account_name
                                     on:input=move |ev| {
-                                        let value = event_target_value(&ev);
+                                        let value = event_target_value(&ev)
+                                            .to_lowercase()
+                                            .chars()
+                                            .filter(|c| {
+                                                c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_'
+                                                    || *c == '-' || *c == '.'
+                                            })
+                                            .collect::<String>();
                                         set_account_name.set(value.clone());
                                         check_account(value);
                                     }
