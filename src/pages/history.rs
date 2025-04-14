@@ -6,9 +6,9 @@ use crate::{
         config_context::{ConfigContext, TimestampFormat},
     },
     utils::{
-        format_account_id, format_duration, format_token_amount, get_ft_metadata, EventLogData,
-        FtBurnLog, FtMintLog, FtTransferLog, RefDclSwapLog, VeaxSwapLog,
-        NEP141_EVENT_STANDARD_STRING,
+        format_account_id, format_duration, format_token_amount, get_ft_metadata,
+        get_nft_collection_metadata, EventLogData, FtBurnLog, FtMintLog, FtTransferLog, NftBurnLog,
+        NftMintLog, NftTransferLog, RefDclSwapLog, VeaxSwapLog, NEP141_EVENT_STANDARD_STRING,
     },
 };
 use base64::{self, Engine};
@@ -191,7 +191,6 @@ pub fn History() -> impl IntoView {
                                                             let account_id = format_account_id(
                                                                 &tx.meta.other_account_id,
                                                             );
-                                                            log::info!("Tx: {tx:?}");
                                                             let tx_hash = tx
                                                                 .transaction
                                                                 .final_execution_outcome
@@ -304,6 +303,7 @@ fn display_transaction(
             add_wrap_actions(&mut actions, transaction, &me, actions_config);
             add_dex_actions(&mut actions, transaction, &me, actions_config);
             add_ft_actions(&mut actions, transaction, &me, actions_config);
+            add_nft_actions(&mut actions, transaction, &me, actions_config);
             add_staking_actions(&mut actions, transaction, &me, actions_config);
             add_near_actions(&mut actions, transaction, &me, actions_config);
             add_key_actions(&mut actions, transaction, &me, actions_config);
@@ -316,6 +316,7 @@ fn display_transaction(
 #[derive(Debug, Default)]
 struct ActionsConfig {
     short_ft_events: bool,
+    short_nft_events: bool,
     storage_deposit_to: HashSet<AccountId>,
     withdrawing_from_staking: HashMap<AccountId, Balance>,
 }
@@ -1107,6 +1108,293 @@ fn add_ft_actions(
                                                                             metadata.decimals,
                                                                             &metadata.symbol,
                                                                         )}
+                                                                    </span>
+                                                                    <span class="text-xs">{memo}</span>
+                                                                </div>
+                                                            }
+                                                                .into_any()
+                                                        }}
+                                                    </span>
+                                                }
+                                                    .into_any()
+                                            } else {
+                                                ().into_any()
+                                            }
+                                        }}
+                                    </div>
+                                }
+                                .into_any(),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn add_nft_actions(
+    actions: &mut Vec<AnyView>,
+    transaction: &FinalExecutionOutcomeWithReceiptView,
+    me: &AccountIdRef,
+    actions_config: RwSignal<ActionsConfig>,
+) {
+    for receipt in transaction.receipts.iter() {
+        for log in transaction
+            .final_outcome
+            .receipts_outcome
+            .iter()
+            .find(|r| r.id == receipt.receipt_id)
+            .expect("receipt outcome not found")
+            .outcome
+            .logs
+            .iter()
+        {
+            if let Ok(log) = EventLogData::<NftTransferLog>::deserialize(log) {
+                let executor_id = receipt.receiver_id.clone();
+                let metadata =
+                    LocalResource::new(move || get_nft_collection_metadata(executor_id.clone()));
+                if log.validate() {
+                    for transfer in log.data.iter().cloned() {
+                        if transfer.old_owner_id == me {
+                            let transfer = transfer.clone();
+                            actions.push(
+                                view! {
+                                    <div class="flex items-center gap-2">
+                                        {move || {
+                                            let new_owner_id = transfer.new_owner_id.clone();
+                                            if let Some(Ok(metadata)) = metadata.get().as_deref() {
+                                                let metadata = metadata.clone();
+                                                view! {
+                                                    <img
+                                                        src=metadata.icon.clone()
+                                                        width=if actions_config.read().short_nft_events {
+                                                            "30"
+                                                        } else {
+                                                            "40"
+                                                        }
+                                                        height=if actions_config.read().short_nft_events {
+                                                            "30"
+                                                        } else {
+                                                            "40"
+                                                        }
+                                                        class="rounded-full"
+                                                    />
+                                                    <span>
+                                                        {if actions_config.read().short_nft_events {
+                                                            view! {
+                                                                <span class="text-red-300 text-lg">
+                                                                    "-"
+                                                                    {transfer.token_ids.len().to_string()}
+                                                                    " "
+                                                                    {metadata.symbol.clone()}
+                                                                </span>
+                                                            }
+                                                                .into_any()
+                                                        } else {
+                                                            let memo = transfer.memo.clone();
+                                                            view! {
+                                                                <div class="flex flex-col gap-1">
+                                                                    <span>
+                                                                        "Send "
+                                                                        {transfer.token_ids.len().to_string()}
+                                                                        " "
+                                                                        {metadata.name.clone()}
+                                                                        " to " {move || format_account_id(&new_owner_id)}
+                                                                    </span>
+                                                                    <span class="text-xs">{memo}</span>
+                                                                </div>
+                                                            }
+                                                                .into_any()
+                                                        }}
+                                                    </span>
+                                                }
+                                                    .into_any()
+                                            } else {
+                                                ().into_any()
+                                            }
+                                        }}
+                                    </div>
+                                }
+                                .into_any(),
+                            );
+                        }
+                        if transfer.new_owner_id == me {
+                            let transfer = transfer.clone();
+                            actions.push(view! {
+                                <div class="flex items-center gap-2">
+                                    {move || {
+                                        if let Some(Ok(metadata)) = metadata.get().as_deref() {
+                                            view! {
+                                                <img
+                                                    src=metadata.icon.clone()
+                                                    width=if actions_config.read().short_nft_events {
+                                                        "30"
+                                                    } else {
+                                                        "40"
+                                                    }
+                                                    height=if actions_config.read().short_nft_events {
+                                                        "30"
+                                                    } else {
+                                                        "40"
+                                                    }
+                                                    class="rounded-full"
+                                                />
+                                                <span>
+                                                    {if actions_config.read().short_nft_events {
+                                                        view! {
+                                                            <span class="text-green-300 text-lg">
+                                                                "+"
+                                                                {transfer.token_ids.len().to_string()}
+                                                                " "
+                                                                {metadata.symbol.clone()}
+                                                            </span>
+                                                        }
+                                                            .into_any()
+                                                    } else {
+                                                        let memo = transfer.memo.clone();
+                                                        view! {
+                                                            <div class="flex flex-col gap-1">
+                                                                <span>
+                                                                    "Receive "
+                                                                    {transfer.token_ids.len().to_string()}
+                                                                    " "
+                                                                    {metadata.name.clone()}
+                                                                    " from " {format_account_id(&transfer.old_owner_id)}
+                                                                </span>
+                                                                <span class="text-xs">{memo}</span>
+                                                            </div>
+                                                        }
+                                                            .into_any()
+                                                    }}
+                                                </span>
+                                            }
+                                                .into_any()
+                                        } else {
+                                            ().into_any()
+                                        }
+                                    }}
+                                </div>
+                            }.into_any());
+                        }
+                    }
+                }
+            }
+            if let Ok(log) = EventLogData::<NftMintLog>::deserialize(log) {
+                let executor_id = receipt.receiver_id.clone();
+                let metadata =
+                    LocalResource::new(move || get_nft_collection_metadata(executor_id.clone()));
+                if log.validate() {
+                    for mint in log.data.iter().cloned() {
+                        if mint.owner_id == me {
+                            actions.push(
+                                view! {
+                                    <div class="flex items-center gap-2">
+                                        {move || {
+                                            if let Some(Ok(metadata)) = metadata.get().as_deref() {
+                                                view! {
+                                                    <img
+                                                        src=metadata.icon.clone()
+                                                        width=if actions_config.read().short_nft_events {
+                                                            "30"
+                                                        } else {
+                                                            "40"
+                                                        }
+                                                        height=if actions_config.read().short_nft_events {
+                                                            "30"
+                                                        } else {
+                                                            "40"
+                                                        }
+                                                        class="rounded-full"
+                                                    />
+                                                    <span>
+                                                        {if actions_config.read().short_nft_events {
+                                                            view! {
+                                                                <span class="text-green-300 text-lg">
+                                                                    "+"
+                                                                    {mint.token_ids.len().to_string()}
+                                                                    " "
+                                                                    {metadata.symbol.clone()}
+                                                                </span>
+                                                            }
+                                                                .into_any()
+                                                        } else {
+                                                            let memo = mint.memo.clone();
+                                                            view! {
+                                                                <div class="flex flex-col gap-1">
+                                                                    <span>
+                                                                        "Mint "
+                                                                        {mint.token_ids.len().to_string()}
+                                                                        " "
+                                                                        {metadata.name.clone()}
+                                                                    </span>
+                                                                    <span class="text-xs">{memo}</span>
+                                                                </div>
+                                                            }
+                                                                .into_any()
+                                                        }}
+                                                    </span>
+                                                }
+                                                    .into_any()
+                                            } else {
+                                                ().into_any()
+                                            }
+                                        }}
+                                    </div>
+                                }
+                                .into_any(),
+                            );
+                        }
+                    }
+                }
+            }
+            if let Ok(log) = EventLogData::<NftBurnLog>::deserialize(log) {
+                let executor_id = receipt.receiver_id.clone();
+                let metadata =
+                    LocalResource::new(move || get_nft_collection_metadata(executor_id.clone()));
+                if log.validate() {
+                    for burn in log.data.iter().cloned() {
+                        if burn.owner_id == me {
+                            actions.push(
+                                view! {
+                                    <div class="flex items-center gap-2">
+                                        {move || {
+                                            if let Some(Ok(metadata)) = metadata.get().as_deref() {
+                                                view! {
+                                                    <img
+                                                        src=metadata.icon.clone()
+                                                        width=if actions_config.read().short_nft_events {
+                                                            "30"
+                                                        } else {
+                                                            "40"
+                                                        }
+                                                        height=if actions_config.read().short_nft_events {
+                                                            "30"
+                                                        } else {
+                                                            "40"
+                                                        }
+                                                        class="rounded-full"
+                                                    />
+                                                    <span>
+                                                        {if actions_config.read().short_nft_events {
+                                                            view! {
+                                                                <span class="text-red-300 text-lg">
+                                                                    "-"
+                                                                    {burn.token_ids.len().to_string()}
+                                                                    " "
+                                                                    {metadata.symbol.clone()}
+                                                                </span>
+                                                            }
+                                                                .into_any()
+                                                        } else {
+                                                            let memo = burn.memo.clone();
+                                                            view! {
+                                                                <div class="flex flex-col gap-1">
+                                                                    <span>
+                                                                        "Burn "
+                                                                        {burn.token_ids.len().to_string()}
+                                                                        " "
+                                                                        {metadata.name.clone()}
                                                                     </span>
                                                                     <span class="text-xs">{memo}</span>
                                                                 </div>

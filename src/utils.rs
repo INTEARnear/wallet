@@ -464,7 +464,7 @@ pub async fn get_ft_metadata(ft_contract_id: AccountId) -> Result<FtMetadata, St
         .call::<FtMetadata>(
             ft_contract_id.clone(),
             "ft_metadata",
-            (),
+            serde_json::json!({}),
             Default::default(),
         )
         .await
@@ -483,6 +483,96 @@ pub async fn get_ft_metadata(ft_contract_id: AccountId) -> Result<FtMetadata, St
         ));
     }
     Ok(metadata)
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct NftCollectionMetadata {
+    pub name: String,
+    pub symbol: String,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub base_uri: Option<String>,
+    #[serde(default)]
+    pub reference: Option<String>,
+    #[serde(default)]
+    pub reference_hash: Option<String>,
+}
+
+#[cached(result = true)]
+pub async fn get_nft_collection_metadata(
+    nft_contract_id: AccountId,
+) -> Result<NftCollectionMetadata, String> {
+    let RpcContext { client, .. } = expect_context::<RpcContext>();
+    let mut metadata = client()
+        .call::<NftCollectionMetadata>(
+            nft_contract_id.clone(),
+            "nft_metadata",
+            serde_json::json!({}),
+            Default::default(),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    if !metadata
+        .icon
+        .as_ref()
+        .is_some_and(|icon| icon.starts_with("data:"))
+    {
+        metadata.icon = None;
+    }
+    Ok(metadata)
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct NftToken {
+    token_id: String,
+    owner_id: AccountId,
+    metadata: NftTokenMetadata,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct NftTokenMetadata {
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub media: Option<String>,
+    #[serde(default)]
+    pub media_hash: Option<String>,
+    #[serde(default)]
+    pub copies: Option<u64>,
+    #[serde(default)]
+    pub issued_at: Option<u64>,
+    #[serde(default)]
+    pub expires_at: Option<u64>,
+    #[serde(default)]
+    pub starts_at: Option<u64>,
+    #[serde(default)]
+    pub updated_at: Option<u64>,
+    #[serde(default)]
+    pub extra: Option<String>,
+    #[serde(default)]
+    pub reference: Option<String>,
+    #[serde(default)]
+    pub reference_hash: Option<String>,
+}
+
+#[cached(result = true)]
+pub async fn get_nft_token(
+    nft_contract_id: AccountId,
+    token_id: String,
+) -> Result<NftToken, String> {
+    let RpcContext { client, .. } = expect_context::<RpcContext>();
+    Ok(client()
+        .call::<NftToken>(
+            nft_contract_id.clone(),
+            "nft_token",
+            serde_json::json!({ "token_id": token_id }),
+            Default::default(),
+        )
+        .await
+        .map_err(|e| e.to_string())?)
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]
