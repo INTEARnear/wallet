@@ -308,7 +308,15 @@ fn display_transaction(
             add_near_actions(&mut actions, transaction, &me, actions_config);
             add_key_actions(&mut actions, transaction, &me, actions_config);
             add_account_actions(&mut actions, transaction, &me, actions_config);
-            view! { <div class="flex flex-col gap-2">{actions}</div> }.into_any()
+            if actions.is_empty() {
+                if transaction.final_outcome.transaction.actions.is_empty() {
+                    view! { <div>Empty Transaction</div> }.into_any()
+                } else {
+                    view! { <div>App Interaction</div> }.into_any()
+                }
+            } else {
+                view! { <div class="flex flex-col gap-2">{actions}</div> }.into_any()
+            }
         }
         TransactionType::FtReceiver => view! { <div>Receive token</div> }.into_any(), // TODO
     }
