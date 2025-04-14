@@ -165,7 +165,9 @@ pub fn provide_token_context() {
                 transfer_send(&filter_json);
             }
         }
+    });
 
+    Effect::new(move |_| {
         if mint_ready_state.get() == ConnectionReadyState::Open {
             if let Some(account_id) = &accounts_context.accounts.get().selected_account {
                 let filter = Operator::And(vec![Filter::new(
@@ -177,7 +179,9 @@ pub fn provide_token_context() {
                 mint_send(&filter_json);
             }
         }
+    });
 
+    Effect::new(move |_| {
         if burn_ready_state.get() == ConnectionReadyState::Open {
             if let Some(account_id) = &accounts_context.accounts.get().selected_account {
                 let filter = Operator::And(vec![Filter::new(
