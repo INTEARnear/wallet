@@ -564,7 +564,7 @@ pub async fn get_nft_token(
     token_id: String,
 ) -> Result<NftToken, String> {
     let RpcContext { client, .. } = expect_context::<RpcContext>();
-    Ok(client()
+    client()
         .call::<NftToken>(
             nft_contract_id.clone(),
             "nft_token",
@@ -572,7 +572,7 @@ pub async fn get_nft_token(
             Default::default(),
         )
         .await
-        .map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]

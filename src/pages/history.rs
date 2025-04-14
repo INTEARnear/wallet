@@ -307,6 +307,7 @@ fn display_transaction(
             add_staking_actions(&mut actions, transaction, &me, actions_config);
             add_near_actions(&mut actions, transaction, &me, actions_config);
             add_key_actions(&mut actions, transaction, &me, actions_config);
+            add_account_actions(&mut actions, transaction, &me, actions_config);
             view! { <div class="flex flex-col gap-2">{actions}</div> }.into_any()
         }
         TransactionType::FtReceiver => view! { <div>Receive token</div> }.into_any(), // TODO
@@ -319,6 +320,53 @@ struct ActionsConfig {
     short_nft_events: bool,
     storage_deposit_to: HashSet<AccountId>,
     withdrawing_from_staking: HashMap<AccountId, Balance>,
+}
+
+fn add_account_actions(
+    actions: &mut Vec<AnyView>,
+    transaction: &FinalExecutionOutcomeWithReceiptView,
+    _me: &AccountIdRef,
+    _actions_config: RwSignal<ActionsConfig>,
+) {
+    for action in transaction.final_outcome.transaction.actions.iter() {
+        match action {
+            ActionView::CreateAccount => {
+                actions.push(
+                    view! {
+                        <div class="flex flex-col gap-1">
+                            <div class="flex items-center gap-2">
+                                <Icon icon=icondata::LuUserPlus width="40" height="40" />
+                                <span>
+                                    "Create Account "
+                                    {format_account_id(&transaction.final_outcome.transaction.receiver_id)}
+                                </span>
+                            </div>
+                        </div>
+                    }
+                    .into_any(),
+                );
+            }
+            ActionView::DeleteAccount { beneficiary_id } => {
+                actions.push(
+                    view! {
+                        <div class="flex flex-col gap-1">
+                            <div class="flex items-center gap-2">
+                                <Icon icon=icondata::LuUserMinus width="40" height="40" />
+                                <span>
+                                    "Delete Account "
+                                    {format_account_id(&transaction.final_outcome.transaction.receiver_id)}
+                                    " and send remaining NEAR to "
+                                    {format_account_id(beneficiary_id)}
+                                </span>
+                            </div>
+                        </div>
+                    }
+                    .into_any(),
+                );
+            }
+            _ => {}
+        }
+    }
 }
 
 fn add_key_actions(
@@ -1184,9 +1232,7 @@ fn add_nft_actions(
                                                         {if actions_config.read().short_nft_events {
                                                             view! {
                                                                 <span class="text-red-300 text-lg">
-                                                                    "-"
-                                                                    {transfer.token_ids.len().to_string()}
-                                                                    " "
+                                                                    "-" {transfer.token_ids.len().to_string()} " "
                                                                     {metadata.symbol.clone()}
                                                                 </span>
                                                             }
@@ -1196,11 +1242,9 @@ fn add_nft_actions(
                                                             view! {
                                                                 <div class="flex flex-col gap-1">
                                                                     <span>
-                                                                        "Send "
-                                                                        {transfer.token_ids.len().to_string()}
-                                                                        " "
-                                                                        {metadata.name.clone()}
-                                                                        " to " {move || format_account_id(&new_owner_id)}
+                                                                        "Send " {transfer.token_ids.len().to_string()} " "
+                                                                        {metadata.name.clone()} " to "
+                                                                        {move || format_account_id(&new_owner_id)}
                                                                     </span>
                                                                     <span class="text-xs">{memo}</span>
                                                                 </div>
@@ -1244,9 +1288,7 @@ fn add_nft_actions(
                                                     {if actions_config.read().short_nft_events {
                                                         view! {
                                                             <span class="text-green-300 text-lg">
-                                                                "+"
-                                                                {transfer.token_ids.len().to_string()}
-                                                                " "
+                                                                "+" {transfer.token_ids.len().to_string()} " "
                                                                 {metadata.symbol.clone()}
                                                             </span>
                                                         }
@@ -1256,11 +1298,9 @@ fn add_nft_actions(
                                                         view! {
                                                             <div class="flex flex-col gap-1">
                                                                 <span>
-                                                                    "Receive "
-                                                                    {transfer.token_ids.len().to_string()}
-                                                                    " "
-                                                                    {metadata.name.clone()}
-                                                                    " from " {format_account_id(&transfer.old_owner_id)}
+                                                                    "Receive " {transfer.token_ids.len().to_string()} " "
+                                                                    {metadata.name.clone()} " from "
+                                                                    {format_account_id(&transfer.old_owner_id)}
                                                                 </span>
                                                                 <span class="text-xs">{memo}</span>
                                                             </div>
@@ -1311,9 +1351,7 @@ fn add_nft_actions(
                                                         {if actions_config.read().short_nft_events {
                                                             view! {
                                                                 <span class="text-green-300 text-lg">
-                                                                    "+"
-                                                                    {mint.token_ids.len().to_string()}
-                                                                    " "
+                                                                    "+" {mint.token_ids.len().to_string()} " "
                                                                     {metadata.symbol.clone()}
                                                                 </span>
                                                             }
@@ -1323,9 +1361,7 @@ fn add_nft_actions(
                                                             view! {
                                                                 <div class="flex flex-col gap-1">
                                                                     <span>
-                                                                        "Mint "
-                                                                        {mint.token_ids.len().to_string()}
-                                                                        " "
+                                                                        "Mint " {mint.token_ids.len().to_string()} " "
                                                                         {metadata.name.clone()}
                                                                     </span>
                                                                     <span class="text-xs">{memo}</span>
@@ -1379,9 +1415,7 @@ fn add_nft_actions(
                                                         {if actions_config.read().short_nft_events {
                                                             view! {
                                                                 <span class="text-red-300 text-lg">
-                                                                    "-"
-                                                                    {burn.token_ids.len().to_string()}
-                                                                    " "
+                                                                    "-" {burn.token_ids.len().to_string()} " "
                                                                     {metadata.symbol.clone()}
                                                                 </span>
                                                             }
@@ -1391,9 +1425,7 @@ fn add_nft_actions(
                                                             view! {
                                                                 <div class="flex flex-col gap-1">
                                                                     <span>
-                                                                        "Burn "
-                                                                        {burn.token_ids.len().to_string()}
-                                                                        " "
+                                                                        "Burn " {burn.token_ids.len().to_string()} " "
                                                                         {metadata.name.clone()}
                                                                     </span>
                                                                     <span class="text-xs">{memo}</span>
