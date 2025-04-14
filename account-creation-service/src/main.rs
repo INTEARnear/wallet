@@ -39,6 +39,7 @@ struct AppState {
     relayer_id: AccountId,
     key_queues: Arc<HashMap<PublicKey, Arc<Mutex<()>>>>,
     relayer_keys: Vec<SecretKey>,
+    desired_finality: TxExecutionStatus,
 }
 
 #[tokio::main]
@@ -99,6 +100,17 @@ async fn main() {
         relayer_id,
         key_queues,
         relayer_keys: relayer_private_keys,
+        desired_finality: env::var("FINALITY")
+            .map(|s| match s.as_str() {
+                "NONE" => TxExecutionStatus::None,
+                "INCLUDED" => TxExecutionStatus::Included,
+                "EXECUTED_OPTIMISTIC" => TxExecutionStatus::ExecutedOptimistic,
+                "INCLUDED_FINAL" => TxExecutionStatus::IncludedFinal,
+                "EXECUTED" => TxExecutionStatus::Executed,
+                "FINAL" => TxExecutionStatus::Final,
+                _ => TxExecutionStatus::Final,
+            })
+            .unwrap_or(TxExecutionStatus::Final),
     };
 
     let app = Router::new()
@@ -204,7 +216,7 @@ async fn create_account(
 
     // Wait for transaction to be included
     pending_tx
-        .wait_for(TxExecutionStatus::Final, Duration::from_secs(60))
+        .wait_for(state.desired_finality, Duration::from_secs(60))
         .await
         .map_err(|e| {
             tracing::error!("Transaction not included: {}", e);
