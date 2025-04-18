@@ -1,2 +1,2 @@
 [toolchain]
-channel = "nightly"
+channel = "nightly-2025-04-14" # 2025-04-15 has breaking changes in leptos_macros. Will use latest nightly once 0.7.9 or 8.0.0 is released
