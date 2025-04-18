@@ -444,6 +444,7 @@ async fn jsonrpc_request<Request: Serialize, Response: DeserializeOwned>(
 struct JsonRpcResponse<T> {
     #[allow(dead_code)]
     jsonrpc: String,
+    #[serde(flatten)]
     result: ResultOrError<T, RpcError>,
     #[allow(dead_code)]
     id: String,

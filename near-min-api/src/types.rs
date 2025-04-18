@@ -4070,6 +4070,7 @@ pub struct ViewStateResult {
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct CallResult {
+    #[serde(flatten)]
     pub result_or_error: ResultOrError<Vec<u8>, String>,
     pub logs: Vec<String>,
 }
