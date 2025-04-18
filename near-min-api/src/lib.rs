@@ -11,7 +11,7 @@ use std::time::Duration;
 use types::{
     AccessKeyView, AccountView, BlockId, BlockReference, BlockView, CryptoHash,
     FinalExecutionOutcomeView, FinalExecutionOutcomeWithReceiptView, Finality, HandlerError,
-    QueryRequest, QueryResponse, QueryResponseKind, RpcError, RpcErrorKind,
+    QueryRequest, QueryResponse, QueryResponseKind, ResultOrError, RpcError, RpcErrorKind,
     RpcLightClientProofError, RpcQueryError, RpcReceiptError, RpcStatusError, RpcTransactionError,
     SignedTransaction, TxExecutionStatus,
 };
@@ -221,9 +221,12 @@ impl RpcClient {
             .await
             .map_err(CallError::Rpc)?;
         match response.kind {
-            QueryResponseKind::CallResult(result) => {
-                serde_json::from_slice(&result.result).map_err(CallError::ResultDeserialization)
-            }
+            QueryResponseKind::CallResult(result) => match result.result_or_error {
+                ResultOrError::Result(result) => {
+                    serde_json::from_slice(&result.result).map_err(CallError::ResultDeserialization)
+                }
+                ResultOrError::Error(error) => Err(CallError::ExecutionError(error.error)),
+            },
             _ => unreachable!("Unexpected query response kind: {:?}", response.kind),
         }
     }
@@ -365,6 +368,8 @@ pub enum CallError {
     ArgsSerialization(serde_json::Error),
     #[error("Result deserialization error: {0}")]
     ResultDeserialization(serde_json::Error),
+    #[error("Execution error: {0}")]
+    ExecutionError(String),
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -430,8 +435,8 @@ async fn jsonrpc_request<Request: Serialize, Response: DeserializeOwned>(
     let response = serde_json::from_value::<JsonRpcResponse<Response>>(response_json.clone())
         .map_err(|e| Error::JsonRpcDeserialization(e, response_json))?;
     match response.result {
-        Either::Left(result) => Ok(result.result),
-        Either::Right(error) => Err(Error::JsonRpc(error.error)),
+        ResultOrError::Result(result) => Ok(result.result),
+        ResultOrError::Error(error) => Err(Error::JsonRpc(error.error)),
     }
 }
 
@@ -440,26 +445,9 @@ struct JsonRpcResponse<T> {
     #[allow(dead_code)]
     jsonrpc: String,
     #[serde(flatten)]
-    result: Either<JsonRpcResult<T>, ErrorWrapper<RpcError>>,
+    result: ResultOrError<T, RpcError>,
     #[allow(dead_code)]
     id: String,
-}
-
-#[derive(Debug, Deserialize, Clone, PartialEq)]
-pub struct ErrorWrapper<T> {
-    pub error: T,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum Either<A, B> {
-    Left(A),
-    Right(B),
-}
-
-#[derive(Debug, Deserialize)]
-struct JsonRpcResult<T> {
-    pub result: T,
 }
 
 #[derive(Debug, thiserror::Error)]

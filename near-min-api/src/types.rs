@@ -90,8 +90,8 @@ pub type ShardIndex = usize;
 #[derive(
     borsh::BorshSerialize,
     borsh::BorshDeserialize,
-    serde::Serialize,
-    serde::Deserialize,
+    Serialize,
+    Deserialize,
     Hash,
     Clone,
     Copy,
@@ -242,7 +242,7 @@ impl FromStr for ShardId {
 pub type StateRoot = CryptoHash;
 
 /// Different types of finality.
-#[derive(serde::Serialize, serde::Deserialize, Default, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq, Eq)]
 pub enum Finality {
     #[serde(rename = "optimistic")]
     None,
@@ -253,14 +253,14 @@ pub enum Finality {
     Final,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AccountWithPublicKey {
     pub account_id: AccountId,
     pub public_key: PublicKey,
 }
 
 /// Account info for validators
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct AccountInfo {
     pub account_id: AccountId,
     pub public_key: PublicKey,
@@ -274,8 +274,8 @@ pub struct AccountInfo {
 /// pretty-serialize the bytes arrays as base64-encoded strings (see `serialize.rs`).
 #[serde_as]
 #[derive(
-    serde::Serialize,
-    serde::Deserialize,
+    Serialize,
+    Deserialize,
     Clone,
     Debug,
     PartialEq,
@@ -295,8 +295,8 @@ pub struct StoreKey(#[serde_as(as = "Base64")] Vec<u8>);
 /// pretty-serialize the bytes arrays as base64-encoded strings (see `serialize.rs`).
 #[serde_as]
 #[derive(
-    serde::Serialize,
-    serde::Deserialize,
+    Serialize,
+    Deserialize,
     Clone,
     Debug,
     PartialEq,
@@ -317,8 +317,8 @@ pub struct StoreValue(#[serde_as(as = "Base64")] Vec<u8>);
 /// (serde_json).
 #[serde_as]
 #[derive(
-    serde::Serialize,
-    serde::Deserialize,
+    Serialize,
+    Deserialize,
     Clone,
     Debug,
     PartialEq,
@@ -688,7 +688,7 @@ impl StateChanges {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, BorshSerialize, BorshDeserialize, serde::Serialize)]
+#[derive(PartialEq, Eq, Clone, Debug, BorshSerialize, BorshDeserialize, Serialize)]
 pub struct StateRootNode {
     /// In Nightshade, data is the serialized TrieNodeWithSize.
     ///
@@ -727,8 +727,8 @@ impl StateRootNode {
     derive_more::AsRef,
     BorshSerialize,
     BorshDeserialize,
-    serde::Serialize,
-    serde::Deserialize,
+    Serialize,
+    Deserialize,
 )]
 #[as_ref(forward)]
 pub struct EpochId(pub CryptoHash);
@@ -745,7 +745,7 @@ impl std::str::FromStr for EpochId {
 /// Stores validator and its stake for two consecutive epochs.
 /// It is necessary because the blocks on the epoch boundary need to contain approvals from both
 /// epochs.
-#[derive(serde::Serialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct ApprovalStake {
     /// Account that stakes money.
     pub account_id: AccountId,
@@ -973,7 +973,7 @@ pub mod validator_stake {
 }
 
 /// Stores validator and its stake.
-#[derive(BorshSerialize, BorshDeserialize, serde::Serialize, Debug, Clone, PartialEq, Eq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct ValidatorStakeV1 {
     /// Account that stakes money.
     pub account_id: AccountId,
@@ -984,7 +984,7 @@ pub struct ValidatorStakeV1 {
 }
 
 /// Information after chunk was processed, used to produce or check next chunk.
-#[derive(Debug, PartialEq, BorshSerialize, BorshDeserialize, Clone, Eq, serde::Serialize)]
+#[derive(Debug, PartialEq, BorshSerialize, BorshDeserialize, Clone, Eq, Serialize)]
 pub struct ChunkExtraV1 {
     /// Post state root after applying give chunk.
     pub state_root: StateRoot,
@@ -1000,7 +1000,7 @@ pub struct ChunkExtraV1 {
     pub balance_burnt: Balance,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum BlockId {
     Height(BlockHeight),
@@ -1009,14 +1009,14 @@ pub enum BlockId {
 
 pub type MaybeBlockId = Option<BlockId>;
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SyncCheckpoint {
     Genesis,
     EarliestAvailable,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BlockReference {
     BlockId(BlockId),
@@ -1042,9 +1042,7 @@ impl From<Finality> for BlockReference {
     }
 }
 
-#[derive(
-    Default, BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq, serde::Serialize,
-)]
+#[derive(Default, BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ValidatorStats {
     pub produced: NumBlocks,
     pub expected: NumBlocks,
@@ -1064,7 +1062,7 @@ pub struct BlockChunkValidatorStats {
     // TODO pub chunk_stats: ChunkStats,
 }
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(Deserialize, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum EpochReference {
     EpochId(EpochId),
@@ -1072,10 +1070,10 @@ pub enum EpochReference {
     Latest,
 }
 
-impl serde::Serialize for EpochReference {
+impl Serialize for EpochReference {
     fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer,
+        S: Serializer,
     {
         // cspell:words newtype
         match self {
@@ -1104,16 +1102,7 @@ pub enum ValidatorInfoIdentifier {
 }
 
 /// Reasons for removing a validator from the validator set.
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    serde::Serialize,
-    serde::Deserialize,
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum ValidatorKickoutReason {
     /// Slashed validators are kicked out.
     Slashed,
@@ -1145,7 +1134,7 @@ pub enum ValidatorKickoutReason {
     },
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TransactionOrReceiptId {
     Transaction {
@@ -1190,8 +1179,8 @@ pub struct StateChangesForShard {
     Copy,
     Debug,
     Default,
-    serde::Serialize,
-    serde::Deserialize,
+    Serialize,
+    Deserialize,
 )]
 pub enum AccountVersion {
     #[default]
@@ -1213,7 +1202,7 @@ pub enum Account {
 }
 
 // Original representation of the account.
-#[derive(BorshSerialize, serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug, Clone)]
+#[derive(BorshSerialize, Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 pub struct AccountV1 {
     /// The total not locked tokens.
     amount: NearToken,
@@ -1237,16 +1226,7 @@ impl AccountV1 {
     }
 }
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    serde::Serialize,
-    serde::Deserialize,
-    PartialEq,
-    Eq,
-    Debug,
-    Clone,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 pub enum AccountContract {
     None,
     Local(CryptoHash),
@@ -1289,16 +1269,7 @@ impl AccountContract {
     }
 }
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    serde::Serialize,
-    serde::Deserialize,
-    PartialEq,
-    Eq,
-    Debug,
-    Clone,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 pub struct AccountV2 {
     /// The total not locked tokens.
     amount: NearToken,
@@ -1482,7 +1453,7 @@ impl Account {
 
 /// Account representation for serde ser/deser that maintains both backward
 /// and forward compatibility.
-#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 struct SerdeAccount {
     amount: NearToken,
     locked: NearToken,
@@ -1498,10 +1469,10 @@ struct SerdeAccount {
     global_contract_account_id: Option<AccountId>,
 }
 
-impl<'de> serde::Deserialize<'de> for Account {
+impl<'de> Deserialize<'de> for Account {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de>,
+        D: Deserializer<'de>,
     {
         let account_data = SerdeAccount::deserialize(deserializer)?;
         if account_data.code_hash != CryptoHash::default()
@@ -1547,10 +1518,10 @@ impl<'de> serde::Deserialize<'de> for Account {
     }
 }
 
-impl serde::Serialize for Account {
+impl Serialize for Account {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer,
+        S: Serializer,
     {
         let version = self.version();
         let code_hash = self.local_contract_hash().unwrap_or_default();
@@ -1618,15 +1589,7 @@ impl BorshSerialize for Account {
 /// that can be issued.
 /// `account_id,public_key` is a key in the state
 #[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    PartialEq,
-    Eq,
-    Hash,
-    Clone,
-    Debug,
-    serde::Serialize,
-    serde::Deserialize,
+    BorshSerialize, BorshDeserialize, PartialEq, Eq, Hash, Clone, Debug, Serialize, Deserialize,
 )]
 pub struct AccessKey {
     /// Nonce for this access key, used for tx nonce generation. When access key is created, nonce
@@ -1651,15 +1614,7 @@ impl AccessKey {
 
 /// Defines permissions for AccessKey
 #[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    PartialEq,
-    Eq,
-    Hash,
-    Clone,
-    Debug,
-    serde::Serialize,
-    serde::Deserialize,
+    BorshSerialize, BorshDeserialize, PartialEq, Eq, Hash, Clone, Debug, Serialize, Deserialize,
 )]
 pub enum AccessKeyPermission {
     FunctionCall(FunctionCallPermission),
@@ -1674,15 +1629,7 @@ pub enum AccessKeyPermission {
 /// It also restrict the account ID of the receiver for this function call.
 /// It also can restrict the method name for the allowed function calls.
 #[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    serde::Serialize,
-    serde::Deserialize,
-    PartialEq,
-    Eq,
-    Hash,
-    Clone,
-    Debug,
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Debug,
 )]
 pub struct FunctionCallPermission {
     /// Allowance is a balance limit to use by this access key to pay for function call gas and
@@ -1812,9 +1759,7 @@ pub enum GlobalContractCodeIdentifier {
 }
 
 /// Error returned in the ExecutionOutcome in case of failure
-#[derive(
-    BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum TxExecutionError {
     /// An error happened during Action execution
     ActionError(ActionError),
@@ -1872,16 +1817,7 @@ impl std::fmt::Display for RuntimeError {
 impl std::error::Error for RuntimeError {}
 
 /// Contexts in which `StorageError::MissingTrieValue` error might occur.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    serde::Deserialize,
-    serde::Serialize,
-    BorshSerialize,
-    BorshDeserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub enum MissingTrieValueContext {
     /// Missing trie value when reading from TrieIterator.
     TrieIterator,
@@ -1906,16 +1842,7 @@ impl MissingTrieValueContext {
 
 /// Errors which may occur during working with trie storages, storing
 /// trie values (trie nodes and state values) by their hashes.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    serde::Deserialize,
-    serde::Serialize,
-    BorshSerialize,
-    BorshDeserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub enum StorageError {
     /// Key-value db internal failure
     StorageInternalError,
@@ -1951,9 +1878,7 @@ impl std::fmt::Display for StorageError {
 impl std::error::Error for StorageError {}
 
 /// An error happened during TX execution
-#[derive(
-    BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum InvalidTxError {
     /// Happens if a wrong AccessKey used or AccessKey has not enough permissions
     InvalidAccessKeyError(InvalidAccessKeyError),
@@ -2040,16 +1965,7 @@ impl From<StorageError> for InvalidTxError {
 
 impl std::error::Error for InvalidTxError {}
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    serde::Deserialize,
-    serde::Serialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub enum InvalidAccessKeyError {
     /// The access key identified by the `public_key` doesn't exist for the account
     AccessKeyNotFound {
@@ -2079,16 +1995,7 @@ pub enum InvalidAccessKeyError {
 }
 
 /// Describes the error for validating a list of actions.
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ActionsValidationError {
     /// The delete action must be a final action in transaction
     DeleteActionMustBeFinal,
@@ -2135,16 +2042,7 @@ pub enum ActionsValidationError {
 }
 
 /// Describes the error for validating a receipt.
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ReceiptValidationError {
     /// The `predecessor_id` of a Receipt is not valid.
     InvalidPredecessorId { account_id: String },
@@ -2319,16 +2217,7 @@ impl Display for ActionsValidationError {
 impl std::error::Error for ActionsValidationError {}
 
 /// An error happened during Action execution
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    serde::Deserialize,
-    serde::Serialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ActionError {
     /// Index of the failed action in the transaction.
     /// Action index is not defined if ActionError.kind is `ActionErrorKind::LackBalanceForState`
@@ -2339,16 +2228,7 @@ pub struct ActionError {
 
 impl std::error::Error for ActionError {}
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    serde::Deserialize,
-    serde::Serialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub enum ActionErrorKind {
     /// Happens when CreateAccount action tries to create an account with account_id which is already exists in the storage
     AccountAlreadyExists { account_id: AccountId },
@@ -2626,7 +2506,7 @@ impl Display for InvalidAccessKeyError {
 impl std::error::Error for InvalidAccessKeyError {}
 
 /// Happens when the input balance doesn't match the output balance in Runtime apply.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct BalanceMismatchError {
     // Input balances
     #[serde(with = "dec_format")]
@@ -3032,16 +2912,7 @@ impl From<std::io::Error> for EpochError {
     }
 }
 
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    BorshDeserialize,
-    BorshSerialize,
-    serde::Deserialize,
-    serde::Serialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, BorshDeserialize, BorshSerialize, Deserialize, Serialize)]
 /// Error that can occur while preparing or executing Wasm smart-contract.
 pub enum PrepareError {
     /// Error happened while serializing the module.
@@ -3072,16 +2943,7 @@ pub enum PrepareError {
 }
 
 /// A kind of a trap happened during execution of a binary
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    BorshDeserialize,
-    BorshSerialize,
-    serde::Deserialize,
-    serde::Serialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, BorshDeserialize, BorshSerialize, Deserialize, Serialize)]
 pub enum WasmTrap {
     /// An `unreachable` opcode was executed.
     Unreachable,
@@ -3103,16 +2965,7 @@ pub enum WasmTrap {
     GenericTrap,
 }
 
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    BorshDeserialize,
-    BorshSerialize,
-    serde::Deserialize,
-    serde::Serialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, BorshDeserialize, BorshSerialize, Deserialize, Serialize)]
 pub enum HostError {
     /// String encoding is bad UTF-16 sequence
     BadUTF16,
@@ -3187,32 +3040,14 @@ pub enum HostError {
     Ed25519VerifyInvalidInput { msg: String },
 }
 
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    BorshDeserialize,
-    BorshSerialize,
-    serde::Deserialize,
-    serde::Serialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, BorshDeserialize, BorshSerialize, Deserialize, Serialize)]
 pub enum MethodResolveError {
     MethodEmptyName,
     MethodNotFound,
     MethodInvalidSignature,
 }
 
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    BorshDeserialize,
-    BorshSerialize,
-    serde::Deserialize,
-    serde::Serialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, BorshDeserialize, BorshSerialize, Deserialize, Serialize)]
 pub enum CompilationError {
     CodeDoesNotExist {
         account_id: AccountId,
@@ -3230,16 +3065,7 @@ pub enum CompilationError {
 ///
 /// Must never reorder/remove elements, can only add new variants at the end (but do that very
 /// carefully). It describes stable serialization format, and only used by serialization logic.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    BorshDeserialize,
-    BorshSerialize,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub enum FunctionCallError {
     /// Wasm compilation error
     CompilationError(CompilationError),
@@ -3288,8 +3114,8 @@ impl std::error::Error for ChunkAccessError {}
     Clone,
     Debug,
     Default,
-    serde::Serialize,
-    serde::Deserialize,
+    Serialize,
+    Deserialize,
 )]
 pub struct ChunkHash(pub CryptoHash);
 
@@ -3322,16 +3148,7 @@ pub fn base64(s: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(s)
 }
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    PartialEq,
-    Eq,
-    Clone,
-    Debug,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct AddKeyAction {
     /// A public key which will be associated with an access_key
     pub public_key: PublicKey,
@@ -3340,42 +3157,15 @@ pub struct AddKeyAction {
 }
 
 /// Create account action
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    PartialEq,
-    Eq,
-    Clone,
-    Debug,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct CreateAccountAction {}
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    PartialEq,
-    Eq,
-    Clone,
-    Debug,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct DeleteAccountAction {
     pub beneficiary_id: AccountId,
 }
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    PartialEq,
-    Eq,
-    Clone,
-    Debug,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct DeleteKeyAction {
     /// A public key associated with the access_key to be deleted.
     pub public_key: PublicKey,
@@ -3383,9 +3173,7 @@ pub struct DeleteKeyAction {
 
 /// Deploy contract action
 #[serde_as]
-#[derive(
-    BorshSerialize, BorshDeserialize, serde::Serialize, serde::Deserialize, PartialEq, Eq, Clone,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct DeployContractAction {
     /// WebAssembly binary
     #[serde_as(as = "Base64")]
@@ -3401,16 +3189,7 @@ impl fmt::Debug for DeployContractAction {
 }
 
 #[serde_as]
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    serde::Serialize,
-    serde::Deserialize,
-    PartialEq,
-    Eq,
-    Clone,
-    Debug,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[repr(u8)]
 pub enum GlobalContractDeployMode {
     /// Contract is deployed under its code hash.
@@ -3425,9 +3204,7 @@ pub enum GlobalContractDeployMode {
 
 /// Deploy global contract action
 #[serde_as]
-#[derive(
-    BorshSerialize, BorshDeserialize, serde::Serialize, serde::Deserialize, PartialEq, Eq, Clone,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct DeployGlobalContractAction {
     /// WebAssembly binary
     #[serde_as(as = "Base64")]
@@ -3447,15 +3224,7 @@ impl fmt::Debug for DeployGlobalContractAction {
 
 #[serde_as]
 #[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    serde::Serialize,
-    serde::Deserialize,
-    Hash,
-    PartialEq,
-    Eq,
-    Clone,
-    Debug,
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, Hash, PartialEq, Eq, Clone, Debug,
 )]
 pub enum GlobalContractIdentifier {
     CodeHash(CryptoHash),
@@ -3486,24 +3255,13 @@ impl GlobalContractIdentifier {
 
 /// Use global contract action
 #[serde_as]
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    serde::Serialize,
-    serde::Deserialize,
-    PartialEq,
-    Eq,
-    Clone,
-    Debug,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 pub struct UseGlobalContractAction {
     pub contract_identifier: GlobalContractIdentifier,
 }
 
 #[serde_as]
-#[derive(
-    BorshSerialize, BorshDeserialize, serde::Serialize, serde::Deserialize, PartialEq, Eq, Clone,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct FunctionCallAction {
     pub method_name: String,
     #[serde_as(as = "Base64")]
@@ -3524,16 +3282,7 @@ impl fmt::Debug for FunctionCallAction {
 }
 
 /// An action which stakes signer_id tokens and setup's validator public key
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    PartialEq,
-    Eq,
-    Clone,
-    Debug,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct StakeAction {
     /// Amount of tokens to stake.
     pub stake: NearToken,
@@ -3541,30 +3290,12 @@ pub struct StakeAction {
     pub public_key: PublicKey,
 }
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    PartialEq,
-    Eq,
-    Clone,
-    Debug,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct TransferAction {
     pub deposit: NearToken,
 }
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    PartialEq,
-    Eq,
-    Debug,
-    Clone,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
 pub enum Action {
     /// Create an (sub)account using a transaction `receiver_id` as an ID for
     /// a new account ID must pass validation rules described here
@@ -3804,8 +3535,8 @@ pub const NEP_366_META_TRANSACTIONS: u32 = 366;
     Hash,
     BorshSerialize,
     BorshDeserialize,
-    serde::Serialize,
-    serde::Deserialize,
+    Serialize,
+    Deserialize,
 )]
 pub struct MessageDiscriminant {
     /// The unique prefix, serialized in little-endian by borsh.
@@ -3980,16 +3711,7 @@ impl From<SignableMessageType> for MessageDiscriminant {
     }
 }
 
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    BorshSerialize,
-    BorshDeserialize,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 pub struct MerklePathItem {
     pub hash: MerkleHash,
     pub direction: Direction,
@@ -3997,16 +3719,7 @@ pub struct MerklePathItem {
 
 pub type MerklePath = Vec<MerklePathItem>;
 
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    BorshSerialize,
-    BorshDeserialize,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 pub enum Direction {
     Left,
     Right,
@@ -4127,9 +3840,7 @@ pub fn compute_root_from_path_and_item<T: BorshSerialize>(
 /// The root can be computed by folding `path` from right but is not explicitly
 /// maintained to save space.
 /// The size of the object is O(log(n)) where n is the number of leaves in the tree, i.e, `size`.
-#[derive(
-    Default, Clone, BorshSerialize, BorshDeserialize, Eq, PartialEq, Debug, serde::Serialize,
-)]
+#[derive(Default, Clone, BorshSerialize, BorshDeserialize, Eq, PartialEq, Debug, Serialize)]
 pub struct PartialMerkleTree {
     /// Path for the next leaf.
     path: Vec<MerkleHash>,
@@ -4207,7 +3918,7 @@ impl PartialMerkleTree {
 }
 
 /// A view of the account
-#[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct AccountView {
     pub amount: NearToken,
     pub locked: NearToken,
@@ -4223,7 +3934,7 @@ pub struct AccountView {
 
 /// A view of the contract code.
 #[serde_as]
-#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 pub struct ContractCodeView {
     #[serde(rename = "code_base64")]
     #[serde_as(as = "Base64")]
@@ -4276,16 +3987,7 @@ impl From<AccountView> for Account {
     }
 }
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    Debug,
-    Eq,
-    PartialEq,
-    Clone,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub enum AccessKeyPermissionView {
     FunctionCall {
         #[serde(with = "dec_format_option")]
@@ -4326,16 +4028,7 @@ impl From<AccessKeyPermissionView> for AccessKeyPermission {
     }
 }
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    Debug,
-    Eq,
-    PartialEq,
-    Clone,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub struct AccessKeyView {
     pub nonce: Nonce,
     pub permission: AccessKeyPermissionView,
@@ -4360,14 +4053,14 @@ impl From<AccessKeyView> for AccessKey {
 }
 
 /// Item of the state, key and value are serialized in base64 and proof for inclusion of given state item.
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct StateItem {
     pub key: StoreKey,
     pub value: StoreValue,
 }
 
 #[serde_as]
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct ViewStateResult {
     pub values: Vec<StateItem>,
     #[serde_as(as = "Vec<Base64>")]
@@ -4375,25 +4068,42 @@ pub struct ViewStateResult {
     pub proof: Vec<Arc<[u8]>>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone, Default)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct CallResult {
-    pub result: Vec<u8>,
+    pub result_or_error: ResultOrError<Vec<u8>, String>,
     pub logs: Vec<String>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+pub struct ErrorWrapper<T> {
+    pub error: T,
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+pub struct ResultWrapper<T> {
+    pub result: T,
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum ResultOrError<A, B> {
+    Result(ResultWrapper<A>),
+    Error(ErrorWrapper<B>),
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct QueryError {
     pub error: String,
     pub logs: Vec<String>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct AccessKeyInfoView {
     pub public_key: PublicKey,
     pub access_key: AccessKeyView,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct AccessKeyList {
     pub keys: Vec<AccessKeyInfoView>,
 }
@@ -4406,7 +4116,7 @@ impl FromIterator<AccessKeyInfoView> for AccessKeyList {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Eq, Clone, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum QueryResponseKind {
     ViewAccount(AccountView),
@@ -4417,7 +4127,7 @@ pub enum QueryResponseKind {
     AccessKeyList(AccessKeyList),
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 #[serde(tag = "request_type", rename_all = "snake_case")]
 pub enum QueryRequest {
     ViewAccount {
@@ -4452,7 +4162,7 @@ fn is_false(v: &bool) -> bool {
     !*v
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Deserialize)]
 pub struct QueryResponse {
     #[serde(flatten)]
     pub kind: QueryResponseKind,
@@ -4460,7 +4170,7 @@ pub struct QueryResponse {
     pub block_hash: CryptoHash,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct StatusSyncInfo {
     pub latest_block_hash: CryptoHash,
     pub latest_block_height: BlockHeight,
@@ -4475,13 +4185,13 @@ pub struct StatusSyncInfo {
 }
 
 // TODO: add more information to ValidatorInfo
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct ValidatorInfo {
     pub account_id: AccountId,
     pub is_slashed: bool,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct PeerInfoView {
     pub addr: String,
     pub account_id: Option<AccountId>,
@@ -4503,20 +4213,20 @@ pub struct PeerInfoView {
 
 /// Information about a Producer: its account name, peer_id and a list of connected peers that
 /// the node can use to send message for this producer.
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct KnownProducerView {
     pub account_id: AccountId,
     pub peer_id: PublicKey,
     pub next_hops: Option<Vec<PublicKey>>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Tier1ProxyView {
     pub addr: std::net::SocketAddr,
     pub peer_id: PublicKey,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct AccountDataView {
     pub peer_id: PublicKey,
     pub proxies: Vec<Tier1ProxyView>,
@@ -4524,7 +4234,7 @@ pub struct AccountDataView {
     pub timestamp: DateTime<Utc>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct NetworkInfoView {
     pub peer_max_count: u32,
     pub num_connected_peers: usize,
@@ -4535,7 +4245,7 @@ pub struct NetworkInfoView {
     pub tier1_connections: Vec<PeerInfoView>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub enum SyncStatusView {
     /// Initial state. Not enough peers to do anything yet.
     AwaitingPeers,
@@ -4566,7 +4276,7 @@ pub enum SyncStatusView {
     },
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct StateSyncStatusView {
     pub sync_hash: CryptoHash,
     pub shard_sync_status: HashMap<ShardId, String>,
@@ -4574,19 +4284,19 @@ pub struct StateSyncStatusView {
     pub computation_tasks: Vec<String>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct ShardSyncDownloadView {
     pub downloads: Vec<DownloadStatusView>,
     pub status: String,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct DownloadStatusView {
     pub error: bool,
     pub done: bool,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct CatchupStatusView {
     // This is the first block of the epoch that we are catching up
     pub sync_block_hash: CryptoHash,
@@ -4597,7 +4307,7 @@ pub struct CatchupStatusView {
     pub blocks_to_catchup: Vec<BlockStatusView>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct RequestedStatePartsView {
     // This is the first block of the epoch that was requested
     pub block_hash: CryptoHash,
@@ -4605,7 +4315,7 @@ pub struct RequestedStatePartsView {
     pub shard_requested_parts: HashMap<ShardId, Vec<PartElapsedTimeView>>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct BlockStatusView {
     pub height: BlockHeight,
     pub hash: CryptoHash,
@@ -4620,7 +4330,7 @@ impl BlockStatusView {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct PartElapsedTimeView {
     pub part_id: u64,
     pub elapsed_ms: u128,
@@ -4635,7 +4345,7 @@ impl PartElapsedTimeView {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct BlockByChunksView {
     pub height: BlockHeight,
     pub hash: CryptoHash,
@@ -4643,7 +4353,7 @@ pub struct BlockByChunksView {
     pub chunk_status: String,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ChainProcessingInfo {
     pub num_blocks_in_processing: usize,
     pub num_orphans: usize,
@@ -4654,7 +4364,7 @@ pub struct ChainProcessingInfo {
     pub floating_chunks_info: Vec<ChunkProcessingInfo>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct BlockProcessingInfo {
     pub height: BlockHeight,
     pub hash: CryptoHash,
@@ -4675,16 +4385,7 @@ pub struct BlockProcessingInfo {
     pub chunks_info: Vec<Option<ChunkProcessingInfo>>,
 }
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BlockProcessingStatus {
     Orphan,
     WaitingForChunks,
@@ -4695,16 +4396,7 @@ pub enum BlockProcessingStatus {
     Unknown,
 }
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DroppedReason {
     // If the node has already processed a block at this height
     HeightProcessed,
@@ -4712,7 +4404,7 @@ pub enum DroppedReason {
     TooManyProcessingBlocks,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ChunkProcessingInfo {
     pub height_created: BlockHeight,
     pub shard_id: ShardId,
@@ -4731,7 +4423,7 @@ pub struct ChunkProcessingInfo {
     pub chunk_parts_collection: Vec<PartCollectionInfo>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct PartCollectionInfo {
     pub part_owner: AccountId,
     // Time when the part is received through any message
@@ -4742,14 +4434,14 @@ pub struct PartCollectionInfo {
     pub chunk_received_time: Option<DateTime<Utc>>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum ChunkProcessingStatus {
     NeedToRequest,
     Requested,
     Completed,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct DetailedDebugStatus {
     pub network_info: NetworkInfoView,
     pub sync_status: String,
@@ -4759,7 +4451,7 @@ pub struct DetailedDebugStatus {
     pub block_production_delay_millis: u64,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct StatusResponse {
     /// Binary version.
     pub version: Version,
@@ -4794,7 +4486,7 @@ pub struct StatusResponse {
 }
 
 /// Data structure for semver version and github tag or commit.
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Version {
     pub version: String,
     pub build: String,
@@ -4803,7 +4495,7 @@ pub struct Version {
     pub rustc_version: String,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockHeaderView {
     pub height: BlockHeight,
     pub prev_height: Option<BlockHeight>,
@@ -4849,16 +4541,7 @@ pub struct BlockHeaderView {
     pub chunk_endorsements: Option<Vec<Vec<u8>>>,
 }
 
-#[derive(
-    PartialEq,
-    Eq,
-    Debug,
-    Clone,
-    BorshDeserialize,
-    BorshSerialize,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(PartialEq, Eq, Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub struct BlockHeaderInnerLiteView {
     pub height: BlockHeight,
     pub epoch_id: CryptoHash,
@@ -4873,7 +4556,7 @@ pub struct BlockHeaderInnerLiteView {
     pub block_merkle_root: CryptoHash,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ChunkHeaderView {
     pub chunk_hash: CryptoHash,
     pub prev_block_hash: CryptoHash,
@@ -4908,14 +4591,14 @@ impl ChunkHeaderView {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockView {
     pub author: AccountId,
     pub header: BlockHeaderView,
     pub chunks: Vec<ChunkHeaderView>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ChunkView {
     pub author: AccountId,
     pub header: ChunkHeaderView,
@@ -4924,16 +4607,7 @@ pub struct ChunkView {
 }
 
 #[serde_as]
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ActionView {
     CreateAccount,
     DeployContract {
@@ -5109,16 +4783,7 @@ impl TryFrom<ActionView> for Action {
     }
 }
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    Debug,
-    PartialEq,
-    Eq,
-    Clone,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct SignedTransactionView {
     pub signer_id: AccountId,
     pub public_key: PublicKey,
@@ -5212,10 +4877,10 @@ impl Borrow<CryptoHash> for SignedTransaction {
     }
 }
 
-impl serde::Serialize for SignedTransaction {
+impl Serialize for SignedTransaction {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer,
+        S: Serializer,
     {
         let signed_tx_borsh = borsh::to_vec(self).map_err(|err| {
             S::Error::custom(&format!(
@@ -5228,12 +4893,12 @@ impl serde::Serialize for SignedTransaction {
     }
 }
 
-impl<'de> serde::Deserialize<'de> for SignedTransaction {
+impl<'de> Deserialize<'de> for SignedTransaction {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de>,
+        D: Deserializer<'de>,
     {
-        let signed_tx_base64 = <String as serde::Deserialize>::deserialize(deserializer)?;
+        let signed_tx_base64 = <String as Deserialize>::deserialize(deserializer)?;
         let signed_tx_borsh = from_base64(&signed_tx_base64).map_err(|err| {
             D::Error::custom(&format!(
                 "the value could not decoded from base64 due to: {}",
@@ -5251,7 +4916,7 @@ impl<'de> serde::Deserialize<'de> for SignedTransaction {
 
 pub type LogEntry = String;
 
-#[derive(BorshSerialize, BorshDeserialize, serde::Serialize, PartialEq, Eq, Debug, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, PartialEq, Eq, Debug, Clone)]
 pub struct TransactionV0 {
     /// An account on which behalf transaction is signed
     pub signer_id: AccountId,
@@ -5442,15 +5107,7 @@ impl BorshDeserialize for Transaction {
 }
 
 #[serde_as]
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    serde::Serialize,
-    serde::Deserialize,
-    PartialEq,
-    Clone,
-    Default,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Clone, Default)]
 pub enum FinalExecutionStatus {
     /// The execution has not yet started.
     #[default]
@@ -5476,9 +5133,7 @@ impl fmt::Debug for FinalExecutionStatus {
     }
 }
 
-#[derive(
-    BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub enum ServerError {
     TxExecutionError(TxExecutionError),
     Timeout,
@@ -5486,9 +5141,7 @@ pub enum ServerError {
 }
 
 #[serde_as]
-#[derive(
-    BorshSerialize, BorshDeserialize, serde::Serialize, serde::Deserialize, PartialEq, Clone,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Clone)]
 pub enum ExecutionStatusView {
     /// The execution is pending or unknown.
     Unknown,
@@ -5529,16 +5182,7 @@ impl fmt::Debug for ExecutionStatusView {
 //     }
 // }
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    PartialEq,
-    Clone,
-    Eq,
-    Debug,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Eq, Debug, Serialize, Deserialize)]
 pub struct CostGasUsed {
     pub cost_category: String,
     pub cost: String,
@@ -5546,16 +5190,7 @@ pub struct CostGasUsed {
     pub gas_used: Gas,
 }
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    PartialEq,
-    Clone,
-    Eq,
-    Debug,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Eq, Debug, Serialize, Deserialize)]
 pub struct ExecutionMetadataView {
     pub version: u32,
     pub gas_profile: Option<Vec<CostGasUsed>>,
@@ -5579,9 +5214,7 @@ impl CostGasUsed {
     }
 }
 
-#[derive(
-    BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExecutionOutcomeView {
     /// Logs from this transaction or receipt.
     pub logs: Vec<String>,
@@ -5604,9 +5237,7 @@ pub struct ExecutionOutcomeView {
     pub metadata: Option<ExecutionMetadataView>,
 }
 
-#[derive(
-    BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct ExecutionOutcomeWithIdView {
     pub proof: MerklePath,
     pub block_hash: CryptoHash,
@@ -5623,8 +5254,8 @@ pub struct TxStatusView {
 #[derive(
     BorshSerialize,
     BorshDeserialize,
-    serde::Serialize,
-    serde::Deserialize,
+    Serialize,
+    Deserialize,
     Clone,
     Debug,
     Default,
@@ -5655,7 +5286,7 @@ pub enum TxExecutionStatus {
     Final,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
 // FinalExecutionOutcomeWithReceipt is a superset of FinalExecutionOutcome that includes additional information about receipts.
 // For proper deserialization we need to have more specific variant first.
@@ -5686,9 +5317,7 @@ impl TxStatusView {
 
 /// Execution outcome of the transaction and all the subsequent receipts.
 /// Could be not finalized yet
-#[derive(
-    BorshSerialize, BorshDeserialize, serde::Serialize, serde::Deserialize, PartialEq, Clone,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Clone)]
 pub struct FinalExecutionOutcomeView {
     /// Execution status defined by chain.rs:get_final_transaction_result
     /// FinalExecutionStatus::NotStarted - the tx is not converted to the receipt yet
@@ -5717,9 +5346,7 @@ impl fmt::Debug for FinalExecutionOutcomeView {
 
 /// Final execution outcome of the transaction and all of subsequent the receipts. Also includes
 /// the generated receipt.
-#[derive(
-    BorshSerialize, BorshDeserialize, PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct FinalExecutionOutcomeWithReceiptView {
     /// Final outcome view without receipts
     #[serde(flatten)]
@@ -5734,9 +5361,10 @@ pub mod validator_stake_view {
     use borsh::{BorshDeserialize, BorshSerialize};
     use near_account_id::AccountId;
     use serde::Deserialize;
+    use serde::Serialize;
 
     #[derive(
-        BorshSerialize, BorshDeserialize, serde::Serialize, Deserialize, Debug, Clone, Eq, PartialEq,
+        BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone, Eq, PartialEq,
     )]
     #[serde(tag = "validator_stake_struct_version")]
     pub enum ValidatorStakeView {
@@ -5784,16 +5412,7 @@ pub mod validator_stake_view {
     }
 }
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    Debug,
-    Clone,
-    Eq,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ValidatorStakeViewV1 {
     pub account_id: AccountId,
     pub public_key: PublicKey,
@@ -5801,16 +5420,7 @@ pub struct ValidatorStakeViewV1 {
     pub stake: Balance,
 }
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReceiptView {
     pub predecessor_id: AccountId,
     pub receiver_id: AccountId,
@@ -5824,32 +5434,14 @@ pub struct ReceiptView {
     pub priority: u64,
 }
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DataReceiverView {
     pub data_id: CryptoHash,
     pub receiver_id: AccountId,
 }
 
 #[serde_as]
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ReceiptEnumView {
     Action {
         signer_id: AccountId,
@@ -6010,7 +5602,7 @@ fn default_is_promise() -> bool {
 // }
 
 /// Information about this epoch validators and next epoch validators
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct EpochValidatorInfo {
     /// Validators for the current epoch
     pub current_validators: Vec<CurrentEpochValidatorInfo>,
@@ -6030,22 +5622,13 @@ pub struct EpochValidatorInfo {
     pub epoch_height: EpochHeight,
 }
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    Debug,
-    PartialEq,
-    Eq,
-    Clone,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct ValidatorKickoutView {
     pub account_id: AccountId,
     pub reason: ValidatorKickoutReason,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct CurrentEpochValidatorInfo {
     pub account_id: AccountId,
     pub public_key: PublicKey,
@@ -6082,16 +5665,7 @@ pub struct CurrentEpochValidatorInfo {
     pub shards_endorsed: Vec<ShardId>,
 }
 
-#[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    Debug,
-    PartialEq,
-    Eq,
-    Clone,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct NextEpochValidatorInfo {
     pub account_id: AccountId,
     pub public_key: PublicKey,
@@ -6100,16 +5674,7 @@ pub struct NextEpochValidatorInfo {
     pub shards: Vec<ShardId>,
 }
 
-#[derive(
-    PartialEq,
-    Eq,
-    Debug,
-    Clone,
-    BorshDeserialize,
-    BorshSerialize,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(PartialEq, Eq, Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub struct LightClientBlockView {
     pub prev_block_hash: CryptoHash,
     pub next_block_inner_hash: CryptoHash,
@@ -6119,7 +5684,7 @@ pub struct LightClientBlockView {
     pub approvals_after_next: Vec<Option<Box<Signature>>>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, BorshDeserialize, BorshSerialize)]
+#[derive(Serialize, Deserialize, Debug, Clone, BorshDeserialize, BorshSerialize)]
 pub struct LightClientBlockLiteView {
     pub prev_block_hash: CryptoHash,
     pub inner_rest_hash: CryptoHash,
@@ -6149,7 +5714,7 @@ pub struct LightClientBlockLiteView {
 //     }
 // }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct GasPriceView {
     #[serde(with = "dec_format")]
     pub gas_price: Balance,
@@ -6159,7 +5724,7 @@ pub struct GasPriceView {
 ///
 /// [serializable view]: ./index.html
 /// [`StateChangesRequest`]: ../types/struct.StateChangesRequest.html
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "changes_type", rename_all = "snake_case")]
 pub enum StateChangesRequestView {
     AccountChanges {
@@ -6211,7 +5776,7 @@ impl From<StateChangesRequestView> for StateChangesRequest {
 ///
 /// [serializable view]: ./index.html
 /// [`StateChangeKind`]: ../types/struct.StateChangeKind.html
-#[derive(Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type")]
 pub enum StateChangeKindView {
     AccountTouched { account_id: AccountId },
@@ -6238,7 +5803,7 @@ impl From<StateChangeKind> for StateChangeKindView {
 pub type StateChangesKindsView = Vec<StateChangeKindView>;
 
 /// See crate::types::StateChangeCause for details.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type")]
 pub enum StateChangeCauseView {
     NotWritableToDisk,
@@ -6283,7 +5848,7 @@ impl From<StateChangeCause> for StateChangeCauseView {
 }
 
 #[serde_as]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type", content = "change")]
 pub enum StateChangeValueView {
     AccountUpdate {
@@ -6377,7 +5942,7 @@ impl From<StateChangeValue> for StateChangeValueView {
     }
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StateChangeWithCauseView {
     pub cause: StateChangeCauseView,
     #[serde(flatten)]
@@ -6400,7 +5965,7 @@ pub type StateChangesView = Vec<StateChangeWithCauseView>;
 pub type MaintenanceWindowsView = Vec<Range<BlockHeight>>;
 
 /// Contains the split storage information.
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct SplitStorageInfoView {
     pub head_height: Option<BlockHeight>,
     pub final_head_height: Option<BlockHeight>,
@@ -6409,7 +5974,7 @@ pub struct SplitStorageInfoView {
     pub hot_db_kind: Option<String>,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CongestionInfoView {
     #[serde(with = "dec_format")]
     pub delayed_receipts_gas: u128,
@@ -6822,7 +6387,7 @@ impl Default for CryptoHash {
     }
 }
 
-impl serde::Serialize for CryptoHash {
+impl Serialize for CryptoHash {
     fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
     where
         S: Serializer,
@@ -6853,7 +6418,7 @@ impl<'de> serde::de::Visitor<'de> for Visitor {
     }
 }
 
-impl<'de> serde::Deserialize<'de> for CryptoHash {
+impl<'de> Deserialize<'de> for CryptoHash {
     fn deserialize<D>(deserializer: D) -> Result<Self, <D as Deserializer<'de>>::Error>
     where
         D: Deserializer<'de>,
@@ -6941,15 +6506,7 @@ pub fn hash(data: &[u8]) -> CryptoHash {
 /// should be added and used in place of the old one. When adding new versions
 /// please also update the default.
 #[derive(
-    BorshSerialize,
-    BorshDeserialize,
-    serde::Serialize,
-    serde::Deserialize,
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq,
 )]
 pub enum CongestionInfo {
     V1(CongestionInfoV1),
@@ -7194,8 +6751,8 @@ impl ExtendedCongestionInfo {
 #[derive(
     BorshSerialize,
     BorshDeserialize,
-    serde::Serialize,
-    serde::Deserialize,
+    Serialize,
+    Deserialize,
     Default,
     Debug,
     Clone,
@@ -7215,7 +6772,7 @@ pub struct CongestionInfoV1 {
     pub allowed_shard: u16,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct RpcQueryRequest {
     #[serde(flatten)]
     pub block_reference: BlockReference,
@@ -7223,7 +6780,7 @@ pub struct RpcQueryRequest {
     pub request: QueryRequest,
 }
 
-#[derive(thiserror::Error, Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(thiserror::Error, Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "name", content = "info", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RpcQueryError {
     #[error("There are no fully synchronized blocks on the node yet")]
@@ -7281,7 +6838,7 @@ pub enum RpcQueryError {
     },
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 pub struct RpcQueryResponse {
     #[serde(flatten)]
     pub kind: QueryResponseKind,
@@ -7292,7 +6849,7 @@ pub struct RpcQueryResponse {
 /// This struct may be returned from JSON RPC server in case of error
 /// It is expected that this struct has impl From<_> all other RPC errors
 /// like [RpcBlockError](crate::types::blocks::RpcBlockError)
-#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct RpcError {
     #[serde(flatten)]
@@ -7306,7 +6863,7 @@ pub struct RpcError {
     pub data: Option<serde_json::Value>,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum HandlerError {
     RpcQueryError(RpcQueryError),
@@ -7317,7 +6874,7 @@ pub enum HandlerError {
     Other(serde_json::Value),
 }
 
-#[derive(thiserror::Error, Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(thiserror::Error, Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "name", content = "info", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RpcLightClientProofError {
     #[error("Block either has never been observed on the node or has been garbage collected")]
@@ -7344,7 +6901,7 @@ pub enum RpcLightClientProofError {
     },
 }
 
-#[derive(thiserror::Error, Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(thiserror::Error, Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "name", content = "info", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RpcTransactionError {
     #[error("An error happened during transaction execution")]
@@ -7361,7 +6918,7 @@ pub enum RpcTransactionError {
     TimeoutError,
 }
 
-#[derive(thiserror::Error, Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(thiserror::Error, Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "name", content = "info", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RpcStatusError {
     #[error("Node is syncing")]
@@ -7372,14 +6929,14 @@ pub enum RpcStatusError {
     EpochOutOfBounds { epoch_id: EpochId },
 }
 
-#[derive(thiserror::Error, Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(thiserror::Error, Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "name", content = "info", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RpcReceiptError {
     #[error("Receipt with id {receipt_id} has never been observed on this node")]
     UnknownReceipt { receipt_id: CryptoHash },
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "name", content = "cause", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RpcErrorKind {
     RequestValidationError(RpcRequestValidationErrorKind),
@@ -7387,7 +6944,7 @@ pub enum RpcErrorKind {
     InternalError(serde_json::Value),
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "name", content = "info", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RpcRequestValidationErrorKind {
     MethodNotFound { method_name: String },
@@ -7418,8 +6975,8 @@ impl fmt::Display for ServerError {
 
 #[derive(
     Debug,
-    serde::Serialize,
-    serde::Deserialize,
+    Serialize,
+    Deserialize,
     Clone,
     PartialEq,
     Eq,
