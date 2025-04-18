@@ -3,7 +3,7 @@ use codee::string::FromToStringCodec;
 use futures_util::future::join;
 use json_filter::{Filter, Operator};
 use leptos::prelude::*;
-use leptos_use::{core::ConnectionReadyState, use_websocket, UseWebSocketReturn};
+use leptos_use::{core::ConnectionReadyState, use_websocket};
 use near_min_api::{
     types::{AccountId, Balance, BlockHeight, CryptoHash, Finality},
     utils::dec_format,
@@ -11,7 +11,11 @@ use near_min_api::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::{accounts_context::AccountsContext, rpc_context::RpcContext};
+use super::{
+    accounts_context::AccountsContext,
+    network_context::{Network, NetworkContext},
+    rpc_context::RpcContext,
+};
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(untagged)]
@@ -117,38 +121,29 @@ pub fn provide_token_context() {
     let (loading, set_loading) = signal(true);
     let accounts_context = expect_context::<AccountsContext>();
     let rpc_client = expect_context::<RpcContext>();
+    let network = expect_context::<NetworkContext>().network.get_untracked();
+    let ws_url = match network {
+        Network::Mainnet => "ws-events-v3.intear.tech",
+        Network::Testnet => "ws-events-v3-testnet.intear.tech",
+    };
 
     // Set up WebSocket connection for token transfers
-    let UseWebSocketReturn {
-        message: transfer_message,
-        send: transfer_send,
-        ready_state: transfer_ready_state,
-        ..
-    } = use_websocket::<String, String, FromToStringCodec>(
-        "wss://ws-events-v3.intear.tech/events/ft_transfer",
-    );
+    let (transfer_ws, set_transfer_ws) =
+        signal(use_websocket::<String, String, FromToStringCodec>(
+            &format!("wss://{ws_url}/events/ft_transfer"),
+        ));
 
-    let UseWebSocketReturn {
-        message: mint_message,
-        send: mint_send,
-        ready_state: mint_ready_state,
-        ..
-    } = use_websocket::<String, String, FromToStringCodec>(
-        "wss://ws-events-v3.intear.tech/events/ft_mint",
-    );
+    let (mint_ws, set_mint_ws) = signal(use_websocket::<String, String, FromToStringCodec>(
+        &format!("wss://{ws_url}/events/ft_mint"),
+    ));
 
-    let UseWebSocketReturn {
-        message: burn_message,
-        send: burn_send,
-        ready_state: burn_ready_state,
-        ..
-    } = use_websocket::<String, String, FromToStringCodec>(
-        "wss://ws-events-v3.intear.tech/events/ft_burn",
-    );
+    let (burn_ws, set_burn_ws) = signal(use_websocket::<String, String, FromToStringCodec>(
+        &format!("wss://{ws_url}/events/ft_burn"),
+    ));
 
     // Send filter message when WebSocket connects
     Effect::new(move |_| {
-        if transfer_ready_state.get() == ConnectionReadyState::Open {
+        if transfer_ws().ready_state.get() == ConnectionReadyState::Open {
             if let Some(account_id) = &accounts_context.accounts.get().selected_account {
                 let filter = Operator::Or(vec![
                     Filter::new(
@@ -162,13 +157,13 @@ pub fn provide_token_context() {
                 ]);
 
                 let filter_json = serde_json::to_string(&filter).unwrap();
-                transfer_send(&filter_json);
+                (transfer_ws().send)(&filter_json);
             }
         }
     });
 
     Effect::new(move |_| {
-        if mint_ready_state.get() == ConnectionReadyState::Open {
+        if mint_ws().ready_state.get() == ConnectionReadyState::Open {
             if let Some(account_id) = &accounts_context.accounts.get().selected_account {
                 let filter = Operator::And(vec![Filter::new(
                     "owner_id",
@@ -176,13 +171,13 @@ pub fn provide_token_context() {
                 )]);
 
                 let filter_json = serde_json::to_string(&filter).unwrap();
-                mint_send(&filter_json);
+                (mint_ws().send)(&filter_json);
             }
         }
     });
 
     Effect::new(move |_| {
-        if burn_ready_state.get() == ConnectionReadyState::Open {
+        if burn_ws().ready_state.get() == ConnectionReadyState::Open {
             if let Some(account_id) = &accounts_context.accounts.get().selected_account {
                 let filter = Operator::And(vec![Filter::new(
                     "owner_id",
@@ -190,14 +185,14 @@ pub fn provide_token_context() {
                 )]);
 
                 let filter_json = serde_json::to_string(&filter).unwrap();
-                burn_send(&filter_json);
+                (burn_ws().send)(&filter_json);
             }
         }
     });
 
     // Handle incoming transfer events
     Effect::new(move |_| {
-        if let Some(msg) = transfer_message.get() {
+        if let Some(msg) = transfer_ws().message.get() {
             if let Ok(events) = serde_json::from_str::<Vec<FtTransferEvent>>(&msg) {
                 for event in events {
                     let current_account = accounts_context.accounts.get().selected_account.clone();
@@ -240,7 +235,7 @@ pub fn provide_token_context() {
 
     // Handle incoming mint events
     Effect::new(move |_| {
-        if let Some(msg) = mint_message.get() {
+        if let Some(msg) = mint_ws().message.get() {
             if let Ok(events) = serde_json::from_str::<Vec<FtMintEvent>>(&msg) {
                 for event in events {
                     let current_account = accounts_context.accounts.get().selected_account.clone();
@@ -248,7 +243,6 @@ pub fn provide_token_context() {
 
                     if let Some(account_id) = &current_account {
                         if event.owner_id == *account_id {
-                            // Increase balance
                             set_tokens.update(|tokens| {
                                 if let Some(token) = tokens.iter_mut().find(|token| {
                                     token.token.account_id == Token::Nep141(event.token_id.clone())
@@ -265,7 +259,7 @@ pub fn provide_token_context() {
 
     // Handle incoming burn events
     Effect::new(move |_| {
-        if let Some(msg) = burn_message.get() {
+        if let Some(msg) = burn_ws().message.get() {
             if let Ok(events) = serde_json::from_str::<Vec<FtBurnEvent>>(&msg) {
                 for event in events {
                     let current_account = accounts_context.accounts.get().selected_account.clone();
@@ -288,22 +282,45 @@ pub fn provide_token_context() {
         }
     });
 
+    // Connect to the right network when network changes
+    Effect::new(move |_| {
+        let network = expect_context::<NetworkContext>().network.get();
+        let ws_url = match network {
+            Network::Mainnet => "ws-events-v3.intear.tech",
+            Network::Testnet => "ws-events-v3-testnet.intear.tech",
+        };
+        set_transfer_ws(use_websocket::<String, String, FromToStringCodec>(
+            &format!("wss://{ws_url}/events/ft_transfer"),
+        ));
+        set_mint_ws(use_websocket::<String, String, FromToStringCodec>(
+            &format!("wss://{ws_url}/events/ft_mint"),
+        ));
+        set_burn_ws(use_websocket::<String, String, FromToStringCodec>(
+            &format!("wss://{ws_url}/events/ft_burn"),
+        ));
+    });
     // Track the selected account to trigger reloads
     let selected_account = move || accounts_context.accounts.get().selected_account.clone();
 
     // Create an effect that runs when the selected account changes
     Effect::new(move |_| {
         let current_account = selected_account();
+        let network = expect_context::<NetworkContext>().network.get();
 
         leptos::task::spawn_local(async move {
+            let api_url = match network {
+                Network::Mainnet => "https://prices.intear.tech",
+                Network::Testnet => "https://prices-testnet.intear.tech",
+            };
+            let wrapped_near: AccountId = match network {
+                Network::Mainnet => "wrap.near".parse().unwrap(),
+                Network::Testnet => "wrap.testnet".parse().unwrap(),
+            };
             set_loading(true);
             set_tokens(vec![]);
             if let Some(account_id) = current_account {
                 let (token_response, account_response) = join(
-                    reqwest::get(format!(
-                        "https://prices.intear.tech/get-user-tokens?account_id={}",
-                        account_id
-                    )),
+                    reqwest::get(format!("{api_url}/get-user-tokens?account_id={account_id}")),
                     rpc_client
                         .client
                         .get_untracked()
@@ -349,7 +366,7 @@ pub fn provide_token_context() {
                 if let Ok(account) = account_response {
                     let wnear_token = token_data
                         .iter()
-                        .find(|t| t.token.account_id == Token::Nep141("wrap.near".parse().unwrap()))
+                        .find(|t| t.token.account_id == Token::Nep141(wrapped_near.clone()))
                         .expect("wNEAR should be guaranteed to be present in prices.intear.tech response");
                     let near = TokenData {
                         balance: account.amount.saturating_sub(account.locked).as_yoctonear(),

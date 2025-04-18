@@ -1,4 +1,5 @@
 use crate::contexts::config_context::ConfigContext;
+use crate::contexts::network_context::{Network, NetworkContext};
 use crate::contexts::tokens_context::TokenContext;
 use crate::utils::format_usd_value;
 use leptos::prelude::*;
@@ -13,6 +14,7 @@ pub fn TotalPortfolioValue() -> impl IntoView {
         loading_tokens,
     } = expect_context::<TokenContext>();
     let ConfigContext { set_config, .. } = expect_context::<ConfigContext>();
+    let network = expect_context::<NetworkContext>().network;
     let (last_tap, set_last_tap) = signal(0.0);
 
     let handle_tap = move |_| {
@@ -76,11 +78,23 @@ pub fn TotalPortfolioValue() -> impl IntoView {
     view! {
         <div class="text-center mb-8">
             <h1
-                class="text-white text-5xl sm:text-6xl font-semibold tracking-wider cursor-pointer select-none hover:text-neutral-200 py-8 transition-all duration-100"
+                class="text-white text-4xl min-[400px]:text-5xl sm:text-6xl font-semibold tracking-wider cursor-pointer select-none hover:text-neutral-200 py-8 transition-all duration-100 wrap-anywhere"
                 on:click=handle_tap
             >
                 {display_value}
             </h1>
+            {move || {
+                if network.get() == Network::Testnet {
+                    view! {
+                        <div class="text-yellow-500 text-sm font-medium mb-4">
+                            This is a testnet account. Assets have no real value.
+                        </div>
+                    }
+                        .into_any()
+                } else {
+                    ().into_any()
+                }
+            }}
             <div class="text-neutral-400 text-lg">
                 {move || {
                     let (pnl, _) = pnl_24h();

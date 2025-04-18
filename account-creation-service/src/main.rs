@@ -33,6 +33,12 @@ struct CreateAccountResponse {
     message: String,
 }
 
+#[derive(Clone, Copy)]
+enum Network {
+    Mainnet,
+    Testnet,
+}
+
 #[derive(Clone)]
 struct AppState {
     rpc_client: Arc<RpcClient>,
@@ -40,6 +46,7 @@ struct AppState {
     key_queues: Arc<HashMap<PublicKey, Arc<Mutex<()>>>>,
     relayer_keys: Vec<SecretKey>,
     desired_finality: TxExecutionStatus,
+    network: Network,
 }
 
 #[tokio::main]
@@ -82,16 +89,30 @@ async fn main() {
             .collect::<HashMap<_, _>>(),
     );
 
+    let network = match env::var("NETWORK") {
+        Ok(network) => match network.as_str() {
+            "mainnet" => Network::Mainnet,
+            "testnet" => Network::Testnet,
+            _ => panic!(
+                "Invalid NETWORK environment variable. Should be either 'mainnet' or 'testnet'"
+            ),
+        },
+        Err(_) => {
+            panic!("Invalid NETWORK environment variable. Should be either 'mainnet' or 'testnet'")
+        }
+    };
+
     let rpc_client = Arc::new(RpcClient::new(
         env::var("RPC_URLS")
             .map(|urls| urls.split(',').map(String::from).collect::<Vec<_>>())
-            .unwrap_or_else(|_| {
-                vec![
+            .unwrap_or_else(|_| match network {
+                Network::Mainnet => vec![
                     "https://rpc.intear.tech".to_string(),
                     "https://rpc.near.org".to_string(),
                     "https://rpc.shitzuapes.xyz".to_string(),
                     "https://archival-rpc.mainnet.near.org".to_string(),
-                ]
+                ],
+                Network::Testnet => vec!["https://rpc.testnet.near.org".to_string()],
             }),
     ));
 
@@ -111,6 +132,7 @@ async fn main() {
                 _ => TxExecutionStatus::Final,
             })
             .unwrap_or(TxExecutionStatus::Final),
+        network,
     };
 
     let app = Router::new()
@@ -187,7 +209,10 @@ async fn create_account(
         signer_id: state.relayer_id.clone(),
         public_key: relayer_key.public_key(),
         nonce: access_key.nonce + 1,
-        receiver_id: "near".parse().unwrap(),
+        receiver_id: match state.network {
+            Network::Mainnet => "near".parse().unwrap(),
+            Network::Testnet => "testnet".parse().unwrap(),
+        },
         block_hash: state
             .rpc_client
             .fetch_recent_block_hash()

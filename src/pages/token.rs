@@ -1,6 +1,9 @@
 use crate::{
     components::tooltip::Tooltip,
-    contexts::tokens_context::{Token, TokenContext, TokenInfo, TokenScore},
+    contexts::{
+        network_context::{Network, NetworkContext},
+        tokens_context::{Token, TokenContext, TokenInfo, TokenScore},
+    },
     utils::{format_token_amount, format_usd_value, format_usd_value_no_hide},
 };
 use leptos::{prelude::*, task::spawn_local};
@@ -9,13 +12,14 @@ use leptos_router::components::A;
 use leptos_router::hooks::use_params_map;
 use near_min_api::types::AccountId;
 
-async fn fetch_token_info(token_id: AccountId) -> Option<TokenInfo> {
-    let response = reqwest::get(format!(
-        "https://prices.intear.tech/token?token_id={}",
-        token_id
-    ))
-    .await
-    .ok()?;
+async fn fetch_token_info(token_id: AccountId, network: Network) -> Option<TokenInfo> {
+    let api_url = match network {
+        Network::Mainnet => "https://prices.intear.tech",
+        Network::Testnet => "https://prices-testnet.intear.tech",
+    };
+    let response = reqwest::get(format!("{api_url}/token?token_id={token_id}"))
+        .await
+        .ok()?;
     let token_data: TokenInfo = response.json().await.ok()?;
     Some(token_data)
 }
@@ -61,6 +65,7 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
 
     let token_account_id = token_info.account_id.clone();
     let token_account_id2 = token_info.account_id.clone();
+    let network = expect_context::<NetworkContext>().network;
     view! {
         <div class="flex flex-col gap-4 wrap-anywhere">
             <div class="flex items-center gap-3">
@@ -97,6 +102,27 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                         <span>Send</span>
                     </button>
                 </A>
+                {move || {
+                    if matches!(token_info.account_id, Token::Near)
+                        && matches!(network.get(), Network::Testnet)
+                    {
+                        view! {
+                            <a
+                                href="https://near-faucet.io"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                <button class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors flex items-center gap-2 cursor-pointer">
+                                    <Icon icon=icondata::LuDroplet width="20" height="20" />
+                                    <span>Get Test Tokens</span>
+                                </button>
+                            </a>
+                        }
+                            .into_any()
+                    } else {
+                        ().into_any()
+                    }
+                }}
             </div>
             <div class="bg-neutral-900 rounded-xl p-4">
                 <div class="flex justify-between items-center">
@@ -186,6 +212,7 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                 <Show when=move || {
                     token_account_id != Token::Near
                         && token_account_id != Token::Nep141("wrap.near".parse().unwrap())
+                        && token_account_id != Token::Nep141("wrap.testnet".parse().unwrap())
                 }>
                     <div class="bg-neutral-900 rounded-xl p-4">
                         <p class="text-gray-400">Liquidity</p>
@@ -214,9 +241,18 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
             </div>
             <iframe
                 src=format!(
-                    "https://chart.intear.tech/?token={}&interval=15m",
+                    "https://{}/?token={}&interval=15m",
+                    match network.get() {
+                        Network::Mainnet => "chart.intear.tech",
+                        Network::Testnet => "chart-testnet.intear.tech",
+                    },
                     match &token_account_id2 {
-                        Token::Near => "wrap.near".to_string(),
+                        Token::Near => {
+                            match network.get() {
+                                Network::Mainnet => "wrap.near".to_string(),
+                                Network::Testnet => "wrap.testnet".to_string(),
+                            }
+                        }
                         Token::Nep141(account_id) => account_id.to_string(),
                     },
                 )
@@ -249,9 +285,10 @@ pub fn TokenDetails() -> impl IntoView {
         {
             set_loading_api(true);
             set_api_error(false);
+            let network = expect_context::<NetworkContext>().network.get();
             spawn_local(async move {
                 if let Ok(token_id) = token_id.parse() {
-                    if let Some(info) = fetch_token_info(token_id).await {
+                    if let Some(info) = fetch_token_info(token_id, network).await {
                         set_token_info(Some(info));
                     } else {
                         set_api_error(true);

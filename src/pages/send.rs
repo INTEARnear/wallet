@@ -5,7 +5,9 @@ use crate::{
         tokens_context::{Token, TokenContext},
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
-    utils::{format_token_amount, format_token_amount_no_hide, StorageBalance},
+    utils::{
+        format_token_amount, format_token_amount_no_hide, format_usd_value_no_hide, StorageBalance,
+    },
 };
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::Icon;
@@ -394,14 +396,27 @@ pub fn SendToken() -> impl IntoView {
                                         </button>
                                     </div>
                                     {move || {
-                                        if let Some(err) = amount_error.get() {
-                                            view! {
-                                                <p class="text-red-500 text-sm mt-2 font-medium">{err}</p>
-                                            }
-                                                .into_any()
+                                        let error_message = amount_error.get();
+                                        let usd_display = if let Ok(amount_value) = amount
+                                            .get()
+                                            .parse::<f64>()
+                                        {
+                                            let usd_value = amount_value
+                                                * token.token.price_usd_hardcoded;
+                                            format_usd_value_no_hide(usd_value)
                                         } else {
-                                            view! { <div class="hidden"></div> }.into_any()
+                                            "$0".to_string()
+                                        };
+
+                                        view! {
+                                            <div class="flex justify-between items-center mt-2">
+                                                <p class="text-red-500 text-sm font-medium">
+                                                    {error_message.unwrap_or_default()}
+                                                </p>
+                                                <p class="text-gray-400 text-sm">{usd_display}</p>
+                                            </div>
                                         }
+                                            .into_any()
                                     }}
                                 </div>
 

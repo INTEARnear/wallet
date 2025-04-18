@@ -1,6 +1,7 @@
 use contexts::account_selector_swipe_context::provide_account_selector_swipe_context;
 use contexts::accounts_context::provide_accounts_context;
 use contexts::config_context::provide_config_context;
+use contexts::network_context::provide_network_context;
 use contexts::search_context::provide_search_context;
 use contexts::tokens_context::provide_token_context;
 use contexts::transaction_queue_context::provide_transaction_queue_context;
@@ -25,8 +26,9 @@ use crate::pages::{
 pub fn App() -> impl IntoView {
     provide_meta_context();
     provide_config_context();
-    provide_rpc_context(); // depends on config for rpc configuration
     provide_accounts_context();
+    provide_network_context(); // depends on accounts for selecting the network for the selected account
+    provide_rpc_context(); // depends on config for rpc configuration and network for default rpc
     provide_token_context(); // depends on rpc for fetching near balance
     provide_account_selector_swipe_context(); // depends on accounts
     provide_search_context();

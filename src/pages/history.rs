@@ -4,6 +4,7 @@ use crate::{
     contexts::{
         accounts_context::AccountsContext,
         config_context::{ConfigContext, TimestampFormat},
+        network_context::Network,
     },
     utils::{
         format_account_id, format_duration, format_token_amount, get_ft_metadata,
@@ -47,19 +48,31 @@ enum TransactionType {
 
 async fn fetch_transactions() -> Vec<TransactionResponse> {
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
-    let Some(selected_account) = accounts().selected_account else {
+    let Some(selected_account_id) = accounts().selected_account else {
         return vec![];
     };
+    let selected_account = accounts()
+        .accounts
+        .into_iter()
+        .find(|a| a.account_id == selected_account_id)
+        .expect("Selected account not found");
 
-    reqwest::get(format!(
-        "{}/api/transactions/{selected_account}",
-        dotenvy_macro::dotenv!("HISTORY_SERVICE_ADDR")
+    let history_service_addr = match selected_account.network {
+        Network::Mainnet => dotenvy_macro::dotenv!("MAINNET_HISTORY_SERVICE_ADDR"),
+        Network::Testnet => dotenvy_macro::dotenv!("TESTNET_HISTORY_SERVICE_ADDR"),
+    };
+    if let Ok(response) = reqwest::get(format!(
+        "{history_service_addr}/api/transactions/{selected_account_id}"
     ))
     .await
-    .unwrap()
-    .json::<Vec<TransactionResponse>>()
-    .await
-    .unwrap_or_default()
+    {
+        response
+            .json::<Vec<TransactionResponse>>()
+            .await
+            .unwrap_or_default()
+    } else {
+        vec![]
+    }
 }
 
 #[component]
@@ -346,7 +359,9 @@ fn add_account_actions(
                                 <Icon icon=icondata::LuUserPlus width="40" height="40" />
                                 <span>
                                     "Create Account "
-                                    {format_account_id(&transaction.final_outcome.transaction.receiver_id)}
+                                    {format_account_id(
+                                        &transaction.final_outcome.transaction.receiver_id,
+                                    )}
                                 </span>
                             </div>
                         </div>
@@ -362,8 +377,9 @@ fn add_account_actions(
                                 <Icon icon=icondata::LuUserMinus width="40" height="40" />
                                 <span>
                                     "Delete Account "
-                                    {format_account_id(&transaction.final_outcome.transaction.receiver_id)}
-                                    " and send remaining NEAR to "
+                                    {format_account_id(
+                                        &transaction.final_outcome.transaction.receiver_id,
+                                    )} " and send remaining NEAR to "
                                     {format_account_id(beneficiary_id)}
                                 </span>
                             </div>
@@ -721,7 +737,7 @@ fn add_wrap_actions(
     _actions_config: RwSignal<ActionsConfig>,
 ) {
     for receipt in transaction.receipts.iter() {
-        if receipt.receiver_id != "wrap.near" {
+        if receipt.receiver_id != "wrap.near" && receipt.receiver_id != "wrap.testnet" {
             continue;
         }
         for log in transaction

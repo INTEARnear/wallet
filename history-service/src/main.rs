@@ -21,11 +21,18 @@ use std::{net::SocketAddr, time::Duration};
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::EnvFilter;
 
+#[derive(Clone, Copy)]
+enum Network {
+    Mainnet,
+    Testnet,
+}
+
 #[derive(Clone)]
 struct AppState {
     rpc_client: Arc<RpcClient>,
     http_client: Arc<reqwest::Client>,
     db: Arc<DB>,
+    network: Network,
 }
 
 #[derive(Debug, Serialize)]
@@ -106,34 +113,60 @@ async fn main() {
     let db = DB::open(&opts, &db_path).expect("Failed to open RocksDB");
     let db = Arc::new(db);
 
+    let http_client = Arc::new(reqwest::Client::new());
+
+    let network = match env::var("NETWORK") {
+        Ok(network) => match network.as_str() {
+            "mainnet" => Network::Mainnet,
+            "testnet" => Network::Testnet,
+            _ => panic!(
+                "Invalid NETWORK environment variable. Should be either 'mainnet' or 'testnet'"
+            ),
+        },
+        Err(_) => {
+            panic!("Invalid NETWORK environment variable. Should be either 'mainnet' or 'testnet'")
+        }
+    };
+
     let rpc_client = Arc::new({
         let mut rpc_client = RpcClient::new(
             env::var("RPC_URLS")
                 .map(|urls| urls.split(',').map(String::from).collect::<Vec<_>>())
-                .unwrap_or_else(|_| {
-                    vec![
+                .unwrap_or_else(|_| match network {
+                    Network::Mainnet => vec![
                         "https://rpc.intear.tech".to_string(),
-                        "https://archival-rpc.mainnet.near.org".to_string(),
-                        "https://rpc.shitzuapes.xyz".to_string(),
                         "https://rpc.near.org".to_string(),
-                    ]
+                        "https://rpc.shitzuapes.xyz".to_string(),
+                        "https://archival-rpc.mainnet.near.org".to_string(),
+                    ],
+                    Network::Testnet => vec!["https://rpc.testnet.near.org".to_string()],
                 }),
         );
         rpc_client.set_client(
             reqwest::Client::builder()
-                .timeout(Duration::from_secs(1))
+                .timeout(Duration::from_secs(1)) // Connection might just hang if it's not archival
                 .build()
                 .unwrap(),
         );
         rpc_client
     });
 
-    let http_client = Arc::new(reqwest::Client::new());
-
     let state = AppState {
         rpc_client,
         http_client,
         db,
+        network: match env::var("NETWORK") {
+            Ok(network) => match network.as_str() {
+                "mainnet" => Network::Mainnet,
+                "testnet" => Network::Testnet,
+                _ => panic!(
+                    "Invalid NETWORK environment variable. Should be either 'mainnet' or 'testnet'"
+                ),
+            },
+            Err(_) => panic!(
+                "Invalid NETWORK environment variable. Should be either 'mainnet' or 'testnet'"
+            ),
+        },
     };
 
     let app = Router::new()
@@ -157,6 +190,11 @@ async fn get_transactions(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::debug!("Fetching transactions for account: {}", account_id);
 
+    let api_url = match state.network {
+        Network::Mainnet => "https://events-v3.intear.tech",
+        Network::Testnet => "https://events-v3-testnet.intear.tech",
+    };
+
     // Run both requests in parallel
     let (signer_response, receiver_response) = tokio::join!(
         async {
@@ -164,7 +202,7 @@ async fn get_transactions(
             let response = state
                 .http_client
                 .get(format!(
-                    "https://events-v3.intear.tech/v3/tx_transaction/by_signer_newest?signer_id={account_id}"
+                    "{api_url}/v3/tx_transaction/by_signer_newest?signer_id={account_id}"
                 ))
                 .send()
                 .await
@@ -192,7 +230,7 @@ async fn get_transactions(
             let response = state
                 .http_client
                 .get(format!(
-                    "https://events-v3.intear.tech/v3/tx_transaction/by_receiver_newest?receiver_id={account_id}"
+                    "{api_url}/v3/tx_transaction/by_receiver_newest?receiver_id={account_id}"
                 ))
                 .send()
                 .await

@@ -6,7 +6,10 @@ use std::collections::HashMap;
 
 use crate::{
     components::tooltip::Tooltip,
-    contexts::tokens_context::{Token, TokenContext, TokenInfo},
+    contexts::{
+        network_context::{Network, NetworkContext},
+        tokens_context::{Token, TokenContext, TokenInfo},
+    },
     data::learn::ARTICLES,
 };
 
@@ -26,8 +29,12 @@ pub struct Article {
     pub image_url: String,
 }
 
-async fn fetch_trending_tokens() -> Vec<TrendingToken> {
-    let response = reqwest::get("https://prices.intear.tech/tokens")
+async fn fetch_trending_tokens(network: Network) -> Vec<TrendingToken> {
+    let api_url = match network {
+        Network::Mainnet => "https://prices.intear.tech",
+        Network::Testnet => "https://prices-testnet.intear.tech",
+    };
+    let response = reqwest::get(format!("{api_url}/tokens"))
         .await
         .unwrap()
         .json::<HashMap<String, TokenInfo>>()
@@ -38,6 +45,7 @@ async fn fetch_trending_tokens() -> Vec<TrendingToken> {
         .into_iter()
         .filter(|(_, data)| {
             data.account_id != Token::Nep141("wrap.near".parse().unwrap())
+                && data.account_id != Token::Nep141("wrap.testnet".parse().unwrap())
                 && data.account_id != Token::Near
                 && data.price_usd_hardcoded != 1.0
         })
@@ -87,7 +95,13 @@ async fn fetch_trending_tokens() -> Vec<TrendingToken> {
 #[component]
 pub fn TrendingTokensSection() -> impl IntoView {
     let (show_all, set_show_all) = signal(false);
-    let tokens = LocalResource::new(fetch_trending_tokens);
+    let network = expect_context::<NetworkContext>().network;
+    let tokens =
+        LocalResource::new(move || async move { fetch_trending_tokens(network.get()).await });
+    Effect::new(move || {
+        network.track();
+        tokens.refetch();
+    });
 
     view! {
         <div class="bg-neutral-900 rounded-xl p-4 mb-4">
@@ -108,7 +122,8 @@ pub fn TrendingTokensSection() -> impl IntoView {
                         .map(|tokens| {
                             let displayed_tokens = tokens
                                 .iter()
-                                .take(if show_all.get() { 10 } else { 3 }).cloned()
+                                .take(if show_all.get() { 10 } else { 3 })
+                                .cloned()
                                 .collect::<Vec<_>>();
 
                             view! {
@@ -387,6 +402,7 @@ pub fn ForYouSection() -> impl IntoView {
             .iter()
             .filter_map(|token| {
                 if token.token.account_id == Token::Nep141("wrap.near".parse().unwrap())
+                    || token.token.account_id == Token::Nep141("wrap.testnet".parse().unwrap())
                     || token.token.account_id == Token::Near
                 {
                     let normalized_balance =

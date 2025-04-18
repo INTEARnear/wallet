@@ -77,8 +77,9 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
     };
 
     view! {
-        <Show when=move || !show_modal.get() && !queue.get().is_empty()>
-            class="relative top-0 w-full lg:rounded-t-3xl bg-neutral-900/90 text-white text-sm font-medium transition-all duration-200 cursor-pointer"
+        <Show
+            when=move || { !show_modal.get() && !queue.get().is_empty() }
+            attr:class="relative top-0 pt-1 w-full lg:rounded-t-3xl bg-neutral-900/90 text-white text-sm font-medium transition-all duration-200 cursor-pointer"
             on:click=move |_| set_show_modal.set(true)
         >
             <div class="w-full pt-2">
@@ -108,12 +109,14 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
             </div>
         </Show>
 
-        <Show when=move || show_modal.get() && !queue.get().is_empty()>
+        <Show
+            when=move || show_modal.get() && !queue.get().is_empty()
             attr:class="fixed inset-0 bg-black/50 transition-opacity duration-200 z-50 text-white"
             on:click=move |_| set_show_modal.set(false)
         >
+        <div>
             <div
-                class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-2rem)] max-w-lg bg-neutral-900 rounded-xl p-4 shadow-xl"
+                class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-2rem)] lg:w-[500px] bg-neutral-900 rounded-xl p-4 shadow-xl"
                 on:click=|ev| ev.stop_propagation()
             >
                 <div class="flex items-center justify-between mb-4">
@@ -143,6 +146,7 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                             .collect_view()
                     }}
                 </div>
+            </div>
             </div>
         </Show>
     }

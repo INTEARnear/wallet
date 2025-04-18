@@ -3,17 +3,32 @@ use near_min_api::types::{near_crypto::SecretKey, AccountId};
 use serde::{Deserialize, Serialize};
 use web_sys::window;
 
+use super::network_context::Network;
+
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Account {
     pub account_id: AccountId,
     pub secret_key: SecretKey,
     pub seed_phrase: Option<String>,
+    #[serde(
+        skip_serializing_if = "is_mainnet",
+        default = "default_account_network"
+    )]
+    pub network: Network,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Default)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct AccountsState {
     pub accounts: Vec<Account>,
     pub selected_account: Option<AccountId>,
+}
+
+fn is_mainnet(network: &Network) -> bool {
+    matches!(network, Network::Mainnet)
+}
+
+fn default_account_network() -> Network {
+    Network::Mainnet
 }
 
 #[derive(Clone)]
@@ -33,7 +48,10 @@ fn load_accounts() -> AccountsState {
         .and_then(|storage| storage.get_item(ACCOUNTS_KEY).ok())
         .flatten()
         .and_then(|json| serde_json::from_str(&json).ok())
-        .unwrap_or_default()
+        .unwrap_or_else(|| AccountsState {
+            accounts: vec![],
+            selected_account: None,
+        })
 }
 
 fn save_accounts(accounts: &AccountsState) {
@@ -48,7 +66,7 @@ pub fn provide_accounts_context() {
     let (accounts, set_accounts) = signal(load_accounts());
 
     // Save to localStorage whenever accounts change
-    Effect::new(move |_| {
+    Effect::new(move || {
         save_accounts(&accounts.get());
     });
 

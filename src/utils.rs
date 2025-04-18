@@ -476,7 +476,9 @@ pub async fn get_ft_metadata(ft_contract_id: AccountId) -> Result<FtMetadata, St
     {
         metadata.icon = None;
     }
-    if metadata.icon.is_none() && ft_contract_id == "wrap.near" {
+    if metadata.icon.is_none()
+        && (ft_contract_id == "wrap.near" || ft_contract_id == "wrap.testnet")
+    {
         metadata.icon = Some(format!(
             "data:image/svg+xml;base64,{}",
             BASE64_STANDARD.encode(include_bytes!("./data/near.svg"))

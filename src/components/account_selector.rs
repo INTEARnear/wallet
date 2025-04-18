@@ -16,10 +16,10 @@ use near_min_api::{
 use slipped10::BIP32Path;
 use web_sys::KeyboardEvent;
 
+use crate::contexts::network_context::Network;
 use crate::contexts::{
     account_selector_swipe_context::AccountSelectorSwipeContext,
     accounts_context::{Account, AccountsContext},
-    rpc_context::RpcContext,
 };
 
 #[derive(Clone, Copy, PartialEq)]
@@ -100,8 +100,8 @@ fn LoginForm(set_modal_state: WriteSignal<ModalState>, show_back_button: bool) -
     let (is_valid, set_is_valid) = signal(None);
     let (error, set_error) = signal::<Option<String>>(None);
     let (is_hovered, set_is_hovered) = signal(false);
-    let (available_accounts, set_available_accounts) = signal::<Vec<AccountId>>(vec![]);
-    let (selected_account, set_selected_account) = signal::<Option<AccountId>>(None);
+    let (available_accounts, set_available_accounts) = signal::<Vec<(AccountId, Network)>>(vec![]);
+    let (selected_account, set_selected_account) = signal::<Option<(AccountId, Network)>>(None);
 
     let check_private_key = move |key: String| {
         set_error.set(None);
@@ -122,22 +122,30 @@ fn LoginForm(set_modal_state: WriteSignal<ModalState>, show_back_button: bool) -
         let public_key = secret_key.public_key();
 
         spawn_local(async move {
-            match reqwest::get(format!(
-                "https://api.fastnear.com/v0/public_key/{public_key}"
-            ))
-            .await
-            {
-                Ok(response) => {
+            let mut all_accounts = vec![];
+
+            // First, try mainnet. If no accounts are found, try testnet.
+            // So if someone creates a testnet account with someone's mainnet public key,
+            // only the mainnet account will be found, avoiding potential scams or confusion.
+            for (network, api_url) in [
+                (Network::Mainnet, "https://api.fastnear.com"),
+                (Network::Testnet, "https://test.api.fastnear.com"),
+            ] {
+                if let Ok(response) =
+                    reqwest::get(format!("{api_url}/v0/public_key/{public_key}")).await
+                {
                     if let Ok(data) = response.json::<serde_json::Value>().await {
                         if let Some(account_ids) =
                             data.get("account_ids").and_then(|ids| ids.as_array())
                         {
-                            let accounts: Vec<AccountId> = account_ids
+                            let accounts: Vec<(AccountId, Network)> = account_ids
                                 .iter()
                                 .filter_map(|id| {
-                                    id.as_str().and_then(|s| s.parse::<AccountId>().ok())
+                                    id.as_str()
+                                        .and_then(|s| s.parse::<AccountId>().ok())
+                                        .map(|id| (id, network))
                                 })
-                                .filter(|id| {
+                                .filter(|(id, _)| {
                                     !accounts_context
                                         .accounts
                                         .get_untracked()
@@ -146,33 +154,29 @@ fn LoginForm(set_modal_state: WriteSignal<ModalState>, show_back_button: bool) -
                                         .any(|a| a.account_id == *id)
                                 })
                                 .collect();
-                            if accounts.is_empty() {
-                                set_available_accounts.set(accounts);
-                                set_error.set(Some("No accounts found for this key".to_string()));
-                                set_is_valid.set(None);
-                            } else {
-                                set_available_accounts.set(accounts);
-                                set_is_valid.set(Some(secret_key));
-                            }
-                        } else {
-                            set_error.set(Some("No accounts found for this key".to_string()));
-                            set_is_valid.set(None);
+                            all_accounts.extend(accounts);
                         }
-                    } else {
-                        set_error.set(Some("Failed to parse API response".to_string()));
-                        set_is_valid.set(None);
                     }
                 }
-                Err(e) => {
-                    set_error.set(Some(format!("Failed to fetch accounts: {}", e)));
-                    set_is_valid.set(None);
+                if !all_accounts.is_empty() {
+                    // Don't try other networks if we found an account.
+                    break;
                 }
+            }
+
+            if all_accounts.is_empty() {
+                set_available_accounts.set(all_accounts);
+                set_error.set(Some("No accounts found for this key".to_string()));
+                set_is_valid.set(None);
+            } else {
+                set_available_accounts.set(all_accounts);
+                set_is_valid.set(Some(secret_key));
             }
         });
     };
 
     let import_account = move || {
-        if let Some(account_id) = selected_account.get() {
+        if let Some((account_id, network)) = selected_account.get() {
             let mut accounts = accounts_context.accounts.get();
             let user_input = private_key.get();
             let (secret_key, seed_phrase) = if let Ok(secret_key) = user_input.parse::<SecretKey>()
@@ -189,6 +193,7 @@ fn LoginForm(set_modal_state: WriteSignal<ModalState>, show_back_button: bool) -
                 account_id: account_id.clone(),
                 secret_key,
                 seed_phrase,
+                network,
             });
             accounts.selected_account = Some(account_id);
             accounts_context.set_accounts.set(accounts);
@@ -272,26 +277,42 @@ fn LoginForm(set_modal_state: WriteSignal<ModalState>, show_back_button: bool) -
                                             {available_accounts
                                                 .get()
                                                 .into_iter()
-                                                .map(|account_id| {
+                                                .map(|(account_id, network)| {
                                                     let account_id_str = account_id.to_string();
                                                     let account_id2 = account_id.clone();
                                                     view! {
                                                         <button
                                                             class="w-full p-3 rounded-lg transition-all duration-200 text-left border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900/50 cursor-pointer group"
                                                             style=move || {
-                                                                if selected_account.get() == Some(account_id.clone()) {
+                                                                if selected_account.get()
+                                                                    == Some((account_id.clone(), network))
+                                                                {
                                                                     "background-color: rgb(38 38 38); border-color: rgb(59 130 246);"
                                                                 } else {
                                                                     "background-color: rgb(23 23 23 / 0.5);"
                                                                 }
                                                             }
                                                             on:click=move |_| {
-                                                                set_selected_account.set(Some(account_id2.clone()))
+                                                                set_selected_account
+                                                                    .set(Some((account_id2.clone(), network)))
                                                             }
                                                         >
                                                             <div class="text-white font-medium transition-colors duration-200">
                                                                 {account_id_str}
                                                             </div>
+                                                            {move || {
+                                                                if network == Network::Testnet {
+                                                                    view! {
+                                                                        <p class="text-yellow-500 text-sm mt-1 font-medium">
+                                                                            This is a <b>testnet</b>
+                                                                            account. Tokens sent to this account are not real and hold no value
+                                                                        </p>
+                                                                    }
+                                                                        .into_any()
+                                                                } else {
+                                                                    ().into_any()
+                                                                }
+                                                            }}
                                                         </button>
                                                     }
                                                 })
@@ -357,11 +378,16 @@ fn AccountCreationForm(
     let (is_creating, set_is_creating) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
     let (is_hovered, set_is_hovered) = signal(false);
-    let rpc_client = expect_context::<RpcContext>();
+    let (network, set_network) = signal(Network::Mainnet);
+    let (suffix_clicks, set_suffix_clicks) = signal(0);
 
     let check_account = move |name: String| {
-        set_is_loading.set(true);
         set_error.set(None);
+        if name.is_empty() {
+            set_is_valid.set(None);
+            return;
+        }
+        set_is_loading.set(true);
 
         if name.contains('.') {
             set_error.set(Some("Subaccounts are not supported".to_string()));
@@ -370,7 +396,10 @@ fn AccountCreationForm(
             return;
         }
 
-        let full_name = format!("{name}.near");
+        let full_name = match network.get() {
+            Network::Mainnet => format!("{name}.near"),
+            Network::Testnet => format!("{name}.testnet"),
+        };
         let Some(account_id) = full_name.parse::<AccountId>().ok() else {
             set_error.set(Some("Invalid account name format".to_string()));
             set_is_valid.set(None);
@@ -378,7 +407,7 @@ fn AccountCreationForm(
             return;
         };
 
-        let rpc_client = rpc_client.client.get();
+        let rpc_client = network.get().default_rpc_client();
         spawn_local(async move {
             let account_exists = rpc_client
                 .view_account(
@@ -400,6 +429,22 @@ fn AccountCreationForm(
         });
     };
 
+    let handle_suffix_click = move |_| {
+        let new_clicks = suffix_clicks.get() + 1;
+        set_suffix_clicks.set(new_clicks);
+
+        const CLICKS_TO_SWITCH_NETWORK: usize = 5;
+        if new_clicks == CLICKS_TO_SWITCH_NETWORK {
+            set_network.set(match network.get() {
+                Network::Mainnet => Network::Testnet,
+                Network::Testnet => Network::Mainnet,
+            });
+            set_suffix_clicks.set(0);
+            // Reset validation since we're switching networks
+            check_account(account_name.get_untracked());
+        }
+    };
+
     let do_create_account = move || {
         let Some(account_id) = is_valid.get() else {
             return;
@@ -409,7 +454,12 @@ fn AccountCreationForm(
         let secret_key = mnemonic_to_key(mnemonic.clone()).unwrap();
         let public_key = secret_key.public_key();
 
-        let rpc_client = rpc_client.client.get();
+        let rpc_client = network.get_untracked().default_rpc_client();
+        let current_network = network.get_untracked();
+        let account_creation_service_addr = match current_network {
+            Network::Mainnet => dotenvy_macro::dotenv!("MAINNET_ACCOUNT_CREATION_SERVICE_ADDR"),
+            Network::Testnet => dotenvy_macro::dotenv!("TESTNET_ACCOUNT_CREATION_SERVICE_ADDR"),
+        };
 
         spawn_local(async move {
             set_is_creating.set(true);
@@ -417,10 +467,7 @@ fn AccountCreationForm(
 
             let client = reqwest::Client::new();
             let response = client
-                .post(format!(
-                    "{}/create",
-                    dotenvy_macro::dotenv!("ACCOUNT_CREATION_SERVICE_ADDR")
-                ))
+                .post(format!("{account_creation_service_addr}/create"))
                 .json(&serde_json::json!({
                     "account_id": account_id.to_string(),
                     "public_key": public_key.to_string(),
@@ -463,6 +510,7 @@ fn AccountCreationForm(
                                             account_id: account_id.clone(),
                                             seed_phrase: Some(mnemonic.to_string()),
                                             secret_key: secret_key.clone(),
+                                            network: current_network,
                                         });
                                         accounts.selected_account = Some(account_id);
                                         accounts_context.set_accounts.set(accounts);
@@ -561,9 +609,15 @@ fn AccountCreationForm(
                                     on:keydown=handle_keydown
                                     disabled=move || is_creating.get()
                                 />
-                                <div class="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 font-medium">
-                                    .near
-                                </div>
+                                <button
+                                    class="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 font-medium cursor-pointer"
+                                    on:click=handle_suffix_click
+                                >
+                                    {move || match network.get() {
+                                        Network::Mainnet => ".near",
+                                        Network::Testnet => ".testnet",
+                                    }}
+                                </button>
                             </div>
                             {move || {
                                 if let Some(err) = error.get() {
@@ -592,6 +646,19 @@ fn AccountCreationForm(
                                         </p>
                                     }
                                         .into_any()
+                                }
+                            }}
+                            {move || {
+                                if network.get() == Network::Testnet {
+                                    view! {
+                                        <p class="text-yellow-500 text-sm mt-2 font-medium">
+                                            This is a <b>testnet</b>
+                                            account. Tokens sent to this account are not real and hold no value
+                                        </p>
+                                    }
+                                        .into_any()
+                                } else {
+                                    ().into_any()
                                 }
                             }}
                         </div>
@@ -763,6 +830,7 @@ pub fn AccountSelector(
                                                 .accounts
                                                 .iter()
                                                 .map(|account| {
+                                                    let account_network = account.network;
                                                     let account_id = account.account_id.clone();
                                                     let first_char = account_id
                                                         .as_str()
@@ -789,18 +857,34 @@ pub fn AccountSelector(
                                                             on:mouseenter=move |_| set_is_hovered.set(true)
                                                             on:mouseleave=move |_| set_is_hovered.set(false)
                                                         >
-                                                            <div
-                                                                class="w-12 h-12 rounded-full flex items-center justify-center text-white text-lg font-medium transition-all duration-200 group-hover:text-black"
-                                                                style=move || {
-                                                                    let brightness = if is_hovered.get() { 2.5 } else { 1.0 };
-                                                                    let background = get_account_gradient(
-                                                                        account_id_for_color.as_ref(),
-                                                                        brightness,
-                                                                    );
-                                                                    format!("background: {background}")
-                                                                }
-                                                            >
-                                                                {first_char}
+                                                            <div class="relative">
+                                                                <div
+                                                                    class="w-12 h-12 rounded-full flex items-center justify-center text-white text-lg font-medium transition-all duration-200 group-hover:text-black overflow-hidden"
+                                                                    style=move || {
+                                                                        let brightness = if is_hovered.get() { 2.5 } else { 1.0 };
+                                                                        let background = get_account_gradient(
+                                                                            account_id_for_color.as_ref(),
+                                                                            brightness,
+                                                                        );
+                                                                        format!("background: {background}")
+                                                                    }
+                                                                >
+                                                                    <div class="relative h-full w-full flex items-center justify-center">
+                                                                        {first_char}
+                                                                        {move || {
+                                                                            if matches!(account_network, Network::Testnet) {
+                                                                                view! {
+                                                                                    <div class="absolute bottom-0 left-0 right-0 h-[25%] bg-yellow-500 text-black text-[8px] font-bold flex items-center justify-center">
+                                                                                        TEST
+                                                                                    </div>
+                                                                                }
+                                                                                    .into_any()
+                                                                            } else {
+                                                                                ().into_any()
+                                                                            }
+                                                                        }}
+                                                                    </div>
+                                                                </div>
                                                             </div>
                                                             <div class="text-xs text-neutral-400 text-center wrap-anywhere max-w-[80px]">
                                                                 {move || {
