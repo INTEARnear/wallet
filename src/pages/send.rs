@@ -175,6 +175,10 @@ pub fn SendToken() -> impl IntoView {
         };
         let amount =
             (amount_normalized * 10f64.powi(token.token.metadata.decimals as i32)) as Balance;
+        let signer_id = accounts
+            .get_untracked()
+            .selected_account
+            .expect("No account selected yet tried to send tokens");
         spawn_local(async move {
             let actions = match &token.token.account_id {
                 Token::Near => vec![Action::Transfer(TransferAction {
@@ -226,9 +230,7 @@ pub fn SendToken() -> impl IntoView {
             add_transaction.update(|txs| {
                 txs.push(EnqueuedTransaction::new(
                     transaction_description,
-                    accounts()
-                        .selected_account
-                        .expect("No account selected yet tried to send tokens"),
+                    signer_id,
                     match &token.token.account_id {
                         Token::Near => recipient.clone(),
                         Token::Nep141(token_id) => token_id.clone(),

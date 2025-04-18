@@ -257,7 +257,21 @@ pub fn History() -> impl IntoView {
                                                                             view! {
                                                                                 <div class="flex justify-between items-center p-4 md:p-6 min-h-35 transition-all duration-100">
                                                                                     <a
-                                                                                        href=format!("https://nearblocks.io/txns/{}", hash)
+                                                                                        href=move || {
+                                                                                            let selected_account = accounts()
+                                                                                                .accounts
+                                                                                                .into_iter()
+                                                                                                .find(|a| {
+                                                                                                    a.account_id
+                                                                                                        == accounts().selected_account.expect("No selected account")
+                                                                                                })
+                                                                                                .expect("Selected account not found");
+                                                                                            let explorer_url = match selected_account.network {
+                                                                                                Network::Mainnet => "https://nearblocks.io",
+                                                                                                Network::Testnet => "https://testnet.nearblocks.io",
+                                                                                            };
+                                                                                            format!("{explorer_url}/txns/{hash}")
+                                                                                        }
                                                                                         target="_blank"
                                                                                         rel="noopener noreferrer"
                                                                                         class="flex-1 flex justify-between items-center"

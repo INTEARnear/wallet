@@ -1,5 +1,7 @@
 use leptos::prelude::*;
 use leptos_icons::*;
+use leptos_router::components::A;
+use leptos_router::hooks::use_location;
 use std::time::Duration;
 use wasm_bindgen::JsCast;
 use web_sys::{window, Clipboard, HtmlInputElement};
@@ -19,6 +21,7 @@ pub fn WalletHeader() -> impl IntoView {
     let (is_expanded, set_is_expanded) = signal(false);
     let (is_search_expanded, set_is_search_expanded) = signal(false);
     let search_input_ref = NodeRef::<leptos::html::Input>::new();
+    let location = use_location();
 
     // Focus the input when search is expanded
     Effect::new(move || {
@@ -87,13 +90,29 @@ pub fn WalletHeader() -> impl IntoView {
                 } else {
                     view! {
                         <div class="flex items-center justify-between">
-                            <button
-                                class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors"
-                                on:click=move |_| set_is_expanded(true)
-                            >
-                                <Icon icon=icondata::LuUsers width="20" height="20" />
-                            </button>
-
+                            {move || {
+                                if location.pathname.get().starts_with("/settings") {
+                                    view! {
+                                        <A
+                                            href="/"
+                                            attr:class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-neutral-300 group cursor-default"
+                                        >
+                                            <Icon icon=icondata::LuArrowLeft width="20" height="20" attr:class="text-neutral-400 group-hover:text-black transition-colors" />
+                                        </A>
+                                    }
+                                        .into_any()
+                                } else {
+                                    view! {
+                                        <button
+                                            class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors"
+                                            on:click=move |_| set_is_expanded(true)
+                                        >
+                                            <Icon icon=icondata::LuUsers width="20" height="20" />
+                                        </button>
+                                    }
+                                        .into_any()
+                                }
+                            }}
                             {move || {
                                 if let Some(account_id) = selected_account() {
                                     view! {
@@ -128,7 +147,6 @@ pub fn WalletHeader() -> impl IntoView {
                                     view! { <div></div> }.into_any()
                                 }
                             }}
-
                             <button
                                 class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors"
                                 on:click=move |_| set_is_search_expanded(true)

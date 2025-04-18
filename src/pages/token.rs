@@ -240,7 +240,7 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                 </div>
             </div>
             <iframe
-                src=format!(
+                src=move || format!(
                     "https://{}/?token={}&interval=15m",
                     match network.get() {
                         Network::Mainnet => "chart.intear.tech",

@@ -71,7 +71,7 @@ pub fn provide_transaction_queue_context() {
                 let current_queue_id = transaction.queue_id;
                 let rpc_client = rpc_client.client.get();
                 let Some(key) = accounts
-                    .get()
+                    .get_untracked()
                     .accounts
                     .iter()
                     .find(|account| account.account_id == transaction.signer_id)
