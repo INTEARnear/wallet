@@ -420,11 +420,15 @@ async fn jsonrpc_request<Request: Serialize, Response: DeserializeOwned>(
         }))
         .send()
         .await
+        .map_err(Error::Reqwest)?
+        .error_for_status()
         .map_err(Error::Reqwest)?;
-    let response = response
-        .json::<JsonRpcResponse<Response>>()
+    let response_json = response
+        .json::<serde_json::Value>()
         .await
         .map_err(Error::Reqwest)?;
+    let response = serde_json::from_value::<JsonRpcResponse<Response>>(response_json.clone())
+        .map_err(|e| Error::JsonRpcDeserialization(e, response_json))?;
     match response.result {
         Either::Left(result) => Ok(result.result),
         Either::Right(error) => Err(Error::JsonRpc(error.error)),
@@ -464,6 +468,8 @@ pub enum Error {
     Reqwest(reqwest::Error),
     #[error("RPC returned an error: {0:?}")]
     JsonRpc(RpcError),
+    #[error("RPC returned an error: {0:?}")]
+    JsonRpcDeserialization(serde_json::Error, serde_json::Value),
     #[error("No RPC URLs provided in RpcClient")]
     NoRpcUrls,
 }
