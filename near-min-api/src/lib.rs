@@ -223,9 +223,9 @@ impl RpcClient {
         match response.kind {
             QueryResponseKind::CallResult(result) => match result.result_or_error {
                 ResultOrError::Result(result) => {
-                    serde_json::from_slice(&result.result).map_err(CallError::ResultDeserialization)
+                    serde_json::from_slice(&result).map_err(CallError::ResultDeserialization)
                 }
-                ResultOrError::Error(error) => Err(CallError::ExecutionError(error.error)),
+                ResultOrError::Error(error) => Err(CallError::ExecutionError(error)),
             },
             _ => unreachable!("Unexpected query response kind: {:?}", response.kind),
         }
@@ -435,8 +435,8 @@ async fn jsonrpc_request<Request: Serialize, Response: DeserializeOwned>(
     let response = serde_json::from_value::<JsonRpcResponse<Response>>(response_json.clone())
         .map_err(|e| Error::JsonRpcDeserialization(e, response_json))?;
     match response.result {
-        ResultOrError::Result(result) => Ok(result.result),
-        ResultOrError::Error(error) => Err(Error::JsonRpc(error.error)),
+        ResultOrError::Result(result) => Ok(result),
+        ResultOrError::Error(error) => Err(Error::JsonRpc(error)),
     }
 }
 
@@ -444,7 +444,6 @@ async fn jsonrpc_request<Request: Serialize, Response: DeserializeOwned>(
 struct JsonRpcResponse<T> {
     #[allow(dead_code)]
     jsonrpc: String,
-    #[serde(flatten)]
     result: ResultOrError<T, RpcError>,
     #[allow(dead_code)]
     id: String,

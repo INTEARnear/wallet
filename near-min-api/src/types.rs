@@ -4075,20 +4075,10 @@ pub struct CallResult {
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
-pub struct ErrorWrapper<T> {
-    pub error: T,
-}
-
-#[derive(Debug, Deserialize, Clone, PartialEq)]
-pub struct ResultWrapper<T> {
-    pub result: T,
-}
-
-#[derive(Debug, Deserialize, Clone, PartialEq)]
-#[serde(untagged)]
+#[serde(rename_all = "lowercase")]
 pub enum ResultOrError<A, B> {
-    Result(ResultWrapper<A>),
-    Error(ErrorWrapper<B>),
+    Result(A),
+    Error(B),
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
