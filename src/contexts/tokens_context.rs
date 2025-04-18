@@ -203,13 +203,20 @@ pub fn provide_token_context() {
                     let current_account = accounts_context.accounts.get().selected_account.clone();
                     log::info!("Received transfer: {event:?}");
 
+                    let event_token_id = if event.token_id == "near" {
+                        Token::Near
+                    } else {
+                        Token::Nep141(event.token_id.clone())
+                    };
+
                     if let Some(account_id) = &current_account {
                         if event.old_owner_id == *account_id {
                             // Decrease balance
                             set_tokens.update(|tokens| {
-                                if let Some(token) = tokens.iter_mut().find(|token| {
-                                    token.token.account_id == Token::Nep141(event.token_id.clone())
-                                }) {
+                                if let Some(token) = tokens
+                                    .iter_mut()
+                                    .find(|token| token.token.account_id == event_token_id)
+                                {
                                     token.balance = token.balance.saturating_sub(event.amount);
                                 }
                             });
@@ -217,9 +224,10 @@ pub fn provide_token_context() {
                         if event.new_owner_id == *account_id {
                             // Increase balance
                             set_tokens.update(|tokens| {
-                                if let Some(token) = tokens.iter_mut().find(|token| {
-                                    token.token.account_id == Token::Nep141(event.token_id.clone())
-                                }) {
+                                if let Some(token) = tokens
+                                    .iter_mut()
+                                    .find(|token| token.token.account_id == event_token_id)
+                                {
                                     token.balance = token.balance.saturating_add(event.amount);
                                 }
                             });
