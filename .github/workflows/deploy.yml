@@ -33,6 +33,11 @@ jobs:
       - name: Build with Trunk
         run: trunk build # --release TODO figure out why release makes navigation junky
       
+      - name: Set PWA cache version
+        run: |
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          sed -i "s/{{{VERSION}}}/$COMMIT_HASH/g" dist/service_worker.js
+
       - name: Create _redirects file
         run: echo "/*   /index.html   200" > dist/_redirects
 

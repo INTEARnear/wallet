@@ -2,10 +2,19 @@
 <html>
 
 <head>
-  <link data-trunk rel="icon" href="public/favicon.ico" />
+  <link rel="icon" href="favicon.ico" />
   <link data-trunk rel="tailwind-css" href="/style/styles.css" />
   <link data-trunk rel="rust" data-wasm-opt="z" data-weak-refs />
   <link data-trunk rel="copy-dir" href="/public/" data-target-path="/" />
+  <link rel="manifest" href="./manifest.json">
+
+  <script>
+    window.onload = () => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./service_worker.js');
+      }
+    }
+  </script>
 </head>
 
 <body></body>
