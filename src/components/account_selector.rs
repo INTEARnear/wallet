@@ -556,6 +556,14 @@ fn AccountCreationForm(
         }
     };
 
+    let input_ref = NodeRef::<leptos::html::Input>::new();
+
+    Effect::new(move || {
+        if let Some(input) = input_ref.get() {
+            let _ = input.focus();
+        }
+    });
+
     view! {
         <div class="absolute inset-0 bg-neutral-950 lg:rounded-3xl">
             {move || {
@@ -584,6 +592,7 @@ fn AccountCreationForm(
                             </label>
                             <div class="relative">
                                 <input
+                                    node_ref=input_ref
                                     type="text"
                                     class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200"
                                     style=move || {
@@ -603,8 +612,26 @@ fn AccountCreationForm(
                                                     || *c == '-' || *c == '.'
                                             })
                                             .collect::<String>();
-                                        set_account_name.set(value.clone());
-                                        check_account(value);
+                                        if value.ends_with(".near") {
+                                            set_network.set(Network::Mainnet);
+                                            let trimmed = value
+                                                .strip_suffix(".near")
+                                                .unwrap()
+                                                .to_string();
+                                            set_account_name.set(trimmed.clone());
+                                            check_account(trimmed);
+                                        } else if value.ends_with(".testnet") {
+                                            set_network.set(Network::Testnet);
+                                            let trimmed = value
+                                                .strip_suffix(".testnet")
+                                                .unwrap()
+                                                .to_string();
+                                            set_account_name.set(trimmed.clone());
+                                            check_account(trimmed);
+                                        } else {
+                                            set_account_name.set(value.clone());
+                                            check_account(value);
+                                        }
                                     }
                                     on:keydown=handle_keydown
                                     disabled=move || is_creating.get()
