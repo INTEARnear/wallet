@@ -176,7 +176,10 @@ pub fn Connect() -> impl IntoView {
 
     let handle_connect = move |_| {
         let request_data = request_data().expect("No request data");
-        let selected_account_id = accounts().selected_account_id.expect("No account selected");
+        let Some(selected_account_id) = accounts().selected_account_id else {
+            log::error!("No account selected");
+            return;
+        };
         let selected_account = accounts()
             .accounts
             .into_iter()
@@ -401,14 +404,11 @@ pub fn Connect() -> impl IntoView {
                         </div>
                     }
                         .into_any()
-                } else {
-                    let selected_account = accounts()
-                        .selected_account_id
-                        .expect("No account selected");
+                } else if let Some(selected_account_id) = accounts().selected_account_id {
                     let selected_account_network = accounts()
                         .accounts
                         .iter()
-                        .find(|a| a.account_id == selected_account)
+                        .find(|a| a.account_id == selected_account_id)
                         .expect("Selected account not found")
                         .network;
                     let request_network: Network = request_data()
@@ -421,7 +421,7 @@ pub fn Connect() -> impl IntoView {
                         <div class="flex flex-col items-center gap-6 max-w-md w-full">
                             <h2 class="text-2xl font-bold text-white mb-2 wrap-anywhere">
                                 "Connect as "
-                                <span class="text-blue-400">{selected_account.to_string()}</span>
+                                <span class="text-blue-400">{selected_account_id.to_string()}</span>
                             </h2>
                             <div class="flex flex-col gap-4 w-full">
                                 <div class="p-6 bg-neutral-800/50 backdrop-blur-sm rounded-xl border border-neutral-700/50 shadow-lg">
@@ -544,6 +544,8 @@ pub fn Connect() -> impl IntoView {
                         </div>
                     }
                         .into_any()
+                } else {
+                    ().into_any()
                 }
             }}
         </div>
