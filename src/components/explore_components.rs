@@ -8,7 +8,7 @@ use crate::{
     components::tooltip::Tooltip,
     contexts::{
         network_context::{Network, NetworkContext},
-        tokens_context::{Token, TokenContext, TokenInfo},
+        tokens_context::{Token, TokenContext, TokenInfo, TokenScore},
     },
     data::learn::ARTICLES,
 };
@@ -66,6 +66,15 @@ async fn fetch_trending_tokens(network: Network) -> Vec<TrendingToken> {
                 ..25.0 => trending_score * 1.0,
                 ..100.0 => trending_score * 1.25,
                 _ => trending_score * 1.5,
+            };
+            // No rugs / illiquid tokens
+            let trending_score = if data.liquidity_usd < 1000.0
+                || matches!(data.reputation, TokenScore::Spam)
+                || data.volume_usd_24h < 1000.0
+            {
+                0.0
+            } else {
+                trending_score
             };
 
             (
