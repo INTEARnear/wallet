@@ -234,7 +234,7 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                         {move || {
                             let market_cap = token_info.price_usd_raw
                                 * token_info.circulating_supply as f64 / 1e6;
-                            format_usd_value(market_cap)
+                            format_usd_value_no_hide(market_cap)
                         }}
                     </p>
                 </div>
