@@ -1,4 +1,4 @@
-const CACHE_NAME = 'intear-wallet-e1533a1';
+const CACHE_NAME = 'intear-wallet-133121f';
 const DOMAIN = self.location.hostname;
 
 self.addEventListener('install', (event) => {
@@ -28,10 +28,10 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Don't cache API requests, wallet.intear.tech only hosts static files
-  const shouldCache = url.hostname === DOMAIN;
+  // Don't cache API requests, wallet.intear.tech only hosts static files. Also don't cache localhost for development.
+  const sameOrigin = url.hostname === DOMAIN && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1';
 
-  if (shouldCache) {
+  if (sameOrigin) {
     event.respondWith(
       caches.match(event.request)
         .then((response) => {
@@ -58,7 +58,5 @@ self.addEventListener('fetch', (event) => {
             });
         })
     );
-  } else {
-    event.respondWith(fetch(event.request));
   }
 });
