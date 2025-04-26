@@ -31,7 +31,7 @@ jobs:
         run: rustup target add wasm32-unknown-unknown
       
       - name: Build with Trunk
-        run: trunk build # --release TODO figure out why release makes navigation junky
+        run: trunk build --release
       
       - name: Set PWA cache version
         run: |

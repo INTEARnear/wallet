@@ -253,12 +253,11 @@ pub fn Connect() -> impl IntoView {
                     .await
                 {
                     Ok(failed_response) if !failed_response.status().is_success() => {
-                        Delay::new(Duration::from_secs(3)).await;
+                        log::error!("Logout bridge responsed with {failed_response:?}");
                     }
                     Ok(_successful_response) => (),
                     Err(err) => {
-                        log::error!("Failed to connect to bridge service: {}", err);
-                        Delay::new(Duration::from_secs(3)).await;
+                        log::error!("Failed to connect to bridge service: {err:?}");
                     }
                 }
                 set_apps.update(|apps| {
