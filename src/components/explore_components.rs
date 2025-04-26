@@ -399,7 +399,7 @@ pub fn ForYouSection() -> impl IntoView {
         if !stable_tokens.is_empty() {
             recs.push((
                 "Deposit stables on Rhea Lending with 9%+ APY",
-                "https://app.burrow.cash/",
+                "https://lending.rhea.finance/",
                 "Earn high yields on your stablecoins",
                 stable_tokens,
                 RecommendationType::Stables,
