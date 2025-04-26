@@ -15,6 +15,15 @@ pub enum Network {
     Testnet,
 }
 
+impl std::fmt::Display for Network {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Network::Mainnet => write!(f, "mainnet"),
+            Network::Testnet => write!(f, "testnet"),
+        }
+    }
+}
+
 impl Network {
     pub fn default_rpc_client(&self) -> RpcClient {
         RpcClient::new(match self {
@@ -33,7 +42,7 @@ impl Network {
 pub fn provide_network_context() {
     let accounts = expect_context::<AccountsContext>().accounts;
     let network = RwSignal::new(
-        if let Some(selected_account) = accounts.get_untracked().selected_account {
+        if let Some(selected_account) = accounts.get_untracked().selected_account_id {
             accounts
                 .get_untracked()
                 .accounts
@@ -46,7 +55,7 @@ pub fn provide_network_context() {
         },
     );
     Effect::new(move || {
-        let selected_account = accounts.get().selected_account;
+        let selected_account = accounts.get().selected_account_id;
         if let Some(selected_account_id) = selected_account {
             if let Some(account) = accounts
                 .get()

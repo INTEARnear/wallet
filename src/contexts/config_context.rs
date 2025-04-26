@@ -15,6 +15,7 @@ pub struct WalletConfig {
     #[serde(skip)]
     pub amounts_hidden: bool,
     pub timestamp_format: TimestampFormat,
+    pub show_transaction_details: bool,
 }
 
 #[derive(Clone)]

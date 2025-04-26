@@ -5,10 +5,12 @@ use leptos_router::{
     hooks::use_location,
 };
 
+mod connected_apps;
 mod developer;
 mod preferences;
 mod security;
 
+pub use connected_apps::ConnectedAppsSettings;
 pub use developer::DeveloperSettings;
 pub use preferences::PreferencesSettings;
 pub use security::SecuritySettings;
@@ -16,7 +18,8 @@ pub use security::SecuritySettings;
 #[component]
 pub fn Settings() -> impl IntoView {
     let location = use_location();
-    let current_path = move || location.pathname.get();
+
+    let is_active = move |path: &str| location.pathname.get().starts_with(path);
 
     view! {
         <div class="flex flex-col h-full text-white">
@@ -25,63 +28,51 @@ pub fn Settings() -> impl IntoView {
                     href="/settings/security"
                     attr:class="flex items-center gap-3 p-3 transition-colors relative"
                     attr:style=move || {
-                        if current_path() == "/settings/security" {
+                        if is_active("/settings/security") {
                             "border-bottom: 2px solid white;"
                         } else {
                             ""
                         }
                     }
-                    class:hover:bg-neutral-900=move || current_path() != "/settings/security"
+                    class:hover:bg-neutral-900=move || !is_active("/settings/security")
                 >
                     <Icon icon=icondata::LuShield width="20" height="20" />
                     <span style=move || {
-                        if current_path() == "/settings/security" {
-                            "font-weight: bold;"
-                        } else {
-                            ""
-                        }
+                        if is_active("/settings/security") { "font-weight: bold;" } else { "" }
                     }>Security</span>
                 </A>
                 <A
                     href="/settings/preferences"
                     attr:class="flex items-center gap-3 p-3 transition-colors relative"
                     attr:style=move || {
-                        if current_path() == "/settings/preferences" {
+                        if is_active("/settings/preferences") {
                             "border-bottom: 2px solid white;"
                         } else {
                             ""
                         }
                     }
-                    class:hover:bg-neutral-900=move || current_path() != "/settings/preferences"
+                    class:hover:bg-neutral-900=move || !is_active("/settings/preferences")
                 >
                     <Icon icon=icondata::LuSettings width="20" height="20" />
                     <span style=move || {
-                        if current_path() == "/settings/preferences" {
-                            "font-weight: bold;"
-                        } else {
-                            ""
-                        }
+                        if is_active("/settings/preferences") { "font-weight: bold;" } else { "" }
                     }>Preferences</span>
                 </A>
                 <A
                     href="/settings/developer"
                     attr:class="flex items-center gap-3 p-3 transition-colors relative"
                     attr:style=move || {
-                        if current_path() == "/settings/developer" {
+                        if is_active("/settings/developer") {
                             "border-bottom: 2px solid white;"
                         } else {
                             ""
                         }
                     }
-                    class:hover:bg-neutral-900=move || current_path() != "/settings/developer"
+                    class:hover:bg-neutral-900=move || !is_active("/settings/developer")
                 >
                     <Icon icon=icondata::LuCode2 width="20" height="20" />
                     <span style=move || {
-                        if current_path() == "/settings/developer" {
-                            "font-weight: bold;"
-                        } else {
-                            ""
-                        }
+                        if is_active("/settings/developer") { "font-weight: bold;" } else { "" }
                     }>Developer Settings</span>
                 </A>
             </div>

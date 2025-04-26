@@ -20,7 +20,7 @@ use leptos_icons::Icon;
 use near_min_api::{
     types::{
         AccessKeyPermissionView, AccountId, AccountIdRef, ActionView, Balance,
-        FinalExecutionOutcomeWithReceiptView, ReceiptEnumView,
+        FinalExecutionOutcomeWithReceiptView, NearToken, ReceiptEnumView,
     },
     ExperimentalTxDetails,
 };
@@ -48,7 +48,7 @@ enum TransactionType {
 
 async fn fetch_transactions() -> Vec<TransactionResponse> {
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
-    let Some(selected_account_id) = accounts().selected_account else {
+    let Some(selected_account_id) = accounts().selected_account_id else {
         return vec![];
     };
     let selected_account = accounts()
@@ -263,7 +263,9 @@ pub fn History() -> impl IntoView {
                                                                                                 .into_iter()
                                                                                                 .find(|a| {
                                                                                                     a.account_id
-                                                                                                        == accounts().selected_account.expect("No selected account")
+                                                                                                        == accounts()
+                                                                                                            .selected_account_id
+                                                                                                            .expect("No selected account")
                                                                                                 })
                                                                                                 .expect("Selected account not found");
                                                                                             let explorer_url = match selected_account.network {
@@ -317,7 +319,7 @@ fn display_transaction(
     tx_type: TransactionType,
 ) -> impl IntoAny {
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
-    let Some(me) = accounts().selected_account else {
+    let Some(me) = accounts().selected_account_id else {
         return view! { <div>No selected account</div> }.into_any();
     };
     let actions_config = RwSignal::new(ActionsConfig::default());
@@ -354,7 +356,7 @@ struct ActionsConfig {
     short_ft_events: bool,
     short_nft_events: bool,
     storage_deposit_to: HashSet<AccountId>,
-    withdrawing_from_staking: HashMap<AccountId, Balance>,
+    withdrawing_from_staking: HashMap<AccountId, NearToken>,
 }
 
 fn add_account_actions(
@@ -489,7 +491,7 @@ fn add_key_actions(
                                 <span>Delete Key</span>
                             </div>
                             <span class="text-sm text-neutral-400 pl-12">
-                                This usually means you logged out of your account
+                                This usually means you signed out in some application
                             </span>
                         </div>
                     }
@@ -561,11 +563,14 @@ fn add_staking_actions(
                                             </span>
                                         </div>
                                     }.into_any());
-                                    *actions_config
-                                        .write()
+                                    let mut withdrawing = actions_config.write();
+                                    let withdrawing = withdrawing
                                         .withdrawing_from_staking
                                         .entry(receipt.receiver_id.clone())
-                                        .or_default() += amount;
+                                        .or_default();
+                                    *withdrawing = withdrawing
+                                        .checked_add(NearToken::from_yoctonear(amount))
+                                        .unwrap();
                                 }
                             }
                         }
@@ -620,7 +625,7 @@ fn add_near_actions(
                                 .withdrawing_from_staking
                                 .remove(&receipt.predecessor_id)
                             {
-                                if withdraw_amount == deposit.as_yoctonear() {
+                                if withdraw_amount == *deposit {
                                     continue;
                                 }
                             }

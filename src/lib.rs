@@ -1,6 +1,7 @@
 use contexts::account_selector_swipe_context::provide_account_selector_swipe_context;
 use contexts::accounts_context::provide_accounts_context;
 use contexts::config_context::provide_config_context;
+use contexts::connected_apps_context::provide_connected_apps_context;
 use contexts::network_context::provide_network_context;
 use contexts::search_context::provide_search_context;
 use contexts::tokens_context::provide_token_context;
@@ -18,8 +19,9 @@ pub mod utils;
 use crate::components::Layout;
 use crate::contexts::rpc_context::provide_rpc_context;
 use crate::pages::{
-    settings::{DeveloperSettings, PreferencesSettings, SecuritySettings},
-    Explore, History, Home, SendToken, Settings, Swap, TokenDetails,
+    settings::{ConnectedAppsSettings, DeveloperSettings, PreferencesSettings, SecuritySettings},
+    Connect, Explore, History, Home, SendToken, SendTransactions, Settings, SignMessage, Swap,
+    TokenDetails,
 };
 
 #[component]
@@ -32,7 +34,8 @@ pub fn App() -> impl IntoView {
     provide_token_context(); // depends on rpc for fetching near balance
     provide_account_selector_swipe_context(); // depends on accounts
     provide_search_context();
-    provide_transaction_queue_context();
+    provide_connected_apps_context();
+    provide_transaction_queue_context(); // depends on accounts
 
     view! {
         <Html attr:lang="en" attr:dir="ltr" attr:data-theme="light" />
@@ -51,9 +54,13 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/explore") view=Explore />
                     <Route path=path!("/token/:token_id") view=TokenDetails />
                     <Route path=path!("/send/:token_id") view=SendToken />
+                    <Route path=path!("/connect") view=Connect />
+                    <Route path=path!("/send-transactions") view=SendTransactions />
+                    <Route path=path!("/sign-message") view=SignMessage />
                     <ParentRoute path=path!("/settings") view=Settings>
                         <Route path=path!("") view=() />
                         <Route path=path!("/security") view=SecuritySettings />
+                        <Route path=path!("/security/connected-apps") view=ConnectedAppsSettings />
                         <Route path=path!("/preferences") view=PreferencesSettings />
                         <Route path=path!("/developer") view=DeveloperSettings />
                     </ParentRoute>

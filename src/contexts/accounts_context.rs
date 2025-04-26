@@ -20,7 +20,7 @@ pub struct Account {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct AccountsState {
     pub accounts: Vec<Account>,
-    pub selected_account: Option<AccountId>,
+    pub selected_account_id: Option<AccountId>,
 }
 
 fn is_mainnet(network: &Network) -> bool {
@@ -50,7 +50,7 @@ fn load_accounts() -> AccountsState {
         .and_then(|json| serde_json::from_str(&json).ok())
         .unwrap_or_else(|| AccountsState {
             accounts: vec![],
-            selected_account: None,
+            selected_account_id: None,
         })
 }
 

@@ -2,7 +2,12 @@ use base64::{prelude::BASE64_STANDARD, Engine};
 use cached::proc_macro::cached;
 use leptos::prelude::expect_context;
 use near_min_api::{
-    types::{AccountId, AccountIdRef, Balance, NearToken},
+    types::{
+        near_crypto::PublicKey, AccessKey as NearAccessKey, AccessKeyPermission, AccountId,
+        AccountIdRef, Action as NearAction, AddKeyAction, Balance, CreateAccountAction,
+        DeleteAccountAction, DeleteKeyAction, DeployContractAction, FunctionCallAction,
+        FunctionCallPermission, NearGas, NearToken, StakeAction, TransferAction,
+    },
     utils::dec_format,
 };
 use serde::Deserialize;
@@ -123,7 +128,7 @@ pub fn format_duration(duration: Duration) -> String {
 
 pub fn format_account_id(account_id: &AccountIdRef) -> String {
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
-    if let Some(selected_account) = accounts().selected_account {
+    if let Some(selected_account) = accounts().selected_account_id {
         if selected_account == *account_id {
             let ConfigContext { config, .. } = expect_context::<ConfigContext>();
             if config().amounts_hidden {
@@ -643,4 +648,126 @@ impl EventLogData<VeaxSwapLog> {
 pub struct StorageBalance {
     pub available: NearToken,
     pub total: NearToken,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WalletSelectorTransaction {
+    pub signer_id: AccountId,
+    pub receiver_id: AccountId,
+    pub actions: Vec<WalletSelectorAction>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(tag = "type", content = "params")]
+pub enum WalletSelectorAction {
+    CreateAccount,
+    DeployContract {
+        code: Vec<u8>,
+    },
+    FunctionCall {
+        #[serde(rename = "methodName")]
+        method_name: String,
+        args: serde_json::Value,
+        gas: NearGas,
+        deposit: NearToken,
+    },
+    Transfer {
+        deposit: NearToken,
+    },
+    Stake {
+        stake: NearToken,
+        #[serde(rename = "publicKey")]
+        public_key: PublicKey,
+    },
+    AddKey {
+        #[serde(rename = "publicKey")]
+        public_key: PublicKey,
+        #[serde(rename = "accessKey")]
+        access_key: WalletSelectorAccessKey,
+    },
+    DeleteKey {
+        #[serde(rename = "publicKey")]
+        public_key: PublicKey,
+    },
+    DeleteAccount {
+        #[serde(rename = "beneficiaryId")]
+        beneficiary_id: AccountId,
+    },
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct WalletSelectorAccessKey {
+    pub nonce: Option<u64>,
+    pub permission: WalletSelectorAccessKeyPermission,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum WalletSelectorAccessKeyPermission {
+    FullAccess,
+    FunctionCall {
+        receiver_id: AccountId,
+        allowance: Option<NearToken>,
+        method_names: Option<Vec<String>>,
+    },
+}
+
+impl From<WalletSelectorAction> for NearAction {
+    fn from(action: WalletSelectorAction) -> Self {
+        match action {
+            WalletSelectorAction::CreateAccount => {
+                NearAction::CreateAccount(CreateAccountAction {})
+            }
+            WalletSelectorAction::DeployContract { code } => {
+                NearAction::DeployContract(DeployContractAction { code })
+            }
+            WalletSelectorAction::FunctionCall {
+                method_name,
+                args,
+                gas,
+                deposit,
+            } => NearAction::FunctionCall(Box::new(FunctionCallAction {
+                method_name,
+                args: serde_json::to_vec(&args).unwrap_or_default(),
+                gas: gas.as_gas(),
+                deposit,
+            })),
+            WalletSelectorAction::Transfer { deposit } => {
+                NearAction::Transfer(TransferAction { deposit })
+            }
+            WalletSelectorAction::Stake { stake, public_key } => {
+                NearAction::Stake(Box::new(StakeAction { stake, public_key }))
+            }
+            WalletSelectorAction::AddKey {
+                public_key,
+                access_key,
+            } => NearAction::AddKey(Box::new(AddKeyAction {
+                public_key,
+                access_key: NearAccessKey {
+                    nonce: access_key.nonce.unwrap_or_default(),
+                    permission: match access_key.permission {
+                        WalletSelectorAccessKeyPermission::FullAccess => {
+                            AccessKeyPermission::FullAccess
+                        }
+                        WalletSelectorAccessKeyPermission::FunctionCall {
+                            receiver_id,
+                            allowance,
+                            method_names,
+                        } => AccessKeyPermission::FunctionCall(FunctionCallPermission {
+                            receiver_id: receiver_id.to_string(),
+                            allowance,
+                            method_names: method_names.unwrap_or_default(),
+                        }),
+                    },
+                },
+            })),
+            WalletSelectorAction::DeleteKey { public_key } => {
+                NearAction::DeleteKey(Box::new(DeleteKeyAction { public_key }))
+            }
+            WalletSelectorAction::DeleteAccount { beneficiary_id } => {
+                NearAction::DeleteAccount(DeleteAccountAction { beneficiary_id })
+            }
+        }
+    }
 }

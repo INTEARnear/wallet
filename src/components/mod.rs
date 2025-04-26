@@ -1,4 +1,5 @@
 pub mod account_selector;
+mod danger_confirm_input;
 pub mod explore_components;
 pub mod layout;
 pub mod token_balance_list;
@@ -8,6 +9,7 @@ pub mod transaction_queue_overlay;
 pub mod wallet_header;
 pub mod wallet_quick_actions;
 
+pub use danger_confirm_input::DangerConfirmInput;
 pub use layout::Layout;
 pub use token_balance_list::TokenBalanceList;
 pub use total_portfolio_value::TotalPortfolioValue;

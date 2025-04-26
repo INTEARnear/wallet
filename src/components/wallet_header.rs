@@ -16,7 +16,7 @@ use crate::{
 pub fn WalletHeader() -> impl IntoView {
     let accounts_context = expect_context::<AccountsContext>();
     let SearchContext { query, set_query } = expect_context::<SearchContext>();
-    let selected_account = move || accounts_context.accounts.get().selected_account.clone();
+    let selected_account = move || accounts_context.accounts.get().selected_account_id.clone();
     let (is_copied, set_is_copied) = signal(false);
     let (is_expanded, set_is_expanded) = signal(false);
     let (is_search_expanded, set_is_search_expanded) = signal(false);
@@ -97,14 +97,29 @@ pub fn WalletHeader() -> impl IntoView {
                                             href="/"
                                             attr:class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-neutral-300 group cursor-default"
                                         >
-                                            <Icon icon=icondata::LuArrowLeft width="20" height="20" attr:class="text-neutral-400 group-hover:text-black transition-colors" />
+                                            <Icon
+                                                icon=icondata::LuArrowLeft
+                                                width="20"
+                                                height="20"
+                                                attr:class="text-neutral-400 group-hover:text-black transition-colors"
+                                            />
                                         </A>
+                                    }
+                                        .into_any()
+                                } else if location.pathname.get() == "/send-transactions" {
+                                    view! {
+                                        <button
+                                            class="bg-neutral-900/50 rounded-xl p-3 text-neutral-700 cursor-not-allowed"
+                                            disabled=true
+                                        >
+                                            <Icon icon=icondata::LuUsers width="20" height="20" />
+                                        </button>
                                     }
                                         .into_any()
                                 } else {
                                     view! {
                                         <button
-                                            class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors"
+                                            class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors cursor-pointer"
                                             on:click=move |_| set_is_expanded(true)
                                         >
                                             <Icon icon=icondata::LuUsers width="20" height="20" />
@@ -144,12 +159,23 @@ pub fn WalletHeader() -> impl IntoView {
                                     }
                                         .into_any()
                                 } else {
-                                    view! { <div></div> }.into_any()
+                                    ().into_any()
                                 }
                             }}
                             <button
-                                class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors"
+                                class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors cursor-pointer"
                                 on:click=move |_| set_is_search_expanded(true)
+                                style=move || {
+                                    let current_path = location.pathname.get();
+                                    if current_path == "/connect"
+                                        || current_path == "/send-transactions"
+                                        || current_path == "/sign-message"
+                                    {
+                                        "opacity: 0; pointer-events: none"
+                                    } else {
+                                        ""
+                                    }
+                                }
                             >
                                 <Icon icon=icondata::LuSearch width="20" height="20" />
                             </button>

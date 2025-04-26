@@ -1,5 +1,6 @@
 target
-/dist
-transaction_cache
+dist
+/history-service/transaction_cache
+/logout-bridge-service/sessions
 .env
 node_modules

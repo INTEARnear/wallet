@@ -195,7 +195,7 @@ fn LoginForm(set_modal_state: WriteSignal<ModalState>, show_back_button: bool) -
                 seed_phrase,
                 network,
             });
-            accounts.selected_account = Some(account_id);
+            accounts.selected_account_id = Some(account_id);
             accounts_context.set_accounts.set(accounts);
             set_modal_state.set(ModalState::AccountList);
         }
@@ -512,7 +512,7 @@ fn AccountCreationForm(
                                             secret_key: secret_key.clone(),
                                             network: current_network,
                                         });
-                                        accounts.selected_account = Some(account_id);
+                                        accounts.selected_account_id = Some(account_id);
                                         accounts_context.set_accounts.set(accounts);
                                         set_modal_state.set(ModalState::AccountList);
                                         set_is_expanded(false);
@@ -745,9 +745,9 @@ pub fn AccountSelector(
         accounts_context
             .accounts
             .get()
-            .selected_account
-            .clone()
-            .unwrap_or_else(|| "No account selected".parse().unwrap())
+            .selected_account_id
+            .map(|account_id| account_id.to_string())
+            .unwrap_or_else(|| "No account selected".to_string())
     };
 
     // Show creation form immediately if there are no accounts
@@ -767,7 +767,7 @@ pub fn AccountSelector(
 
     let switch_account = move |account_id: AccountId| {
         let mut accounts = accounts_context.accounts.get();
-        accounts.selected_account = Some(account_id);
+        accounts.selected_account_id = Some(account_id);
         accounts_context.set_accounts.set(accounts);
         set_is_expanded(false);
     };

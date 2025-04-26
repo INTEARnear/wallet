@@ -283,64 +283,84 @@ pub fn Layout(children: Children) -> impl IntoView {
                             {children()}
                         </div>
                     </div>
-                    <div
-                        class="flex bg-black lg:rounded-b-3xl transition-all duration-150 shadow-[0_-4px_8px_rgba(50,50,100,0.25)]"
-                        style=format!("height: {BOTTOM_NAV_HEIGHT_PX}px")
-                    >
-                        <div
-                            class="absolute bg-neutral-700 transition-all duration-150"
-                            class:nav-indicator-first=move || {
-                                let current_index = NAV_ITEMS
-                                    .iter()
-                                    .position(|item| item.path == location.pathname.get().as_str())
-                                    .unwrap_or(0);
-                                current_index == 0
-                            }
-                            class:nav-indicator-last=move || {
-                                let current_index = NAV_ITEMS
-                                    .iter()
-                                    .position(|item| item.path == location.pathname.get().as_str())
-                                    .unwrap_or(0);
-                                current_index == NAV_ITEMS.len() - 1
-                            }
-                            style=move || {
-                                let current_index = NAV_ITEMS
-                                    .iter()
-                                    .position(|item| item.path == location.pathname.get().as_str())
-                                    .unwrap_or(0);
-                                format!(
-                                    "left: calc({}% - {}px); height: {BOTTOM_NAV_HEIGHT_PX}px; width: calc(100% / {})",
-                                    current_index as f64 * 100.0 / NAV_ITEMS.len() as f64,
-                                    swipe_progress.get() / 4.0,
-                                    NAV_ITEMS.len(),
-                                )
-                            }
-                        />
-                        {move || {
-                            NAV_ITEMS
-                                .iter()
-                                .map(|item| {
-                                    view! {
-                                        <A
-                                            href=item.path
-                                            attr:class="flex flex-col items-center justify-center cursor-pointer z-10"
-                                            attr:style=format!(
-                                                "width: calc(100% / {}); {}",
+                    {move || {
+                        let current_path = location.pathname.get();
+                        if !current_path.starts_with("/settings/")
+                            && current_path != "/connect"
+                            && current_path != "/send-transactions"
+                            && current_path != "/sign-message"
+                        {
+                            view! {
+                                <div
+                                    class="flex bg-black lg:rounded-b-3xl transition-all duration-150 shadow-[0_-4px_8px_rgba(50,50,100,0.25)]"
+                                    style=format!("height: {BOTTOM_NAV_HEIGHT_PX}px")
+                                >
+                                    <div
+                                        class="absolute bg-neutral-700 transition-all duration-150"
+                                        class:nav-indicator-first=move || {
+                                            let current_index = NAV_ITEMS
+                                                .iter()
+                                                .position(|item| {
+                                                    item.path == location.pathname.get().as_str()
+                                                })
+                                                .unwrap_or(0);
+                                            current_index == 0
+                                        }
+                                        class:nav-indicator-last=move || {
+                                            let current_index = NAV_ITEMS
+                                                .iter()
+                                                .position(|item| {
+                                                    item.path == location.pathname.get().as_str()
+                                                })
+                                                .unwrap_or(0);
+                                            current_index == NAV_ITEMS.len() - 1
+                                        }
+                                        style=move || {
+                                            let current_index = NAV_ITEMS
+                                                .iter()
+                                                .position(|item| {
+                                                    item.path == location.pathname.get().as_str()
+                                                })
+                                                .unwrap_or(0);
+                                            format!(
+                                                "left: calc({}% - {}px); height: {BOTTOM_NAV_HEIGHT_PX}px; width: calc(100% / {})",
+                                                current_index as f64 * 100.0 / NAV_ITEMS.len() as f64,
+                                                swipe_progress.get() / 4.0,
                                                 NAV_ITEMS.len(),
-                                                if location.pathname.get() == item.path {
-                                                    "color: white"
-                                                } else {
-                                                    "color: #808080"
-                                                },
                                             )
-                                        >
-                                            <Icon icon=item.icon width="24" height="24" />
-                                        </A>
-                                    }
-                                })
-                                .collect_view()
-                        }}
-                    </div>
+                                        }
+                                    />
+                                    {move || {
+                                        NAV_ITEMS
+                                            .iter()
+                                            .map(|item| {
+                                                view! {
+                                                    <A
+                                                        href=item.path
+                                                        attr:class="flex flex-col items-center justify-center cursor-pointer z-10"
+                                                        attr:style=format!(
+                                                            "width: calc(100% / {}); {}",
+                                                            NAV_ITEMS.len(),
+                                                            if location.pathname.get() == item.path {
+                                                                "color: white"
+                                                            } else {
+                                                                "color: #808080"
+                                                            },
+                                                        )
+                                                    >
+                                                        <Icon icon=item.icon width="24" height="24" />
+                                                    </A>
+                                                }
+                                            })
+                                            .collect_view()
+                                    }}
+                                </div>
+                            }
+                                .into_any()
+                        } else {
+                            ().into_any()
+                        }
+                    }}
                 </div>
             </div>
         </ErrorBoundary>

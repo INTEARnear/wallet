@@ -30,30 +30,3 @@ pub mod dec_format {
         }
     }
 }
-
-pub mod dec_format_option {
-    use std::{fmt::Display, str::FromStr};
-
-    use serde::{Deserialize, Deserializer, Serializer, de};
-
-    pub fn serialize<S, T>(value: &Option<T>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-        T: ToString,
-    {
-        match value {
-            Some(value) => super::dec_format::serialize(value, serializer),
-            None => serializer.serialize_none(),
-        }
-    }
-
-    pub fn deserialize<'de, D, T, E>(deserializer: D) -> Result<Option<T>, D::Error>
-    where
-        D: Deserializer<'de>,
-        T: Deserialize<'de> + FromStr<Err = E>,
-        E: Display,
-    {
-        let opt = Option::deserialize(deserializer)?;
-        opt.map(T::from_str).transpose().map_err(de::Error::custom)
-    }
-}

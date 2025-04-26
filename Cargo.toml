@@ -49,6 +49,9 @@ leptos-use = { version = "0.15.7", features = ["use_websocket"] }
 codee = "0.3.0"
 json-filter = "0.1.1"
 dotenvy_macro = "0.15.7"
+serde-wasm-bindgen = "0.6.5"
+futures-channel = "0.3.31"
+borsh = "1.5.7"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.50"
@@ -64,5 +67,5 @@ members = [
     "near-min-api",
     "history-service",
     "account-creation-service",
-    "account-creation-service",
+    "logout-bridge-service",
 ]

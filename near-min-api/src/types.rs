@@ -26,7 +26,6 @@ use std::{num::ParseIntError, sync::LazyLock};
 use validator_stake_view::ValidatorStakeView;
 
 use crate::utils::dec_format;
-use crate::utils::dec_format_option;
 
 pub use near_account_id::{self, AccountId, AccountIdRef};
 pub use near_gas::{self, NearGas};
@@ -3513,6 +3512,7 @@ const MAX_ON_CHAIN_DISCRIMINANT: u32 = (1 << 31) - 1;
 const MIN_OFF_CHAIN_DISCRIMINANT: u32 = 1 << 31;
 const MAX_OFF_CHAIN_DISCRIMINANT: u32 = u32::MAX;
 
+pub const NEP_413_SIGN_MESSAGE: u32 = 413;
 pub const NEP_366_META_TRANSACTIONS: u32 = 366;
 
 /// Used to distinguish message types that are sign by account keys, to avoid an
@@ -3990,7 +3990,6 @@ impl From<AccountView> for Account {
 #[derive(BorshSerialize, BorshDeserialize, Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub enum AccessKeyPermissionView {
     FunctionCall {
-        #[serde(with = "dec_format_option")]
         allowance: Option<NearToken>,
         receiver_id: String,
         method_names: Vec<String>,

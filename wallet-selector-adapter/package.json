@@ -1,0 +1,47 @@
+{
+  "name": "intear-wallet",
+  "version": "8.10.2",
+  "description": "My Near Wallet package for NEAR Wallet Selector.",
+  "license": "MIT",
+  "keywords": [
+    "near",
+    "blockchain",
+    "wallets",
+    "dapps",
+    "near-protocol",
+    "near-blockchain",
+    "wallet selector",
+    "browser wallet",
+    "my near Wallet"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/near/wallet-selector.git"
+  },
+  "bugs": {
+    "url": "https://github.com/near/wallet-selector/issues"
+  },
+  "homepage": "https://github.com/near/wallet-selector/tree/main/packages/intear-wallet",
+  "main": "dist/lib/index.js",
+  "module": "dist/lib/index.esm.js",
+  "types": "dist/lib/index.d.ts",
+  "files": [
+    "dist/lib"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "clean": "rm -rf dist",
+    "prebuild": "npm run clean",
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,json,md}\""
+  },
+  "dependencies": {
+    "@near-wallet-selector/core": "^8.10.2",
+    "@near-wallet-selector/wallet-utils": "^8.10.2",
+    "near-api-js": "^5.1.1"
+  },
+  "devDependencies": {
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3"
+  }
+}

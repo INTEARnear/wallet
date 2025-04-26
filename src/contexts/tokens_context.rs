@@ -144,7 +144,7 @@ pub fn provide_token_context() {
     // Send filter message when WebSocket connects
     Effect::new(move |_| {
         if transfer_ws().ready_state.get() == ConnectionReadyState::Open {
-            if let Some(account_id) = &accounts_context.accounts.get().selected_account {
+            if let Some(account_id) = &accounts_context.accounts.get().selected_account_id {
                 let filter = Operator::Or(vec![
                     Filter::new(
                         "old_owner_id",
@@ -164,7 +164,7 @@ pub fn provide_token_context() {
 
     Effect::new(move |_| {
         if mint_ws().ready_state.get() == ConnectionReadyState::Open {
-            if let Some(account_id) = &accounts_context.accounts.get().selected_account {
+            if let Some(account_id) = &accounts_context.accounts.get().selected_account_id {
                 let filter = Operator::And(vec![Filter::new(
                     "owner_id",
                     Operator::Equals(serde_json::json!(account_id.to_string())),
@@ -178,7 +178,7 @@ pub fn provide_token_context() {
 
     Effect::new(move |_| {
         if burn_ws().ready_state.get() == ConnectionReadyState::Open {
-            if let Some(account_id) = &accounts_context.accounts.get().selected_account {
+            if let Some(account_id) = &accounts_context.accounts.get().selected_account_id {
                 let filter = Operator::And(vec![Filter::new(
                     "owner_id",
                     Operator::Equals(serde_json::json!(account_id.to_string())),
@@ -195,7 +195,8 @@ pub fn provide_token_context() {
         if let Some(msg) = transfer_ws().message.get() {
             if let Ok(events) = serde_json::from_str::<Vec<FtTransferEvent>>(&msg) {
                 for event in events {
-                    let current_account = accounts_context.accounts.get().selected_account.clone();
+                    let current_account =
+                        accounts_context.accounts.get().selected_account_id.clone();
                     log::info!("Received transfer: {event:?}");
 
                     let event_token_id = if event.token_id == "near" {
@@ -238,7 +239,8 @@ pub fn provide_token_context() {
         if let Some(msg) = mint_ws().message.get() {
             if let Ok(events) = serde_json::from_str::<Vec<FtMintEvent>>(&msg) {
                 for event in events {
-                    let current_account = accounts_context.accounts.get().selected_account.clone();
+                    let current_account =
+                        accounts_context.accounts.get().selected_account_id.clone();
                     log::info!("Received mint: {event:?}");
 
                     if let Some(account_id) = &current_account {
@@ -262,7 +264,8 @@ pub fn provide_token_context() {
         if let Some(msg) = burn_ws().message.get() {
             if let Ok(events) = serde_json::from_str::<Vec<FtBurnEvent>>(&msg) {
                 for event in events {
-                    let current_account = accounts_context.accounts.get().selected_account.clone();
+                    let current_account =
+                        accounts_context.accounts.get().selected_account_id.clone();
                     log::info!("Received burn: {event:?}");
 
                     if let Some(account_id) = &current_account {
@@ -300,7 +303,7 @@ pub fn provide_token_context() {
         ));
     });
     // Track the selected account to trigger reloads
-    let selected_account = move || accounts_context.accounts.get().selected_account.clone();
+    let selected_account = move || accounts_context.accounts.get().selected_account_id.clone();
 
     // Create an effect that runs when the selected account changes
     Effect::new(move |_| {

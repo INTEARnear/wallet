@@ -3,6 +3,7 @@ use std::time::Duration;
 use crate::contexts::accounts_context::AccountsContext;
 use leptos::prelude::*;
 use leptos_icons::*;
+use leptos_router::components::A;
 
 #[component]
 pub fn SecuritySettings() -> impl IntoView {
@@ -16,7 +17,7 @@ pub fn SecuritySettings() -> impl IntoView {
             .get()
             .accounts
             .iter()
-            .find(|acc| acc.account_id == accounts.get().selected_account.unwrap())
+            .find(|acc| acc.account_id == accounts.get().selected_account_id.unwrap())
         {
             if let Some(seed_phrase) = &account.seed_phrase {
                 let _ = window().navigator().clipboard().write_text(seed_phrase);
@@ -31,7 +32,7 @@ pub fn SecuritySettings() -> impl IntoView {
             .get()
             .accounts
             .iter()
-            .find(|acc| acc.account_id == accounts.get().selected_account.unwrap())
+            .find(|acc| acc.account_id == accounts.get().selected_account_id.unwrap())
         {
             let _ = window()
                 .navigator()
@@ -47,6 +48,17 @@ pub fn SecuritySettings() -> impl IntoView {
             <div class="text-xl font-semibold">Security</div>
 
             <div class="flex flex-col gap-4">
+                <A
+                    href="/settings/security/connected-apps"
+                    attr:class="flex items-center justify-between cursor-pointer p-4 rounded-lg bg-neutral-900 hover:bg-neutral-800 transition-colors"
+                >
+                    <div class="flex items-center gap-3">
+                        <Icon icon=icondata::LuAppWindow width="20" height="20" />
+                        <span>Connected Apps</span>
+                    </div>
+                    <Icon icon=icondata::LuChevronRight width="20" height="20" />
+                </A>
+
                 <div class="flex flex-col gap-2">
                     <div class="text-lg font-medium">Export Account</div>
                     <div class="text-sm text-neutral-400">
@@ -81,7 +93,8 @@ pub fn SecuritySettings() -> impl IntoView {
                                         .accounts
                                         .iter()
                                         .find(|acc| {
-                                            acc.account_id == accounts.get().selected_account.unwrap()
+                                            acc.account_id
+                                                == accounts.get().selected_account_id.unwrap()
                                         })
                                         .map(|acc| acc.seed_phrase.is_some())
                                         .unwrap_or(false)
@@ -111,7 +124,8 @@ pub fn SecuritySettings() -> impl IntoView {
                                         .accounts
                                         .iter()
                                         .find(|acc| {
-                                            acc.account_id == accounts.get().selected_account.unwrap()
+                                            acc.account_id
+                                                == accounts.get().selected_account_id.unwrap()
                                         })
                                         .and_then(|acc| acc.seed_phrase.clone())
                                         .map_or_else(
@@ -156,7 +170,8 @@ pub fn SecuritySettings() -> impl IntoView {
                                         .accounts
                                         .iter()
                                         .find(|acc| {
-                                            acc.account_id == accounts.get().selected_account.unwrap()
+                                            acc.account_id
+                                                == accounts.get().selected_account_id.unwrap()
                                         })
                                         .map(|acc| acc.secret_key.to_string())
                                         .unwrap_or_default()

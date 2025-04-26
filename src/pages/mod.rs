@@ -1,16 +1,22 @@
+mod connect;
 mod explore;
 mod history;
 pub mod home;
 pub mod not_found;
 mod send;
+mod send_transactions;
 pub mod settings;
+mod sign_message;
 mod swap;
 mod token;
 
+pub use connect::Connect;
 pub use explore::Explore;
 pub use history::History;
 pub use home::Home;
 pub use send::SendToken;
+pub use send_transactions::SendTransactions;
 pub use settings::Settings;
+pub use sign_message::SignMessage;
 pub use swap::Swap;
 pub use token::TokenDetails;

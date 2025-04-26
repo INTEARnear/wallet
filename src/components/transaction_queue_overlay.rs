@@ -12,40 +12,43 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
     let (show_modal, set_show_modal) = signal(false);
 
     Effect::new(move |_| {
-        let queue_len = queue.get().len();
+        let queue_len = queue.read().len();
         if queue_len == 0 {
             set_show_modal.set(true);
         }
     });
 
     let progress = move || {
-        let queue_len = queue.get().len();
+        let queue_len = queue.read().len();
         if queue_len == 0 {
             0.0
         } else {
             let stage_progress = queue
-                .get()
+                .read()
                 .iter()
                 .take(current_index.get() + 1)
-                .map(|tx| match tx.stage {
+                .map(|tx| match &tx.stage {
                     TransactionStage::Preparing => 0.0,
                     TransactionStage::Publishing => 0.25,
                     TransactionStage::Included => 0.5,
                     TransactionStage::Doomslug => 0.75,
                     TransactionStage::Finalized => 1.0,
+                    TransactionStage::Failed(_) => 0.0,
                 })
                 .sum::<f64>();
             stage_progress / queue_len as f64 * 100.0
         }
     };
 
-    let modal_icon = move |stage: TransactionStage| {
-        let spinner_class = move || match stage {
+    let modal_icon = move |stage: &TransactionStage| {
+        let stage_cloned = stage.clone();
+        let spinner_class = move || match stage_cloned {
             TransactionStage::Preparing => "border-neutral-500",
             TransactionStage::Publishing => "border-yellow-500",
             TransactionStage::Included => "border-cyan-500",
             TransactionStage::Doomslug => "border-green-500",
             TransactionStage::Finalized => "border-green-500",
+            TransactionStage::Failed(_) => "border-red-500",
         };
 
         view! {
@@ -57,6 +60,10 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                     }
                     TransactionStage::Preparing => {
                         view! { <Icon icon=icondata::LuClock attr:class="text-neutral-500" /> }
+                            .into_any()
+                    }
+                    TransactionStage::Failed(_) => {
+                        view! { <Icon icon=icondata::LuXCircle attr:class="text-red-500" /> }
                             .into_any()
                     }
                     _ => {
@@ -78,7 +85,7 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
 
     view! {
         <Show
-            when=move || { !show_modal.get() && !queue.get().is_empty() }
+            when=move || { !show_modal.get() && !queue.read().is_empty() }
             attr:class="relative top-0 pt-1 w-full lg:rounded-t-3xl bg-neutral-900/90 text-white text-sm font-medium transition-all duration-200 cursor-pointer"
             on:click=move |_| set_show_modal.set(true)
         >
@@ -91,7 +98,7 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                                 format!(
                                     "Processing transaction {}/{}",
                                     current_index.get() + 1,
-                                    queue.get().len(),
+                                    queue.read().len(),
                                 )
                             }}
                         </span>
@@ -110,43 +117,43 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
         </Show>
 
         <Show
-            when=move || show_modal.get() && !queue.get().is_empty()
+            when=move || show_modal.get() && !queue.read().is_empty()
             attr:class="fixed inset-0 bg-black/50 transition-opacity duration-200 z-50 text-white"
             on:click=move |_| set_show_modal.set(false)
         >
-        <div>
-            <div
-                class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-2rem)] lg:w-[500px] bg-neutral-900 rounded-xl p-4 shadow-xl"
-                on:click=|ev| ev.stop_propagation()
-            >
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-lg font-medium">Transaction Queue</h2>
-                    <div class="flex items-center gap-2">
-                        <button
-                            on:click=move |_| set_show_modal.set(false)
-                            class="p-1 hover:bg-neutral-800 rounded-lg transition-colors"
-                        >
-                            <Icon icon=icondata::LuChevronUp width="20" height="20" />
-                        </button>
+            <div>
+                <div
+                    class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-2rem)] lg:w-[500px] bg-neutral-900 rounded-xl p-4 shadow-xl"
+                    on:click=|ev| ev.stop_propagation()
+                >
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-lg font-medium">Transaction Queue</h2>
+                        <div class="flex items-center gap-2">
+                            <button
+                                on:click=move |_| set_show_modal.set(false)
+                                class="p-1 hover:bg-neutral-800 rounded-lg transition-colors"
+                            >
+                                <Icon icon=icondata::LuChevronUp width="20" height="20" />
+                            </button>
+                        </div>
+                    </div>
+                    <div class="space-y-2 max-h-[60vh] overflow-y-auto">
+                        {move || {
+                            queue
+                                .read()
+                                .iter()
+                                .map(|tx| {
+                                    view! {
+                                        <div class="flex items-center justify-between p-2 bg-neutral-800/50 rounded-lg">
+                                            <span class="text-sm">{tx.description.clone()}</span>
+                                            {modal_icon(&tx.stage)}
+                                        </div>
+                                    }
+                                })
+                                .collect_view()
+                        }}
                     </div>
                 </div>
-                <div class="space-y-2 max-h-[60vh] overflow-y-auto">
-                    {move || {
-                        let queue = queue.get();
-                        queue
-                            .iter()
-                            .map(|tx| {
-                                view! {
-                                    <div class="flex items-center justify-between p-2 bg-neutral-800/50 rounded-lg">
-                                        <span class="text-sm">{tx.description.clone()}</span>
-                                        {modal_icon(tx.stage)}
-                                    </div>
-                                }
-                            })
-                            .collect_view()
-                    }}
-                </div>
-            </div>
             </div>
         </Show>
     }
