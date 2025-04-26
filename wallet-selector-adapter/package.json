@@ -1,7 +1,7 @@
 {
   "name": "intear-wallet",
   "version": "8.10.2",
-  "description": "My Near Wallet package for NEAR Wallet Selector.",
+  "description": "Intear Wallet package for wallet-selector.",
   "license": "MIT",
   "keywords": [
     "near",
@@ -11,17 +11,17 @@
     "near-protocol",
     "near-blockchain",
     "wallet selector",
-    "browser wallet",
-    "my near Wallet"
+    "intear",
+    "intear wallet"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/near/wallet-selector.git"
+    "url": "https://github.com/INTEARnear/wallet"
   },
   "bugs": {
-    "url": "https://github.com/near/wallet-selector/issues"
+    "url": "https://github.com/INTEARnear/wallet/issues"
   },
-  "homepage": "https://github.com/near/wallet-selector/tree/main/packages/intear-wallet",
+  "homepage": "https://github.com/INTEARnear/wallet/tree/main/wallet-selector-adapter",
   "main": "dist/lib/index.js",
   "module": "dist/lib/index.esm.js",
   "types": "dist/lib/index.d.ts",
