@@ -163,13 +163,11 @@ pub fn WalletHeader() -> impl IntoView {
                                 }
                             }}
                             <button
-                                class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors cursor-pointer"
+                                class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-all cursor-pointer transition-200"
                                 on:click=move |_| set_is_search_expanded(true)
                                 style=move || {
                                     let current_path = location.pathname.get();
-                                    if current_path == "/connect"
-                                        || current_path == "/send-transactions"
-                                        || current_path == "/sign-message"
+                                    if current_path != "/"
                                     {
                                         "opacity: 0; pointer-events: none"
                                     } else {

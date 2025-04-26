@@ -1,7 +1,6 @@
-use std::{collections::HashSet, time::Duration};
+use std::collections::HashSet;
 
 use chrono::Utc;
-use futures_timer::Delay;
 use leptos::{prelude::*, task::spawn_local};
 use near_min_api::types::{
     near_crypto::{KeyType, PublicKey, SecretKey, Signature},
