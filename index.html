@@ -1,33 +1,8 @@
-<!DOCTYPE html>
-<html>
-
-<head>
-  <link rel="icon" href="favicon.ico" />
-  <link rel="stylesheet" href="/styles-9945c422d0394e52.css" integrity="sha384-j2nPJ5eKr9TxrmfxzpNQc7C9e1hkUN2Fzj0ynJEUDdMgBPHwQRPOkET1nw6fkwWs"/>
-  
-<script type="module">
-import init, * as bindings from '/intear-wallet-271d00fa960c2fd5.js';
-const wasm = await init({ module_or_path: '/intear-wallet-271d00fa960c2fd5_bg.wasm' });
+<!doctype html><link href=favicon.ico rel=icon><link href=/styles-51c89950e5c790eb.css integrity=sha384-w831vtnewos4TugkfI3ze+SabryqPyCClwjkxypTLaNeb8c8wrBrHnLo4W47h2ck rel=stylesheet><script type=module>import init, * as bindings from '/intear-wallet-7a79c58a249c2665.js';
+const wasm = await init({ module_or_path: '/intear-wallet-7a79c58a249c2665_bg.wasm' });
 
 
 window.wasmBindings = bindings;
 
 
-dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
-
-</script>
-  
-  <link rel="manifest" href="./manifest.json">
-
-  <script>
-    window.onload = () => {
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./service_worker.js');
-      }
-    }
-  </script>
-<link rel="modulepreload" href="/intear-wallet-271d00fa960c2fd5.js" crossorigin="anonymous" integrity="sha384-PXW/fxgL88FNc53is8DBT8hnvyNWJLYgXCOEgk/Dh/kqifu/+v2pNpWAiiGwpgnr"><link rel="preload" href="/intear-wallet-271d00fa960c2fd5_bg.wasm" crossorigin="anonymous" integrity="sha384-LJtzdPx1/khzVS2PnSpyWpflM6kF/91DxTdhE5A8E++ynC+qpJDJGh0L5svIWMkv" as="fetch" type="application/wasm"></head>
-
-<body></body>
-
-</html>
+dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));</script><link href=./manifest.json rel=manifest><script>window.onload=()=>{if(`serviceWorker` in navigator){navigator.serviceWorker.register(`./service_worker.js`)}}</script><link crossorigin href=/intear-wallet-7a79c58a249c2665.js integrity=sha384-o7FQXbnvvGKB/eNezyYqVWQCfN9uz6iDBK3ar2EOYweFBHtf02QkIj9JVwGWGOUI rel=modulepreload><link as=fetch crossorigin href=/intear-wallet-7a79c58a249c2665_bg.wasm integrity=sha384-81hhKOUQsKp4TxN+tFLMa0HpFvNX8GF0SLLNzZJjf4IS9xxzixkc0on+WL77KMx3 rel=preload type=application/wasm></head><body></body></html>
