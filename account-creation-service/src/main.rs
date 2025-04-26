@@ -47,6 +47,7 @@ struct AppState {
     relayer_keys: Vec<SecretKey>,
     desired_finality: TxExecutionStatus,
     network: Network,
+    deposit_amount: NearToken,
 }
 
 #[tokio::main]
@@ -62,6 +63,13 @@ async fn main() {
         .init();
 
     tracing::info!("Starting account creation service...");
+
+    let deposit_amount = env::var("CREATE_ACCOUNT_DEPOSIT")
+        .map(|s| {
+            s.parse::<NearToken>()
+                .expect("Invalid CREATE_ACCOUNT_DEPOSIT format")
+        })
+        .unwrap_or(NearToken::from_yoctonear(0));
 
     let relayer_id = env::var("RELAYER_ID")
         .expect("RELAYER_ID must be set")
@@ -133,6 +141,7 @@ async fn main() {
             })
             .unwrap_or(TxExecutionStatus::Final),
         network,
+        deposit_amount,
     };
 
     let app = Router::new()
@@ -178,6 +187,32 @@ async fn create_account(
 
     let _guard = queue.lock().await;
 
+    let account = state
+        .rpc_client
+        .view_account(
+            state.relayer_id.clone(),
+            QueryFinality::Finality(Finality::None),
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to view account: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to view account balance".to_string(),
+            )
+        })?;
+
+    let actual_deposit = if account.amount >= state.deposit_amount.saturating_mul(2) {
+        state.deposit_amount
+    } else {
+        tracing::warn!(
+            "Insufficient balance for 2x deposit. Account balance: {}, Required: {}",
+            account.amount,
+            state.deposit_amount
+        );
+        NearToken::from_yoctonear(0)
+    };
+
     let access_key = state
         .rpc_client
         .get_access_key(
@@ -201,7 +236,7 @@ async fn create_account(
             "new_public_key": payload.public_key,
         }))
         .unwrap(),
-        deposit: NearToken::from_yoctonear(0),
+        deposit: actual_deposit,
         gas: NearGas::from_tgas(30).as_gas(),
     }));
 
