@@ -34,7 +34,7 @@ pub fn Login() -> impl IntoView {
     });
 
     let navigate_clone = navigate.clone();
-
+    let navigate_clone2 = navigate.clone();
     view! {
         <div class="flex flex-col items-center justify-center min-h-[calc(80vh-100px)] p-4">
             <div class="flex flex-col items-center gap-6 max-w-md w-full">
@@ -50,27 +50,28 @@ pub fn Login() -> impl IntoView {
                                 .selected_account_id
                                 .map(|id| id.to_string())
                                 .unwrap_or_else(|| "No account selected".to_string());
-                            let public_key = public_key
-                                .get()
-                                .map(|pk| pk.to_string())
-                                .unwrap_or_else(|| "Invalid public key".to_string());
-
-                            view! {
-                                <div class="flex items-center gap-3 pb-4 mb-4 border-b border-neutral-700/50">
-                                    <div class="w-10 h-10 rounded-full bg-neutral-700/50 flex items-center justify-center">
-                                        <span class="text-neutral-300 text-lg">{"🔑"}</span>
+                            if let Some(public_key) = public_key.get() {
+                                view! {
+                                    <div class="flex items-center gap-3 pb-4 mb-4 border-b border-neutral-700/50">
+                                        <div class="w-10 h-10 rounded-full bg-neutral-700/50 flex items-center justify-center">
+                                            <span class="text-neutral-300 text-lg">{"🔑"}</span>
+                                        </div>
+                                        <div>
+                                            <p class="text-neutral-400 text-sm">Account</p>
+                                            <p class="text-white font-medium wrap-anywhere">
+                                                {account_id}
+                                            </p>
+                                            <p class="text-neutral-400 text-sm mt-2">Public Key</p>
+                                            <p class="text-white font-medium wrap-anywhere">
+                                                {public_key.to_string()}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <p class="text-neutral-400 text-sm">Account</p>
-                                        <p class="text-white font-medium wrap-anywhere">
-                                            {account_id}
-                                        </p>
-                                        <p class="text-neutral-400 text-sm mt-2">Public Key</p>
-                                        <p class="text-white font-medium wrap-anywhere">
-                                            {public_key}
-                                        </p>
-                                    </div>
-                                </div>
+                                }
+                                .into_any()
+                            } else {
+                                navigate_clone2("/", Default::default());
+                                ().into_any()
                             }
                         }}
                         <DangerConfirmInput
@@ -103,7 +104,7 @@ pub fn Login() -> impl IntoView {
                                 prop:disabled=move || !is_confirmed.get() || is_loading.get()
                                 on:click=move |_| {
                                     let Some(public_key) = public_key.get() else {
-                                        set_error.set(Some("Invalid public key".to_string()));
+                                        navigate_clone("/", Default::default());
                                         return;
                                     };
                                     let Some(account_id) = accounts_context
