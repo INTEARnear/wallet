@@ -17,7 +17,9 @@ use crate::contexts::{
     accounts_context::AccountsContext, config_context::ConfigContext, rpc_context::RpcContext,
 };
 
-const SI_PREFIXES: &[(f64, &str)] = &[(1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K")];
+pub const USDT_DECIMALS: u32 = 6;
+
+const AMOUNT_SUFFIXES: &[(f64, &str)] = &[(1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K")];
 
 pub fn format_token_amount(balance: Balance, decimals: u32, symbol: &str) -> String {
     let ConfigContext { config, .. } = expect_context::<ConfigContext>();
@@ -30,10 +32,10 @@ pub fn format_token_amount(balance: Balance, decimals: u32, symbol: &str) -> Str
 pub fn format_token_amount_no_hide(balance: Balance, decimals: u32, symbol: &str) -> String {
     let normalized_balance = balance as f64 / 10f64.powi(decimals as i32);
 
-    for (divisor, prefix) in SI_PREFIXES {
+    for (divisor, suffix) in AMOUNT_SUFFIXES {
         if normalized_balance >= *divisor {
             let value = normalized_balance / divisor;
-            return format!("{value:.2}{prefix} {symbol}");
+            return format!("{value:.2}{suffix} {symbol}");
         }
     }
 

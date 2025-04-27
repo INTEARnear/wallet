@@ -1,11 +1,9 @@
 use crate::contexts::config_context::ConfigContext;
 use crate::contexts::network_context::{Network, NetworkContext};
 use crate::contexts::tokens_context::TokenContext;
-use crate::utils::format_usd_value;
+use crate::utils::{format_usd_value, USDT_DECIMALS};
 use leptos::prelude::*;
 use web_sys::window;
-
-const USDT_DECIMALS: u32 = 6;
 
 #[component]
 pub fn TotalPortfolioValue() -> impl IntoView {

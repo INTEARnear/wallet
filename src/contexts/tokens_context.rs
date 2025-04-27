@@ -11,6 +11,8 @@ use near_min_api::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::utils::USDT_DECIMALS;
+
 use super::{
     accounts_context::AccountsContext,
     network_context::{Network, NetworkContext},
@@ -109,6 +111,14 @@ pub struct FtBurnEvent {
     pub block_timestamp_nanosec: u128,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TokenPriceUpdate {
+    pub price_usd: String,
+    #[serde(with = "dec_format")]
+    pub timestamp_nanosec: u128,
+    pub token: AccountId,
+}
+
 /// Tokens that selected account has
 #[derive(Clone)]
 pub struct TokenContext {
@@ -139,6 +149,10 @@ pub fn provide_token_context() {
 
     let (burn_ws, set_burn_ws) = signal(use_websocket::<String, String, FromToStringCodec>(
         &format!("wss://{ws_url}/events/ft_burn"),
+    ));
+
+    let (price_ws, set_price_ws) = signal(use_websocket::<String, String, FromToStringCodec>(
+        &format!("wss://{ws_url}/events/price_token"),
     ));
 
     // Send filter message when WebSocket connects
@@ -187,6 +201,14 @@ pub fn provide_token_context() {
                 let filter_json = serde_json::to_string(&filter).unwrap();
                 (burn_ws().send)(&filter_json);
             }
+        }
+    });
+
+    Effect::new(move |_| {
+        if price_ws().ready_state.get() == ConnectionReadyState::Open {
+            let filter = Operator::And(vec![]);
+            let filter_json = serde_json::to_string(&filter).unwrap();
+            (price_ws().send)(&filter_json);
         }
     });
 
@@ -285,6 +307,34 @@ pub fn provide_token_context() {
         }
     });
 
+    // Handle incoming price updates
+    Effect::new(move |_| {
+        if let Some(msg) = price_ws().message.get() {
+            if let Ok(updates) = serde_json::from_str::<Vec<TokenPriceUpdate>>(&msg) {
+                for update in updates {
+                    set_tokens.update(|tokens| {
+                        if let Some(token) = tokens.iter_mut().find(|t| {
+                            matches!(&t.token.account_id, Token::Nep141(id) if *id == update.token)
+                        }) {
+                            if let Ok(raw_price) = update.price_usd.parse::<f64>() {
+                                let decimals = token.token.metadata.decimals;
+                                let normalized_price = raw_price * (10f64.powi(decimals as i32 - USDT_DECIMALS as i32));
+                                token.token.price_usd_raw = raw_price;
+                                token.token.price_usd = normalized_price;
+                                if token.token.price_usd_hardcoded != 1.0 {
+                                    // Don't update stablecoin prices in realtime. They're unlikely
+                                    // to change in real time, but UX is shit when USDC costs $0.99
+                                    // or $1.01.
+                                    token.token.price_usd_hardcoded = normalized_price;
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+        }
+    });
+
     // Connect to the right network when network changes
     Effect::new(move |_| {
         let network = expect_context::<NetworkContext>().network.get();
@@ -300,6 +350,9 @@ pub fn provide_token_context() {
         ));
         set_burn_ws(use_websocket::<String, String, FromToStringCodec>(
             &format!("wss://{ws_url}/events/ft_burn"),
+        ));
+        set_price_ws(use_websocket::<String, String, FromToStringCodec>(
+            &format!("wss://{ws_url}/events/price_token"),
         ));
     });
     // Track the selected account to trigger reloads
