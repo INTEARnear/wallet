@@ -16,6 +16,15 @@ pub struct WalletConfig {
     pub amounts_hidden: bool,
     pub timestamp_format: TimestampFormat,
     pub show_transaction_details: bool,
+    pub play_transfer_sound: bool,
+    #[serde(default = "default_true")]
+    pub realtime_balance_updates: bool,
+    #[serde(default = "default_true")]
+    pub realtime_price_updates: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Clone)]

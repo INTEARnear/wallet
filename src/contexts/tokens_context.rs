@@ -10,11 +10,13 @@ use near_min_api::{
     QueryFinality,
 };
 use serde::{Deserialize, Serialize};
+use web_sys::HtmlAudioElement;
 
 use crate::utils::USDT_DECIMALS;
 
 use super::{
     accounts_context::AccountsContext,
+    config_context::ConfigContext,
     network_context::{Network, NetworkContext},
     rpc_context::RpcContext,
 };
@@ -131,33 +133,93 @@ pub fn provide_token_context() {
     let (loading, set_loading) = signal(true);
     let accounts_context = expect_context::<AccountsContext>();
     let rpc_client = expect_context::<RpcContext>();
+    let config_context = expect_context::<ConfigContext>();
     let network = expect_context::<NetworkContext>().network.get_untracked();
-    let ws_url = match network {
-        Network::Mainnet => "ws-events-v3.intear.tech",
-        Network::Testnet => "ws-events-v3-testnet.intear.tech",
-    };
 
     // Set up WebSocket connection for token transfers
-    let (transfer_ws, set_transfer_ws) =
-        signal(use_websocket::<String, String, FromToStringCodec>(
-            &format!("wss://{ws_url}/events/ft_transfer"),
-        ));
+    let (transfer_ws, set_transfer_ws) = signal(None);
+    let (mint_ws, set_mint_ws) = signal(None);
+    let (burn_ws, set_burn_ws) = signal(None);
+    let (price_ws, set_price_ws) = signal(None);
+    let selected_account_memo =
+        Memo::new(move |_| accounts_context.accounts.get().selected_account_id.clone());
 
-    let (mint_ws, set_mint_ws) = signal(use_websocket::<String, String, FromToStringCodec>(
-        &format!("wss://{ws_url}/events/ft_mint"),
-    ));
+    // Connect / disconnect from WebSocket when realtime balance updates are toggled or account changed
+    let realtime_balance_updates =
+        Memo::new(move |_| config_context.config.get().realtime_balance_updates);
+    Effect::new(move |_| {
+        let network = selected_account_memo().map(|acc| {
+            accounts_context
+                .accounts
+                .get_untracked()
+                .accounts
+                .into_iter()
+                .find(|a| a.account_id == acc)
+                .unwrap()
+                .network
+        });
+        let ws_url = match network {
+            Some(Network::Mainnet) => "ws-events-v3.intear.tech",
+            Some(Network::Testnet) => "ws-events-v3-testnet.intear.tech",
+            None => return,
+        };
+        set_transfer_ws(if realtime_balance_updates() {
+            Some(use_websocket::<String, String, FromToStringCodec>(
+                &format!("wss://{ws_url}/events/ft_transfer"),
+            ))
+        } else {
+            None
+        });
+        set_mint_ws(if realtime_balance_updates() {
+            Some(use_websocket::<String, String, FromToStringCodec>(
+                &format!("wss://{ws_url}/events/ft_mint"),
+            ))
+        } else {
+            None
+        });
+        set_burn_ws(if realtime_balance_updates() {
+            Some(use_websocket::<String, String, FromToStringCodec>(
+                &format!("wss://{ws_url}/events/ft_burn"),
+            ))
+        } else {
+            None
+        });
+    });
 
-    let (burn_ws, set_burn_ws) = signal(use_websocket::<String, String, FromToStringCodec>(
-        &format!("wss://{ws_url}/events/ft_burn"),
-    ));
-
-    let (price_ws, set_price_ws) = signal(use_websocket::<String, String, FromToStringCodec>(
-        &format!("wss://{ws_url}/events/price_token"),
-    ));
+    // Connect / disconnect from WebSocket when realtime price updates are toggled or account changed
+    let realtime_price_updates =
+        Memo::new(move |_| config_context.config.get().realtime_price_updates);
+    Effect::new(move |_| {
+        let network = selected_account_memo().map(|acc| {
+            accounts_context
+                .accounts
+                .get_untracked()
+                .accounts
+                .into_iter()
+                .find(|a| a.account_id == acc)
+                .unwrap()
+                .network
+        });
+        let ws_url = match network {
+            Some(Network::Mainnet) => "ws-events-v3.intear.tech",
+            Some(Network::Testnet) => "ws-events-v3-testnet.intear.tech",
+            None => return,
+        };
+        set_price_ws(if realtime_price_updates() {
+            Some(use_websocket::<String, String, FromToStringCodec>(
+                &format!("wss://{ws_url}/events/price_token"),
+            ))
+        } else {
+            None
+        });
+    });
 
     // Send filter message when WebSocket connects
     Effect::new(move |_| {
-        if transfer_ws().ready_state.get() == ConnectionReadyState::Open {
+        let Some(ws) = transfer_ws() else {
+            return;
+        };
+        if ws.ready_state.get() == ConnectionReadyState::Open {
             if let Some(account_id) = &accounts_context.accounts.get().selected_account_id {
                 let filter = Operator::Or(vec![
                     Filter::new(
@@ -171,13 +233,16 @@ pub fn provide_token_context() {
                 ]);
 
                 let filter_json = serde_json::to_string(&filter).unwrap();
-                (transfer_ws().send)(&filter_json);
+                (ws.send)(&filter_json);
             }
         }
     });
 
     Effect::new(move |_| {
-        if mint_ws().ready_state.get() == ConnectionReadyState::Open {
+        let Some(ws) = mint_ws() else {
+            return;
+        };
+        if ws.ready_state.get() == ConnectionReadyState::Open {
             if let Some(account_id) = &accounts_context.accounts.get().selected_account_id {
                 let filter = Operator::And(vec![Filter::new(
                     "owner_id",
@@ -185,13 +250,16 @@ pub fn provide_token_context() {
                 )]);
 
                 let filter_json = serde_json::to_string(&filter).unwrap();
-                (mint_ws().send)(&filter_json);
+                (ws.send)(&filter_json);
             }
         }
     });
 
     Effect::new(move |_| {
-        if burn_ws().ready_state.get() == ConnectionReadyState::Open {
+        let Some(ws) = burn_ws() else {
+            return;
+        };
+        if ws.ready_state.get() == ConnectionReadyState::Open {
             if let Some(account_id) = &accounts_context.accounts.get().selected_account_id {
                 let filter = Operator::And(vec![Filter::new(
                     "owner_id",
@@ -199,22 +267,28 @@ pub fn provide_token_context() {
                 )]);
 
                 let filter_json = serde_json::to_string(&filter).unwrap();
-                (burn_ws().send)(&filter_json);
+                (ws.send)(&filter_json);
             }
         }
     });
 
     Effect::new(move |_| {
-        if price_ws().ready_state.get() == ConnectionReadyState::Open {
+        let Some(ws) = price_ws() else {
+            return;
+        };
+        if ws.ready_state.get() == ConnectionReadyState::Open {
             let filter = Operator::And(vec![]);
             let filter_json = serde_json::to_string(&filter).unwrap();
-            (price_ws().send)(&filter_json);
+            (ws.send)(&filter_json);
         }
     });
 
     // Handle incoming transfer events
     Effect::new(move |_| {
-        if let Some(msg) = transfer_ws().message.get() {
+        let Some(ws) = transfer_ws() else {
+            return;
+        };
+        if let Some(msg) = ws.message.get() {
             if let Ok(events) = serde_json::from_str::<Vec<FtTransferEvent>>(&msg) {
                 for event in events {
                     let current_account =
@@ -240,6 +314,13 @@ pub fn provide_token_context() {
                             });
                         }
                         if event.new_owner_id == *account_id {
+                            if config_context.config.get().play_transfer_sound {
+                                if let Ok(audio) = HtmlAudioElement::new() {
+                                    audio.set_src("/cash-register-kaching-sound-effect-125042.mp3");
+                                    let _ = audio.play();
+                                }
+                            }
+
                             // Increase balance
                             set_tokens.update(|tokens| {
                                 if let Some(token) = tokens
@@ -258,7 +339,10 @@ pub fn provide_token_context() {
 
     // Handle incoming mint events
     Effect::new(move |_| {
-        if let Some(msg) = mint_ws().message.get() {
+        let Some(ws) = mint_ws() else {
+            return;
+        };
+        if let Some(msg) = ws.message.get() {
             if let Ok(events) = serde_json::from_str::<Vec<FtMintEvent>>(&msg) {
                 for event in events {
                     let current_account =
@@ -283,7 +367,10 @@ pub fn provide_token_context() {
 
     // Handle incoming burn events
     Effect::new(move |_| {
-        if let Some(msg) = burn_ws().message.get() {
+        let Some(ws) = mint_ws() else {
+            return;
+        };
+        if let Some(msg) = ws.message.get() {
             if let Ok(events) = serde_json::from_str::<Vec<FtBurnEvent>>(&msg) {
                 for event in events {
                     let current_account =
@@ -309,7 +396,10 @@ pub fn provide_token_context() {
 
     // Handle incoming price updates
     Effect::new(move |_| {
-        if let Some(msg) = price_ws().message.get() {
+        let Some(ws) = price_ws() else {
+            return;
+        };
+        if let Some(msg) = ws.message.get() {
             if let Ok(updates) = serde_json::from_str::<Vec<TokenPriceUpdate>>(&msg) {
                 for update in updates {
                     set_tokens.update(|tokens| {
@@ -335,32 +425,9 @@ pub fn provide_token_context() {
         }
     });
 
-    // Connect to the right network when network changes
+    // When the selected account changes
     Effect::new(move |_| {
-        let network = expect_context::<NetworkContext>().network.get();
-        let ws_url = match network {
-            Network::Mainnet => "ws-events-v3.intear.tech",
-            Network::Testnet => "ws-events-v3-testnet.intear.tech",
-        };
-        set_transfer_ws(use_websocket::<String, String, FromToStringCodec>(
-            &format!("wss://{ws_url}/events/ft_transfer"),
-        ));
-        set_mint_ws(use_websocket::<String, String, FromToStringCodec>(
-            &format!("wss://{ws_url}/events/ft_mint"),
-        ));
-        set_burn_ws(use_websocket::<String, String, FromToStringCodec>(
-            &format!("wss://{ws_url}/events/ft_burn"),
-        ));
-        set_price_ws(use_websocket::<String, String, FromToStringCodec>(
-            &format!("wss://{ws_url}/events/price_token"),
-        ));
-    });
-    // Track the selected account to trigger reloads
-    let selected_account = move || accounts_context.accounts.get().selected_account_id.clone();
-
-    // Create an effect that runs when the selected account changes
-    Effect::new(move |_| {
-        let current_account = selected_account();
+        let current_account = selected_account_memo();
         let network = expect_context::<NetworkContext>().network.get();
 
         leptos::task::spawn_local(async move {
