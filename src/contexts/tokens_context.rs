@@ -315,7 +315,7 @@ pub fn provide_token_context() {
                         if event.new_owner_id == *account_id {
                             if config_context.config.get().play_transfer_sound {
                                 if let Ok(audio) = HtmlAudioElement::new() {
-                                    audio.set_src("/cash-register-kaching-sound-effect-125042.mp3");
+                                    audio.set_src("/cash-register-sound.mp3");
                                     let _ = audio.play();
                                 }
                             }

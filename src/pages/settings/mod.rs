@@ -79,6 +79,37 @@ pub fn Settings() -> impl IntoView {
             <div class="flex-1">
                 <Outlet />
             </div>
+            <div>
+                <div class="flex flex-col items-center gap-4 p-4 border-t border-neutral-800">
+                    <div class="text-sm font-semibold">Support & Resources</div>
+                    <div class="flex flex-row justify-center gap-6">
+                        <a
+                            href="https://t.me/intearchat"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="opacity-70 hover:opacity-100 transition-opacity"
+                        >
+                            <img src="/telegram.svg" alt="Telegram" class="w-6 h-6" />
+                        </a>
+                        <a
+                            href="https://github.com/INTEARnear/wallet"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="opacity-70 hover:opacity-100 transition-opacity"
+                        >
+                            <img src="/github.svg" alt="GitHub" class="w-6 h-6" />
+                        </a>
+                        <a
+                            href="https://x.com/intelnear"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="opacity-70 hover:opacity-100 transition-opacity"
+                        >
+                            <img src="/x.svg" alt="X" class="w-6 h-6" />
+                        </a>
+                    </div>
+                </div>
+            </div>
         </div>
     }
 }
