@@ -2,7 +2,7 @@ use leptos::prelude::*;
 
 #[component]
 pub fn DangerConfirmInput(
-    #[prop(into)] is_confirmed: WriteSignal<bool>,
+    #[prop(into)] set_is_confirmed: WriteSignal<bool>,
     #[prop(default = "CONFIRM")] expected_text: &'static str,
     #[prop(default = "Type 'CONFIRM' to proceed:")] label_text: &'static str,
     #[prop(default = "Type CONFIRM")] placeholder_text: &'static str,
@@ -12,7 +12,7 @@ pub fn DangerConfirmInput(
     let (confirmation_text, set_confirmation_text) = signal(String::new());
 
     Effect::new(move || {
-        is_confirmed.set(confirmation_text.get() == expected_text);
+        set_is_confirmed.set(confirmation_text.get() == expected_text);
     });
 
     view! {

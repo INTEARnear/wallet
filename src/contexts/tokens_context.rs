@@ -134,7 +134,6 @@ pub fn provide_token_context() {
     let accounts_context = expect_context::<AccountsContext>();
     let rpc_client = expect_context::<RpcContext>();
     let config_context = expect_context::<ConfigContext>();
-    let network = expect_context::<NetworkContext>().network.get_untracked();
 
     // Set up WebSocket connection for token transfers
     let (transfer_ws, set_transfer_ws) = signal(None);

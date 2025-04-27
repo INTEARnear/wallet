@@ -635,7 +635,7 @@ pub fn SendTransactions() -> impl IntoView {
                                     if has_dangerous_actions.get() {
                                         view! {
                                             <DangerConfirmInput
-                                                is_confirmed=set_is_confirmed
+                                                set_is_confirmed=set_is_confirmed
                                                 warning_title="⚠️ Warning: This transaction is dangerous!"
                                                 warning_message="It can allow the app to do things that can affect your account. Please confirm only if you trust the app and know that you risk losing your account."
                                             />

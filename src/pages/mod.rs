@@ -1,7 +1,9 @@
+mod auto_import_secret_key;
 mod connect;
 mod explore;
 mod history;
 pub mod home;
+mod login;
 pub mod not_found;
 mod send;
 mod send_transactions;
@@ -10,10 +12,12 @@ mod sign_message;
 mod swap;
 mod token;
 
+pub use auto_import_secret_key::AutoImportSecretKey;
 pub use connect::Connect;
 pub use explore::Explore;
 pub use history::History;
 pub use home::Home;
+pub use login::Login;
 pub use send::SendToken;
 pub use send_transactions::SendTransactions;
 pub use settings::Settings;
