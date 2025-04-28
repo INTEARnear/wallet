@@ -1,9 +1,11 @@
 use futures_channel::oneshot;
+use icondata::*;
 use leptos::{prelude::*, task::spawn_local};
+use leptos_icons::Icon;
 use near_min_api::{
     types::{
         near_crypto::{PublicKey, Signature},
-        AccountId, CryptoHash, FinalExecutionOutcomeViewEnum,
+        AccountId, CryptoHash, FinalExecutionOutcomeViewEnum, NearGas, NearToken,
     },
     ExperimentalTxDetails,
 };
@@ -63,6 +65,9 @@ fn TransactionAction(
 ) -> impl IntoView {
     let is_expandable = matches!(action, WalletSelectorAction::FunctionCall { .. });
     let is_expanded = move || expanded_actions.get().contains(&(tx_idx, action_idx));
+    let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+    let (json_copied, set_json_copied) = signal(false);
+    let (cli_copied, set_cli_copied) = signal(false);
 
     let toggle_action = move |_| {
         set_expanded_actions.update(|set| {
@@ -71,6 +76,58 @@ fn TransactionAction(
             }
         });
     };
+
+    let copy_args_json = move |args: &serde_json::Value| {
+        let minified = serde_json::to_string(args).unwrap_or_default();
+        let window = web_sys::window().unwrap();
+        let navigator = window.navigator();
+        let _ = navigator.clipboard().write_text(&minified);
+        set_json_copied(true);
+        set_timeout(
+            move || set_json_copied(false),
+            std::time::Duration::from_millis(2000),
+        );
+    };
+
+    let copy_cli_command = move |method_name: &str,
+                                 args: &serde_json::Value,
+                                 gas: NearGas,
+                                 deposit: NearToken,
+                                 signer_id: Option<AccountId>| {
+        let minified_args = serde_json::to_string(args).unwrap_or_default();
+
+        let command_parts = vec![
+            "near".to_string(),
+            "contract".to_string(),
+            "call-function".to_string(),
+            "as-transaction".to_string(),
+            "contract_id".to_string(),
+            method_name.to_string(),
+            "json-args".to_string(),
+            minified_args,
+            "prepaid-gas".to_string(),
+            format!("{gas}"),
+            "attached-deposit".to_string(),
+            format!("{deposit}"),
+            "sign-as".to_string(),
+            signer_id
+                .map(|id| id.to_string())
+                .unwrap_or_else(|| "<your_account.near>".to_string()),
+            "network-config".to_string(),
+            "mainnet".to_string(),
+        ];
+
+        let command = shell_words::join(&command_parts);
+        let window = web_sys::window().unwrap();
+        let navigator = window.navigator();
+        let _ = navigator.clipboard().write_text(&command);
+        set_cli_copied(true);
+        set_timeout(
+            move || set_cli_copied(false),
+            std::time::Duration::from_millis(2000),
+        );
+    };
+
     let format_action = move |action: &WalletSelectorAction| -> String {
         match action {
             WalletSelectorAction::CreateAccount => "Create Account".into(),
@@ -152,11 +209,64 @@ fn TransactionAction(
             </div>
             {move || {
                 if is_expanded() {
-                    if let WalletSelectorAction::FunctionCall { args, .. } = &action {
+                    if let WalletSelectorAction::FunctionCall { method_name, args, gas, deposit } = &action {
+                        let args_clone = args.clone();
+                        let args_clone2 = args.clone();
+                        let method_name_clone = method_name.clone();
+                        let gas_clone = *gas;
+                        let deposit_clone = *deposit;
                         view! {
-                            <pre class="text-xs font-mono bg-neutral-800 text-neutral-300 rounded-lg p-3 overflow-x-auto">
-                                {serde_json::to_string_pretty(args).unwrap()}
-                            </pre>
+                            <div class="flex flex-col gap-2">
+                                <pre class="text-xs font-mono bg-neutral-800 text-neutral-300 rounded-lg p-3 overflow-x-auto">
+                                    {serde_json::to_string_pretty(&args_clone2).unwrap()}
+                                </pre>
+                                <div class="flex gap-2">
+                                    <button
+                                        class="text-xs text-blue-400 hover:text-blue-300 transition-colors px-3 py-1.5 bg-neutral-800 rounded flex items-center gap-2 relative"
+                                        on:click=move |_| copy_args_json(&args_clone2)
+                                    >
+                                        <Icon icon=LuClipboard width="14" height="14" />
+                                        "Copy JSON"
+                                        {move || {
+                                            if json_copied.get() {
+                                                view! {
+                                                    <div class="absolute -top-6 left-1/2 -translate-x-1/2 bg-neutral-700 text-white text-xs px-2 py-1 rounded">
+                                                        "Copied!"
+                                                    </div>
+                                                }
+                                                    .into_any()
+                                            } else {
+                                                ().into_any()
+                                            }
+                                        }}
+                                    </button>
+                                    <button
+                                        class="text-xs text-blue-400 hover:text-blue-300 transition-colors px-3 py-1.5 bg-neutral-800 rounded flex items-center gap-2 relative"
+                                        on:click=move |_| copy_cli_command(
+                                            &method_name_clone,
+                                            &args_clone,
+                                            gas_clone,
+                                            deposit_clone,
+                                            accounts.get().selected_account_id,
+                                        )
+                                    >
+                                        <Icon icon=LuTerminal width="14" height="14" />
+                                        "Copy CLI Command"
+                                        {move || {
+                                            if cli_copied.get() {
+                                                view! {
+                                                    <div class="absolute -top-6 left-1/2 -translate-x-1/2 bg-neutral-700 text-white text-xs px-2 py-1 rounded">
+                                                        "Copied!"
+                                                    </div>
+                                                }
+                                                    .into_any()
+                                            } else {
+                                                ().into_any()
+                                            }
+                                        }}
+                                    </button>
+                                </div>
+                            </div>
                         }
                             .into_any()
                     } else {
@@ -653,7 +763,7 @@ pub fn SendTransactions() -> impl IntoView {
                                                                 <label class="flex items-center gap-2 text-neutral-200">
                                                                     <input
                                                                         type="checkbox"
-                                                                        class="min-w-6 min-h-6 form-checkbox rounded bg-neutral-700 border-neutral-600 text-blue-500 focus:ring-blue-500"
+                                                                        class="form-checkbox rounded bg-neutral-700 border-neutral-600 text-blue-500 focus:ring-blue-500"
                                                                         prop:checked=remember_contract
                                                                         on:change=move |ev| {
                                                                             set_remember_contract(event_target_checked(&ev));
@@ -681,7 +791,7 @@ pub fn SendTransactions() -> impl IntoView {
                                                                 <label class="flex items-center gap-2 text-neutral-200 pl-6">
                                                                     <input
                                                                         type="checkbox"
-                                                                        class="min-w-6 min-h-6 form-checkbox rounded bg-neutral-700 border-neutral-600 text-blue-500 focus:ring-blue-500"
+                                                                        class="form-checkbox rounded bg-neutral-700 border-neutral-600 text-blue-500 focus:ring-blue-500"
                                                                         prop:checked=remember_non_financial
                                                                         on:change=move |ev| set_remember_non_financial(
                                                                             event_target_checked(&ev),
