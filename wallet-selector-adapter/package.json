@@ -1,6 +1,6 @@
 {
   "name": "intear-wallet",
-  "version": "8.10.2",
+  "version": "8.10.3",
   "description": "Intear Wallet package for wallet-selector.",
   "license": "MIT",
   "keywords": [
@@ -22,11 +22,11 @@
     "url": "https://github.com/INTEARnear/wallet/issues"
   },
   "homepage": "https://github.com/INTEARnear/wallet/tree/main/wallet-selector-adapter",
-  "main": "dist/lib/index.js",
-  "module": "dist/lib/index.esm.js",
-  "types": "dist/lib/index.d.ts",
+  "main": "dist/index.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
   "files": [
-    "dist/lib"
+    "dist"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.lib.json",
