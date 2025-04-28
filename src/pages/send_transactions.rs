@@ -17,7 +17,7 @@ use web_sys::{js_sys::Date, Window};
 use crate::{
     components::DangerConfirmInput,
     contexts::{
-        accounts_context::AccountsContext,
+        accounts_context::{Account, AccountsContext},
         config_context::ConfigContext,
         connected_apps_context::{
             action_attaches_deposit, is_dangerous_action, ConnectedAppsContext,
@@ -93,7 +93,7 @@ fn TransactionAction(
                                  args: &serde_json::Value,
                                  gas: NearGas,
                                  deposit: NearToken,
-                                 signer_id: Option<AccountId>| {
+                                 signer: Account| {
         let minified_args = serde_json::to_string(args).unwrap_or_default();
 
         let command_parts = vec![
@@ -110,11 +110,9 @@ fn TransactionAction(
             "attached-deposit".to_string(),
             format!("{deposit}"),
             "sign-as".to_string(),
-            signer_id
-                .map(|id| id.to_string())
-                .unwrap_or_else(|| "<your_account.near>".to_string()),
+            signer.account_id.to_string(),
             "network-config".to_string(),
-            "mainnet".to_string(),
+            signer.network.to_string().to_lowercase(),
         ];
 
         let command = shell_words::join(&command_parts);
@@ -247,7 +245,7 @@ fn TransactionAction(
                                             &args_clone,
                                             gas_clone,
                                             deposit_clone,
-                                            accounts.get().selected_account_id,
+                                            accounts.get().accounts.into_iter().find(|a| a.account_id == accounts.get().selected_account_id.unwrap()).unwrap(),
                                         )
                                     >
                                         <Icon icon=LuTerminal width="14" height="14" />
