@@ -6,6 +6,7 @@ import type {
   Optional,
   Transaction,
   NetworkId,
+  InjectedWallet,
 } from "@near-wallet-selector/core";
 import icon from "./icon";
 import * as nearAPI from "near-api-js";
@@ -242,13 +243,15 @@ type SavedData = {
 
 type IntearWalletOptions = {
   logoutBridgeService: string;
+  walletUrl: string;
 };
 
-const IntearWallet: WalletBehaviourFactory<BrowserWallet, IntearWalletOptions> = ({
+const IntearWallet: WalletBehaviourFactory<InjectedWallet, IntearWalletOptions> = ({
   metadata,
   options,
   logoutBridgeService,
   logger,
+  walletUrl,
 }) => {
   return Promise.resolve({
     async signIn({ contractId, methodNames }) {
@@ -258,7 +261,7 @@ const IntearWallet: WalletBehaviourFactory<BrowserWallet, IntearWalletOptions> =
         // automatically log out the user from the app.
         let key = nearAPI.KeyPair.fromRandom("ed25519");
         logger.log("signIn", { contractId, methodNames, key: key.getPublicKey().toString() });
-        let popup = window.open(`${metadata.walletUrl}/connect`, "_blank", POPUP_FEATURES);
+        let popup = window.open(`${walletUrl}/connect`, "_blank", POPUP_FEATURES);
         if (!popup) {
           reject(new Error("Popup was blocked"));
           return;
@@ -284,7 +287,7 @@ const IntearWallet: WalletBehaviourFactory<BrowserWallet, IntearWalletOptions> =
                     signature: signatureString,
                   },
                 },
-                metadata.walletUrl
+                walletUrl
               );
               break;
             case "connected":
@@ -523,7 +526,7 @@ const IntearWallet: WalletBehaviourFactory<BrowserWallet, IntearWalletOptions> =
       logger.log("sign message", { message, nonce, recipient, callbackUrl, state });
       let savedData = assertLoggedIn();
       return new Promise((resolve, reject) => {
-        let popup = window.open(`${metadata.walletUrl}/sign-message`, "_blank", POPUP_FEATURES);
+        let popup = window.open(`${walletUrl}/sign-message`, "_blank", POPUP_FEATURES);
         if (!popup) {
           throw new Error("Popup was blocked");
         }
@@ -556,7 +559,7 @@ const IntearWallet: WalletBehaviourFactory<BrowserWallet, IntearWalletOptions> =
                     signature: signatureString,
                   },
                 },
-                metadata.walletUrl
+                walletUrl
               );
               break;
             }
@@ -596,12 +599,11 @@ const IntearWallet: WalletBehaviourFactory<BrowserWallet, IntearWalletOptions> =
       });
     },
 
-    async signAndSendTransaction({ signerId, receiverId, actions, callbackUrl }) {
+    async signAndSendTransaction({ signerId, receiverId, actions }) {
       logger.log("signAndSendTransaction", {
         signerId,
         receiverId,
         actions,
-        callbackUrl,
       });
       let savedData = assertLoggedIn();
       return await signAndSendTransactions(
@@ -612,7 +614,7 @@ const IntearWallet: WalletBehaviourFactory<BrowserWallet, IntearWalletOptions> =
             actions,
           },
         ],
-        metadata.walletUrl,
+        walletUrl,
         new nearAPI.providers.JsonRpcProvider({ url: options.network.nodeUrl }),
         logger
       ).then((outcomes) => outcomes[0]);
@@ -621,14 +623,14 @@ const IntearWallet: WalletBehaviourFactory<BrowserWallet, IntearWalletOptions> =
     async signAndSendTransactions({ transactions }) {
       return (await signAndSendTransactions(
         transactions,
-        metadata.walletUrl,
+        walletUrl,
         new nearAPI.providers.JsonRpcProvider({ url: options.network.nodeUrl }),
         logger
-      )) as any; // expects void for browser wallets
+      ));
     },
 
     buildImportAccountsUrl() {
-      return `${metadata.walletUrl}/import`;
+      return `${walletUrl}/import`;
     },
   });
 };
@@ -809,20 +811,20 @@ export function setupIntearWallet({
   logoutBridgeService = DEFAULT_LOGOUT_BRIDGE_SERVICE,
   iconUrl = icon,
   deprecated = false,
-}: IntearWalletParams = {}): WalletModuleFactory<BrowserWallet> {
+}: IntearWalletParams = {}): WalletModuleFactory<InjectedWallet> {
   return async () => {
     return {
       id: "intear-wallet",
-      type: "browser",
+      type: "injected",
       metadata: {
         name: "Intear Wallet",
         description: "A stupid wallet for people who want to cry.",
         iconUrl,
         deprecated,
         available: true,
-        walletUrl,
+        downloadUrl: walletUrl,
       },
-      init: (options) => IntearWallet({ ...options, logoutBridgeService }),
+      init: (options) => IntearWallet({ ...options, logoutBridgeService, walletUrl }),
     };
   };
 }
