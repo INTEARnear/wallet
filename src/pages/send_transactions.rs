@@ -683,7 +683,6 @@ pub fn SendTransactions() -> impl IntoView {
                             );
                         }
                         Err(error) => {
-                            log::error!("----- {}", error);
                             let message = SendMessage::Error { message: error };
                             let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
                             opener()
