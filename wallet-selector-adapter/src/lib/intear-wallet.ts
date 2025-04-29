@@ -621,12 +621,12 @@ const IntearWallet: WalletBehaviourFactory<InjectedWallet, IntearWalletOptions> 
     },
 
     async signAndSendTransactions({ transactions }) {
-      return (await signAndSendTransactions(
+      return await signAndSendTransactions(
         transactions,
         walletUrl,
         new nearAPI.providers.JsonRpcProvider({ url: options.network.nodeUrl }),
         logger
-      ));
+      );
     },
 
     buildImportAccountsUrl() {
