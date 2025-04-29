@@ -245,7 +245,14 @@ fn TransactionAction(
                                             &args_clone,
                                             gas_clone,
                                             deposit_clone,
-                                            accounts.get().accounts.into_iter().find(|a| a.account_id == accounts.get().selected_account_id.unwrap()).unwrap(),
+                                            accounts
+                                                .get()
+                                                .accounts
+                                                .into_iter()
+                                                .find(|a| {
+                                                    a.account_id == accounts.get().selected_account_id.unwrap()
+                                                })
+                                                .unwrap(),
                                         )
                                     >
                                         <Icon icon=LuTerminal width="14" height="14" />
@@ -600,8 +607,8 @@ pub fn SendTransactions() -> impl IntoView {
 
         let deserialized_transactions =
             serde_json::from_str::<Vec<WalletSelectorTransaction>>(&request_data.transactions);
-        let transactions: Vec<(
-            oneshot::Receiver<ExperimentalTxDetails>,
+        let mut transactions: Vec<(
+            oneshot::Receiver<Result<ExperimentalTxDetails, String>>,
             EnqueuedTransaction,
         )> = if let Ok(transactions) = deserialized_transactions {
             transactions
@@ -630,6 +637,27 @@ pub fn SendTransactions() -> impl IntoView {
                 .expect("Failed to send message");
             return;
         };
+        if transactions.is_empty() {
+            let message = SendMessage::Error {
+                message: "No transactions (an empty array) passed to the wallet".to_string(),
+            };
+            let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
+            opener()
+                .post_message(&js_value, &origin())
+                .expect("Failed to send message");
+            return;
+        }
+
+        let (first_details_tx, first_transaction) = transactions.remove(0);
+        let rest_transactions = transactions
+            .into_iter()
+            .map(|(details_tx, transaction)| {
+                (details_tx, transaction.in_same_queue_as(&first_transaction))
+            })
+            .collect::<Vec<_>>();
+        let transactions =
+            std::iter::once((first_details_tx, first_transaction)).chain(rest_transactions);
+
         let (details_receivers, transactions): (Vec<_>, Vec<_>) = transactions.into_iter().unzip();
         add_transaction.update(|queue| queue.extend(transactions));
         let details = futures_util::future::join_all(details_receivers);
@@ -639,11 +667,30 @@ pub fn SendTransactions() -> impl IntoView {
                 Ok(details) => {
                     let outcomes = details
                         .into_iter()
-                        .map(|d| d.final_execution_outcome)
-                        .collect::<Option<Vec<_>>>();
-                    let Some(outcomes) = outcomes else {
-                        // Not available ..?
-                        panic!("Transaction details not available for one or more transactions");
+                        .enumerate()
+                        .map(|(i, outcome_result)| {
+                            outcome_result
+                                .map(|d| d.final_execution_outcome)
+                                .map_err(|e| format!("Failed to send transaction {i}: {e}"))
+                        })
+                        .collect::<Result<Option<Vec<_>>, String>>();
+                    let outcomes = match outcomes {
+                        Ok(Some(outcomes)) => outcomes,
+                        Ok(None) => {
+                            // Not available ..?
+                            panic!(
+                                "Transaction details not available for one or more transactions"
+                            );
+                        }
+                        Err(error) => {
+                            log::error!("----- {}", error);
+                            let message = SendMessage::Error { message: error };
+                            let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
+                            opener()
+                                .post_message(&js_value, &origin())
+                                .expect("Failed to send message");
+                            return;
+                        }
                     };
                     let message = SendMessage::Sent {
                         outcomes: outcomes

@@ -29,7 +29,7 @@ pub struct EnqueuedTransaction {
     pub receiver_id: AccountId,
     pub actions: Vec<Action>,
     /// None if the transaction has been taken
-    details_tx: Option<oneshot::Sender<ExperimentalTxDetails>>,
+    details_tx: Option<oneshot::Sender<Result<ExperimentalTxDetails, String>>>,
     queue_id: u128,
 }
 
@@ -39,7 +39,10 @@ impl EnqueuedTransaction {
         signer_id: AccountId,
         receiver_id: AccountId,
         actions: Vec<Action>,
-    ) -> (oneshot::Receiver<ExperimentalTxDetails>, Self) {
+    ) -> (
+        oneshot::Receiver<Result<ExperimentalTxDetails, String>>,
+        Self,
+    ) {
         let (details_tx, details_rx) = oneshot::channel();
         (
             details_rx,
@@ -53,6 +56,13 @@ impl EnqueuedTransaction {
                 details_tx: Some(details_tx),
             },
         )
+    }
+
+    pub fn in_same_queue_as(self, other: &Self) -> Self {
+        Self {
+            queue_id: other.queue_id,
+            ..self
+        }
     }
 
     fn clone_and_take_tx(&mut self) -> Self {
@@ -92,9 +102,15 @@ pub fn provide_transaction_queue_context() {
     Effect::new(move |_| {
         queue.track();
         if !is_processing.get() {
-            if let Some(transaction) = set_queue
-                .write_untracked()
+            log::info!(
+                "Processing transaction at index {}: {:?}",
+                current_index.get_untracked(),
+                queue.read_untracked().get(current_index.get())
+            );
+            let mut queue_mut = set_queue.write_untracked();
+            if let Some(transaction) = queue_mut
                 .get_mut(current_index.get())
+                .filter(|tx| tx.stage == TransactionStage::Preparing)
                 .map(|tx| tx.clone_and_take_tx())
             {
                 set_is_processing.set(true);
@@ -130,6 +146,7 @@ pub fn provide_transaction_queue_context() {
                     {
                         Ok(key) => key,
                         Err(e) => {
+                            // TODO: Handle revoked / limited access keys better
                             let error = format!("Failed to get access key: {}", e);
                             log::error!("{}", error);
                             set_queue.update(|q| {
@@ -142,6 +159,8 @@ pub fn provide_transaction_queue_context() {
                     let block_hash = match rpc_client.fetch_recent_block_hash().await {
                         Ok(hash) => hash,
                         Err(e) => {
+                            // Should never happen unless all RPCs are unstable garbage, so no
+                            // need to handle this gracefully
                             let error = format!("Failed to fetch block hash: {}", e);
                             log::error!("{}", error);
                             set_queue.update(|q| {
@@ -168,8 +187,17 @@ pub fn provide_transaction_queue_context() {
                             let error = format!("Failed to send transaction: {}", e);
                             log::error!("{}", error);
                             set_queue.update(|q| {
-                                q[tx_current_index].stage = TransactionStage::Failed(error)
+                                q[tx_current_index].stage = TransactionStage::Failed(error);
+                                for tx in q.iter_mut() {
+                                    if tx.stage == TransactionStage::Preparing && tx.queue_id == current_queue_id {
+                                        tx.stage = TransactionStage::Failed("Cancelled because of previous transaction failure".into());
+                                        tx.details_tx.take().expect("Transaction details sender should have not been taken until previous transaction in queue is near-final").send(Err(format!("{e}"))).ok();
+                                    }
+                                }
+                                transaction.details_tx.expect("Transaction details sender should have been taken by this task").send(Err(format!("{e}"))).ok();
                             });
+                            set_is_processing.set(false);
+                            set_current_index.update(|i| *i += 1);
                             return;
                         }
                     };
@@ -191,8 +219,17 @@ pub fn provide_transaction_queue_context() {
                             let error = format!("Transaction failed to execute: {}", e);
                             log::error!("{}", error);
                             set_queue.update(|q| {
-                                q[tx_current_index].stage = TransactionStage::Failed(error)
+                                q[tx_current_index].stage = TransactionStage::Failed(error);
+                                for tx in q.iter_mut() {
+                                    if tx.stage == TransactionStage::Preparing && tx.queue_id == current_queue_id {
+                                        tx.stage = TransactionStage::Failed("Cancelled because of previous transaction failure".into());
+                                        tx.details_tx.take().expect("Transaction details sender should have not been taken until previous transaction in queue is near-final").send(Err(format!("{e}"))).ok();
+                                    }
+                                }
+                                transaction.details_tx.expect("Transaction details sender should have been taken by this task").send(Err(format!("{e}"))).ok();
                             });
+                            set_is_processing.set(false);
+                            set_current_index.update(|i| *i += 1);
                             return;
                         }
                     }
@@ -200,8 +237,10 @@ pub fn provide_transaction_queue_context() {
                     if let Ok(details) = pending_tx.EXPERIMENTAL_fetch_details().await {
                         transaction
                             .details_tx
-                            .expect("Transaction should have been taken by this task")
-                            .send(details)
+                            .expect(
+                                "Transaction details sender should have been taken by this task",
+                            )
+                            .send(Ok(details))
                             .ok();
                     } else {
                         panic!("Failed to fetch transaction details after doomslug finality");
@@ -224,6 +263,8 @@ pub fn provide_transaction_queue_context() {
                                 log::info!("Transaction completed: {}", transaction.description);
                             }
                             Err(e) => {
+                                // Should never happen unless 33% of total NEAR Protocol stake
+                                // is down or something is wrong with all RPCs
                                 let error = format!("Transaction failed to finalize: {}", e);
                                 log::error!("{}", error);
                                 set_queue.update(|q| {
@@ -239,6 +280,8 @@ pub fn provide_transaction_queue_context() {
                         set_is_processing.set(false);
                     }
                 });
+            } else if current_index.get() < queue_mut.len() {
+                set_current_index.update(|i| *i += 1);
             }
         }
     });

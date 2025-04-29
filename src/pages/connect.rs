@@ -332,7 +332,7 @@ pub fn Connect() -> impl IntoView {
                     match details_receiver.await {
                         Ok(details) => {
                             log::info!("Transaction details: {:?}", details);
-                            if details.final_execution_outcome.is_some() {
+                            if details.is_ok_and(|d| d.final_execution_outcome.is_some()) {
                                 let accounts = vec![WalletSelectorAccount {
                                     account_id: selected_account,
                                 }];
