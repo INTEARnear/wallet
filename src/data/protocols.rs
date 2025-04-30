@@ -527,6 +527,16 @@ pub async fn get_protocols() -> Vec<Protocol> {
             url_override: None,
             image_override: None,
         },
+        ProtocolDefinition {
+            project_id: "lnc-watch-bot",
+            category: ProtocolCategory::Bot,
+            is_sponsored: false,
+            size: ProtocolSize::Small,
+            name_override: None,
+            description: "Type NEAR account and get notified about TXs",
+            url_override: Some("https://t.me/nearwatchbot"),
+            image_override: None,
+        },
         // Game
         ProtocolDefinition {
             project_id: "pumpopoly",
