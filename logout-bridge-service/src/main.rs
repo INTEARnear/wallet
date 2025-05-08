@@ -540,17 +540,42 @@ async fn handle_websocket_connection(socket: WebSocket, state: AppState) {
         ))
         .await;
 
-    while let Ok(notification) = rx.recv().await {
-        let message = WsServerMessage::LoggedOut(notification);
-        if let Ok(json) = serde_json::to_string(&message) {
-            if sender.send(Message::Text(json.into())).await.is_err() {
-                break;
+    let mut client_disconnected = false;
+
+    let wait_for_disconnection = tokio::spawn(async move {
+        while let Some(msg) = receiver.next().await {
+            if msg.is_err() {
+                return true;
+            }
+        }
+        true
+    });
+
+    tokio::select! {
+        disconnect = wait_for_disconnection => {
+            client_disconnected = disconnect.unwrap_or(true);
+        }
+        notification_result = rx.recv() => {
+            let mut current_notification = notification_result;
+            while let Ok(notification) = current_notification {
+                let message = WsServerMessage::LoggedOut(notification);
+                if let Ok(json) = serde_json::to_string(&message) {
+                    if sender.send(Message::Text(json.into())).await.is_err() {
+                        client_disconnected = true;
+                        break;
+                    }
+                }
+
+                match rx.recv().await {
+                    Ok(next_notification) => current_notification = Ok(next_notification),
+                    Err(_) => break,
+                }
             }
         }
     }
-    drop(rx);
 
-    {
+    // Clean up subscriber when the client disconnects
+    if client_disconnected {
         let mut subscribers = state.subscribers.lock().unwrap();
         if let Some(txs) = subscribers.get_mut(&key) {
             // Remove channels with no receivers
