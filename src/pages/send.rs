@@ -6,7 +6,8 @@ use crate::{
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
     utils::{
-        format_token_amount, format_token_amount_no_hide, format_usd_value_no_hide, StorageBalance,
+        format_account_id_no_hide, format_token_amount, format_token_amount_no_hide,
+        format_usd_value_no_hide, StorageBalance,
     },
 };
 use leptos::{prelude::*, task::spawn_local};
@@ -325,7 +326,7 @@ pub fn SendToken() -> impl IntoView {
                                         placeholder="account.near"
                                         prop:value=recipient
                                         on:input=move |ev| {
-                                            let value = event_target_value(&ev);
+                                            let value = event_target_value(&ev).to_lowercase();
                                             set_recipient.set(value.clone());
                                             check_recipient(value);
                                         }
@@ -334,7 +335,9 @@ pub fn SendToken() -> impl IntoView {
                                         if let Some(recipient_balance) = recipient_balance.get() {
                                             view! {
                                                 <p class="text-green-500 text-sm mt-2 font-medium">
-                                                    {recipient}" has "
+                                                    {format_account_id_no_hide(
+                                                        &recipient.read().parse::<AccountId>().unwrap(),
+                                                    )}" has "
                                                     {format_token_amount_no_hide(
                                                         recipient_balance,
                                                         token.token.metadata.decimals,

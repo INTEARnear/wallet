@@ -372,7 +372,12 @@ fn add_account_actions(
                     view! {
                         <div class="flex flex-col gap-1">
                             <div class="flex items-center gap-2">
-                                <Icon icon=icondata::LuUserPlus width="40" height="40" />
+                                <Icon
+                                    icon=icondata::LuUserPlus
+                                    width="40"
+                                    height="40"
+                                    attr:class="min-w-[40px] min-h-[40px]"
+                                />
                                 <span>
                                     "Create Account "
                                     {format_account_id(
@@ -390,7 +395,12 @@ fn add_account_actions(
                     view! {
                         <div class="flex flex-col gap-1">
                             <div class="flex items-center gap-2">
-                                <Icon icon=icondata::LuUserMinus width="40" height="40" />
+                                <Icon
+                                    icon=icondata::LuUserMinus
+                                    width="40"
+                                    height="40"
+                                    attr:class="min-w-[40px] min-h-[40px]"
+                                />
                                 <span>
                                     "Delete Account "
                                     {format_account_id(
@@ -426,7 +436,12 @@ fn add_key_actions(
                         view! {
                             <div class="flex flex-col gap-1">
                                 <div class="flex items-center gap-2">
-                                    <Icon icon=icondata::LuShieldAlert width="40" height="40" />
+                                    <Icon
+                                        icon=icondata::LuShieldAlert
+                                        width="40"
+                                        height="40"
+                                        attr:class="min-w-[40px] min-h-[40px]"
+                                    />
                                     <span>Add full key</span>
                                 </div>
                                 <span class="text-sm text-neutral-400 pl-12">
@@ -446,7 +461,12 @@ fn add_key_actions(
                         view! {
                             <div class="flex flex-col gap-1">
                                 <div class="flex items-center gap-2">
-                                    <Icon icon=icondata::LuKeyRound width="40" height="40" />
+                                    <Icon
+                                        icon=icondata::LuKeyRound
+                                        width="40"
+                                        height="40"
+                                        attr:class="min-w-[40px] min-h-[40px]"
+                                    />
                                     <span>Add app key</span>
                                 </div>
                                 <span class="text-sm text-neutral-400 pl-12">
@@ -487,7 +507,12 @@ fn add_key_actions(
                     view! {
                         <div class="flex flex-col gap-1">
                             <div class="flex items-center gap-2">
-                                <Icon icon=icondata::LuTrash2 width="40" height="40" />
+                                <Icon
+                                    icon=icondata::LuTrash2
+                                    width="40"
+                                    height="40"
+                                    attr:class="min-w-[40px] min-h-[40px]"
+                                />
                                 <span>Delete Key</span>
                             </div>
                             <span class="text-sm text-neutral-400 pl-12">
@@ -533,7 +558,12 @@ fn add_staking_actions(
                                 if let Ok(amount) = amount.parse::<u128>() {
                                     actions.push(view! {
                                         <div class="flex items-center gap-2">
-                                            <Icon icon=icondata::LuLock width="40" height="40" />
+                                            <Icon
+                                                icon=icondata::LuLock
+                                                width="40"
+                                                height="40"
+                                                attr:class="min-w-[40px] min-h-[40px]"
+                                            />
                                             <span>Stake {format_token_amount(amount, 24, "NEAR")}</span>
                                         </div>
                                     }.into_any());
@@ -544,7 +574,12 @@ fn add_staking_actions(
                                 if let Ok(amount) = amount.parse::<u128>() {
                                     actions.push(view! {
                                         <div class="flex items-center gap-2">
-                                            <Icon icon=icondata::LuUnlock width="40" height="40" />
+                                            <Icon
+                                                icon=icondata::LuUnlock
+                                                width="40"
+                                                height="40"
+                                                attr:class="min-w-[40px] min-h-[40px]"
+                                            />
                                             <span>
                                                 Start unstaking {format_token_amount(amount, 24, "NEAR")}
                                             </span>
@@ -557,7 +592,12 @@ fn add_staking_actions(
                                 if let Ok(amount) = amount.parse::<u128>() {
                                     actions.push(view! {
                                         <div class="flex items-center gap-2">
-                                            <Icon icon=icondata::LuDownload width="40" height="40" />
+                                            <Icon
+                                                icon=icondata::LuDownload
+                                                width="40"
+                                                height="40"
+                                                attr:class="min-w-[40px] min-h-[40px]"
+                                            />
                                             <span>
                                                 Withdraw {format_token_amount(amount, 24, "NEAR")}
                                             </span>
@@ -778,7 +818,12 @@ fn add_wrap_actions(
                             actions.push(
                                 view! {
                                     <div class="flex items-center gap-2">
-                                        <Icon icon=LuPackage width="40" height="40" />
+                                        <Icon
+                                            icon=LuPackage
+                                            width="40"
+                                            height="40"
+                                            attr:class="min-w-[40px] min-h-[40px]"
+                                        />
                                         <span>Wrap {format_token_amount(amount, 24, "NEAR")}</span>
                                     </div>
                                 }
@@ -796,7 +841,12 @@ fn add_wrap_actions(
                         if withdrawer == me {
                             actions.push(view! {
                                 <div class="flex items-center gap-2">
-                                    <Icon icon=LuPackageOpen width="40" height="40" />
+                                    <Icon
+                                        icon=LuPackageOpen
+                                        width="40"
+                                        height="40"
+                                        attr:class="min-w-[40px] min-h-[40px]"
+                                    />
                                     <span>Unwrap {format_token_amount(amount, 24, "NEAR")}</span>
                                 </div>
                             }.into_any());
@@ -905,7 +955,12 @@ fn add_dex_actions(
                         actions.push(
                             view! {
                                 <div class="flex items-center gap-2">
-                                    <img src="/history-veax.svg" width="40" height="40" />
+                                    <img
+                                        src="/history-veax.svg"
+                                        width="40"
+                                        height="40"
+                                        class="min-w-[40px] min-h-[40px]"
+                                    />
                                     <span>"Swap"</span>
                                 </div>
                             }

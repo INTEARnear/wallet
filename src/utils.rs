@@ -1,6 +1,7 @@
 use base64::{prelude::BASE64_STANDARD, Engine};
 use cached::proc_macro::cached;
-use leptos::prelude::expect_context;
+use chrono::{DateTime, Utc};
+use leptos::prelude::*;
 use near_min_api::{
     types::{
         near_crypto::PublicKey, AccessKey as NearAccessKey, AccessKeyPermission, AccountId,
@@ -12,6 +13,7 @@ use near_min_api::{
 };
 use serde::Deserialize;
 use std::{fmt::Display, ops::Deref, time::Duration};
+use web_sys::MouseEvent;
 
 use crate::contexts::{
     accounts_context::AccountsContext, config_context::ConfigContext, rpc_context::RpcContext,
@@ -128,27 +130,137 @@ pub fn format_duration(duration: Duration) -> String {
     }
 }
 
-pub fn format_account_id(account_id: &AccountIdRef) -> String {
+pub fn format_account_id(account_id: &AccountIdRef) -> AnyView {
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+    let account_id2 = account_id.to_owned();
     if let Some(selected_account) = accounts().selected_account_id {
         if selected_account == *account_id {
             let ConfigContext { config, .. } = expect_context::<ConfigContext>();
             if config().amounts_hidden {
-                return "😭".to_string();
+                return "😭".into_any();
             }
         }
     }
-    format_account_id_no_hide(account_id)
+    let badge = LocalResource::new(move || get_user_badge(account_id2.clone()));
+    view! {
+        <span class="items-center gap-1 inline-flex">
+            {move || {
+                badge
+                    .read()
+                    .as_ref()
+                    .and_then(|badge| badge.as_ref().map(|get_badge| (get_badge)()))
+                    .map(|badge| badge.into_any())
+            }} <span>{account_id.to_string()}</span>
+        </span>
+    }
+    .into_any()
 }
 
-pub fn format_account_id_no_hide(account_id: &AccountIdRef) -> String {
-    if account_id.len() > 24 {
+pub fn format_account_id_no_hide(account_id: &AccountIdRef) -> AnyView {
+    let account_id_str = if account_id.len() > 24 {
         let first = &account_id.as_str()[..8];
         let last = &account_id.as_str()[account_id.len() - 8..];
         format!("{}...{}", first, last)
     } else {
         account_id.to_string()
+    };
+    let account_id2 = account_id.to_owned();
+    let badge = LocalResource::new(move || get_user_badge(account_id2.clone()));
+    view! {
+        <span class="items-center gap-1 inline-flex">
+            {move || {
+                badge
+                    .read()
+                    .as_ref()
+                    .and_then(|badge| badge.as_ref().map(|get_badge| (get_badge)()))
+                    .map(|badge| badge.into_any())
+            }} <span>{account_id_str}</span>
+        </span>
     }
+    .into_any()
+}
+
+async fn get_user_badge(account_id: AccountId) -> Option<impl Fn() -> AnyView> {
+    get_user_badge_inner(account_id).await.map(|badge| {
+        move || {
+            let badge = badge.clone();
+            let (is_open, set_is_open) = signal(false);
+            let onclick = move |e: MouseEvent| {
+                e.prevent_default();
+                e.stop_propagation();
+                set_is_open(true);
+            };
+            let onclick_close = move |e: MouseEvent| {
+                e.prevent_default();
+                e.stop_propagation();
+                set_is_open(false);
+            };
+            let title = format!("{}\n\n{}", badge.name.clone(), badge.description);
+            view! {
+                <span
+                    title=title
+                    class="cursor-help"
+                    class:hover-brightness-125=move || !is_open()
+                    on:click=onclick
+                >
+                    <style>
+                        ".hover-brightness-125:hover {
+                            filter: brightness(125%);
+                        }"
+                    </style>
+                    {badge.emoji.clone()}
+                    <Show when=is_open>
+                        <div
+                            class="fixed inset-0 z-100 flex items-center justify-center"
+                            on:click=onclick_close
+                        >
+                            <div class="fixed inset-0 bg-black opacity-90"></div>
+                            <div class="relative bg-neutral-800 p-8 rounded-lg shadow-xl max-w-sm min-h-96 w-full mx-4 flex flex-col items-center justify-center">
+                                <div class="text-6xl text-center mb-4">{badge.emoji.clone()}</div>
+                                <div class="text-white text-center text-4xl font-bold mb-4">
+                                    {badge.name.clone()}
+                                </div>
+                                <div class="text-gray-300 text-center text2xl">
+                                    {badge.description.clone()}
+                                </div>
+                            </div>
+                        </div>
+                    </Show>
+                </span>
+            }.into_any()
+        }
+    })
+}
+
+#[cached]
+async fn get_user_badge_inner(account_id: AccountId) -> Option<Badge> {
+    let url = format!("https://imminent.build/api/users/{}/badges", account_id);
+    match reqwest::get(&url).await {
+        Ok(response) => match response.json::<serde_json::Value>().await {
+            Ok(data) => data
+                .get("selectedBadge")
+                .and_then(|badge| badge.get("badge"))
+                .and_then(|badge| serde_json::from_value(badge.clone()).ok()),
+            Err(_) => None,
+        },
+        Err(_) => None,
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Project {
+    pub id: u32,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Badge {
+    pub id: u32,
+    pub name: String,
+    pub description: String,
+    pub emoji: String,
+    pub created_at: DateTime<Utc>,
 }
 
 /// Log data container that is used in [NEP-297](https://nomicon.io/Standards/EventsFormat).
