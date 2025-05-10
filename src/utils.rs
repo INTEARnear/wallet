@@ -210,12 +210,12 @@ async fn get_user_badge(account_id: AccountId) -> Option<impl Fn() -> AnyView> {
                     </style>
                     {badge.emoji.clone()}
                     <Show when=is_open>
-                        <div
-                            class="fixed inset-0 z-100 flex items-center justify-center"
-                            on:click=onclick_close
-                        >
-                            <div class="fixed inset-0 bg-black opacity-90"></div>
-                            <div class="relative bg-neutral-800 p-8 rounded-lg shadow-xl max-w-sm min-h-96 w-full mx-4 flex flex-col items-center justify-center">
+                        <div class="fixed inset-0 z-[9999] flex items-start justify-center cursor-default">
+                            <div
+                                class="fixed inset-0 bg-black opacity-90"
+                                on:click=onclick_close
+                            ></div>
+                            <div class="sticky top-[50%] translate-y-[-50%] bg-neutral-800 p-8 rounded-lg shadow-xl max-w-sm min-h-96 w-full flex flex-col items-center justify-center">
                                 <div class="text-6xl text-center mb-4">{badge.emoji.clone()}</div>
                                 <div class="text-white text-center text-4xl font-bold mb-4">
                                     {badge.name.clone()}
