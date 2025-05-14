@@ -21,7 +21,7 @@ use crate::contexts::rpc_context::provide_rpc_context;
 use crate::pages::{
     settings::{ConnectedAppsSettings, DeveloperSettings, PreferencesSettings, SecuritySettings},
     AutoImportSecretKey, Connect, Explore, History, Home, Login, SendToken, SendTransactions,
-    Settings, SignMessage, Swap, TokenDetails,
+    Settings, SignMessage, Swap, TokenDetails, UnwrapToken, WrapToken,
 };
 
 #[component]
@@ -54,6 +54,8 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/explore") view=Explore />
                     <Route path=path!("/token/:token_id") view=TokenDetails />
                     <Route path=path!("/send/:token_id") view=SendToken />
+                    <Route path=path!("/wrap") view=WrapToken />
+                    <Route path=path!("/unwrap") view=UnwrapToken />
                     <Route path=path!("/connect") view=Connect />
                     <Route path=path!("/send-transactions") view=SendTransactions />
                     <Route path=path!("/sign-message") view=SignMessage />

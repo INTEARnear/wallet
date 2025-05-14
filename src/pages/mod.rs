@@ -11,6 +11,8 @@ pub mod settings;
 mod sign_message;
 mod swap;
 mod token;
+mod unwrap;
+mod wrap;
 
 pub use auto_import_secret_key::AutoImportSecretKey;
 pub use connect::Connect;
@@ -24,3 +26,5 @@ pub use settings::Settings;
 pub use sign_message::SignMessage;
 pub use swap::Swap;
 pub use token::TokenDetails;
+pub use unwrap::UnwrapToken;
+pub use wrap::WrapToken;

@@ -65,6 +65,8 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
 
     let token_account_id = token_info.account_id.clone();
     let token_account_id2 = token_info.account_id.clone();
+    let token_account_id3 = token_info.account_id.clone();
+    let token_account_id4 = token_info.account_id.clone();
     let network = expect_context::<NetworkContext>().network;
     view! {
         <div class="flex flex-col gap-4 wrap-anywhere">
@@ -86,22 +88,65 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                         {token_info.metadata.name.clone()}
                     </h1>
                     <p class="text-gray-400">{token_info.metadata.symbol.clone()}</p>
+                </div> <div class="flex flex-col gap-2">
+                    <A href=format!(
+                        "/send/{}",
+                        match &token_info.account_id {
+                            Token::Near => "near".to_string(),
+                            Token::Nep141(account_id) => account_id.to_string(),
+                        },
+                    )>
+                        <button
+                            class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full"
+                            disabled=move || user_balance().is_none()
+                        >
+                            <Icon icon=icondata::LuSend width="20" height="20" />
+                            <span>Send</span>
+                        </button>
+                    </A>
+
+                    {move || {
+                        if let Token::Nep141(account_id) = &token_account_id3 {
+                            let acc_str = account_id.to_string();
+                            if acc_str == "wrap.near" || acc_str == "wrap.testnet" {
+                                view! {
+                                    <A href="/wrap">
+                                        <button class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors flex items-center gap-2 cursor-pointer w-full">
+                                            <Icon icon=icondata::LuPackage width="20" height="20" />
+                                            <span>Wrap</span>
+                                        </button>
+                                    </A>
+                                }
+                                    .into_any()
+                            } else {
+                                ().into_any()
+                            }
+                        } else {
+                            ().into_any()
+                        }
+                    }}
+
+                    {move || {
+                        if let Token::Nep141(account_id) = &token_account_id4 {
+                            let acc_str = account_id.to_string();
+                            if acc_str == "wrap.near" || acc_str == "wrap.testnet" {
+                                view! {
+                                    <A href="/unwrap">
+                                        <button class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors flex items-center gap-2 cursor-pointer w-full">
+                                            <Icon icon=icondata::LuPackageOpen width="20" height="20" />
+                                            <span>Unwrap</span>
+                                        </button>
+                                    </A>
+                                }
+                                    .into_any()
+                            } else {
+                                ().into_any()
+                            }
+                        } else {
+                            ().into_any()
+                        }
+                    }}
                 </div>
-                <A href=format!(
-                    "/send/{}",
-                    match &token_info.account_id {
-                        Token::Near => "near".to_string(),
-                        Token::Nep141(account_id) => account_id.to_string(),
-                    },
-                )>
-                    <button
-                        class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled=move || user_balance().is_none()
-                    >
-                        <Icon icon=icondata::LuSend width="20" height="20" />
-                        <span>Send</span>
-                    </button>
-                </A>
                 {move || {
                     if matches!(token_info.account_id, Token::Near)
                         && matches!(network.get(), Network::Testnet)
@@ -240,22 +285,24 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                 </div>
             </div>
             <iframe
-                src=move || format!(
-                    "https://{}/?token={}&interval=15m",
-                    match network.get() {
-                        Network::Mainnet => "chart.intear.tech",
-                        Network::Testnet => "chart-testnet.intear.tech",
-                    },
-                    match &token_account_id2 {
-                        Token::Near => {
-                            match network.get() {
-                                Network::Mainnet => "wrap.near".to_string(),
-                                Network::Testnet => "wrap.testnet".to_string(),
+                src=move || {
+                    format!(
+                        "https://{}/?token={}&interval=15m",
+                        match network.get() {
+                            Network::Mainnet => "chart.intear.tech",
+                            Network::Testnet => "chart-testnet.intear.tech",
+                        },
+                        match &token_account_id2 {
+                            Token::Near => {
+                                match network.get() {
+                                    Network::Mainnet => "wrap.near".to_string(),
+                                    Network::Testnet => "wrap.testnet".to_string(),
+                                }
                             }
-                        }
-                        Token::Nep141(account_id) => account_id.to_string(),
-                    },
-                )
+                            Token::Nep141(account_id) => account_id.to_string(),
+                        },
+                    )
+                }
                 class="w-full h-96"
             />
         </div>

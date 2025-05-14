@@ -161,13 +161,13 @@ pub fn SendToken() -> impl IntoView {
         );
         let Ok(recipient) = recipient.get().parse::<AccountId>() else {
             panic!(
-                "Recipient '{}' cannot be parsed as AccountId, yet is_valid_recipient is true",
+                "Recipient '{}' cannot be parsed as AccountId, yet recipient_balance is Some",
                 recipient()
             );
         };
         let Ok(amount_normalized) = amount.get().parse::<f64>() else {
             panic!(
-                "Amount '{}' cannot be parsed as f64, yet is_valid_amount is true",
+                "Amount '{}' cannot be parsed as f64, yet amount_error is None",
                 amount()
             );
         };
