@@ -10,6 +10,7 @@ use web_sys::{js_sys::Date, Window};
 
 use crate::contexts::{
     accounts_context::AccountsContext, connected_apps_context::ConnectedAppsContext,
+    security_log_context::add_security_log,
 };
 
 #[derive(Deserialize, Debug)]
@@ -161,6 +162,18 @@ pub fn SignMessage() -> impl IntoView {
             log::error!("Account not found");
             return;
         };
+        add_security_log(
+            format!(
+                "Signed NEP-413 message on /sign-message from {}: {}",
+                origin.get_untracked(),
+                if request_data.message.len() > 5000 {
+                    format!("{}...", &request_data.message[..5000])
+                } else {
+                    request_data.message.clone()
+                }
+            ),
+            account.account_id.clone(),
+        );
         let signature = account.secret_key.sign(hash.as_bytes());
 
         let message = SendMessage::Signed {

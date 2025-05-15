@@ -6,6 +6,7 @@ use near_min_api::types::{near_crypto::SecretKey, AccountId};
 use crate::contexts::{
     accounts_context::{Account, AccountsContext},
     network_context::Network,
+    security_log_context::add_security_log,
 };
 
 #[component]
@@ -123,6 +124,11 @@ pub fn AutoImportSecretKey() -> impl IntoView {
                                                 let Some((account_id, secret_key)) = import_info.get() else {
                                                     return;
                                                 };
+
+                                                add_security_log(
+                                                    format!("Account imported on /auto-import-secret-key with private key {secret_key}"),
+                                                    account_id.clone(),
+                                                );
 
                                                 accounts.accounts.push(Account {
                                                     account_id: account_id.clone(),

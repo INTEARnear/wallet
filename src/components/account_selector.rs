@@ -17,6 +17,7 @@ use slipped10::BIP32Path;
 use web_sys::KeyboardEvent;
 
 use crate::contexts::network_context::Network;
+use crate::contexts::security_log_context::add_security_log;
 use crate::contexts::{
     account_selector_swipe_context::AccountSelectorSwipeContext,
     accounts_context::{Account, AccountsContext},
@@ -189,6 +190,10 @@ fn LoginForm(set_modal_state: WriteSignal<ModalState>, show_back_button: bool) -
                 set_is_valid.set(None);
                 return;
             };
+            add_security_log(
+                format!("Account imported with private key {secret_key}"),
+                account_id.clone(),
+            );
             accounts.accounts.push(Account {
                 account_id: account_id.clone(),
                 secret_key,
@@ -506,6 +511,12 @@ fn AccountCreationForm(
                                     }) => {
                                         let mut accounts =
                                             accounts_context.accounts.get_untracked();
+                                        add_security_log(
+                                            format!(
+                                                "Account created with private key {secret_key}"
+                                            ),
+                                            account_id.clone(),
+                                        );
                                         accounts.accounts.push(Account {
                                             account_id: account_id.clone(),
                                             seed_phrase: Some(mnemonic.to_string()),

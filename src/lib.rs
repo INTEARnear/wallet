@@ -19,7 +19,10 @@ pub mod utils;
 use crate::components::Layout;
 use crate::contexts::rpc_context::provide_rpc_context;
 use crate::pages::{
-    settings::{ConnectedAppsSettings, DeveloperSettings, PreferencesSettings, SecuritySettings},
+    settings::{
+        ConnectedAppsSettings, DeveloperSettings, PreferencesSettings, SecurityLogPage,
+        SecuritySettings,
+    },
     AutoImportSecretKey, Connect, Explore, History, Home, Login, SendToken, SendTransactions,
     Settings, SignMessage, Swap, TokenDetails, UnwrapToken, WrapToken,
 };
@@ -66,6 +69,7 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("") view=() />
                         <Route path=path!("/security") view=SecuritySettings />
                         <Route path=path!("/security/connected-apps") view=ConnectedAppsSettings />
+                        <Route path=path!("/security/security-log") view=SecurityLogPage />
                         <Route path=path!("/preferences") view=PreferencesSettings />
                         <Route path=path!("/developer") view=DeveloperSettings />
                     </ParentRoute>

@@ -9,6 +9,7 @@ use crate::{
     components::DangerConfirmInput,
     contexts::{
         accounts_context::AccountsContext,
+        security_log_context::add_security_log,
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
 };
@@ -114,6 +115,10 @@ pub fn Login() -> impl IntoView {
                                         set_error.set(Some("No account selected".to_string()));
                                         return;
                                     };
+                                    add_security_log(
+                                        format!("Added full access key on /login with public key {public_key}, typed 'CONFIRM'"),
+                                        account_id.clone(),
+                                    );
                                     set_is_loading.set(true);
                                     set_error.set(None);
                                     let action = Action::AddKey(

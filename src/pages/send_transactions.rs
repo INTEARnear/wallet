@@ -22,6 +22,7 @@ use crate::{
         connected_apps_context::{
             action_attaches_deposit, is_dangerous_action, ConnectedAppsContext,
         },
+        security_log_context::add_security_log,
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
     utils::{WalletSelectorAccessKeyPermission, WalletSelectorAction, WalletSelectorTransaction},
@@ -647,6 +648,27 @@ pub fn SendTransactions() -> impl IntoView {
                 .expect("Failed to send message");
             return;
         }
+        add_security_log(
+            format!(
+                "Sent{} transactions on /send-transactions from {}: {}",
+                if has_dangerous_actions.get_untracked() {
+                    if is_confirmed.get_untracked() {
+                        " dangerous (typed 'CONFIRM')"
+                    } else {
+                        " dangerous (not typed 'CONFIRM')"
+                    }
+                } else {
+                    ""
+                },
+                origin.get_untracked(),
+                if request_data.transactions.len() > 5000 {
+                    format!("{}...", &request_data.transactions[..5000])
+                } else {
+                    request_data.transactions.clone()
+                }
+            ),
+            request_data.account_id.clone(),
+        );
 
         let (first_details_tx, first_transaction) = transactions.remove(0);
         let rest_transactions = transactions

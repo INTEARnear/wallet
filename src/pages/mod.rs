@@ -1,7 +1,7 @@
 mod auto_import_secret_key;
 mod connect;
 mod explore;
-mod history;
+pub mod history;
 pub mod home;
 mod login;
 pub mod not_found;

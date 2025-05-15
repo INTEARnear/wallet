@@ -12,6 +12,7 @@ use web_sys::js_sys::Date;
 use crate::contexts::{
     accounts_context::AccountsContext,
     connected_apps_context::{ConnectedApp, ConnectedAppsContext},
+    security_log_context::add_security_log,
     transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
 };
 
@@ -62,6 +63,10 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
             .cloned();
 
         if let Some(app) = app {
+            add_security_log(
+                format!("Logged out of {app:?} on /logout (NOTE: some logouts made on dapp side might not be displayed on this page)"),
+                app.account_id.clone(),
+            );
             let action = Action::DeleteKey(Box::new(DeleteKeyAction {
                 public_key: public_key.clone(),
             }));

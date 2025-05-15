@@ -3,7 +3,7 @@ use near_min_api::types::{near_crypto::SecretKey, AccountId};
 use serde::{Deserialize, Serialize};
 use web_sys::window;
 
-use super::network_context::Network;
+use super::{network_context::Network, security_log_context::add_security_log};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Account {
@@ -68,6 +68,14 @@ pub fn provide_accounts_context() {
     // Save to localStorage whenever accounts change
     Effect::new(move || {
         save_accounts(&accounts.get());
+    });
+
+    let selected_account_id_memo = Memo::new(move |_| accounts.get().selected_account_id.clone());
+
+    Effect::new(move || {
+        if let Some(account_id) = selected_account_id_memo.get() {
+            add_security_log("Wallet opened".to_string(), account_id.clone());
+        }
     });
 
     provide_context(AccountsContext {

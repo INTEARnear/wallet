@@ -9,11 +9,13 @@ mod connected_apps;
 mod developer;
 mod preferences;
 mod security;
+mod security_log;
 
 pub use connected_apps::ConnectedAppsSettings;
 pub use developer::DeveloperSettings;
 pub use preferences::PreferencesSettings;
 pub use security::SecuritySettings;
+pub use security_log::SecurityLogPage;
 
 #[component]
 pub fn Settings() -> impl IntoView {

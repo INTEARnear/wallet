@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::contexts::accounts_context::AccountsContext;
+use crate::contexts::{accounts_context::AccountsContext, security_log_context::add_security_log};
 use leptos::prelude::*;
 use leptos_icons::*;
 use leptos_router::components::A;
@@ -11,6 +11,17 @@ pub fn SecuritySettings() -> impl IntoView {
     let (show_secrets, set_show_secrets) = signal(false);
     let (copied_seed, set_copied_seed) = signal(false);
     let (copied_key, set_copied_key) = signal(false);
+
+    let show_secrets_memo = Memo::new(move |_| show_secrets.get());
+
+    Effect::new(move || {
+        if show_secrets_memo.get() {
+            add_security_log(
+                "Shown secrets on /settings/security".to_string(),
+                accounts.get_untracked().selected_account_id.unwrap(),
+            );
+        }
+    });
 
     let copy_seed = move |_| {
         if let Some(account) = accounts
@@ -55,6 +66,17 @@ pub fn SecuritySettings() -> impl IntoView {
                     <div class="flex items-center gap-3">
                         <Icon icon=icondata::LuAppWindow width="20" height="20" />
                         <span>Connected Apps</span>
+                    </div>
+                    <Icon icon=icondata::LuChevronRight width="20" height="20" />
+                </A>
+
+                <A
+                    href="/settings/security/security-log"
+                    attr:class="flex items-center justify-between cursor-pointer p-4 rounded-lg bg-neutral-900 hover:bg-neutral-800 transition-colors"
+                >
+                    <div class="flex items-center gap-3">
+                        <Icon icon=icondata::LuShieldCheck width="20" height="20" />
+                        <span>Security Log</span>
                     </div>
                     <Icon icon=icondata::LuChevronRight width="20" height="20" />
                 </A>

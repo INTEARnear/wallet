@@ -779,6 +779,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "deli"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d13a39352104a883177490e79529b487edd8b3b8188f1dbfe546b2d87ff377a9"
+dependencies = [
+ "deli-derive",
+ "idb",
+ "serde",
+ "serde-wasm-bindgen",
+ "thiserror 2.0.12",
+]
+
+[[package]]
+name = "deli-derive"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d5ad1265f55f6034cd548b258c8fb419e6f2dab3afe73acac549a77b73cdbcd2"
+dependencies = [
+ "darling",
+ "ident_case",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.100",
+]
+
+[[package]]
 name = "deranged"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1661,6 +1687,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "idb"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3afe8830d5802f769dc0be20a87f9f116798c896650cb6266eb5c19a3c109eed"
+dependencies = [
+ "js-sys",
+ "num-traits",
+ "thiserror 1.0.69",
+ "tokio",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "ident_case"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1721,6 +1761,7 @@ dependencies = [
  "codee",
  "console_error_panic_hook",
  "console_log",
+ "deli",
  "dotenvy_macro",
  "ed25519-dalek",
  "futures-channel",

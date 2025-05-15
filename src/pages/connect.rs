@@ -15,6 +15,7 @@ use crate::contexts::{
     accounts_context::AccountsContext,
     connected_apps_context::{ConnectedApp, ConnectedAppsContext},
     network_context::Network,
+    security_log_context::add_security_log,
     transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
 };
 
@@ -96,7 +97,6 @@ struct LoginBridgeRequest {
 
 #[component]
 pub fn Connect() -> impl IntoView {
-    log::info!("Mounting Connect component");
     let (loading, set_loading) = signal(true);
     let (request_data, set_request_data) = signal::<Option<SignInRequest>>(None);
     let (origin, set_origin) = signal::<String>("*".to_string());
@@ -263,7 +263,7 @@ pub fn Connect() -> impl IntoView {
                     }
                 }
                 set_apps.update(|apps| {
-                    apps.apps.push(ConnectedApp {
+                    let app = ConnectedApp {
                         account_id: selected_account.clone(),
                         public_key: request_data.public_key.clone(),
                         requested_contract_id: match request_data.contract_id.as_deref() {
@@ -298,7 +298,12 @@ pub fn Connect() -> impl IntoView {
                         autoconfirm_all: false,
                         logged_out_at: None,
                         logout_key: logout_key.clone(),
-                    });
+                    };
+                    add_security_log(
+                        format!("Connected to {app:?} on /connect"),
+                        selected_account.clone(),
+                    );
+                    apps.apps.push(app);
                 });
 
                 // Continue with function call key addition if needed
