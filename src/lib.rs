@@ -26,6 +26,7 @@ use crate::pages::{
 
 #[component]
 pub fn App() -> impl IntoView {
+    let _ = window().navigator().storage().persist().unwrap();
     provide_meta_context();
     provide_config_context();
     provide_accounts_context();
