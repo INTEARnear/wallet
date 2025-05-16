@@ -549,8 +549,8 @@ fn AccountCreationForm(
                     }
                 }
                 Err(e) => {
-                    log::error!("Failed to create account: {}", e);
-                    set_error.set(Some(format!("Failed to create account: {}", e)));
+                    log::error!("Failed to create account: {e}");
+                    set_error.set(Some(format!("Failed to create account: {e}")));
                 }
             }
             set_is_creating.set(false);
@@ -929,7 +929,7 @@ pub fn AccountSelector(
                                                                     if account_id_str.len() > 24 {
                                                                         let first = &account_id_str[..8];
                                                                         let last = &account_id_str[account_id_str.len() - 8..];
-                                                                        format!("{}...{}", first, last)
+                                                                        format!("{first}...{last}")
                                                                     } else {
                                                                         account_id_str.clone()
                                                                     }

@@ -36,9 +36,9 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
         0.0
     };
     let price_change_formatted = if price_change > 0.0 {
-        format!("+{:.2}%", price_change)
+        format!("+{price_change:.2}%")
     } else {
-        format!("{:.2}%", price_change)
+        format!("{price_change:.2}%")
     };
 
     let token_account_id = token_info.account_id.clone();
@@ -189,7 +189,7 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                                 } else {
                                     "rgb(156 163 175)"
                                 };
-                                format!("color: {}", color)
+                                format!("color: {color}")
                             }
                         >
                             {price_change_formatted}

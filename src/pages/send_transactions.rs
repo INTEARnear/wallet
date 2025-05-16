@@ -888,13 +888,11 @@ pub fn SendTransactions() -> impl IntoView {
                                         let base_classes = "w-full px-6 py-3.5 text-white font-medium rounded-xl transition-all duration-200 shadow-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed";
                                         if has_dangerous_actions.get() {
                                             format!(
-                                                "{} bg-red-600 hover:bg-red-700 shadow-red-500/10 hover:shadow-red-500/20 disabled:hover:bg-red-600 disabled:hover:shadow-red-500/10",
-                                                base_classes,
+                                                "{base_classes} bg-red-600 hover:bg-red-700 shadow-red-500/10 hover:shadow-red-500/20 disabled:hover:bg-red-600 disabled:hover:shadow-red-500/10",
                                             )
                                         } else {
                                             format!(
-                                                "{} bg-blue-600 hover:bg-blue-700 shadow-blue-500/10 hover:shadow-blue-500/20 disabled:hover:bg-blue-600 disabled:hover:shadow-blue-500/10",
-                                                base_classes,
+                                                "{base_classes} bg-blue-600 hover:bg-blue-700 shadow-blue-500/10 hover:shadow-blue-500/20 disabled:hover:bg-blue-600 disabled:hover:shadow-blue-500/10",
                                             )
                                         }
                                     }

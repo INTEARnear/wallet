@@ -99,9 +99,9 @@ pub fn TokenBalanceList() -> impl IntoView {
                                         0.0
                                     };
                                     let price_change_formatted = if price_change > 0.0 {
-                                        format!("+{:.2}%", price_change)
+                                        format!("+{price_change:.2}%")
                                     } else {
-                                        format!("{:.2}%", price_change)
+                                        format!("{price_change:.2}%")
                                     };
                                     let token_id = match &token.token.account_id {
                                         crate::contexts::tokens_context::Token::Near => {

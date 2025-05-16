@@ -210,7 +210,7 @@ async fn get_transactions(
                     tracing::error!("Failed to fetch signer transactions: {}", e);
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to fetch signer transactions: {}", e),
+                        format!("Failed to fetch signer transactions: {e}"),
                     )
                 })?;
             tracing::debug!("Successfully fetched signer transactions");
@@ -221,7 +221,7 @@ async fn get_transactions(
                     tracing::error!("Failed to parse signer transactions: {}", e);
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to parse signer transactions: {}", e),
+                        format!("Failed to parse signer transactions: {e}"),
                     )
                 })
         },
@@ -238,7 +238,7 @@ async fn get_transactions(
                     tracing::error!("Failed to fetch receiver transactions: {}", e);
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to fetch receiver transactions: {}", e),
+                        format!("Failed to fetch receiver transactions: {e}"),
                     )
                 })?;
             tracing::debug!("Successfully fetched receiver transactions");
@@ -249,7 +249,7 @@ async fn get_transactions(
                     tracing::error!("Failed to parse receiver transactions: {}", e);
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to parse receiver transactions: {}", e),
+                        format!("Failed to parse receiver transactions: {e}"),
                     )
                 })
         }

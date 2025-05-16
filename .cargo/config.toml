@@ -1,0 +1,7 @@
+[target.'cfg(all(debug_assertions, target_os="linux"))']
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=/usr/bin/mold", "-Z", "share-generics=y", "-Z", "threads=8"]
+
+# Temporary fix for https://github.com/rust-rocksdb/rust-rocksdb/issues/991
+[env]
+CXXFLAGS = "-include cstdint"

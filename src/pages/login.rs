@@ -145,7 +145,7 @@ pub fn Login() -> impl IntoView {
                                             }
                                             Err(e) => {
                                                 set_error
-                                                    .set(Some(format!("Failed to add access key: {}", e)));
+                                                    .set(Some(format!("Failed to add access key: {e}")));
                                                 set_is_loading.set(false);
                                             }
                                         }

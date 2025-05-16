@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use deli::{CursorDirection, Database, Model};
 use futures_channel::oneshot;
-use leptos::{prelude::*, task::spawn_local};
+use leptos::task::spawn_local;
 use near_min_api::types::AccountId;
 use serde::{Deserialize, Serialize};
 
@@ -25,6 +25,7 @@ async fn setup_db() -> Result<Database, deli::Error> {
 
     match db {
         Ok(db) => Ok(db),
+
         Err(e) => {
             log::error!("Failed to open database: {e:?}");
             Err(e)
@@ -57,7 +58,7 @@ async fn add_log_entry(message: String, account: AccountId) -> Result<u32, deli:
                     }
                 },
                 Err(e) => {
-                    log::error!("Failed to add log: {:?}", e);
+                    log::error!("Failed to add log: {e:?}");
                     Err(e)
                 }
             }

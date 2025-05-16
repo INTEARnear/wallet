@@ -122,7 +122,7 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                         "user_logout_public_key": account.secret_key.public_key(),
                         "app_public_key": public_key,
                         "nonce": nonce,
-                        "signature": app.logout_key.sign(format!("logout|{}|{}|{}", nonce, account_id, public_key).as_bytes())
+                        "signature": app.logout_key.sign(format!("logout|{nonce}|{account_id}|{public_key}").as_bytes())
                     }))
                     .send();
                     let (_tx_details, _logout_response) =

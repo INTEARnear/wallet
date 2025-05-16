@@ -124,7 +124,7 @@ pub fn History() -> impl IntoView {
                         let now = Local::now();
                         let today = now.date_naive();
                         let yesterday = today.pred_opt().unwrap();
-                        for tx in (*transactions).clone().into_iter() {
+                        for tx in transactions.clone().into_iter() {
                             let timestamp = tx.block_timestamp_nanosec / 1_000_000_000;
                             let datetime = ChronoDateTime::from_timestamp(timestamp as i64, 0)
                                 .unwrap();
@@ -1010,7 +1010,7 @@ fn add_ft_actions(
                                     <div class="flex items-center gap-2">
                                         {move || {
                                             let new_owner_id = transfer.new_owner_id.clone();
-                                            if let Some(Ok(metadata)) = metadata.get().as_deref() {
+                                            if let Some(Ok(metadata)) = metadata.get() {
                                                 let metadata = metadata.clone();
                                                 view! {
                                                     <img
@@ -1074,7 +1074,7 @@ fn add_ft_actions(
                             actions.push(view! {
                                 <div class="flex items-center gap-2">
                                     {move || {
-                                        if let Some(Ok(metadata)) = metadata.get().as_deref() {
+                                        if let Some(Ok(metadata)) = metadata.get() {
                                             view! {
                                                 <img
                                                     src=metadata.icon.clone()
@@ -1143,7 +1143,7 @@ fn add_ft_actions(
                                 view! {
                                     <div class="flex items-center gap-2">
                                         {move || {
-                                            if let Some(Ok(metadata)) = metadata.get().as_deref() {
+                                            if let Some(Ok(metadata)) = metadata.get() {
                                                 view! {
                                                     <img
                                                         src=metadata.icon.clone()
@@ -1214,7 +1214,7 @@ fn add_ft_actions(
                                 view! {
                                     <div class="flex items-center gap-2">
                                         {move || {
-                                            if let Some(Ok(metadata)) = metadata.get().as_deref() {
+                                            if let Some(Ok(metadata)) = metadata.get() {
                                                 view! {
                                                     <img
                                                         src=metadata.icon.clone()
@@ -1309,7 +1309,7 @@ fn add_nft_actions(
                                     <div class="flex items-center gap-2">
                                         {move || {
                                             let new_owner_id = transfer.new_owner_id.clone();
-                                            if let Some(Ok(metadata)) = metadata.get().as_deref() {
+                                            if let Some(Ok(metadata)) = metadata.get() {
                                                 let metadata = metadata.clone();
                                                 view! {
                                                     <img
@@ -1366,7 +1366,7 @@ fn add_nft_actions(
                             actions.push(view! {
                                 <div class="flex items-center gap-2">
                                     {move || {
-                                        if let Some(Ok(metadata)) = metadata.get().as_deref() {
+                                        if let Some(Ok(metadata)) = metadata.get() {
                                             view! {
                                                 <img
                                                     src=metadata.icon.clone()
@@ -1429,7 +1429,7 @@ fn add_nft_actions(
                                 view! {
                                     <div class="flex items-center gap-2">
                                         {move || {
-                                            if let Some(Ok(metadata)) = metadata.get().as_deref() {
+                                            if let Some(Ok(metadata)) = metadata.get() {
                                                 view! {
                                                     <img
                                                         src=metadata.icon.clone()
@@ -1493,7 +1493,7 @@ fn add_nft_actions(
                                 view! {
                                     <div class="flex items-center gap-2">
                                         {move || {
-                                            if let Some(Ok(metadata)) = metadata.get().as_deref() {
+                                            if let Some(Ok(metadata)) = metadata.get() {
                                                 view! {
                                                     <img
                                                         src=metadata.icon.clone()

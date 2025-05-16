@@ -1,6 +1,5 @@
 use futures_util::future::join_all;
 use lazy_static::lazy_static;
-use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 

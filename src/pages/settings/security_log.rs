@@ -22,7 +22,7 @@ pub fn SecurityLogPage() -> impl IntoView {
                 set_has_more.set(new_logs.len() == PER_PAGE as usize);
                 set_logs.update(|logs| logs.extend(new_logs));
             }
-            Err(e) => log::error!("Failed to load logs: {}", e),
+            Err(e) => log::error!("Failed to load logs: {e}"),
         }
     });
     let is_loading = load_more.pending();

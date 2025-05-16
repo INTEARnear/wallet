@@ -6,13 +6,13 @@ authors = ["Slime <4sliman4@gmail.com>"]
 license = "AGPL-3.0-or-later"
 
 [dependencies]
-leptos = { version = "0.7.8", features = ["csr", "nightly"] }
-leptos_meta = { version = "0.7.8" }
-leptos_router = { version = "0.7.8", features = ["nightly"] }
+leptos = { version = "0.8.2", features = ["csr", "nightly"] }
+leptos_meta = { version = "0.8.2" }
+leptos_router = { version = "0.8.2", features = ["nightly"] }
 console_log = "1.0.0"
 log = "0.4.27"
 console_error_panic_hook = "0.1.7"
-leptos_icons = "0.5.0"
+leptos_icons = "0.6.1"
 icondata = { version = "0.5.0", features = [
     "lucide",
 ], default-features = false }
@@ -46,7 +46,8 @@ base64 = "0.22.1"
 bip39 = { version = "2.1.0", features = ["rand"] }
 ed25519-dalek = { version = "2.1.1", default-features = false }
 slipped10 = "0.4.6"
-leptos-use = { version = "0.15.7", features = ["use_websocket"] }
+# leptos-use = { version = "0.16.0", features = ["use_websocket"] }
+leptos-use = { git = "https://github.com/DerKnerd/leptos-use", rev = "bc0a9baf09ac23d42fd2dc6bb32ef4f26d6bad7c" }
 codee = "0.3.0"
 json-filter = "0.1.1"
 dotenvy_macro = "0.15.7"

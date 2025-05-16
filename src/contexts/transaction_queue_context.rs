@@ -147,8 +147,8 @@ pub fn provide_transaction_queue_context() {
                         Ok(key) => key,
                         Err(e) => {
                             // TODO: Handle revoked / limited access keys better
-                            let error = format!("Failed to get access key: {}", e);
-                            log::error!("{}", error);
+                            let error = format!("Failed to get access key: {e}");
+                            log::error!("{error}");
                             set_queue.update(|q| {
                                 q[tx_current_index].stage = TransactionStage::Failed(error)
                             });
@@ -161,8 +161,8 @@ pub fn provide_transaction_queue_context() {
                         Err(e) => {
                             // Should never happen unless all RPCs are unstable garbage, so no
                             // need to handle this gracefully
-                            let error = format!("Failed to fetch block hash: {}", e);
-                            log::error!("{}", error);
+                            let error = format!("Failed to fetch block hash: {e}");
+                            log::error!("{error}");
                             set_queue.update(|q| {
                                 q[tx_current_index].stage = TransactionStage::Failed(error)
                             });
@@ -184,8 +184,8 @@ pub fn provide_transaction_queue_context() {
                     let pending_tx = match rpc_client.send_tx(signed_tx).await {
                         Ok(tx) => tx,
                         Err(e) => {
-                            let error = format!("Failed to send transaction: {}", e);
-                            log::error!("{}", error);
+                            let error = format!("Failed to send transaction: {e}");
+                            log::error!("{error}");
                             set_queue.update(|q| {
                                 q[tx_current_index].stage = TransactionStage::Failed(error);
                                 for tx in q.iter_mut() {
@@ -216,8 +216,8 @@ pub fn provide_transaction_queue_context() {
                                 .update(|q| q[tx_current_index].stage = TransactionStage::Doomslug);
                         }
                         Err(e) => {
-                            let error = format!("Transaction failed to execute: {}", e);
-                            log::error!("{}", error);
+                            let error = format!("Transaction failed to execute: {e}");
+                            log::error!("{error}");
                             set_queue.update(|q| {
                                 q[tx_current_index].stage = TransactionStage::Failed(error);
                                 for tx in q.iter_mut() {
@@ -265,8 +265,8 @@ pub fn provide_transaction_queue_context() {
                             Err(e) => {
                                 // Should never happen unless 33% of total NEAR Protocol stake
                                 // is down or something is wrong with all RPCs
-                                let error = format!("Transaction failed to finalize: {}", e);
-                                log::error!("{}", error);
+                                let error = format!("Transaction failed to finalize: {e}");
+                                log::error!("{error}");
                                 set_queue.update(|q| {
                                     q[tx_current_index].stage = TransactionStage::Failed(error)
                                 });

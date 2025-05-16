@@ -160,7 +160,7 @@ pub fn format_account_id_no_hide(account_id: &AccountIdRef) -> AnyView {
     let account_id_str = if account_id.len() > 24 {
         let first = &account_id.as_str()[..8];
         let last = &account_id.as_str()[account_id.len() - 8..];
-        format!("{}...{}", first, last)
+        format!("{first}...{last}")
     } else {
         account_id.to_string()
     };
@@ -246,7 +246,7 @@ async fn get_user_badge(account_id: AccountId) -> Option<impl Fn() -> AnyView> {
 
 #[cached]
 async fn get_user_badge_inner(account_id: AccountId) -> Option<Badge> {
-    let url = format!("https://imminent.build/api/users/{}/badges", account_id);
+    let url = format!("https://imminent.build/api/users/{account_id}/badges");
     match reqwest::get(&url).await {
         Ok(response) => match response.json::<serde_json::Value>().await {
             Ok(data) => data
@@ -312,7 +312,7 @@ impl Display for Nep297DeserializationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Nep297DeserializationError::Deserialization(e) => {
-                write!(f, "Deserialization error: {}", e)
+                write!(f, "Deserialization error: {e}")
             }
             Nep297DeserializationError::NoPrefix => write!(f, "No 'EVENT_JSON:' prefix"),
         }
@@ -417,7 +417,7 @@ impl FtTransferLog {
         }
         let amount = parts[0]
             .parse::<Balance>()
-            .map_err(|e| format!("Failed to parse transfer amount: {}", e))?;
+            .map_err(|e| format!("Failed to parse transfer amount: {e}"))?;
         let parts: Vec<&str> = parts[1].split(" to ").collect();
         if parts.len() < 2 {
             return Err("Log doesn't contain ' to '".to_string());
@@ -427,10 +427,10 @@ impl FtTransferLog {
         }
         let old_owner_id = parts[0]
             .parse()
-            .map_err(|e| format!("Failed to parse old owner ID: {}", e))?;
+            .map_err(|e| format!("Failed to parse old owner ID: {e}"))?;
         let new_owner_id = parts[1]
             .parse()
-            .map_err(|e| format!("Failed to parse new owner ID: {}", e))?;
+            .map_err(|e| format!("Failed to parse new owner ID: {e}"))?;
         Ok(Self(vec![FtTransferEvent {
             old_owner_id,
             new_owner_id,

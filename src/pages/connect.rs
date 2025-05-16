@@ -150,7 +150,7 @@ pub fn Connect() -> impl IntoView {
             serde_wasm_bindgen::from_value::<serde_json::Value>(event.data())
         );
         if let Ok(message) = serde_wasm_bindgen::from_value::<ReceiveMessage>(event.data()) {
-            log::info!("Parsed message {:?}", message);
+            log::info!("Parsed message {message:?}");
             match message {
                 ReceiveMessage::SignIn { data } => {
                     set_origin(event.origin());
@@ -277,7 +277,7 @@ pub fn Connect() -> impl IntoView {
                                         None
                                     }
                                 } else {
-                                    log::error!("Invalid contract ID: {}", contract_id);
+                                    log::error!("Invalid contract ID: {contract_id}");
                                     None
                                 }
                             }
@@ -336,7 +336,7 @@ pub fn Connect() -> impl IntoView {
 
                     match details_receiver.await {
                         Ok(details) => {
-                            log::info!("Transaction details: {:?}", details);
+                            log::info!("Transaction details: {details:?}");
                             if details.is_ok_and(|d| d.final_execution_outcome.is_some()) {
                                 let accounts = vec![WalletSelectorAccount {
                                     account_id: selected_account,
@@ -471,8 +471,7 @@ pub fn Connect() -> impl IntoView {
                                             let method_names = request.method_names.unwrap_or_default();
                                             let label = if method_names.is_empty() {
                                                 format!(
-                                                    "Allow calling {} without confirmation",
-                                                    contract_id,
+                                                    "Allow calling {contract_id} without confirmation",
                                                 )
                                             } else {
                                                 format!(
