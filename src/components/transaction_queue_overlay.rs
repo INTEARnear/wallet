@@ -125,7 +125,7 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
 
         <Show
             when=move || show_modal.get() && !queue.read().is_empty()
-            attr:class="fixed inset-0 bg-black/50 transition-opacity duration-200 z-50 text-white"
+            attr:class="fixed inset-0 bg-black/50 transition-opacity duration-200 z-100 text-white"
             on:click=move |_| set_show_modal.set(false)
         >
             <div>

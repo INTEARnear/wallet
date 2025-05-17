@@ -323,6 +323,7 @@ pub fn provide_transaction_queue_context() {
                                 },
                                 near_min_api::Error::JsonRpcDeserialization(e, res) => format!("Failed to parse JSON RPC response: {e}\n\nResponse: {}", serde_json::to_string_pretty(&res).unwrap()),
                                 near_min_api::Error::NoRpcUrls => "RPC configuration error: No working RPCs found. Please add more RPCs in settings".to_string(),
+                                near_min_api::Error::OtherQueryError(s) => format!("Unhandled execution error: {s}"),
                             };
                             log::error!("Failed to send transaction: {error}");
                             set_queue.update(|q| {

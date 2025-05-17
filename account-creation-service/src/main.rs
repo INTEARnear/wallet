@@ -9,8 +9,8 @@ use dotenv::dotenv;
 use near_min_api::{
     types::{
         near_crypto::{PublicKey, SecretKey},
-        AccountId, Action, Finality, FunctionCallAction, NearGas, NearToken, SignedTransaction,
-        Transaction, TransactionV0, TxExecutionStatus,
+        AccountId, Action, FinalExecutionStatus, Finality, FunctionCallAction, NearGas, NearToken,
+        SignedTransaction, Transaction, TransactionV0, TxExecutionStatus,
     },
     QueryFinality, RpcClient,
 };
@@ -285,10 +285,44 @@ async fn create_account(
                 "Transaction not included".to_string(),
             )
         })?;
+    let tx = pending_tx.fetch_details().await;
 
-    tracing::info!("Successfully created account for {}", payload.account_id);
-    Ok(Json(CreateAccountResponse {
-        success: true,
-        message: "Account created successfully".to_string(),
-    }))
+    match tx {
+        Ok(tx) => {
+            if let Some(outcome) = tx.final_execution_outcome {
+                match outcome.status {
+                    FinalExecutionStatus::SuccessValue(_) => {
+                        tracing::info!("Successfully created account for {}", payload.account_id);
+                        Ok(Json(CreateAccountResponse {
+                            success: true,
+                            message: format!(
+                                "Account created successfully in transaction {}",
+                                outcome.transaction.hash
+                            ),
+                        }))
+                    }
+                    _ => {
+                        tracing::error!("Transaction failed: {:?}", outcome.status);
+                        Ok(Json(CreateAccountResponse {
+                            success: false,
+                            message: format!("Transaction failed: {:?}", outcome.status),
+                        }))
+                    }
+                }
+            } else {
+                tracing::error!("Transaction outcome not found");
+                Ok(Json(CreateAccountResponse {
+                    success: false,
+                    message: "Transaction outcome not found".to_string(),
+                }))
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch transaction details: {}", e);
+            Ok(Json(CreateAccountResponse {
+                success: false,
+                message: format!("Failed to fetch transaction details: {e}"),
+            }))
+        }
+    }
 }

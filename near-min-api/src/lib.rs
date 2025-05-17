@@ -298,6 +298,12 @@ impl RpcClient {
         let response: QueryResponse = self.request(rpc_method, rpc_params).await?;
         match response.kind {
             QueryResponseKind::AccessKey(access_key) => Ok(access_key),
+            QueryResponseKind::CallResult(result) => match result.result_or_error {
+                ResultOrError::Result(result) => {
+                    unreachable!("Unexpected query response kind: result {result:#X?}")
+                }
+                ResultOrError::Error(error) => Err(Error::OtherQueryError(error)),
+            },
             _ => unreachable!("Unexpected query response kind: {:?}", response.kind),
         }
     }
@@ -477,4 +483,6 @@ pub enum Error {
     JsonRpcDeserialization(serde_json::Error, serde_json::Value),
     #[error("No RPC URLs provided in RpcClient")]
     NoRpcUrls,
+    #[error("Query error: {0:?}")]
+    OtherQueryError(String),
 }

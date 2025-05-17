@@ -1,11 +1,17 @@
+use std::future::Future;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::pin::Pin;
 use std::time::Duration;
 
 use bip39::Mnemonic;
+use futures_channel::oneshot::Canceled;
 use futures_timer::Delay;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_router::components::A;
+use near_min_api::types::{
+    AccessKey, AccessKeyPermission, Action, AddKeyAction, CreateAccountAction, FinalExecutionStatus,
+};
 use near_min_api::{
     types::{
         near_crypto::{ED25519SecretKey, SecretKey},
@@ -18,6 +24,7 @@ use web_sys::KeyboardEvent;
 
 use crate::contexts::network_context::Network;
 use crate::contexts::security_log_context::add_security_log;
+use crate::contexts::transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext};
 use crate::contexts::{
     account_selector_swipe_context::AccountSelectorSwipeContext,
     accounts_context::{Account, AccountsContext},
@@ -385,6 +392,10 @@ fn AccountCreationForm(
     let (is_hovered, set_is_hovered) = signal(false);
     let (network, set_network) = signal(Network::Mainnet);
     let (suffix_clicks, set_suffix_clicks) = signal(0);
+    let (account_to_sign_with, set_account_to_sign_with) = signal(None);
+    let TransactionQueueContext {
+        add_transaction, ..
+    } = expect_context::<TransactionQueueContext>();
 
     let check_account = move |name: String| {
         set_error.set(None);
@@ -394,17 +405,40 @@ fn AccountCreationForm(
         }
         set_is_loading.set(true);
 
-        if name.contains('.') {
-            set_error.set(Some("Subaccounts are not supported".to_string()));
+        let network_suffix = match network.get() {
+            Network::Mainnet => "near",
+            Network::Testnet => "testnet",
+        };
+        let (name, subaccount_of) = if let Some((name, subaccount_of)) = name.split_once('.') {
+            (
+                name.to_string(),
+                format!("{subaccount_of}.{network_suffix}"),
+            )
+        } else {
+            (name, network_suffix.to_string())
+        };
+
+        let account_to_sign_with = if subaccount_of == network_suffix {
+            None
+        } else if let Some(account) = accounts_context
+            .accounts
+            .get()
+            .accounts
+            .into_iter()
+            .find(|account| account.account_id == subaccount_of)
+        {
+            Some(account)
+        } else {
+            set_error.set(Some(format!(
+                "You can't create a subaccount of {subaccount_of} as it's not your account"
+            )));
             set_is_valid.set(None);
             set_is_loading.set(false);
             return;
-        }
-
-        let full_name = match network.get() {
-            Network::Mainnet => format!("{name}.near"),
-            Network::Testnet => format!("{name}.testnet"),
         };
+        set_account_to_sign_with.set(account_to_sign_with);
+
+        let full_name = format!("{name}.{subaccount_of}");
         let Some(account_id) = full_name.parse::<AccountId>().ok() else {
             set_error.set(Some("Invalid account name format".to_string()));
             set_is_valid.set(None);
@@ -422,7 +456,7 @@ fn AccountCreationForm(
                 .await
                 .is_ok();
 
-            if name == account_name.get_untracked() {
+            if account_id == format!("{}.{network_suffix}", account_name.get_untracked()) {
                 if account_exists {
                     set_error.set(Some("Account already exists".to_string()));
                     set_is_valid.set(None);
@@ -461,91 +495,150 @@ fn AccountCreationForm(
 
         let rpc_client = network.get_untracked().default_rpc_client();
         let current_network = network.get_untracked();
-        let account_creation_service_addr = match current_network {
-            Network::Mainnet => dotenvy_macro::dotenv!("MAINNET_ACCOUNT_CREATION_SERVICE_ADDR"),
-            Network::Testnet => dotenvy_macro::dotenv!("TESTNET_ACCOUNT_CREATION_SERVICE_ADDR"),
-        };
 
         spawn_local(async move {
             set_is_creating.set(true);
             set_error.set(None);
 
-            let client = reqwest::Client::new();
-            let response = client
-                .post(format!("{account_creation_service_addr}/create"))
-                .json(&serde_json::json!({
-                    "account_id": account_id.to_string(),
-                    "public_key": public_key.to_string(),
-                }))
-                .send()
-                .await;
+            let creation_future: Pin<Box<dyn Future<Output = Result<(), String>>>> =
+                if let Some(account_to_sign_with) = account_to_sign_with.get_untracked() {
+                    let actions = vec![
+                        Action::CreateAccount(CreateAccountAction {}),
+                        Action::AddKey(Box::new(AddKeyAction {
+                            public_key: public_key.clone(),
+                            access_key: AccessKey {
+                                nonce: 0,
+                                permission: AccessKeyPermission::FullAccess,
+                            },
+                        })),
+                    ];
 
-            match response {
-                Ok(resp) => {
-                    if let Ok(data) = resp.json::<serde_json::Value>().await {
-                        let success = data
-                            .get("success")
-                            .and_then(|s| s.as_bool())
-                            .unwrap_or(false);
-                        if success {
-                            // Verify account creation by checking access key with retries
-                            let mut attempts = 0;
-
-                            const MAX_ATTEMPTS: usize = 30;
-                            while attempts < MAX_ATTEMPTS {
-                                if attempts > 0 {
-                                    Delay::new(Duration::from_secs(1)).await;
-                                }
-
-                                match rpc_client
-                                    .get_access_key(
-                                        account_id.clone(),
-                                        public_key.clone(),
-                                        QueryFinality::Finality(Finality::Final),
-                                    )
-                                    .await
-                                {
-                                    Ok(AccessKeyView {
-                                        permission: AccessKeyPermissionView::FullAccess,
-                                        ..
-                                    }) => {
-                                        let mut accounts =
-                                            accounts_context.accounts.get_untracked();
-                                        add_security_log(
-                                            format!(
-                                                "Account created with private key {secret_key}"
-                                            ),
-                                            account_id.clone(),
-                                        );
-                                        accounts.accounts.push(Account {
-                                            account_id: account_id.clone(),
-                                            seed_phrase: Some(mnemonic.to_string()),
-                                            secret_key: secret_key.clone(),
-                                            network: current_network,
-                                        });
-                                        accounts.selected_account_id = Some(account_id);
-                                        accounts_context.set_accounts.set(accounts);
-                                        set_modal_state.set(ModalState::AccountList);
-                                        set_is_expanded(false);
-                                        break;
+                    let transaction_description = format!("Create account {account_id}");
+                    let (tx_details_rx, tx) = EnqueuedTransaction::create(
+                        transaction_description,
+                        account_to_sign_with.account_id.clone(),
+                        account_id.clone(),
+                        actions,
+                    );
+                    add_transaction.update(|txs| {
+                        txs.push(tx);
+                    });
+                    Box::pin(async move {
+                        let tx_details = match tx_details_rx.await {
+                            Ok(tx_details) => tx_details,
+                            Err(Canceled) => {
+                                return Err("Cancelled".to_string());
+                            }
+                        };
+                        let tx_details = match tx_details {
+                            Ok(tx_details) => tx_details,
+                            Err(e) => {
+                                return Err(format!("Failed to create account: {e}"));
+                            }
+                        };
+                        let Some(outcome) = tx_details.final_execution_outcome else {
+                            return Err("Transaction outcome not found".to_string());
+                        };
+                        match outcome.final_outcome.status {
+                            FinalExecutionStatus::SuccessValue(_) => Ok(()),
+                            _ => Err("Transaction failed".to_string()),
+                        }
+                    })
+                } else {
+                    let payload = serde_json::json!({
+                        "account_id": account_id.to_string(),
+                        "public_key": public_key.to_string(),
+                    });
+                    Box::pin(async move {
+                        let client = reqwest::Client::new();
+                        let account_creation_service_addr = match current_network {
+                            Network::Mainnet => {
+                                dotenvy_macro::dotenv!("MAINNET_ACCOUNT_CREATION_SERVICE_ADDR")
+                            }
+                            Network::Testnet => {
+                                dotenvy_macro::dotenv!("TESTNET_ACCOUNT_CREATION_SERVICE_ADDR")
+                            }
+                        };
+                        let response = client
+                            .post(format!("{account_creation_service_addr}/create"))
+                            .json(&payload)
+                            .send()
+                            .await;
+                        match response {
+                            Ok(resp) => {
+                                if let Ok(data) = resp.json::<serde_json::Value>().await {
+                                    let success = data
+                                        .get("success")
+                                        .and_then(|s| s.as_bool())
+                                        .unwrap_or(false);
+                                    if success {
+                                        Ok(())
+                                    } else {
+                                        Err(format!(
+                                            "Failed to create account: Server returned error: {}",
+                                            data.get("message")
+                                                .and_then(|s| s.as_str())
+                                                .unwrap_or("Unknown error")
+                                        ))
                                     }
-                                    _ => {
-                                        attempts += 1;
-                                        if attempts >= MAX_ATTEMPTS {
-                                            log::error!("Failed to create account: Couldn't verify by getting access key after 3 attempts");
-                                            set_error
-                                                .set(Some("Failed to create account".to_string()));
-                                        }
-                                    }
+                                } else {
+                                    Err("Failed to create account: Couldn't parse response"
+                                        .to_string())
                                 }
                             }
-                        } else {
-                            log::error!("Failed to create account: Server returned error");
-                            set_error.set(Some("Failed to create account".to_string()));
+                            Err(e) => Err(format!("Failed to create account: {e}")),
                         }
-                    } else {
-                        log::error!("Failed to create account: Couldn't parse response");
-                        set_error.set(Some("Failed to create account".to_string()));
+                    })
+                };
+
+            match creation_future.await {
+                Ok(()) => {
+                    // Verify account creation by checking access key with retries
+                    let mut attempts = 0;
+
+                    const MAX_ATTEMPTS: usize = 30;
+                    while attempts < MAX_ATTEMPTS {
+                        if attempts > 0 {
+                            Delay::new(Duration::from_secs(1)).await;
+                        }
+
+                        match rpc_client
+                            .get_access_key(
+                                account_id.clone(),
+                                public_key.clone(),
+                                QueryFinality::Finality(Finality::Final),
+                            )
+                            .await
+                        {
+                            Ok(AccessKeyView {
+                                permission: AccessKeyPermissionView::FullAccess,
+                                ..
+                            }) => {
+                                let mut accounts = accounts_context.accounts.get_untracked();
+                                add_security_log(
+                                    format!("Account created with private key {secret_key}"),
+                                    account_id.clone(),
+                                );
+                                accounts.accounts.push(Account {
+                                    account_id: account_id.clone(),
+                                    seed_phrase: Some(mnemonic.to_string()),
+                                    secret_key: secret_key.clone(),
+                                    network: current_network,
+                                });
+                                accounts.selected_account_id = Some(account_id);
+                                accounts_context.set_accounts.set(accounts);
+                                set_modal_state.set(ModalState::AccountList);
+                                set_is_expanded(false);
+                                break;
+                            }
+                            _ => {
+                                attempts += 1;
+                                if attempts >= MAX_ATTEMPTS {
+                                    log::error!("Failed to create account: Couldn't verify by getting access key after 3 attempts");
+                                    set_error.set(Some("Failed to create account".to_string()));
+                                }
+                            }
+                        }
                     }
                 }
                 Err(e) => {
