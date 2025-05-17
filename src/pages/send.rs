@@ -2,7 +2,7 @@ use crate::{
     contexts::{
         accounts_context::AccountsContext,
         rpc_context::RpcContext,
-        tokens_context::{Token, TokenContext},
+        tokens_context::{Token, TokenContext, TokenMetadata},
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
     utils::{
@@ -40,6 +40,7 @@ pub fn SendToken() -> impl IntoView {
     let (recipient_balance, set_recipient_balance) = signal(None);
     let (has_typed_recipient, set_has_typed_recipient) = signal(false);
     let (has_typed_amount, set_has_typed_amount) = signal(false);
+    let (recipient_warning, set_recipient_warning) = signal::<Option<String>>(None);
 
     let token = move || {
         tokens
@@ -90,6 +91,20 @@ pub fn SendToken() -> impl IntoView {
 
             if recipient_to_check == recipient.get_untracked() {
                 if account_exists {
+                    let is_token_contract = rpc_client
+                        .call::<TokenMetadata>(
+                            recipient_to_check.clone(),
+                            "ft_metadata",
+                            serde_json::json!({}),
+                            QueryFinality::Finality(Finality::None),
+                        )
+                        .await
+                        .is_ok();
+                    if is_token_contract {
+                        set_recipient_warning.set(Some("This is a token contract address, not someone's wallet address, sending tokens to it would likely result in asset loss".to_string()));
+                    } else {
+                        set_recipient_warning.set(None);
+                    }
                     let balance = match token.token.account_id {
                         Token::Near => rpc_client
                             .view_account(
@@ -314,8 +329,10 @@ pub fn SendToken() -> impl IntoView {
                                             if has_typed_recipient.get() {
                                                 if recipient_balance.get().is_none() {
                                                     "border: 2px solid rgb(239 68 68)"
-                                                } else if !is_loading_recipient.get() {
+                                                } else if !is_loading_recipient.get() && recipient_warning.get().is_none() {
                                                     "border: 2px solid rgb(34 197 94)"
+                                                } else if !is_loading_recipient.get() && recipient_warning.get().is_some() {
+                                                    "border: 2px solid rgb(234 179 8)"
                                                 } else {
                                                     "border: 2px solid rgb(55 65 81)"
                                                 }
@@ -331,6 +348,24 @@ pub fn SendToken() -> impl IntoView {
                                             check_recipient(value);
                                         }
                                     />
+                                    {move || {
+                                        if let Some(warning) = recipient_warning.get() {
+                                            view! {
+                                                <p class="text-yellow-500 text-sm mt-2 font-medium flex items-center gap-2">
+                                                    <Icon
+                                                        icon=icondata::LuAlertTriangle
+                                                        width="16"
+                                                        height="16"
+                                                        attr:class="min-w-4 min-h-4"
+                                                    />
+                                                    {warning}
+                                                </p>
+                                            }
+                                                .into_any()
+                                        } else {
+                                            ().into_any()
+                                        }
+                                    }}
                                     {move || {
                                         if let Some(recipient_balance) = recipient_balance.get() {
                                             view! {
