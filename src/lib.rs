@@ -44,7 +44,7 @@ pub fn App() -> impl IntoView {
     view! {
         <Html attr:lang="en" attr:dir="ltr" attr:data-theme="light" />
 
-        <Title text="Intear Wallet" />
+        <Title text="Intear Wallet Beta" />
 
         <Meta charset="UTF-8" />
         <Meta name="viewport" content="width=device-width, initial-scale=1.0" />

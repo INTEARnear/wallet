@@ -60,7 +60,7 @@ fn seed_phrase_to_key(seed_phrase: &str) -> Option<SecretKey> {
     get_secret_key_from_seed(path, seed_phrase, password)
 }
 
-fn mnemonic_to_key(mnemonic: Mnemonic) -> Option<SecretKey> {
+pub fn mnemonic_to_key(mnemonic: Mnemonic) -> Option<SecretKey> {
     let path = HD_PATH.parse().unwrap();
     let password = None;
     get_secret_key_from_mnemonic(path, mnemonic, password)

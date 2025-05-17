@@ -9,7 +9,7 @@ use reqwest::IntoUrl;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::time::Duration;
 use types::{
-    AccessKeyView, AccountView, BlockId, BlockReference, BlockView, CryptoHash,
+    AccessKeyList, AccessKeyView, AccountView, BlockId, BlockReference, BlockView, CryptoHash,
     FinalExecutionOutcomeView, FinalExecutionOutcomeWithReceiptView, Finality, HandlerError,
     QueryRequest, QueryResponse, QueryResponseKind, ResultOrError, RpcError, RpcErrorKind,
     RpcLightClientProofError, RpcQueryError, RpcReceiptError, RpcStatusError, RpcTransactionError,
@@ -302,16 +302,33 @@ impl RpcClient {
         }
     }
 
-    pub async fn fetch_block(&self, block_id: BlockReference) -> Result<BlockView, Error> {
+    pub async fn block(&self, block_id: BlockReference) -> Result<BlockView, Error> {
         let rpc_method = "block";
         let rpc_params = block_id;
         self.request(rpc_method, rpc_params).await
     }
 
     pub async fn fetch_recent_block_hash(&self) -> Result<CryptoHash, Error> {
-        self.fetch_block(BlockReference::Finality(Finality::Final))
+        self.block(BlockReference::Finality(Finality::Final))
             .await
             .map(|block| block.header.hash)
+    }
+
+    pub async fn view_access_key_list(
+        &self,
+        account_id: AccountId,
+        finality: QueryFinality,
+    ) -> Result<AccessKeyList, Error> {
+        let rpc_method = "query";
+        let rpc_params = Query {
+            request: QueryRequest::ViewAccessKeyList { account_id },
+            finality,
+        };
+        let response: QueryResponse = self.request(rpc_method, rpc_params).await?;
+        match response.kind {
+            QueryResponseKind::AccessKeyList(access_key_list) => Ok(access_key_list),
+            _ => unreachable!("Unexpected query response kind: {:?}", response.kind),
+        }
     }
 }
 

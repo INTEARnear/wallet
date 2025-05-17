@@ -1,16 +1,40 @@
 use std::time::Duration;
 
-use crate::contexts::{accounts_context::AccountsContext, security_log_context::add_security_log};
+use crate::{
+    components::account_selector::mnemonic_to_key,
+    contexts::{
+        accounts_context::AccountsContext,
+        rpc_context::RpcContext,
+        security_log_context::add_security_log,
+        transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
+    },
+};
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use leptos_icons::*;
 use leptos_router::components::A;
+use near_min_api::{
+    types::{
+        AccessKey, AccessKeyPermission, AccessKeyPermissionView, Action, AddKeyAction,
+        DeleteKeyAction, Finality,
+    },
+    QueryFinality,
+};
 
 #[component]
 pub fn SecuritySettings() -> impl IntoView {
-    let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+    let AccountsContext {
+        accounts,
+        set_accounts,
+    } = expect_context::<AccountsContext>();
+    let TransactionQueueContext {
+        add_transaction, ..
+    } = expect_context::<TransactionQueueContext>();
     let (show_secrets, set_show_secrets) = signal(false);
     let (copied_seed, set_copied_seed) = signal(false);
     let (copied_key, set_copied_key) = signal(false);
+    let (terminating_sessions, set_terminating_sessions) = signal(false);
+    let rpc_context = expect_context::<RpcContext>();
 
     let show_secrets_memo = Memo::new(move |_| show_secrets.get());
 
@@ -54,6 +78,86 @@ pub fn SecuritySettings() -> impl IntoView {
         }
     };
 
+    let terminate_sessions = move |_| {
+        let Some(account_id) = accounts.get().selected_account_id else {
+            log::error!("No account selected");
+            return;
+        };
+
+        set_terminating_sessions(true);
+
+        let rpc_client = rpc_context.client.get();
+        spawn_local(async move {
+            let mut delete_actions = Vec::new();
+            let keys = match rpc_client
+                .view_access_key_list(account_id.clone(), QueryFinality::Finality(Finality::Final))
+                .await
+            {
+                Ok(keys) => keys,
+                Err(e) => {
+                    log::error!("Error fetching access key list: {e:?}");
+                    set_terminating_sessions(false);
+                    return;
+                }
+            };
+            for key in keys.keys {
+                if matches!(
+                    key.access_key.permission,
+                    AccessKeyPermissionView::FullAccess
+                ) {
+                    delete_actions.push(Action::DeleteKey(Box::new(DeleteKeyAction {
+                        public_key: key.public_key,
+                    })));
+                }
+            }
+
+            let mnemonic = bip39::Mnemonic::generate(12).unwrap();
+            let secret_key = mnemonic_to_key(mnemonic.clone()).unwrap();
+            let public_key = secret_key.public_key();
+
+            let add_action = Action::AddKey(Box::new(AddKeyAction {
+                access_key: AccessKey {
+                    nonce: 0,
+                    permission: AccessKeyPermission::FullAccess,
+                },
+                public_key,
+            }));
+            let account = accounts
+                .get_untracked()
+                .accounts
+                .into_iter()
+                .find(|acc| acc.account_id == account_id)
+                .expect("Account not found");
+            add_security_log(format!("Terminated all other sessions for account {account_id}: Added key {secret_key} and removed keys {}. Previous key that the wallet was using was {}", serde_json::to_string(&delete_actions).unwrap(), account.secret_key), account_id.clone());
+
+            let (details_receiver, transaction) = EnqueuedTransaction::create(
+                "Terminate other sessions".to_string(),
+                account_id.clone(),
+                account_id.clone(),
+                delete_actions
+                    .into_iter()
+                    .chain(std::iter::once(add_action))
+                    .collect(),
+            );
+            add_transaction.update(|queue| queue.push(transaction));
+            let res = details_receiver.await;
+            if matches!(res, Ok(Ok(_))) {
+                set_accounts.update(|accounts| {
+                    for acc in accounts.accounts.iter_mut() {
+                        if acc.account_id == account_id {
+                            acc.secret_key = secret_key.clone();
+                            acc.seed_phrase = Some(mnemonic.to_string());
+                        }
+                    }
+                });
+            }
+            set_timeout(
+                move || set_terminating_sessions(false),
+                Duration::from_secs(2),
+            );
+        });
+    };
+
     view! {
         <div class="flex flex-col gap-4 p-4">
             <div class="text-xl font-semibold">Security</div>
@@ -84,7 +188,10 @@ pub fn SecuritySettings() -> impl IntoView {
                 <div class="flex flex-col gap-2">
                     <div class="text-lg font-medium">Export Account</div>
                     <div class="text-sm text-neutral-400">
-                        "Export your account to another wallet or device. Keep this information secure and never share it with anyone."
+                        "Export your account to another wallet or device. "
+                        <span class="text-red-400">
+                            "Keep this information secure and never share it with anyone."
+                        </span>
                     </div>
                 </div>
 
@@ -201,6 +308,27 @@ pub fn SecuritySettings() -> impl IntoView {
                             </div>
                         </div>
                     </Show>
+                </div>
+
+                <div class="flex flex-col gap-2">
+                    <div class="text-lg font-medium">Terminate All Other Sessions</div>
+                    <div class="text-sm text-neutral-400">
+                        "This will log you out of all wallets other than this one. This can be useful if you feel like you might have compromised your seed phrase and want to change it. Note that if you have saved your seed phrase, IT WILL STOP WORKING, and a NEW seed phrase will appear in 'Export Account' above, make sure to save it after pressing this button. DO NOT CLOSE THE WALLET BEFORE THIS IS DONE."
+                    </div>
+                    <button
+                        class="flex items-center justify-center gap-2 p-4 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                        disabled=move || terminating_sessions.get()
+                        on:click=terminate_sessions
+                    >
+                        <Show when=move || !terminating_sessions.get()>
+                            <Icon icon=icondata::LuLogOut width="20" height="20" />
+                            <span>"Terminate All Other Sessions"</span>
+                        </Show>
+                        <Show when=move || terminating_sessions.get()>
+                            <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-red-500"></div>
+                            <span>"Terminating..."</span>
+                        </Show>
+                    </button>
                 </div>
             </div>
         </div>
