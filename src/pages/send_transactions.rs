@@ -693,7 +693,7 @@ pub fn SendTransactions() -> impl IntoView {
                         .map(|(i, outcome_result)| {
                             outcome_result
                                 .map(|d| d.final_execution_outcome)
-                                .map_err(|e| format!("Failed to send transaction {i}: {e}"))
+                                .map_err(|e| format!("Failed to send transaction {}: {e}", i + 1))
                         })
                         .collect::<Result<Option<Vec<_>>, String>>();
                     let outcomes = match outcomes {

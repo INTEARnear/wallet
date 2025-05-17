@@ -208,7 +208,7 @@ pub fn provide_transaction_queue_context() {
                                                             ServerError::Closed => "RPC is closed".to_string(),
                                                             ServerError::Timeout => "RPC timeout".to_string(),
                                                             ServerError::TxExecutionError(e) => match e {
-                                                                TxExecutionError::ActionError(action_error) => format!("Action error in receipt #{}: {}", action_error.index.map(|n| n.to_string()).unwrap_or("unknown".to_string()), match action_error.kind {
+                                                                TxExecutionError::ActionError(action_error) => format!("Action error in action #{}: {}", action_error.index.map(|n| n.to_string()).unwrap_or("unknown".to_string()), match action_error.kind {
                                                                     ActionErrorKind::AccountAlreadyExists { account_id } =>
                                                                         format!("Cannot create account {account_id}, because it already exists"),
                                                                     ActionErrorKind::AccountDoesNotExist { account_id } =>
