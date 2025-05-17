@@ -10,6 +10,7 @@ use crate::{
         format_usd_value_no_hide, StorageBalance,
     },
 };
+use futures_util::join;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::Icon;
 use leptos_router::components::A;
@@ -21,6 +22,8 @@ use near_min_api::{
     },
     QueryFinality,
 };
+use std::future::Future;
+use std::pin::Pin;
 
 #[component]
 pub fn SendToken() -> impl IntoView {
@@ -58,6 +61,7 @@ pub fn SendToken() -> impl IntoView {
         let Ok(recipient_to_check) = recipient_to_check.parse::<AccountId>() else {
             set_recipient_balance.set(None);
             set_is_loading_recipient.set(false);
+            set_recipient_warning.set(None);
             return;
         };
         set_is_loading_recipient.set(true);
@@ -91,44 +95,67 @@ pub fn SendToken() -> impl IntoView {
 
             if recipient_to_check == recipient.get_untracked() {
                 if account_exists {
-                    let is_token_contract = rpc_client
-                        .call::<TokenMetadata>(
-                            recipient_to_check.clone(),
-                            "ft_metadata",
-                            serde_json::json!({}),
-                            QueryFinality::Finality(Finality::None),
-                        )
-                        .await
-                        .is_ok();
-                    if is_token_contract {
+                    let ft_metadata_future = rpc_client.call::<TokenMetadata>(
+                        recipient_to_check.clone(),
+                        "ft_metadata",
+                        serde_json::json!({}),
+                        QueryFinality::Finality(Finality::None),
+                    );
+
+                    let nft_metadata_future = rpc_client.call::<serde_json::Value>(
+                        recipient_to_check.clone(),
+                        "nft_metadata",
+                        serde_json::json!({}),
+                        QueryFinality::Finality(Finality::None),
+                    );
+
+                    let balance_future: Pin<
+                        Box<dyn Future<Output = Result<Balance, near_min_api::Error>> + '_>,
+                    > = match token.token.account_id {
+                        Token::Near => {
+                            let rpc_client = rpc_client.clone();
+                            Box::pin(async move {
+                                Ok(rpc_client
+                                    .view_account(
+                                        recipient_to_check.clone(),
+                                        QueryFinality::Finality(Finality::DoomSlug),
+                                    )
+                                    .await
+                                    .map(|acc| acc.amount.as_yoctonear())
+                                    .unwrap_or(0))
+                            })
+                        }
+                        Token::Nep141(token_id) => {
+                            let rpc_client = rpc_client.clone();
+                            Box::pin(async move {
+                                Ok(rpc_client
+                                    .call::<U128>(
+                                        token_id,
+                                        "ft_balance_of",
+                                        serde_json::json!({"account_id": recipient_to_check.clone()}),
+                                        QueryFinality::Finality(Finality::DoomSlug),
+                                    )
+                                    .await
+                                    .map(u128::from)
+                                    .unwrap_or(0))
+                            })
+                        }
+                    };
+
+                    let (ft_metadata_result, nft_metadata_result, balance_result) =
+                        join!(ft_metadata_future, nft_metadata_future, balance_future);
+
+                    if ft_metadata_result.is_ok() || nft_metadata_result.is_ok() {
                         set_recipient_warning.set(Some("This is a token contract address, not someone's wallet address, sending tokens to it would likely result in asset loss".to_string()));
                     } else {
                         set_recipient_warning.set(None);
                     }
-                    let balance = match token.token.account_id {
-                        Token::Near => rpc_client
-                            .view_account(
-                                recipient_to_check.clone(),
-                                QueryFinality::Finality(Finality::DoomSlug),
-                            )
-                            .await
-                            .map(|acc| acc.amount.as_yoctonear())
-                            .unwrap_or(0),
-                        Token::Nep141(token_id) => rpc_client
-                            .call::<U128>(
-                                token_id,
-                                "ft_balance_of",
-                                serde_json::json!({"account_id": recipient_to_check.clone()}),
-                                QueryFinality::Finality(Finality::DoomSlug),
-                            )
-                            .await
-                            .as_deref()
-                            .copied()
-                            .unwrap_or(0),
-                    };
+
+                    let balance = balance_result.unwrap_or(0);
                     set_recipient_balance.set(Some(balance));
                 } else {
                     set_recipient_balance.set(None);
+                    set_recipient_warning.set(None);
                 }
                 set_is_loading_recipient.set(false);
             }
@@ -329,9 +356,13 @@ pub fn SendToken() -> impl IntoView {
                                             if has_typed_recipient.get() {
                                                 if recipient_balance.get().is_none() {
                                                     "border: 2px solid rgb(239 68 68)"
-                                                } else if !is_loading_recipient.get() && recipient_warning.get().is_none() {
+                                                } else if !is_loading_recipient.get()
+                                                    && recipient_warning.get().is_none()
+                                                {
                                                     "border: 2px solid rgb(34 197 94)"
-                                                } else if !is_loading_recipient.get() && recipient_warning.get().is_some() {
+                                                } else if !is_loading_recipient.get()
+                                                    && recipient_warning.get().is_some()
+                                                {
                                                     "border: 2px solid rgb(234 179 8)"
                                                 } else {
                                                     "border: 2px solid rgb(55 65 81)"
