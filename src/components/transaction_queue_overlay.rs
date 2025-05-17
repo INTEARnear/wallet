@@ -70,7 +70,7 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                         view! {
                             <div class=move || {
                                 format!(
-                                    "animate-spin rounded-full h-4 w-4 border-b-2 transition-colors duration-300 {}",
+                                    "animate-spin rounded-full h-4 w-4 border-b-2 transition-colors duration-150 {}",
                                     spinner_class(),
                                 )
                             } />
@@ -86,19 +86,26 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
     view! {
         <Show
             when=move || { !show_modal.get() && !queue.read().is_empty() }
-            attr:class="relative top-0 pt-1 w-full lg:rounded-t-3xl bg-neutral-900/90 text-white text-sm font-medium transition-all duration-200 cursor-pointer"
+            attr:class="relative top-0 pt-2 w-full lg:rounded-t-3xl bg-neutral-900/90 text-white text-sm font-medium transition-all duration-200 cursor-pointer"
             on:click=move |_| set_show_modal.set(true)
         >
             <div class="w-full pt-2">
                 <div class="flex items-center justify-between gap-2 px-4">
                     <div class="flex items-center gap-2">
-                        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white transition-colors duration-300" />
+                        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white transition-colors duration-150" />
                         <span>
                             {move || {
                                 format!(
-                                    "Processing transaction {}/{}",
-                                    current_index.get() + 1,
-                                    queue.read().len(),
+                                    "Transaction{}",
+                                    if queue.read().len() > 1 {
+                                        format!(
+                                            " {}/{}",
+                                            (current_index.get() + 1).min(queue.read().len()),
+                                            queue.read().len(),
+                                        )
+                                    } else {
+                                        "".to_string()
+                                    },
                                 )
                             }}
                         </span>
@@ -130,7 +137,8 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                         <h2 class="text-lg font-medium">Transaction Queue</h2>
                         <div class="flex items-center gap-2">
                             <button
-                                on:click=move |_| set_show_modal.set(false)
+                                on:mouseup=move |_| set_show_modal.set(false)
+                                on:touchend=move |_| set_show_modal.set(false)
                                 class="p-1 hover:bg-neutral-800 rounded-lg transition-colors"
                             >
                                 <Icon icon=icondata::LuChevronUp width="20" height="20" />
@@ -144,9 +152,22 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                                 .iter()
                                 .map(|tx| {
                                     view! {
-                                        <div class="flex items-center justify-between p-2 bg-neutral-800/50 rounded-lg">
-                                            <span class="text-sm">{tx.description.clone()}</span>
-                                            {modal_icon(&tx.stage)}
+                                        <div class="flex flex-col p-2 bg-neutral-800/50 rounded-lg">
+                                            <div class="flex items-center justify-between">
+                                                <span class="text-sm">{tx.description.clone()}</span>
+                                                {modal_icon(&tx.stage)}
+                                            </div>
+                                            {match &tx.stage {
+                                                TransactionStage::Failed(error) => {
+                                                    view! {
+                                                        <span class="text-sm text-red-400 mt-1">
+                                                            {error.clone()}
+                                                        </span>
+                                                    }
+                                                        .into_any()
+                                                }
+                                                _ => ().into_any(),
+                                            }}
                                         </div>
                                     }
                                 })
