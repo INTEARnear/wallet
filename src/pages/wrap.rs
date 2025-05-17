@@ -90,7 +90,7 @@ pub fn WrapToken() -> impl IntoView {
             let actions = vec![Action::FunctionCall(Box::new(FunctionCallAction {
                 method_name: "near_deposit".to_string(),
                 args: serde_json::to_vec(&serde_json::json!({})).unwrap(),
-                gas: NearGas::from_tgas(5).as_gas(),
+                gas: NearGas::from_tgas(2).as_gas(),
                 deposit: NearToken::from_yoctonear(amount),
             }))];
 
@@ -193,6 +193,8 @@ pub fn WrapToken() -> impl IntoView {
                                             on:click=move |_| {
                                                 let max_amount = token.balance as f64
                                                     / 10f64.powi(token.token.metadata.decimals as i32);
+                                                let rounded_gas_cost = 0.0003;
+                                                let max_amount = (max_amount - rounded_gas_cost).max(0.0);
                                                 set_amount.set(max_amount.to_string());
                                                 check_amount(max_amount.to_string());
                                             }
