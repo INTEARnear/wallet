@@ -227,7 +227,24 @@ pub fn SignMessage() -> impl IntoView {
                                             <p class="text-neutral-400 text-sm">"Request from"</p>
                                             <p class="text-white font-medium wrap-anywhere">
                                                 {if let Some(app) = connected_app() {
-                                                    format!("🔒 {}", app.origin)
+                                                    let domain = app
+                                                        .origin
+                                                        .trim_start_matches("http://")
+                                                        .trim_start_matches("https://")
+                                                        .split("/")
+                                                        .next()
+                                                        .unwrap()
+                                                        .split(":")
+                                                        .next()
+                                                        .unwrap();
+                                                    if domain == "localhost" || domain == "127.0.0.1"
+                                                        || domain.starts_with("192.168.")
+                                                        || domain.ends_with(".local")
+                                                    {
+                                                        format!("🛠 Localhost")
+                                                    } else {
+                                                        format!("🔒 {}", app.origin)
+                                                    }
                                                 } else {
                                                     "⚠️ Unknown".to_string()
                                                 }}
