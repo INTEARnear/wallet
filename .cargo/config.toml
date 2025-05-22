@@ -1,6 +1,25 @@
 [target.'cfg(all(debug_assertions, target_os="linux"))']
 linker = "clang"
-rustflags = ["-C", "link-arg=-fuse-ld=/usr/bin/mold", "-Z", "share-generics=y", "-Z", "threads=8"]
+rustflags = [
+    "-C",
+    "link-arg=-fuse-ld=/usr/bin/mold",
+    "-Z",
+    "share-generics=y",
+    "-Z",
+    "threads=8",
+    "--cfg",
+    "erase_components",
+]
+
+[target.'cfg(all(debug_assertions, target_os="wasm32"))']
+rustflags = [
+    "-Z",
+    "share-generics=y",
+    "-Z",
+    "threads=8",
+    "--cfg",
+    "erase_components",
+]
 
 # Temporary fix for https://github.com/rust-rocksdb/rust-rocksdb/issues/991
 [env]

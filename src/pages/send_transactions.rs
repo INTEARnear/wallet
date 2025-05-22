@@ -428,6 +428,23 @@ pub fn SendTransactions() -> impl IntoView {
     let (expanded_actions, set_expanded_actions) =
         signal::<HashSet<(usize, usize)>>(HashSet::new());
 
+    let is_localhost_app = move |app: &crate::contexts::connected_apps_context::ConnectedApp| {
+        let domain = app
+            .origin
+            .trim_start_matches("http://")
+            .trim_start_matches("https://")
+            .split("/")
+            .next()
+            .unwrap()
+            .split(":")
+            .next()
+            .unwrap();
+        domain == "localhost"
+            || domain == "127.0.0.1"
+            || domain.starts_with("192.168.")
+            || domain.ends_with(".local")
+    };
+
     let opener = || {
         if let Ok(opener) = window().opener() {
             opener.unchecked_into::<Window>()
@@ -573,6 +590,36 @@ pub fn SendTransactions() -> impl IntoView {
                 || app.autoconfirm_contracts.contains(&tx.receiver_id)
                 || app.autoconfirm_all
         })
+    });
+
+    let has_multiple_txs_same_receiver = Memo::new(move |_| {
+        transactions
+            .get()
+            .map(|txs| {
+                let mut seen_receivers = std::collections::HashMap::new();
+                for tx in txs.iter() {
+                    *seen_receivers.entry(tx.receiver_id.clone()).or_insert(0) += 1;
+                }
+                seen_receivers.values().any(|&count| count > 1)
+            })
+            .unwrap_or(false)
+    });
+
+    let has_high_gas_function_call = Memo::new(move |_| {
+        transactions
+            .get()
+            .map(|txs| {
+                txs.iter().any(|tx| {
+                    tx.actions.iter().any(|action| {
+                        if let WalletSelectorAction::FunctionCall { gas, .. } = action {
+                            *gas >= NearGas::from_tgas(300)
+                        } else {
+                            false
+                        }
+                    })
+                })
+            })
+            .unwrap_or(false)
     });
 
     let handle_approve = move || {
@@ -784,21 +831,8 @@ pub fn SendTransactions() -> impl IntoView {
                                             <p class="text-neutral-400 text-sm">"Request from"</p>
                                             <p class="text-white font-medium wrap-anywhere">
                                                 {if let Some(app) = connected_app() {
-                                                    let domain = app
-                                                        .origin
-                                                        .trim_start_matches("http://")
-                                                        .trim_start_matches("https://")
-                                                        .split("/")
-                                                        .next()
-                                                        .unwrap()
-                                                        .split(":")
-                                                        .next()
-                                                        .unwrap();
-                                                    if domain == "localhost" || domain == "127.0.0.1"
-                                                        || domain.starts_with("192.168.")
-                                                        || domain.ends_with(".local")
-                                                    {
-                                                        format!("🛠 Localhost")
+                                                    if is_localhost_app(&app) {
+                                                        "🛠 Localhost".to_string()
                                                     } else {
                                                         format!("🔒 {}", app.origin)
                                                     }
@@ -824,6 +858,67 @@ pub fn SendTransactions() -> impl IntoView {
                                             .unwrap_or(().into_any())
                                     }}
                                 </div>
+                                {move || {
+                                    let mut warnings = Vec::new();
+                                    if has_multiple_txs_same_receiver.get() {
+                                        warnings
+                                            .push(
+                                                view! {
+                                                    <div class="flex items-center gap-2 text-yellow-500">
+                                                        <Icon
+                                                            icon=LuAlertTriangle
+                                                            width="20"
+                                                            height="20"
+                                                            attr:class="min-w-5 min-h-5"
+                                                        />
+                                                        <div>
+                                                            <p class="font-medium">
+                                                                "Multiple Transactions to Same Contract"
+                                                            </p>
+                                                            <p class="text-yellow-500/80 text-sm">
+                                                                "Consider combining these into a single transaction with multiple actions to speed up the user experience and have atomicity between these transactions."
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                },
+                                            );
+                                    }
+                                    if has_high_gas_function_call.get() {
+                                        warnings
+                                            .push(
+                                                view! {
+                                                    <div class="flex items-center gap-2 text-yellow-500">
+                                                        <Icon
+                                                            icon=LuAlertTriangle
+                                                            width="20"
+                                                            height="20"
+                                                            attr:class="min-w-5 min-h-5"
+                                                        />
+                                                        <div>
+                                                            <p class="font-medium">"High Gas Usage Detected"</p>
+                                                            <p class="text-yellow-500/80 text-sm">
+                                                                "One or more function calls attach 300 TGas or more. Consider reducing the gas if the full amount isn't needed, because it can make some people unable to use your app, and there will be a high fee penalty introduced in the future NEAR release."
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                },
+                                            );
+                                    }
+                                    if let Some(app) = connected_app() {
+                                        if is_localhost_app(&app) && !warnings.is_empty() {
+                                            view! {
+                                                <div class="p-4 bg-yellow-500/10 backdrop-blur-sm rounded-xl border border-yellow-500/20 flex flex-col gap-4">
+                                                    {warnings}
+                                                </div>
+                                            }
+                                                .into_any()
+                                        } else {
+                                            ().into_any()
+                                        }
+                                    } else {
+                                        ().into_any()
+                                    }
+                                }}
                                 {move || {
                                     if has_dangerous_actions.get() {
                                         view! {

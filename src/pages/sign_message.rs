@@ -241,7 +241,7 @@ pub fn SignMessage() -> impl IntoView {
                                                         || domain.starts_with("192.168.")
                                                         || domain.ends_with(".local")
                                                     {
-                                                        format!("🛠 Localhost")
+                                                        "🛠 Localhost".to_string()
                                                     } else {
                                                         format!("🔒 {}", app.origin)
                                                     }
