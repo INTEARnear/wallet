@@ -1,5 +1,30 @@
 pub const ARTICLES: &[(&str, &str, &str)] = &[
     (
+        "Blink and It's Final: NEAR Launches 600ms Blocks and 1.2s Finality",
+        "https://pages.near.org/blog/blink-and-its-final-near-launches-600ms-blocks-and-1-2s-finality/",
+        "/learn-near-0.6s-block-time.png",
+    ),
+    (
+        "Chain Signatures Adds EdDSA support: Cross-Chain Signing for Solana, TON, Stellar, Sui & Aptos",
+        "https://pages.near.org/blog/chain-signatures-adds-eddsa-support-cross-chain-signing-for-solana-ton-stellar-sui-aptos/",
+        "/learn-chain-signatures-eddsa.png",
+    ),
+    (
+        "Introducing the Mindshare Index AI Agent: Autonomous Trading Powered by Shade Agents",
+        "https://pages.near.org/blog/introducing-the-mindshare-index-ai-agent-autonomous-trading-powered-by-shade-agents/",
+        "/learn-mindshare-ai-agent.png",
+    ),
+    (
+        "Securely Running a Crypto Wallet MCP Server with Phala Cloud",
+        "https://learnnear.club/securely-running-a-crypto-wallet-mcp-server-with-phala-cloud/",
+        "/learn-phala-mcp-server.png",
+    ),
+    (
+        "What is Lantstool?",
+        "https://learnnear.club/what-is-lantstool/",
+        "/learn-lantstool.jpg",
+    ),
+    (
         "Sharded Smart Contracts: The Future of Blockchain Scalability",
         "https://learnnear.club/sharded-smart-contracts-the-future-of-blockchain-scalability/",
         "/learn-smart-contracts.webp",
