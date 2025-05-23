@@ -11,14 +11,12 @@ rustflags = [
     "erase_components",
 ]
 
-[target.'cfg(all(debug_assertions, target_os="wasm32"))']
+[target.'cfg(all(debug_assertions, target_arch = "wasm32"))']
 rustflags = [
     "-Z",
     "share-generics=y",
     "-Z",
-    "threads=8",
-    "--cfg",
-    "erase_components",
+    "threads=8"
 ]
 
 # Temporary fix for https://github.com/rust-rocksdb/rust-rocksdb/issues/991
