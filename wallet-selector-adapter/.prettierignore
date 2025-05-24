@@ -1,7 +1,0 @@
-dist
-node_modules
-coverage
-build
-.next
-*.min.js
-*.d.ts 
