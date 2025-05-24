@@ -3,7 +3,8 @@ use leptos::task::spawn_local;
 use leptos_icons::*;
 use web_sys::KeyboardEvent;
 
-use crate::contexts::accounts_context::AccountsContext;
+use crate::components::danger_confirm_input::DangerConfirmInput;
+use crate::contexts::accounts_context::{AccountsContext, AccountsState, PasswordAction};
 
 #[component]
 pub fn PasswordUnlock() -> impl IntoView {
@@ -14,6 +15,11 @@ pub fn PasswordUnlock() -> impl IntoView {
     let (is_hovered, set_is_hovered) = signal(false);
     let (auto_attempt_abortable, set_auto_attempt_abortable) =
         signal::<Option<ActionAbortHandle>>(None);
+
+    let (show_forgot_password, set_show_forgot_password) = signal(false);
+    let (show_reset_confirmation, set_show_reset_confirmation) = signal(false);
+    let (is_confirmed, set_is_confirmed) = signal(false);
+    let (is_resetting, set_is_resetting) = signal(false);
 
     let input_ref = NodeRef::<leptos::html::Input>::new();
 
@@ -89,10 +95,24 @@ pub fn PasswordUnlock() -> impl IntoView {
         set_password_input(event_target_value(&ev));
     };
 
+    let reset_wallet = move || {
+        set_is_resetting(true);
+
+        accounts_context.set_accounts.set(AccountsState {
+            accounts: vec![],
+            selected_account_id: None,
+        });
+        accounts_context
+            .set_password
+            .dispatch(PasswordAction::ClearCipher);
+
+        set_is_resetting(false);
+    };
+
     view! {
         <div class="absolute inset-0 bg-neutral-950 lg:rounded-3xl z-50">
             <div class="absolute inset-0 flex items-center justify-center">
-                <div class="w-full max-w-md p-6">
+                <div class="w-full max-w-md max-h-full p-6 overflow-y-auto">
                     <div class="text-center mb-8">
                         <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-500/20 flex items-center justify-center">
                             <Icon
@@ -106,7 +126,7 @@ pub fn PasswordUnlock() -> impl IntoView {
                         <p class="text-neutral-400 text-sm">"Enter your password to log in"</p>
                     </div>
 
-                    <div class="space-y-6">
+                    <div>
                         <div>
                             <label class="block text-neutral-400 text-sm font-medium mb-2">
                                 Password
@@ -138,8 +158,17 @@ pub fn PasswordUnlock() -> impl IntoView {
                             }}
                         </div>
 
+                        <div class="flex justify-end mt-1 mb-6">
+                            <button
+                                class="text-neutral-400 text-sm hover:text-neutral-300 transition-colors cursor-pointer"
+                                on:click=move |_| set_show_forgot_password.update(|v| *v = !*v)
+                            >
+                                "Forgot Password?"
+                            </button>
+                        </div>
+
                         <button
-                            class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden"
+                            class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden cursor-pointer"
                             style=move || {
                                 if !password_input.get().is_empty() && !is_unlocking.get() {
                                     "background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%); cursor: pointer;"
@@ -187,6 +216,58 @@ pub fn PasswordUnlock() -> impl IntoView {
                                 }}
                             </span>
                         </button>
+
+                        <Show when=move || show_forgot_password.get()>
+                            <div class="mt-4 space-y-4">
+                                <div class="p-4 bg-yellow-900/30 border border-yellow-700/50 rounded-xl">
+                                    <p class="text-yellow-200 text-sm">
+                                        "If you forgot your password, you can "
+                                        <span class="text-red-400 font-semibold">"reset"</span>
+                                        " your wallet. Make sure you have the seed phrases for all your accounts before doing so, because otherwise they will be lost."
+                                    </p>
+                                </div>
+
+                                <Show when=move || !show_reset_confirmation.get()>
+                                    <button
+                                        class="w-full flex items-center justify-center gap-2 p-4 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors font-medium cursor-pointer"
+                                        on:click=move |_| set_show_reset_confirmation.set(true)
+                                    >
+                                        <Icon icon=icondata::LuTrash2 width="20" height="20" />
+                                        "Reset Wallet"
+                                    </button>
+                                </Show>
+
+                                <Show when=move || show_reset_confirmation.get()>
+                                    <div class="space-y-4">
+                                        <DangerConfirmInput
+                                            set_is_confirmed=set_is_confirmed
+                                            warning_title="Reset Wallet".to_string()
+                                            warning_message="This will permanently delete all accounts from this wallet. Make sure you have backed up your seed phrases."
+                                                .to_string()
+                                        />
+
+                                        <button
+                                            class="w-full flex items-center justify-center gap-2 p-4 rounded-xl bg-red-500 hover:bg-red-600 disabled:bg-red-500/50 disabled:cursor-not-allowed text-white transition-colors font-medium cursor-pointer"
+                                            disabled=move || !is_confirmed.get() || is_resetting.get()
+                                            on:click=move |_| {
+                                                if is_confirmed.get() {
+                                                    reset_wallet();
+                                                }
+                                            }
+                                        >
+                                            <Show when=move || !is_resetting.get()>
+                                                <Icon icon=icondata::LuTrash2 width="20" height="20" />
+                                                "Confirm Reset"
+                                            </Show>
+                                            <Show when=move || is_resetting.get()>
+                                                <div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                "Resetting..."
+                                            </Show>
+                                        </button>
+                                    </div>
+                                </Show>
+                            </div>
+                        </Show>
                     </div>
                 </div>
             </div>
