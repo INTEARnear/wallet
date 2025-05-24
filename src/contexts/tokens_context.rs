@@ -218,7 +218,7 @@ pub fn provide_token_context() {
         let Some(ws) = transfer_ws() else {
             return;
         };
-        if ws.ready_state.get() == ConnectionReadyState::Open {
+        if ws.ready_state.try_get() == Some(ConnectionReadyState::Open) {
             if let Some(account_id) = &accounts_context.accounts.get().selected_account_id {
                 let filter = Operator::Or(vec![
                     Filter::new(
@@ -241,7 +241,7 @@ pub fn provide_token_context() {
         let Some(ws) = mint_ws() else {
             return;
         };
-        if ws.ready_state.get() == ConnectionReadyState::Open {
+        if ws.ready_state.try_get() == Some(ConnectionReadyState::Open) {
             if let Some(account_id) = &accounts_context.accounts.get().selected_account_id {
                 let filter = Operator::And(vec![Filter::new(
                     "owner_id",
@@ -258,7 +258,7 @@ pub fn provide_token_context() {
         let Some(ws) = burn_ws() else {
             return;
         };
-        if ws.ready_state.get() == ConnectionReadyState::Open {
+        if ws.ready_state.try_get() == Some(ConnectionReadyState::Open) {
             if let Some(account_id) = &accounts_context.accounts.get().selected_account_id {
                 let filter = Operator::And(vec![Filter::new(
                     "owner_id",
@@ -275,7 +275,7 @@ pub fn provide_token_context() {
         let Some(ws) = price_ws() else {
             return;
         };
-        if ws.ready_state.get() == ConnectionReadyState::Open {
+        if ws.ready_state.try_get() == Some(ConnectionReadyState::Open) {
             let filter = Operator::And(vec![]);
             let filter_json = serde_json::to_string(&filter).unwrap();
             (ws.send)(&filter_json);

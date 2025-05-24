@@ -29,6 +29,16 @@ pub fn PasswordUnlock() -> impl IntoView {
         }
     });
 
+    // Reset unlock state when accounts are cleared (e.g., due to timeout)
+    Effect::new(move || {
+        let accounts = accounts_context.accounts.get();
+        if accounts.accounts.is_empty() {
+            set_is_unlocking(false);
+            set_error(None);
+            set_auto_attempt_abortable(None);
+        }
+    });
+
     let unlock_accounts = move || {
         let password = password_input.get();
         if password.is_empty() {

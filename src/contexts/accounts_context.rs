@@ -8,9 +8,12 @@ use base64::{engine::general_purpose, Engine as _};
 use leptos::prelude::*;
 use near_min_api::types::{near_crypto::SecretKey, AccountId};
 use serde::{Deserialize, Serialize};
-use web_sys::window;
+use wasm_bindgen::{closure::Closure, JsCast};
+use web_sys::{window, Event};
 
-use super::{network_context::Network, security_log_context::add_security_log};
+use super::{
+    config_context::ConfigContext, network_context::Network, security_log_context::add_security_log,
+};
 
 pub const ENCRYPTION_MEMORY_COST_KB: u32 = 65536; // 64MB
 const ACCOUNTS_KEY: &str = "wallet_accounts";
@@ -250,6 +253,94 @@ async fn try_decrypt_accounts(password: String) -> Result<(AccountsState, Cipher
 pub fn provide_accounts_context() {
     let (accounts, set_accounts) = signal(load_accounts());
     let (cipher, set_cipher) = signal::<Option<Cipher>>(None);
+    let config_context = expect_context::<ConfigContext>();
+    let (password_timeout_handle, set_password_timeout_handle) = signal::<Option<i32>>(None);
+
+    let clear_password = move || {
+        set_cipher(None);
+        set_accounts(AccountsState {
+            accounts: vec![],
+            selected_account_id: None,
+        });
+        set_password_timeout_handle(None);
+    };
+
+    let reset_password_timeout = move || {
+        if let Some(handle) = password_timeout_handle.get_untracked() {
+            if let Some(window) = window() {
+                window.clear_timeout_with_handle(handle);
+            }
+        }
+
+        // Only set timeout if we have encrypted data and a cipher (wallet is unlocked)
+        if has_encrypted_data() && cipher.get_untracked().is_some() {
+            let duration = config_context
+                .config
+                .get_untracked()
+                .password_remember_duration;
+            if let Some(seconds) = duration.to_seconds() {
+                if let Some(window) = window() {
+                    let callback = Closure::wrap(Box::new(clear_password) as Box<dyn FnMut()>);
+
+                    let handle = window
+                        .set_timeout_with_callback_and_timeout_and_arguments_0(
+                            callback.as_ref().unchecked_ref(),
+                            (seconds * 1000) as i32,
+                        )
+                        .unwrap_or(-1);
+
+                    // Prevent drop until timeout fires
+                    callback.forget();
+                    set_password_timeout_handle(Some(handle));
+                }
+            }
+        }
+    };
+
+    Effect::new(move || {
+        if has_encrypted_data() && cipher.get().is_some() {
+            let events = [
+                "mousedown",
+                "mousemove",
+                "keypress",
+                "scroll",
+                "touchstart",
+                "click",
+            ];
+
+            if let Some(document) = window().and_then(|w| w.document()) {
+                for event_name in events.iter() {
+                    let listener = Closure::wrap(Box::new(move |_: Event| {
+                        reset_password_timeout();
+                    }) as Box<dyn FnMut(Event)>);
+
+                    let _ = document.add_event_listener_with_callback(
+                        event_name,
+                        listener.as_ref().unchecked_ref(),
+                    );
+
+                    // Prevent drop, listeners will be cleaned up on page unload
+                    listener.forget();
+                }
+
+                reset_password_timeout();
+
+                on_cleanup(move || {
+                    if let Some(handle) = password_timeout_handle.get_untracked() {
+                        if let Some(window) = window() {
+                            window.clear_timeout_with_handle(handle);
+                        }
+                    }
+                });
+            }
+        }
+    });
+
+    // Reset timeout when cipher changes (wallet gets unlocked)
+    Effect::new(move || {
+        cipher.track();
+        reset_password_timeout();
+    });
 
     let save_accounts = Action::new(move |args: &(Option<Cipher>, AccountsState)| {
         let cipher = args.0.clone();
@@ -259,6 +350,10 @@ pub fn provide_accounts_context() {
 
     // Save to localStorage whenever accounts change or cipher changes
     Effect::new(move || {
+        if has_encrypted_data() && cipher.get().is_none() {
+            // Not unlocked the wallet yet, don't save anything
+            return;
+        }
         save_accounts.dispatch_local((cipher.get(), accounts.get()));
     });
 

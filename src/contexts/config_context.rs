@@ -9,6 +9,69 @@ pub enum TimestampFormat {
     DateTime,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+pub enum PasswordRememberDuration {
+    #[default]
+    Never,
+    Seconds15,
+    Minutes5,
+    Minutes15,
+    Minutes60,
+}
+
+impl PasswordRememberDuration {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Never => "Don't Remember",
+            Self::Seconds15 => "15 seconds",
+            Self::Minutes5 => "5 minutes",
+            Self::Minutes15 => "15 minutes",
+            Self::Minutes60 => "60 minutes",
+        }
+    }
+
+    pub fn option_value(&self) -> &'static str {
+        match self {
+            Self::Never => "never",
+            Self::Seconds15 => "15s",
+            Self::Minutes5 => "5m",
+            Self::Minutes15 => "15m",
+            Self::Minutes60 => "60m",
+        }
+    }
+
+    pub fn from_option_value(value: &str) -> Self {
+        match value {
+            "never" => Self::Never,
+            "15s" => Self::Seconds15,
+            "5m" => Self::Minutes5,
+            "15m" => Self::Minutes15,
+            "60m" => Self::Minutes60,
+            _ => Self::Never,
+        }
+    }
+
+    pub fn all_variants() -> &'static [Self] {
+        &[
+            Self::Never,
+            Self::Seconds15,
+            Self::Minutes5,
+            Self::Minutes15,
+            Self::Minutes60,
+        ]
+    }
+
+    pub fn to_seconds(&self) -> Option<u64> {
+        match self {
+            Self::Never => None,
+            Self::Seconds15 => Some(15),
+            Self::Minutes5 => Some(5 * 60),
+            Self::Minutes15 => Some(15 * 60),
+            Self::Minutes60 => Some(60 * 60),
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug, Default)]
 pub struct WalletConfig {
     pub show_low_balance_tokens: bool,
@@ -21,6 +84,8 @@ pub struct WalletConfig {
     pub realtime_balance_updates: bool,
     #[serde(default = "default_true")]
     pub realtime_price_updates: bool,
+    #[serde(default)]
+    pub password_remember_duration: PasswordRememberDuration,
 }
 
 fn default_true() -> bool {

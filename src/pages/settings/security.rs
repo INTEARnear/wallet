@@ -4,6 +4,7 @@ use crate::{
     components::account_selector::mnemonic_to_key,
     contexts::{
         accounts_context::{AccountsContext, PasswordAction, ENCRYPTION_MEMORY_COST_KB},
+        config_context::{ConfigContext, PasswordRememberDuration},
         rpc_context::RpcContext,
         security_log_context::add_security_log,
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
@@ -29,7 +30,7 @@ async fn benchmark_argon2() -> (u32, f64) {
     let mut best_rounds = 1u32;
     let mut actual_duration = 0.0;
 
-    // Start from 1 round and increment until we exceed target time
+    // Start from 1 round and increase until we exceed target time
     let mut rounds = 1u32;
     loop {
         let params = ParamsBuilder::new()
@@ -127,6 +128,7 @@ pub fn SecuritySettings() -> impl IntoView {
         is_encrypted,
         ..
     } = expect_context::<AccountsContext>();
+    let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
     let TransactionQueueContext {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
@@ -588,6 +590,42 @@ pub fn SecuritySettings() -> impl IntoView {
                                 <span>"Done"</span>
                             </Show>
                         </button>
+
+                        <Show when=move || is_encrypted.get()>
+                            <div class="flex flex-col gap-3">
+                                <div class="text-lg font-medium">Remember Password For</div>
+                                <select
+                                    class="w-full p-3 rounded-lg bg-neutral-800 border border-neutral-700 focus:border-blue-500 focus:outline-none"
+                                    on:change=move |ev| {
+                                        let value = event_target_value(&ev);
+                                        let duration = PasswordRememberDuration::from_option_value(
+                                            &value,
+                                        );
+                                        set_config
+                                            .update(|c| c.password_remember_duration = duration);
+                                    }
+                                >
+                                    {PasswordRememberDuration::all_variants()
+                                        .iter()
+                                        .map(|variant| {
+                                            let option_value = variant.option_value();
+                                            let display_name = variant.display_name();
+                                            let is_selected = *variant;
+                                            view! {
+                                                <option
+                                                    value=option_value
+                                                    selected=move || {
+                                                        config.get().password_remember_duration == is_selected
+                                                    }
+                                                >
+                                                    {display_name}
+                                                </option>
+                                            }
+                                        })
+                                        .collect::<Vec<_>>()}
+                                </select>
+                            </div>
+                        </Show>
 
                         <Show when=move || is_encrypted.get()>
                             <button
