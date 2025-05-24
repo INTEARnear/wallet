@@ -80,6 +80,7 @@ members = [
     "history-service",
     "account-creation-service",
     "logout-bridge-service",
+    "password-storage-service",
 ]
 
 [package.metadata.patch]

@@ -5,7 +5,9 @@ use aes_gcm::aead::{rand_core::RngCore, Aead, OsRng};
 use aes_gcm::{Aes256Gcm, Key, KeyInit, Nonce};
 use argon2::{Argon2, ParamsBuilder};
 use base64::{engine::general_purpose, Engine as _};
+use chrono::{DateTime, Utc};
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use near_min_api::types::{near_crypto::SecretKey, AccountId};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::{closure::Closure, JsCast};
@@ -18,6 +20,29 @@ use super::{
 pub const ENCRYPTION_MEMORY_COST_KB: u32 = 65536; // 64MB
 const ACCOUNTS_KEY: &str = "wallet_accounts";
 const ENCRYPTED_ACCOUNTS_KEY: &str = "wallet_encrypted_accounts";
+const PASSWORD_SERVICE_KEY: &str = "password_storage_service_data";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PasswordServiceData {
+    id: String,
+    encryption_key: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct StoreRequest {
+    data: String,
+    expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct StoreResponse {
+    id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RetrieveResponse {
+    data: String,
+}
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Account {
@@ -120,7 +145,7 @@ async fn save_accounts(accounts: &AccountsState, cipher: Option<Cipher>) -> Resu
     }
 }
 
-async fn get_cipher(password: String, rounds: u32, salt: &[u8]) -> Result<Cipher, String> {
+async fn derive_cipher(password: String, rounds: u32, salt: &[u8]) -> Result<Cipher, String> {
     let params = ParamsBuilder::new()
         .m_cost(ENCRYPTION_MEMORY_COST_KB)
         .t_cost(rounds)
@@ -146,8 +171,11 @@ async fn get_cipher(password: String, rounds: u32, salt: &[u8]) -> Result<Cipher
 
 #[derive(Clone)]
 pub struct Cipher {
+    /// The cipher used to encrypt the accounts
     pub cipher: Aes256Gcm,
+    /// The salt used to derive the key
     pub salt: Vec<u8>,
+    /// The number of rounds used to derive the key
     pub rounds: u32,
 }
 
@@ -203,7 +231,9 @@ fn get_encrypted_accounts() -> Result<EncryptedAccountsData, String> {
     Ok(encrypted_accounts)
 }
 
-async fn try_decrypt_accounts(password: String) -> Result<(AccountsState, Cipher), String> {
+async fn try_decrypt_accounts(
+    password: String,
+) -> Result<(AccountsState, Cipher, [u8; 32]), String> {
     let encrypted_accounts = get_encrypted_accounts()?;
     let salt = general_purpose::STANDARD
         .decode(&encrypted_accounts.salt)
@@ -247,7 +277,148 @@ async fn try_decrypt_accounts(password: String) -> Result<(AccountsState, Cipher
             salt,
             rounds: encrypted_accounts.rounds,
         },
+        key_bytes,
     ))
+}
+
+async fn store_cipher_to_service(key_bytes: [u8; 32], duration_seconds: u64) -> Result<(), String> {
+    // Generate random encryption key for this cipher
+    let mut encryption_key = [0u8; 32];
+    OsRng.fill_bytes(&mut encryption_key);
+
+    let aes_key = Key::<Aes256Gcm>::from_slice(&encryption_key);
+    let aes_cipher = Aes256Gcm::new(aes_key);
+
+    let mut nonce_bytes = [0u8; 12];
+    OsRng.fill_bytes(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    // Encrypt the key bytes directly
+    let encrypted_data = aes_cipher
+        .encrypt(nonce, key_bytes.as_ref())
+        .map_err(|e| format!("Failed to encrypt cipher: {}", e))?;
+
+    // Combine nonce + encrypted data and encode as base64
+    let mut combined_data = nonce_bytes.to_vec();
+    combined_data.extend_from_slice(&encrypted_data);
+    let encoded_data = general_purpose::STANDARD.encode(combined_data);
+
+    // Calculate expiration time
+    let expires_at = Utc::now() + chrono::Duration::seconds(duration_seconds as i64);
+
+    let request = StoreRequest {
+        data: encoded_data,
+        expires_at,
+    };
+
+    // Make HTTP request to store
+    let response = reqwest::Client::new()
+        .post(format!(
+            "{}/store",
+            dotenvy_macro::dotenv!("SHARED_PASSWORD_STORAGE_SERVICE_ADDR")
+        ))
+        .json(&request)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send request: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Server returned error: {}", response.status()));
+    }
+
+    let store_response: StoreResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    // Store service data in localStorage
+    let service_data = PasswordServiceData {
+        id: store_response.id,
+        encryption_key: encryption_key.to_vec(),
+    };
+
+    if let Some(storage) = get_local_storage() {
+        if let Ok(json) = serde_json::to_string(&service_data) {
+            let _ = storage.set_item(PASSWORD_SERVICE_KEY, &json);
+        }
+    }
+
+    Ok(())
+}
+
+async fn retrieve_cipher_from_service() -> Result<Option<Cipher>, String> {
+    let password_storage_service_data = if let Some(storage) = get_local_storage() {
+        storage
+            .get_item(PASSWORD_SERVICE_KEY)
+            .ok()
+            .flatten()
+            .and_then(|json| serde_json::from_str::<PasswordServiceData>(&json).ok())
+    } else {
+        None
+    };
+    let Some(service_data) = password_storage_service_data else {
+        return Ok(None);
+    };
+
+    let response = reqwest::Client::new()
+        .get(format!(
+            "{}/retrieve/{}",
+            dotenvy_macro::dotenv!("SHARED_PASSWORD_STORAGE_SERVICE_ADDR"),
+            service_data.id
+        ))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send request: {}", e))?;
+    if response.status().as_u16() == 404 {
+        // Data expired or not found, remove the reference to the key
+        if let Some(storage) = get_local_storage() {
+            let _ = storage.remove_item(PASSWORD_SERVICE_KEY);
+        }
+        return Ok(None);
+    }
+    if !response.status().is_success() {
+        return Err(format!("Server returned error: {}", response.status()));
+    }
+    let retrieve_response: RetrieveResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    let stored_payload = general_purpose::STANDARD
+        .decode(&retrieve_response.data)
+        .map_err(|e| format!("Failed to decode data: {}", e))?;
+    if stored_payload.len() < 12 {
+        return Err("Invalid encrypted data".to_string());
+    }
+    let nonce_bytes = &stored_payload[0..12];
+    let encrypted_data = &stored_payload[12..];
+
+    let aes_key = Key::<Aes256Gcm>::from_slice(&service_data.encryption_key);
+    let aes_cipher = Aes256Gcm::new(aes_key);
+    let nonce = Nonce::from_slice(nonce_bytes);
+
+    let decrypted_data = aes_cipher
+        .decrypt(nonce, encrypted_data)
+        .map_err(|e| format!("Failed to decrypt cipher: {}", e))?;
+
+    // Get correct derivation details to store them
+    let encrypted_accounts =
+        get_encrypted_accounts().map_err(|e| format!("Failed to get encrypted accounts: {}", e))?;
+    let salt_for_derivation = general_purpose::STANDARD
+        .decode(&encrypted_accounts.salt)
+        .map_err(|e| format!("Failed to decode salt: {}", e))?;
+    let rounds_for_derivation = encrypted_accounts.rounds;
+
+    let key = Key::<Aes256Gcm>::from_slice(&decrypted_data);
+    let cipher_obj = Aes256Gcm::new(key);
+
+    let cipher = Cipher {
+        cipher: cipher_obj,
+        salt: salt_for_derivation,
+        rounds: rounds_for_derivation,
+    };
+
+    Ok(Some(cipher))
 }
 
 pub fn provide_accounts_context() {
@@ -256,6 +427,44 @@ pub fn provide_accounts_context() {
     let config_context = expect_context::<ConfigContext>();
     let (password_timeout_handle, set_password_timeout_handle) = signal::<Option<i32>>(None);
 
+    // Try to retrieve cipher from password storage service on page load if we have encrypted data but no cipher
+    if has_encrypted_data() && cipher.get_untracked().is_none() {
+        spawn_local(async move {
+            if let Ok(Some(retrieved_cipher)) = retrieve_cipher_from_service().await {
+                if let Ok(encrypted_accounts) = get_encrypted_accounts() {
+                    let encrypted_data = match general_purpose::STANDARD
+                        .decode(&encrypted_accounts.encrypted_data)
+                    {
+                        Ok(data) => data,
+                        Err(_) => return,
+                    };
+                    let nonce_bytes =
+                        match general_purpose::STANDARD.decode(&encrypted_accounts.nonce) {
+                            Ok(data) => data,
+                            Err(_) => return,
+                        };
+
+                    if let Ok(decrypted_data) = retrieved_cipher
+                        .cipher
+                        .decrypt(Nonce::from_slice(&nonce_bytes), encrypted_data.as_ref())
+                    {
+                        if let Ok(accounts_json) = String::from_utf8(decrypted_data) {
+                            if let Ok(decrypted_accounts) =
+                                serde_json::from_str::<AccountsState>(&accounts_json)
+                            {
+                                set_cipher(Some(retrieved_cipher));
+                                set_accounts(decrypted_accounts);
+                                web_sys::console::log_1(
+                                    &"Loaded accounts from stored cipher".into(),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
     let clear_password = move || {
         set_cipher(None);
         set_accounts(AccountsState {
@@ -263,6 +472,9 @@ pub fn provide_accounts_context() {
             selected_account_id: None,
         });
         set_password_timeout_handle(None);
+        if let Some(storage) = get_local_storage() {
+            let _ = storage.remove_item(PASSWORD_SERVICE_KEY);
+        }
     };
 
     let reset_password_timeout = move || {
@@ -366,13 +578,29 @@ pub fn provide_accounts_context() {
     });
 
     let (is_encrypted, set_is_encrypted) = signal(has_encrypted_data());
+    let config_context = expect_context::<ConfigContext>();
 
     let decrypt_accounts = Action::new(move |password: &String| {
         let password = password.clone();
         async move {
             let decrypted_accounts = try_decrypt_accounts(password).await;
             match decrypted_accounts {
-                Ok((accounts, cipher)) => {
+                Ok((accounts, cipher, key_bytes)) => {
+                    // Store cipher to password service if remember duration is set
+                    let duration = config_context
+                        .config
+                        .get_untracked()
+                        .password_remember_duration;
+                    if let Some(seconds) = duration.to_seconds() {
+                        spawn_local(async move {
+                            if let Err(e) = store_cipher_to_service(key_bytes, seconds).await {
+                                log::error!("Failed to store cipher to service: {}", e);
+                            } else {
+                                log::info!("Stored cipher to password storage service");
+                            }
+                        });
+                    }
+
                     set_cipher(Some(cipher));
                     set_accounts(accounts);
                     Ok(())
@@ -394,7 +622,7 @@ pub fn provide_accounts_context() {
                 let rounds = *rounds;
                 let salt = salt.clone();
                 Box::pin(async move {
-                    let cipher = get_cipher(password, rounds, &salt).await?;
+                    let cipher = derive_cipher(password, rounds, &salt).await?;
                     for account in current_accounts.accounts.iter() {
                         add_security_log(
                             format!(

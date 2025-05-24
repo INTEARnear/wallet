@@ -2,5 +2,6 @@ target
 dist
 /history-service/transaction_cache
 /logout-bridge-service/sessions
+/password-storage-service/passwords
 .env
 node_modules

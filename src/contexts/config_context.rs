@@ -11,10 +11,9 @@ pub enum TimestampFormat {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub enum PasswordRememberDuration {
-    #[default]
     Never,
-    Seconds15,
     Minutes5,
+    #[default]
     Minutes15,
     Minutes60,
 }
@@ -23,7 +22,6 @@ impl PasswordRememberDuration {
     pub fn display_name(&self) -> &'static str {
         match self {
             Self::Never => "Don't Remember",
-            Self::Seconds15 => "15 seconds",
             Self::Minutes5 => "5 minutes",
             Self::Minutes15 => "15 minutes",
             Self::Minutes60 => "60 minutes",
@@ -33,7 +31,6 @@ impl PasswordRememberDuration {
     pub fn option_value(&self) -> &'static str {
         match self {
             Self::Never => "never",
-            Self::Seconds15 => "15s",
             Self::Minutes5 => "5m",
             Self::Minutes15 => "15m",
             Self::Minutes60 => "60m",
@@ -43,7 +40,6 @@ impl PasswordRememberDuration {
     pub fn from_option_value(value: &str) -> Self {
         match value {
             "never" => Self::Never,
-            "15s" => Self::Seconds15,
             "5m" => Self::Minutes5,
             "15m" => Self::Minutes15,
             "60m" => Self::Minutes60,
@@ -54,7 +50,6 @@ impl PasswordRememberDuration {
     pub fn all_variants() -> &'static [Self] {
         &[
             Self::Never,
-            Self::Seconds15,
             Self::Minutes5,
             Self::Minutes15,
             Self::Minutes60,
@@ -64,7 +59,6 @@ impl PasswordRememberDuration {
     pub fn to_seconds(&self) -> Option<u64> {
         match self {
             Self::Never => None,
-            Self::Seconds15 => Some(15),
             Self::Minutes5 => Some(5 * 60),
             Self::Minutes15 => Some(15 * 60),
             Self::Minutes60 => Some(60 * 60),
