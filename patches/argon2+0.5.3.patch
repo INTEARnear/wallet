@@ -1,0 +1,106 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 0fb2ace..ae644c1 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -58,6 +58,10 @@ version = "1"
+ optional = true
+ default-features = false
+ 
++[dependencies.futures-timer]
++version = "3"
++features = ["wasm-bindgen"]
++
+ [dev-dependencies.hex-literal]
+ version = "0.4"
+ 
+diff --git a/src/lib.rs b/src/lib.rs
+index a8b801f..8504010 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -115,7 +115,8 @@ pub use {
+ 
+ use crate::blake2b_long::blake2b_long;
+ use blake2::{digest, Blake2b512, Digest};
+-use core::fmt;
++use futures_timer::Delay;
++use core::{fmt, time::Duration};
+ 
+ #[cfg(all(feature = "alloc", feature = "password-hash"))]
+ use password_hash::{Decimal, Ident, ParamsString, Salt};
+@@ -226,9 +227,9 @@ impl<'key> Argon2<'key> {
+     /// Hash a password and associated parameters into the provided output buffer.
+     #[cfg(feature = "alloc")]
+     #[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
+-    pub fn hash_password_into(&self, pwd: &[u8], salt: &[u8], out: &mut [u8]) -> Result<()> {
++    pub async fn hash_password_into(&self, pwd: &[u8], salt: &[u8], out: &mut [u8]) -> Result<()> {
+         let mut blocks = vec![Block::default(); self.params.block_count()];
+-        self.hash_password_into_with_memory(pwd, salt, out, &mut blocks)
++        self.hash_password_into_with_memory(pwd, salt, out, &mut blocks).await
+     }
+ 
+     /// Hash a password and associated parameters into the provided output buffer.
+@@ -240,7 +241,7 @@ impl<'key> Argon2<'key> {
+     ///   to have it allocated for them.
+     /// - `no_std` users on "heapless" targets can use an array of the [`Block`] type
+     ///   to stack allocate this buffer.
+-    pub fn hash_password_into_with_memory(
++    pub async fn hash_password_into_with_memory(
+         &self,
+         pwd: &[u8],
+         salt: &[u8],
+@@ -261,7 +262,7 @@ impl<'key> Argon2<'key> {
+         // Hashing all inputs
+         let initial_hash = self.initial_hash(pwd, salt, out);
+ 
+-        self.fill_blocks(memory_blocks.as_mut(), initial_hash)?;
++        self.fill_blocks(memory_blocks.as_mut(), initial_hash).await?;
+         self.finalize(memory_blocks.as_mut(), out)
+     }
+ 
+@@ -270,7 +271,7 @@ impl<'key> Argon2<'key> {
+     /// This method omits the calculation of a hash and can be used when only the
+     /// filled memory is required. It is not necessary to call this method
+     /// before calling any of the hashing functions.
+-    pub fn fill_memory(
++    pub async fn fill_memory(
+         &self,
+         pwd: &[u8],
+         salt: &[u8],
+@@ -280,15 +281,16 @@ impl<'key> Argon2<'key> {
+ 
+         let initial_hash = self.initial_hash(pwd, salt, &[]);
+ 
+-        self.fill_blocks(memory_blocks.as_mut(), initial_hash)
++        self.fill_blocks(memory_blocks.as_mut(), initial_hash).await
+     }
+ 
+     #[allow(clippy::cast_possible_truncation, unused_mut)]
+-    fn fill_blocks(
++    async fn fill_blocks(
+         &self,
+         memory_blocks: &mut [Block],
+         mut initial_hash: digest::Output<Blake2b512>,
+     ) -> Result<()> {
++        Delay::new(Duration::from_millis(1)).await;
+         let block_count = self.params.block_count();
+         let memory_blocks = memory_blocks
+             .get_mut(..block_count)
+@@ -324,6 +326,7 @@ impl<'key> Argon2<'key> {
+ 
+         // Run passes on blocks
+         for pass in 0..iterations {
++            Delay::new(Duration::from_millis(1)).await;
+             for slice in 0..SYNC_POINTS {
+                 let data_independent_addressing = self.algorithm == Algorithm::Argon2i
+                     || (self.algorithm == Algorithm::Argon2id
+@@ -583,8 +586,9 @@ impl PasswordHasher for Argon2<'_> {
+             .output_len()
+             .unwrap_or(Params::DEFAULT_OUTPUT_LEN);
+ 
++        #[allow(unreachable_code)]
+         let output = password_hash::Output::init_with(output_len, |out| {
+-            Ok(self.hash_password_into(password, salt_bytes, out)?)
++            Ok({ let _ = self.hash_password_into(password, salt_bytes, out); unimplemented!() })
+         })?;
+ 
+         Ok(PasswordHash {

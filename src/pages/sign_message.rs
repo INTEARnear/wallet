@@ -67,6 +67,7 @@ pub fn SignMessage() -> impl IntoView {
     let AccountsContext {
         set_accounts,
         accounts,
+        ..
     } = expect_context::<AccountsContext>();
 
     let opener = || {

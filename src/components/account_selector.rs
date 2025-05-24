@@ -883,7 +883,9 @@ pub fn AccountSelector(
 
     // Show creation form immediately if there are no accounts
     Effect::new(move |_| {
-        if accounts_context.accounts.get().accounts.is_empty() {
+        if accounts_context.accounts.get().accounts.is_empty()
+            && !accounts_context.is_encrypted.get()
+        {
             set_is_expanded(true);
             set_modal_state.set(ModalState::Creating);
         }
