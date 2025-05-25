@@ -486,7 +486,7 @@ pub fn SecuritySettings() -> impl IntoView {
                                 <Show when=move || benchmark_result.get().is_some()>
                                     <div class="text-xs text-neutral-400">
                                         <div class="mb-1">
-                                            "Time to crack on a supercomputer (higher is better): "
+                                            "Time to guess on a supercomputer: "
                                             <span class="text-neutral-200">
                                                 {move || {
                                                     if let Some(strength) = password_strength.get() {
@@ -499,18 +499,6 @@ pub fn SecuritySettings() -> impl IntoView {
                                                             &strength,
                                                             rounds,
                                                         )
-                                                    } else {
-                                                        "".to_string()
-                                                    }
-                                                }}
-                                            </span>
-                                        </div>
-                                        <div class="mb-1">
-                                            "Time to log in (doesn't change): "
-                                            <span class="text-neutral-200">
-                                                {move || {
-                                                    if let Some(benchmark_result) = benchmark_result.get() {
-                                                        format!("{:.2} seconds", benchmark_result.1 / 1000.0)
                                                     } else {
                                                         "".to_string()
                                                     }
