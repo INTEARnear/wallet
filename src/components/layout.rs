@@ -8,11 +8,8 @@ use std::time::Duration;
 use web_sys::TouchEvent;
 
 use crate::components::wallet_header::WalletHeader;
+use crate::components::{transaction_queue_overlay::TransactionQueueOverlay, PasswordUnlock};
 use crate::contexts::account_selector_swipe_context::AccountSelectorSwipeContext;
-use crate::{
-    components::{transaction_queue_overlay::TransactionQueueOverlay, PasswordUnlock},
-    contexts::accounts_context::AccountsContext,
-};
 
 /// Height of the bottom navbar with buttons
 const BOTTOM_NAV_HEIGHT_PX: u32 = 64;
@@ -61,17 +58,6 @@ pub fn Layout(children: Children) -> impl IntoView {
         state: _,
         set_state: set_account_selector_state,
     } = expect_context::<AccountSelectorSwipeContext>();
-    let AccountsContext {
-        is_encrypted,
-        accounts,
-        ..
-    } = expect_context::<AccountsContext>();
-
-    let should_show_unlock = move || {
-        is_encrypted.get()
-            && accounts.get().selected_account_id.is_none()
-            && accounts.get().accounts.is_empty()
-    };
 
     const NAV_ITEMS: &[NavItem] = &[
         NavItem {
@@ -279,9 +265,7 @@ pub fn Layout(children: Children) -> impl IntoView {
                     on:touchmove=handle_touch_move
                     on:touchend=handle_touch_end
                 >
-                    <Show when=should_show_unlock>
-                        <PasswordUnlock />
-                    </Show>
+                    <PasswordUnlock />
                     <TransactionQueueOverlay />
                     <div class="p-2 sm:p-4">
                         <WalletHeader />

@@ -119,8 +119,25 @@ pub fn PasswordUnlock() -> impl IntoView {
         set_is_resetting(false);
     };
 
+    let should_show_unlock = move || {
+        accounts_context.is_encrypted.get()
+            && accounts_context
+                .accounts
+                .get()
+                .selected_account_id
+                .is_none()
+            && accounts_context.accounts.get().accounts.is_empty()
+    };
+
     view! {
-        <div class="absolute inset-0 bg-neutral-950 lg:rounded-3xl z-50">
+        <div
+            class="absolute inset-0 bg-neutral-950 lg:rounded-3xl z-50 transition-opacity duration-150"
+            style=move || if should_show_unlock() {
+                "opacity: 1;"
+            } else {
+                "opacity: 0; pointer-events: none;"
+            }
+        >
             <div class="absolute inset-0 flex items-center justify-center">
                 <div class="w-full max-w-md max-h-full p-6 overflow-y-auto">
                     <div class="text-center mb-8">

@@ -612,19 +612,19 @@ pub fn provide_accounts_context() {
 
     let set_password = Action::new(move |args: &PasswordAction| {
         let current_accounts = accounts.get_untracked();
-        if current_accounts.accounts.is_empty() {
-            // Protect from weird edge cases or when the user tries to use
-            // development tools to access the raw UI without decrypting accounts
-            // first, which could lead to losing data
-            return Box::pin(async move { Err("No accounts to encrypt".to_string()) })
-                as Pin<Box<dyn Future<Output = Result<(), String>> + Send>>;
-        }
         match args {
             PasswordAction::SetCipher {
                 password,
                 rounds,
                 salt,
             } => {
+                if current_accounts.accounts.is_empty() {
+                    // Protect from weird edge cases or when the user tries to use
+                    // development tools to access the raw UI without decrypting accounts
+                    // first, which could lead to losing data
+                    return Box::pin(async move { Err("No accounts to encrypt".to_string()) })
+                        as Pin<Box<dyn Future<Output = Result<(), String>> + Send>>;
+                }
                 let password = password.clone();
                 let rounds = *rounds;
                 let salt = salt.clone();
@@ -645,7 +645,7 @@ pub fn provide_accounts_context() {
                     let _ = get_local_storage()
                         .and_then(|storage| storage.remove_item(ACCOUNTS_KEY).ok());
                     Ok(())
-                })
+                }) as Pin<Box<dyn Future<Output = Result<(), String>> + Send>>
             }
             PasswordAction::ClearCipher => Box::pin(async move {
                 set_is_encrypted(false);

@@ -25,6 +25,8 @@ use near_min_api::{
 use rand::{rngs::OsRng, RngCore};
 use zxcvbn::{time_estimates::CrackTimeSeconds, zxcvbn};
 
+const MIN_ROUNDS: u32 = 2;
+
 async fn benchmark_argon2() -> (u32, f64) {
     let benchmark_salt = &[69; 32];
     let mut best_rounds = 1u32;
@@ -52,6 +54,11 @@ async fn benchmark_argon2() -> (u32, f64) {
             let end = window().performance().unwrap().now();
             let duration_ms = end - start;
 
+            if actual_duration == 0.0 {
+                actual_duration = duration_ms;
+                best_rounds = rounds;
+            }
+
             // 250ms on fast devices, 400ms on slow devices
             let single_round_duration = duration_ms / rounds as f64;
             let single_round_duration_confident = rounds > 4;
@@ -66,7 +73,7 @@ async fn benchmark_argon2() -> (u32, f64) {
             } else {
                 400.0
             };
-            if duration_ms <= target_duration {
+            if duration_ms <= target_duration || rounds < MIN_ROUNDS {
                 best_rounds = rounds;
                 actual_duration = duration_ms;
                 if duration_ms < target_duration / 3.0 {
