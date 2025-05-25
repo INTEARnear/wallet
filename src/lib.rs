@@ -9,6 +9,7 @@ use contexts::transaction_queue_context::provide_transaction_queue_context;
 use leptos::prelude::*;
 use leptos_meta::*;
 use leptos_router::{components::*, path};
+use wasm_bindgen::prelude::*;
 
 pub mod components;
 pub mod contexts;
@@ -30,6 +31,23 @@ use crate::pages::{
 #[component]
 pub fn App() -> impl IntoView {
     let _ = window().navigator().storage().persist().unwrap();
+
+    let warning_closure = Closure::wrap(Box::new(|| {
+        let message = "%c⚠️ STOP! Don't paste any code here! This is dangerous and could compromise your wallet security. If someone told you to paste code here, they're trying to scam you.";
+        let style = "font-size: 20px; font-weight: bold; color: #ff4444; background: #fff3cd; padding: 15px; border: 2px solid #ff4444; border-radius: 5px; line-height: 1.5; display: block;";
+
+        let message_js = wasm_bindgen::JsValue::from_str(message);
+        let style_js = wasm_bindgen::JsValue::from_str(style);
+
+        web_sys::console::log_2(&message_js, &style_js);
+    }) as Box<dyn Fn()>);
+    let _ = window().set_interval_with_callback_and_timeout_and_arguments_0(
+        warning_closure.as_ref().unchecked_ref(),
+        5000,
+    );
+    // Don't drop the closure
+    warning_closure.forget();
+
     provide_meta_context();
     provide_config_context();
     provide_accounts_context();

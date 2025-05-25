@@ -593,7 +593,7 @@ pub fn SecuritySettings() -> impl IntoView {
 
                         <Show when=move || is_encrypted.get()>
                             <div class="flex flex-col gap-3">
-                                <div class="text-lg font-medium">Remember Password For</div>
+                                <div class="text-lg font-medium">Remember Password</div>
                                 <select
                                     class="w-full p-3 rounded-lg bg-neutral-800 border border-neutral-700 focus:border-blue-500 focus:outline-none"
                                     on:change=move |ev| {
