@@ -20,6 +20,12 @@ jobs:
         with:
           components: rustfmt, clippy
       
+      - name: Install patch-crate
+        run: cargo install patch-crate
+      
+      - name: Apply patches
+        run: cargo patch-crate
+      
       - name: Install Trunk
         if: steps.cache-trunk.outputs.cache-hit != 'true'
         run: cargo install trunk
