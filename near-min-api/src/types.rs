@@ -1908,18 +1908,15 @@ pub enum InvalidTxError {
     /// Account does not have enough balance to cover TX cost
     NotEnoughBalance {
         signer_id: AccountId,
-        #[serde(with = "dec_format")]
-        balance: Balance,
-        #[serde(with = "dec_format")]
-        cost: Balance,
+        balance: NearToken,
+        cost: NearToken,
     },
     /// Signer account doesn't have enough balance after transaction.
     LackBalanceForState {
         /// An account which doesn't have enough balance to cover storage.
         signer_id: AccountId,
         /// Required balance to cover the state.
-        #[serde(with = "dec_format")]
-        amount: Balance,
+        amount: NearToken,
     },
     /// An integer overflow occurred during transaction cost estimation.
     CostOverflow,

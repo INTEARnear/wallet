@@ -272,9 +272,9 @@ pub fn provide_transaction_queue_context() {
                                                                     InvalidTxError::InvalidSignature =>
                                                                         "Invalid transaction signature".to_string(),
                                                                     InvalidTxError::NotEnoughBalance { signer_id, balance, cost } =>
-                                                                        format!("Not enough balance: {signer_id} has {balance} but needs {cost}", balance = NearToken::from_yoctonear(balance), cost = NearToken::from_yoctonear(cost)),
+                                                                        format!("Not enough balance: {signer_id} has {balance} but needs {cost}{is_difference_small}", is_difference_small = if balance.saturating_sub(cost) < NearToken::from_millinear(1) { " (difference is less than 0.001 NEAR)" } else { "" }),
                                                                     InvalidTxError::LackBalanceForState { signer_id, amount } =>
-                                                                        format!("Account {signer_id} needs {amount} more to cover state", amount = NearToken::from_yoctonear(amount)),
+                                                                        format!("Account {signer_id} needs {amount} more to cover state"),
                                                                     InvalidTxError::CostOverflow =>
                                                                         "Transaction cost overflow".to_string(),
                                                                     InvalidTxError::InvalidChain =>
