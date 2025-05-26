@@ -193,7 +193,7 @@ pub fn WrapToken() -> impl IntoView {
                                             on:click=move |_| {
                                                 let max_amount = token.balance as f64
                                                     / 10f64.powi(token.token.metadata.decimals as i32);
-                                                let rounded_gas_cost = 0.0003;
+                                                let rounded_gas_cost = 0.001;
                                                 let max_amount = (max_amount - rounded_gas_cost).max(0.0);
                                                 set_amount.set(max_amount.to_string());
                                                 check_amount(max_amount.to_string());
