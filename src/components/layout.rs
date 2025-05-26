@@ -4,6 +4,7 @@ use leptos_router::{
     components::*,
     hooks::{use_location, use_navigate},
 };
+use rand::{rngs::OsRng, Rng};
 use std::time::Duration;
 use web_sys::TouchEvent;
 
@@ -25,7 +26,13 @@ fn left_edge_threshold() -> f64 {
         .unwrap()
         .as_f64()
         .unwrap();
-    (viewport_width * 0.15).min(100.0)
+    (viewport_width * 0.25).min(120.0)
+}
+
+fn get_random_background() -> String {
+    let mut rng = OsRng;
+    let random_num = rng.gen_range(1..=3);
+    format!("/bg{}.png", random_num)
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -52,6 +59,7 @@ pub fn Layout(children: Children) -> impl IntoView {
     let (initial_movement_direction, set_initial_movement_direction) =
         signal(Option::<MovementDirection>::None);
     let (is_left_edge_swipe, set_is_left_edge_swipe) = signal(false);
+    let random_background = get_random_background();
     let AccountSelectorSwipeContext {
         progress: _,
         set_progress: set_account_selector_progress,
@@ -258,7 +266,10 @@ pub fn Layout(children: Children) -> impl IntoView {
                 </ul>
             }
         }>
-            <div class="flex justify-center items-center h-screen overflow-hidden bg-black lg:bg-sky-950">
+            <div
+                class="flex justify-center items-center h-screen overflow-hidden bg-black lg:bg-[linear-gradient(rgba(0,0,0,0.75),rgba(0,0,0,0.75)),var(--bg-image)] lg:bg-cover lg:bg-center lg:bg-no-repeat"
+                style=format!("--bg-image: url('{}')", random_background)
+            >
                 <div
                     class="h-[100dvh] absolute top-0 lg:top-[30px] bottom-0 w-full lg:h-[calc(100%-60px)] lg:w-[600px] bg-neutral-950 lg:rounded-3xl transition-all duration-150 flex flex-col"
                     on:touchstart=handle_touch_start
