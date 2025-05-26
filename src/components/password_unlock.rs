@@ -83,6 +83,7 @@ pub fn PasswordUnlock() -> impl IntoView {
             match result {
                 Ok(()) => {
                     set_is_unlocking(false);
+                    set_password_input(String::new());
                 }
                 Err(error_msg) => {
                     if auto_attempt_abortable.read_untracked().is_none() {
@@ -116,6 +117,7 @@ pub fn PasswordUnlock() -> impl IntoView {
             .set_password
             .dispatch(PasswordAction::ClearCipher);
 
+        set_password_input(String::new());
         set_is_resetting(false);
     };
 
