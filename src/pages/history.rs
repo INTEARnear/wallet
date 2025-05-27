@@ -199,6 +199,7 @@ pub fn History() -> impl IntoView {
                                                                 .unwrap();
                                                             let time_ago = format_duration(duration);
                                                             let formatted_datetime = datetime
+                                                                .with_timezone(&Local)
                                                                 .format("%Y-%m-%d %H:%M:%S")
                                                                 .to_string();
                                                             let account_id = format_account_id(
