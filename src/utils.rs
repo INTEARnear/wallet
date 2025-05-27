@@ -901,7 +901,18 @@ impl From<WalletSelectorAction> for NearAction {
 pub fn is_debug_enabled() -> bool {
     if let Some(window) = web_sys::window() {
         if let Ok(debug_value) = Reflect::get(&window, &"DEBUG".into()) {
-            return debug_value.as_bool().unwrap_or(false);
+            if debug_value.as_bool().unwrap_or(false) {
+                return true;
+            }
+        }
+
+        if let Ok(Some(local_storage)) = window.local_storage() {
+            if let Ok(Some(debug_value)) = local_storage.get_item("DEBUG") {
+                let debug_str = debug_value.trim().to_lowercase();
+                if !debug_str.is_empty() {
+                    return true;
+                }
+            }
         }
     }
     false
