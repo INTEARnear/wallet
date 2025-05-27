@@ -84,6 +84,10 @@ pub fn PasswordUnlock() -> impl IntoView {
                 Ok(()) => {
                     set_is_unlocking(false);
                     set_password_input(String::new());
+                    // Blur the input to dismiss mobile keyboard
+                    if let Some(input) = input_ref.get() {
+                        let _ = input.blur();
+                    }
                 }
                 Err(error_msg) => {
                     if auto_attempt_abortable.read_untracked().is_none() {
@@ -134,10 +138,12 @@ pub fn PasswordUnlock() -> impl IntoView {
     view! {
         <div
             class="absolute inset-0 bg-neutral-950 lg:rounded-3xl z-50 transition-opacity duration-150"
-            style=move || if should_show_unlock() {
-                "opacity: 1;"
-            } else {
-                "opacity: 0; pointer-events: none;"
+            style=move || {
+                if should_show_unlock() {
+                    "opacity: 1;"
+                } else {
+                    "opacity: 0; pointer-events: none;"
+                }
             }
         >
             <div class="absolute inset-0 flex items-center justify-center">
