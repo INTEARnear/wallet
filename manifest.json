@@ -9,6 +9,6 @@
     "lang": "en-US",
     "start_url": "./",
     "display": "standalone",
-    "background_color": "black",
-    "theme_color": "oklch(68.5% 0.169 237.323)"
+    "background_color": "#0a0a0a",
+    "theme_color": "#0a0a0a"
 }
