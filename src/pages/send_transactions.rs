@@ -147,7 +147,10 @@ fn TransactionAction(
                 } else {
                     format!(" and deposit {deposit}")
                 };
-                format!("Call '{method_name}' with {gas}{deposit_str}")
+                format!(
+                    "Call '{method_name}' with {gas}{deposit_str}",
+                    gas = NearGas::from_gas(*gas)
+                )
             }
             WalletSelectorAction::Transfer { deposit } => {
                 format!("Transfer {deposit}")
