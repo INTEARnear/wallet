@@ -7,7 +7,7 @@ use near_min_api::{
         near_crypto::PublicKey, AccessKey as NearAccessKey, AccessKeyPermission, AccountId,
         AccountIdRef, Action as NearAction, AddKeyAction, Balance, CreateAccountAction,
         DeleteAccountAction, DeleteKeyAction, DeployContractAction, FunctionCallAction,
-        FunctionCallPermission, NearGas, NearToken, StakeAction, TransferAction,
+        FunctionCallPermission, NearToken, StakeAction, TransferAction,
     },
     utils::dec_format,
 };
@@ -795,7 +795,8 @@ pub enum WalletSelectorAction {
         #[serde(rename = "methodName")]
         method_name: String,
         args: serde_json::Value,
-        gas: NearGas,
+        #[serde(with = "dec_format")]
+        gas: u64,
         deposit: NearToken,
     },
     Transfer {
@@ -856,7 +857,7 @@ impl From<WalletSelectorAction> for NearAction {
             } => NearAction::FunctionCall(Box::new(FunctionCallAction {
                 method_name,
                 args: serde_json::to_vec(&args).unwrap_or_default(),
-                gas: gas.as_gas(),
+                gas,
                 deposit,
             })),
             WalletSelectorAction::Transfer { deposit } => {

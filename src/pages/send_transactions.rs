@@ -247,7 +247,7 @@ fn TransactionAction(
                                         on:click=move |_| copy_cli_command(
                                             &method_name_clone,
                                             &args_clone,
-                                            gas_clone,
+                                            NearGas::from_gas(gas_clone),
                                             deposit_clone,
                                             accounts
                                                 .get()
@@ -628,7 +628,7 @@ pub fn SendTransactions() -> impl IntoView {
                 txs.iter().any(|tx| {
                     tx.actions.iter().any(|action| {
                         if let WalletSelectorAction::FunctionCall { gas, .. } = action {
-                            *gas >= NearGas::from_tgas(300)
+                            *gas >= NearGas::from_tgas(300).as_gas()
                         } else {
                             false
                         }
