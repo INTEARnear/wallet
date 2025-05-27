@@ -31,7 +31,7 @@ fn left_edge_threshold() -> f64 {
 
 fn get_random_background() -> String {
     let mut rng = OsRng;
-    let random_num = rng.gen_range(1..=4);
+    let random_num = rng.gen_range(1..=3);
     format!("/bg{}.png", random_num)
 }
 
