@@ -18,6 +18,7 @@ use crate::contexts::{
     security_log_context::add_security_log,
     transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
 };
+use crate::utils::is_debug_enabled;
 
 const GAS_ALLOWANCE: NearToken = NearToken::from_millinear(1000); // 1 NEAR
 
@@ -145,12 +146,18 @@ pub fn Connect() -> impl IntoView {
     });
 
     window_event_listener(leptos::ev::message, move |event| {
-        log::info!(
-            "Received message {:?}",
-            serde_wasm_bindgen::from_value::<serde_json::Value>(event.data())
-        );
+        if is_debug_enabled() {
+            log::info!(
+                "Received message event from origin: {}, data: {:?}",
+                event.origin(),
+                event.data()
+            );
+        }
+
         if let Ok(message) = serde_wasm_bindgen::from_value::<ReceiveMessage>(event.data()) {
-            log::info!("Parsed message {message:?}");
+            if is_debug_enabled() {
+                log::info!("Successfully parsed message: {:?}", message);
+            }
             match message {
                 ReceiveMessage::SignIn { data } => {
                     set_origin(event.origin());
@@ -161,17 +168,23 @@ pub fn Connect() -> impl IntoView {
                     set_request_data(Some(data));
                 }
             }
+        } else if is_debug_enabled() {
+            log::info!("Failed to parse message as ReceiveMessage");
         }
     });
 
     Effect::new(move || {
-        log::info!("Sending ready message");
+        if is_debug_enabled() {
+            log::info!("Sending ready message");
+        }
         let ready_message = SendMessage::Ready;
         let js_value = serde_wasm_bindgen::to_value(&ready_message).unwrap();
         opener()
             .post_message(&js_value, "*")
             .expect("Failed to send message");
-        log::info!("Sent ready message");
+        if is_debug_enabled() {
+            log::info!("Sent ready message");
+        }
     });
 
     let handle_connect = move |_| {
@@ -470,9 +483,7 @@ pub fn Connect() -> impl IntoView {
                                         Some(contract_id) => {
                                             let method_names = request.method_names.unwrap_or_default();
                                             let label = if method_names.is_empty() {
-                                                format!(
-                                                    "Allow calling {contract_id} without confirmation",
-                                                )
+                                                format!("Allow calling {contract_id} without confirmation")
                                             } else {
                                                 format!(
                                                     "Allow calling {} on {} without confirmation",

@@ -12,6 +12,7 @@ use crate::contexts::{
     accounts_context::AccountsContext, connected_apps_context::ConnectedAppsContext,
     security_log_context::add_security_log,
 };
+use crate::utils::is_debug_enabled;
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -79,7 +80,18 @@ pub fn SignMessage() -> impl IntoView {
     };
 
     window_event_listener(leptos::ev::message, move |event| {
+        if is_debug_enabled() {
+            log::info!(
+                "Received message event from origin: {}, data: {:?}",
+                event.origin(),
+                event.data()
+            );
+        }
+
         if let Ok(message) = serde_wasm_bindgen::from_value::<ReceiveMessage>(event.data()) {
+            if is_debug_enabled() {
+                log::info!("Successfully parsed message: {:?}", message);
+            }
             match message {
                 ReceiveMessage::SignMessage { data } => {
                     set_origin(event.origin());
@@ -87,6 +99,8 @@ pub fn SignMessage() -> impl IntoView {
                     set_request_data(Some(data));
                 }
             }
+        } else if is_debug_enabled() {
+            log::info!("Failed to parse message as ReceiveMessage");
         }
     });
 

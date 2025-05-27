@@ -25,7 +25,10 @@ use crate::{
         security_log_context::add_security_log,
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
-    utils::{WalletSelectorAccessKeyPermission, WalletSelectorAction, WalletSelectorTransaction},
+    utils::{
+        is_debug_enabled, WalletSelectorAccessKeyPermission, WalletSelectorAction,
+        WalletSelectorTransaction,
+    },
 };
 
 #[derive(Deserialize, Debug, Clone)]
@@ -454,7 +457,18 @@ pub fn SendTransactions() -> impl IntoView {
     };
 
     window_event_listener(leptos::ev::message, move |event| {
+        if is_debug_enabled() {
+            log::info!(
+                "Received message event from origin: {}, data: {:?}",
+                event.origin(),
+                event.data()
+            );
+        }
+
         if let Ok(message) = serde_wasm_bindgen::from_value::<ReceiveMessage>(event.data()) {
+            if is_debug_enabled() {
+                log::info!("Successfully parsed message: {:?}", message);
+            }
             match message {
                 ReceiveMessage::SignAndSendTransactions { data } => {
                     set_origin(event.origin());
@@ -462,6 +476,8 @@ pub fn SendTransactions() -> impl IntoView {
                     set_request_data(Some(data));
                 }
             }
+        } else if is_debug_enabled() {
+            log::info!("Failed to parse message as ReceiveMessage");
         }
     });
 

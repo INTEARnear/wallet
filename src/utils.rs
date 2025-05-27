@@ -13,7 +13,7 @@ use near_min_api::{
 };
 use serde::Deserialize;
 use std::{fmt::Display, ops::Deref, time::Duration};
-use web_sys::MouseEvent;
+use web_sys::{js_sys::Reflect, MouseEvent};
 
 use crate::contexts::{
     accounts_context::AccountsContext, config_context::ConfigContext, rpc_context::RpcContext,
@@ -896,4 +896,13 @@ impl From<WalletSelectorAction> for NearAction {
             }
         }
     }
+}
+
+pub fn is_debug_enabled() -> bool {
+    if let Some(window) = web_sys::window() {
+        if let Ok(debug_value) = Reflect::get(&window, &"DEBUG".into()) {
+            return debug_value.as_bool().unwrap_or(false);
+        }
+    }
+    false
 }
