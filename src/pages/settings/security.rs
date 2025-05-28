@@ -94,38 +94,6 @@ async fn benchmark_argon2() -> (u32, f64) {
     (best_rounds, actual_duration)
 }
 
-fn format_supercomputer_crack_time(
-    password: &str,
-    entropy: &zxcvbn::Entropy,
-    rounds: u32,
-) -> String {
-    let supercomputer_rounds_per_second = 1_000_000u64;
-    let effective_guesses_per_second = supercomputer_rounds_per_second / rounds as u64;
-    let mut guesses_needed = entropy.crack_times().guesses();
-    if (guesses_needed as f64).log10() % 1.0 < 0.001 {
-        // zxcvbn calculates brute-force guesses based on 10^x, not depending on charset
-        let mut charset = 0;
-        if password.chars().any(|c| c.is_ascii_digit()) {
-            charset += 10;
-        }
-        if password.chars().any(|c| c.is_ascii_lowercase()) {
-            charset += 26;
-        }
-        if password.chars().any(|c| c.is_ascii_uppercase()) {
-            charset += 26;
-        }
-        if password.chars().any(|c| !c.is_ascii_alphanumeric()) {
-            charset += 32; // special characters
-        }
-        if !password.is_ascii() {
-            charset += 300; // non-ASCII characters, probably emoji or different language characters
-        }
-        guesses_needed = (charset as f64).powf((guesses_needed as f64).log10()) as u64 / 2;
-    }
-    let seconds = guesses_needed as f64 / effective_guesses_per_second as f64;
-    format!("{}", CrackTimeSeconds::Float(seconds))
-}
-
 #[component]
 pub fn SecuritySettings() -> impl IntoView {
     let AccountsContext {
@@ -480,31 +448,6 @@ pub fn SecuritySettings() -> impl IntoView {
                                                 </div>
                                             </div>
                                         </Show>
-                                    </div>
-                                </Show>
-
-                                <Show when=move || benchmark_result.get().is_some()>
-                                    <div class="text-xs text-neutral-400">
-                                        <div class="mb-1">
-                                            "Time to guess on a supercomputer: "
-                                            <span class="text-neutral-200">
-                                                {move || {
-                                                    if let Some(strength) = password_strength.get() {
-                                                        let rounds = benchmark_result
-                                                            .get()
-                                                            .map(|(r, _)| r)
-                                                            .unwrap_or(1);
-                                                        format_supercomputer_crack_time(
-                                                            &password_input.get(),
-                                                            &strength,
-                                                            rounds,
-                                                        )
-                                                    } else {
-                                                        "".to_string()
-                                                    }
-                                                }}
-                                            </span>
-                                        </div>
                                     </div>
                                 </Show>
                             </div>
