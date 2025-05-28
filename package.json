@@ -1,6 +1,15 @@
 {
   "dependencies": {
-    "@tailwindcss/cli": "4.1.3",
-    "tailwindcss": "4.1.3"
+    "@tailwindcss/cli": "4.1.8",
+    "tailwindcss": "4.1.8"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.5"
+  },
+  "scripts": {
+    "js:build": "esbuild src/js/index.ts --bundle --outfile=js-out/index.js --format=esm --minify",
+    "js:watch": "esbuild src/js/index.ts --bundle --outfile=js-out/index.js --format=esm --sourcemap --watch=forever",
+    "build": "npm run js:build && trunk build --release",
+    "dev": "npm run js:watch & trunk serve"
   }
 }

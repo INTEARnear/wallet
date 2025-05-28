@@ -5,3 +5,4 @@ dist
 /password-storage-service/passwords
 .env
 node_modules
+/js-out

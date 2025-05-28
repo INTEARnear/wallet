@@ -5,11 +5,38 @@ An open source wallet that can be accessed at [wallet.intear.tech](https://walle
 
 ## Running Locally
 
+You need both the Rust toolchain and Node installed.
+
+1. Install Rust targets + Trunk if you haven't already:
+
+```bash
+cargo install trunk
+rustup target add wasm32-unknown-unknown
+```
+
+2. Install JS dependencies:
+
+```bash
+npm install -D
+```
+
+3. Start the development servers (auto-rebuilds Rust, Tailwind and TS):
+
+```bash
+npm run dev
+```
+
+4. For a release build:
+
+```bash
+npm run build
+```
+
+The output will be in `dist/`
+
 You need to set up some env variables in `.env` to external services, and if you don't use `.env.prod`, you'd need to set up history-service and account-creation-service in their respective directories in this repo.
 
-To build, install `cargo install trunk` and use `trunk build` or `trunk build --release`. To serve and watch for changes, use `trunk serve`.
-
-Built with [Leptos](https://leptos.dev), [TailwindCSS](https://tailwindcss.com), and `near-min-api` (an upcoming wasm-ready crate).
+Built with Leptos, TailwindCSS, Trunk, ESBuild, and `near-min-api` (a wasm-ready crate built for this crate).
 
 
 ## Contributing
