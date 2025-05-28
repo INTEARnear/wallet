@@ -38,6 +38,9 @@ jobs:
       - name: Install npm dependencies
         run: npm install
 
+      - name: Install Tailwind CLI
+        run: npm install -g @tailwindcss/cli@4.1.8
+
       - name: Add WASM target
         run: rustup target add wasm32-unknown-unknown
 
