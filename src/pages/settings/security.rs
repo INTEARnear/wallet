@@ -23,7 +23,7 @@ use near_min_api::{
     QueryFinality,
 };
 use rand::{rngs::OsRng, RngCore};
-use zxcvbn::{time_estimates::CrackTimeSeconds, zxcvbn};
+use zxcvbn::zxcvbn;
 
 const MIN_ROUNDS: u32 = 2;
 

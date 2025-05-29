@@ -1,14 +1,22 @@
 {
   "dependencies": {
+    "@reown/appkit": "^1.7.7",
+    "@reown/appkit-adapter-wagmi": "^1.7.7",
     "@tailwindcss/cli": "4.1.8",
-    "tailwindcss": "4.1.8"
+    "@tanstack/react-query": "^5.79.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwindcss": "4.1.8",
+    "viem": "^2.30.5",
+    "wagmi": "^2.15.4"
   },
   "devDependencies": {
     "esbuild": "0.25.5"
   },
+  "type": "module",
   "scripts": {
-    "js:build": "esbuild src/js/index.ts --bundle --outfile=js-out/index.js --format=esm --minify",
-    "js:watch": "esbuild src/js/index.ts --bundle --outfile=js-out/index.js --format=esm --sourcemap --watch=forever",
+    "js:build": "esbuild src/js/index.tsx --bundle --outdir=js-out --format=esm --splitting --minify",
+    "js:watch": "esbuild src/js/index.tsx --bundle --outdir=js-out --format=esm --splitting --sourcemap --watch=forever",
     "build": "npm run js:build && trunk build --release",
     "dev": "npm run js:watch & trunk serve"
   }

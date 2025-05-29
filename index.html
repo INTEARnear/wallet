@@ -12,11 +12,11 @@
   <link rel="manifest" href="./manifest.json">
 
   <script>
-    window.onload = () => {
+    window.addEventListener('load', async () => {
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./service_worker.js');
+        await navigator.serviceWorker.register('./service_worker.js');
       }
-    }
+    });
   </script>
   <script type="module" src="/js/index.js"></script>
 </head>
