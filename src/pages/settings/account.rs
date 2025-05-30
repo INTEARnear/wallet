@@ -25,7 +25,7 @@ use serde_wasm_bindgen;
 const SMART_WALLET_VERSIONS: &[(CryptoHash, NaiveDate, &[&str])] = &[
     (
         CryptoHash(
-            bs58::decode::<&[u8]>(b"2x7GPUQYkjeYucGeQod6tQbGF8vqZwUmcgs1cva9thcM")
+            bs58::decode::<&[u8]>(b"7jPVdfNmttfJm3FMvGsxxYgjjKAxR4Zot9XRv1YrWxYd")
                 .into_array_const_unwrap::<32>(),
         ),
         NaiveDate::from_ymd_opt(2025, 5, 30).unwrap(),
@@ -42,29 +42,29 @@ const SMART_WALLET_VERSIONS: &[(CryptoHash, NaiveDate, &[&str])] = &[
 ];
 const CURRENT_SMART_WALLET_VERSION: CryptoHash = SMART_WALLET_VERSIONS[0].0;
 
-const RECOVERY_VERSION: CryptoHash = CryptoHash(
+const RECOVERY_ADDED_VERSION: CryptoHash = CryptoHash(
     bs58::decode::<&[u8]>(b"Cznw3ewddP9KxNshCCAcNsVkBeJYAAvkT4qcpvva3Bh2")
+        .into_array_const_unwrap::<32>(),
+);
+const MIGRATIONS_ADDED_VERSION: CryptoHash = CryptoHash(
+    bs58::decode::<&[u8]>(b"7jPVdfNmttfJm3FMvGsxxYgjjKAxR4Zot9XRv1YrWxYd")
         .into_array_const_unwrap::<32>(),
 );
 
 fn supports_feature(
-    current_version: Option<CryptoHash>,
+    current_version: CryptoHash,
     feature_introduced_in_version: CryptoHash,
 ) -> bool {
-    if let Some(version) = current_version {
-        let current_idx = SMART_WALLET_VERSIONS
-            .iter()
-            .position(|(hash, _, _)| *hash == version);
-        let feature_idx = SMART_WALLET_VERSIONS
-            .iter()
-            .position(|(hash, _, _)| *hash == feature_introduced_in_version);
+    let current_idx = SMART_WALLET_VERSIONS
+        .iter()
+        .position(|(hash, _, _)| *hash == current_version);
+    let feature_idx = SMART_WALLET_VERSIONS
+        .iter()
+        .position(|(hash, _, _)| *hash == feature_introduced_in_version);
 
-        match (current_idx, feature_idx) {
-            (Some(current), Some(feature)) => current <= feature,
-            _ => false,
-        }
-    } else {
-        false
+    match (current_idx, feature_idx) {
+        (Some(current), Some(feature)) => current <= feature,
+        _ => false,
     }
 }
 
@@ -258,7 +258,7 @@ pub fn AccountSettings() -> impl IntoView {
                 return Ok::<UserRecoveryMethods, String>(UserRecoveryMethods::default());
             };
 
-            let recovery_supported = supports_feature(Some(current_version.0), RECOVERY_VERSION);
+            let recovery_supported = supports_feature(current_version.0, RECOVERY_ADDED_VERSION);
 
             if !recovery_supported {
                 return Ok(UserRecoveryMethods::default());
@@ -640,18 +640,41 @@ pub fn AccountSettings() -> impl IntoView {
                                                                         .get()
                                                                         .selected_account_id
                                                                     {
-                                                                        let action = Action::UseGlobalContract(
+                                                                        let before_upgrade = Action::FunctionCall(
+                                                                            Box::new(FunctionCallAction {
+                                                                                method_name: "before_upgrade".to_string(),
+                                                                                args: serde_json::to_vec(&serde_json::json!({})).unwrap(),
+                                                                                gas: NearGas::from_tgas(5).as_gas(),
+                                                                                deposit: near_min_api::types::NearToken::from_yoctonear(0),
+                                                                            }),
+                                                                        );
+                                                                        let use_global_contract = Action::UseGlobalContract(
                                                                             Box::new(UseGlobalContractAction {
                                                                                 contract_identifier: GlobalContractIdentifier::CodeHash(
                                                                                     CURRENT_SMART_WALLET_VERSION,
                                                                                 ),
                                                                             }),
                                                                         );
+                                                                        let after_upgrade = Action::FunctionCall(
+                                                                            Box::new(FunctionCallAction {
+                                                                                method_name: "after_upgrade".to_string(),
+                                                                                args: serde_json::to_vec(&serde_json::json!({})).unwrap(),
+                                                                                gas: NearGas::from_tgas(30).as_gas(),
+                                                                                deposit: near_min_api::types::NearToken::from_yoctonear(0),
+                                                                            }),
+                                                                        );
                                                                         let (receiver, transaction) = EnqueuedTransaction::create(
                                                                             "Update Smart Wallet".to_string(),
                                                                             selected_account_id.clone(),
                                                                             selected_account_id,
-                                                                            vec![action],
+                                                                            if supports_feature(
+                                                                                current_version.0,
+                                                                                MIGRATIONS_ADDED_VERSION,
+                                                                            ) {
+                                                                                vec![before_upgrade, use_global_contract, after_upgrade]
+                                                                            } else {
+                                                                                vec![use_global_contract, after_upgrade]
+                                                                            },
                                                                         );
                                                                         add_transaction.update(|queue| queue.push(transaction));
                                                                         spawn_local(async move {
@@ -700,8 +723,8 @@ pub fn AccountSettings() -> impl IntoView {
                         match result {
                             Ok(Some(current_version)) => {
                                 let recovery_supported = supports_feature(
-                                    Some(current_version.0),
-                                    RECOVERY_VERSION,
+                                    current_version.0,
+                                    RECOVERY_ADDED_VERSION,
                                 );
                                 if recovery_supported {
                                     view! {
