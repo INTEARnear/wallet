@@ -549,6 +549,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                     match receiver.await {
                                                                         Ok(Ok(_details)) => {
                                                                             smart_wallet_version.refetch();
+                                                                            set_timeout(move || smart_wallet_version.refetch(), Duration::from_millis(1000));
                                                                         }
                                                                         Ok(Err(err)) => {
                                                                             log::error!("Smart wallet transaction failed: {}", err);
