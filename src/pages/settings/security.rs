@@ -107,9 +107,6 @@ pub fn SecuritySettings() -> impl IntoView {
     let TransactionQueueContext {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
-    let (show_secrets, set_show_secrets) = signal(false);
-    let (copied_seed, set_copied_seed) = signal(false);
-    let (copied_key, set_copied_key) = signal(false);
     let (terminating_sessions, set_terminating_sessions) = signal(false);
     let (benchmarking_password, set_benchmarking_password) = signal(false);
     let (password_input, set_password_input) = signal(String::new());
@@ -121,48 +118,6 @@ pub fn SecuritySettings() -> impl IntoView {
     let (remove_password_result, set_remove_password_result) =
         signal::<Option<Result<(), String>>>(None);
     let rpc_context = expect_context::<RpcContext>();
-
-    let show_secrets_memo = Memo::new(move |_| show_secrets.get());
-
-    Effect::new(move || {
-        if show_secrets_memo.get() {
-            add_security_log(
-                "Shown secrets on /settings/security".to_string(),
-                accounts.get_untracked().selected_account_id.unwrap(),
-            );
-        }
-    });
-
-    let copy_seed = move |_| {
-        if let Some(account) = accounts
-            .get()
-            .accounts
-            .iter()
-            .find(|acc| acc.account_id == accounts.get().selected_account_id.unwrap())
-        {
-            if let Some(seed_phrase) = &account.seed_phrase {
-                let _ = window().navigator().clipboard().write_text(seed_phrase);
-                set_copied_seed(true);
-                set_timeout(move || set_copied_seed(false), Duration::from_millis(2000));
-            }
-        }
-    };
-
-    let copy_key = move |_| {
-        if let Some(account) = accounts
-            .get()
-            .accounts
-            .iter()
-            .find(|acc| acc.account_id == accounts.get().selected_account_id.unwrap())
-        {
-            let _ = window()
-                .navigator()
-                .clipboard()
-                .write_text(&account.secret_key.to_string());
-            set_copied_key(true);
-            set_timeout(move || set_copied_key(false), Duration::from_millis(2000));
-        }
-    };
 
     let terminate_sessions = move |_| {
         let Some(account_id) = accounts.get().selected_account_id else {
@@ -274,6 +229,17 @@ pub fn SecuritySettings() -> impl IntoView {
             <div class="text-xl font-semibold">Security</div>
 
             <div class="flex flex-col gap-4">
+                <A
+                    href="/settings/security/account"
+                    attr:class="flex items-center justify-between cursor-pointer p-4 rounded-lg bg-neutral-900 hover:bg-neutral-800 transition-colors"
+                >
+                    <div class="flex items-center gap-3">
+                        <Icon icon=icondata::LuUser width="20" height="20" />
+                        <span>Account</span>
+                    </div>
+                    <Icon icon=icondata::LuChevronRight width="20" height="20" />
+                </A>
+
                 <A
                     href="/settings/security/connected-apps"
                     attr:class="flex items-center justify-between cursor-pointer p-4 rounded-lg bg-neutral-900 hover:bg-neutral-800 transition-colors"
@@ -597,137 +563,12 @@ pub fn SecuritySettings() -> impl IntoView {
                 </div>
 
                 <div class="flex flex-col gap-2">
-                    <div class="text-lg font-medium">Export Account</div>
-                    <div class="text-sm text-neutral-400">
-                        "Export your account to another wallet or device. "
-                        <span class="text-red-400">
-                            "Keep this information secure and never share it with anyone."
-                        </span>
-                    </div>
-                </div>
-
-                <div class="flex flex-col gap-2">
-                    <button
-                        on:click=move |_| set_show_secrets.update(|v| *v = !*v)
-                        class="flex items-center justify-between cursor-pointer p-4 rounded-lg bg-neutral-900 hover:bg-neutral-800 transition-colors"
-                    >
-                        <div class="flex items-center gap-3">
-                            <Icon icon=icondata::LuKeyRound width="20" height="20" />
-                            <span>Export Account</span>
-                        </div>
-                        <Show when=move || show_secrets.get()>
-                            <Icon icon=icondata::LuEyeOff width="20" height="20" />
-                        </Show>
-                        <Show when=move || !show_secrets.get()>
-                            <Icon icon=icondata::LuEye width="20" height="20" />
-                        </Show>
-                    </button>
-
-                    <Show when=move || show_secrets.get()>
-                        <div class="p-4 rounded-lg bg-neutral-900">
-                            <div class="flex items-center justify-between">
-                                <div class="text-sm text-neutral-400">Your seed phrase:</div>
-                                <Show when=move || {
-                                    accounts
-                                        .get()
-                                        .accounts
-                                        .iter()
-                                        .find(|acc| {
-                                            acc.account_id
-                                                == accounts.get().selected_account_id.unwrap()
-                                        })
-                                        .map(|acc| acc.seed_phrase.is_some())
-                                        .unwrap_or(false)
-                                }>
-                                    <button
-                                        on:click=copy_seed
-                                        class="flex items-center gap-2 px-3 py-1 text-sm rounded-t bg-neutral-800 hover:bg-neutral-700 transition-colors"
-                                    >
-                                        <Icon icon=icondata::LuCopy width="16" height="16" />
-                                        <span>
-                                            {move || {
-                                                if copied_seed.get() {
-                                                    view! { <span class="text-green-500">"Copied!"</span> }
-                                                        .into_any()
-                                                } else {
-                                                    view! { <span>"Copy"</span> }.into_any()
-                                                }
-                                            }}
-                                        </span>
-                                    </button>
-                                </Show>
-                            </div>
-                            <div class="font-mono text-sm p-3 rounded bg-neutral-800">
-                                {move || {
-                                    accounts
-                                        .get()
-                                        .accounts
-                                        .iter()
-                                        .find(|acc| {
-                                            acc.account_id
-                                                == accounts.get().selected_account_id.unwrap()
-                                        })
-                                        .and_then(|acc| acc.seed_phrase.clone())
-                                        .map_or_else(
-                                            || {
-                                                view! {
-                                                    <div class="text-neutral-400">
-                                                        "Seed phrase for this account is unknown"
-                                                    </div>
-                                                }
-                                                    .into_any()
-                                            },
-                                            |seed| view! { <div>{seed}</div> }.into_any(),
-                                        )
-                                }}
-                            </div>
-                        </div>
-
-                        <div class="p-4 rounded-lg bg-neutral-900">
-                            <div class="flex items-center justify-between">
-                                <div class="text-sm text-neutral-400">Your private key:</div>
-                                <button
-                                    on:click=copy_key
-                                    class="flex items-center gap-2 px-3 py-1 text-sm rounded-t bg-neutral-800 hover:bg-neutral-700 transition-colors"
-                                >
-                                    <Icon icon=icondata::LuCopy width="16" height="16" />
-                                    <span>
-                                        {move || {
-                                            if copied_key.get() {
-                                                view! { <span class="text-green-500">"Copied!"</span> }
-                                                    .into_any()
-                                            } else {
-                                                view! { <span>"Copy"</span> }.into_any()
-                                            }
-                                        }}
-                                    </span>
-                                </button>
-                            </div>
-                            <div class="font-mono text-sm p-3 rounded bg-neutral-800 break-all">
-                                {move || {
-                                    accounts
-                                        .get()
-                                        .accounts
-                                        .iter()
-                                        .find(|acc| {
-                                            acc.account_id
-                                                == accounts.get().selected_account_id.unwrap()
-                                        })
-                                        .map(|acc| acc.secret_key.to_string())
-                                        .unwrap_or_default()
-                                }}
-                            </div>
-                        </div>
-                    </Show>
-                </div>
-
-                <div class="flex flex-col gap-2">
                     <div class="text-lg font-medium">Terminate All Other Sessions</div>
                     <div class="text-sm text-neutral-400">
                         "This will log you out of all wallets other than this one. This can be useful if you feel like you might have compromised your seed phrase and want to change it. Note that if you have saved your seed phrase, "
                         <span class="text-yellow-400 font-bold">"IT WILL STOP WORKING"</span>
                         ", and a " <span class="text-yellow-400 font-bold">"NEW"</span>
-                        " phrase will appear in 'Export Account' above, make sure to save it after pressing this button. "
+                        " phrase will appear in the Account page, make sure to save it after pressing this button. "
                         <span class="text-yellow-400 font-bold">
                             "DO NOT CLOSE THE WALLET BEFORE THIS IS DONE."
                         </span>

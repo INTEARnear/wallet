@@ -21,8 +21,8 @@ use crate::components::Layout;
 use crate::contexts::rpc_context::provide_rpc_context;
 use crate::pages::{
     settings::{
-        ConnectedAppsSettings, DeveloperSettings, PreferencesSettings, SecurityLogPage,
-        SecuritySettings,
+        AccountSettings, ConnectedAppsSettings, DeveloperSettings, PreferencesSettings,
+        SecurityLogPage, SecuritySettings,
     },
     AutoImportSecretKey, Connect, Explore, History, Home, Login, SendToken, SendTransactions,
     Settings, SignMessage, Swap, TokenDetails, UnwrapToken, WrapToken,
@@ -86,6 +86,7 @@ pub fn App() -> impl IntoView {
                     <ParentRoute path=path!("/settings") view=Settings>
                         <Route path=path!("") view=() />
                         <Route path=path!("/security") view=SecuritySettings />
+                        <Route path=path!("/security/account") view=AccountSettings />
                         <Route path=path!("/security/connected-apps") view=ConnectedAppsSettings />
                         <Route path=path!("/security/security-log") view=SecurityLogPage />
                         <Route path=path!("/preferences") view=PreferencesSettings />

@@ -1,0 +1,23 @@
+---
+description: 
+globs: *.rs
+alwaysApply: false
+---
+This repository is written with Leptos 0.8 and Tailwind 4. Rules when writing code:
+- When you need to set class on custom components (not native HTML tags), use `attr:class` syntax.
+- Enclose all string literals inside `view!` macro in quotes. For example, `<div>"Text"</div>`, not `<div>Text</div>`.
+- When using signals for complex states, avoid creating multiple signals for one purpose (`is_checking`, `result`, `error`) and prefer using Rust enums:
+```rs
+enum State {
+    Checking,
+    Error(Error),
+    Done(bool)
+}
+```
+This ensures that a state would always be valid, with no edge cases or flickering when `is_checking = true` and `error` is `Some` at the same time.
+- When using conditional `view!` macro to render different elements, use `view! { ... }.into_any()` to erase types. If one side of the macro is empty, you can use `().into_any()` or `<Show when=move || boolean>...</Show>`.
+- In Rust format macros, prefer string interpolation (`format!("{var}")`) over passing unnamed args (`format!("{}", var)`).
+- Avoid using magic values when possible. If something is not found, or not valid, use Option, Result, or a custom enum to represent such values, instead of numbers like `0` or `-1` or `usize::MAX` or empty strings. Use Rust language features to the fullest.
+- Add `cursor-pointer` style to clickable elements manually, it's not added to buttons and links by default.
+- For icons, use lucide or simple-icons with `leptos_icons` and `icondata`. If an icon is not present, ask a human to download it or download it from a known url using curl or wget, instead of trying to design your own SVG.
+- Avoid indexing into raw `serde_json::Value`, create structs and deserialize instead, with proper error handling.

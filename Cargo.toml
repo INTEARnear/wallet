@@ -15,6 +15,7 @@ console_error_panic_hook = "0.1.7"
 leptos_icons = "0.6.1"
 icondata = { version = "0.5.0", features = [
     "lucide",
+    "simple-icons",
 ], default-features = false }
 wasm-bindgen = "0.2.100"
 web-sys = { version = "0.3.77", features = [
@@ -48,7 +49,12 @@ ed25519-dalek = { version = "2.1.1", default-features = false }
 slipped10 = "0.4.6"
 argon2 = "0.5.3"
 aes-gcm = "0.10.3"
-leptos-use = { version = "0.16.0-beta2", features = ["use_websocket"] }
+leptos-use = { version = "0.16.0-beta2", features = [
+    "use_websocket",
+    "use_event_listener",
+    "use_window",
+    "use_document",
+] }
 codee = "0.3.0"
 json-filter = "0.1.1"
 dotenvy_macro = "0.15.7"
@@ -58,6 +64,20 @@ borsh = "1.5.7"
 shell-words = "1.1.0"
 deli = "0.2.0"
 zxcvbn = "3.1.0"
+bs58 = "0.5.1"
+solana-pubkey = "2.4.0"
+solana-keypair = { version = "2.2.1", features = [] }
+solana-signer = "2.2.1"
+solana-signature = { version = "2.3.0", features = [
+    "serde",
+    "verify",
+], default-features = false }
+alloy-primitives = { version = "1.1.2", features = [
+    "serde",
+    "k256",
+], default-features = false }
+alloy-signer = "1.0.8"
+alloy-signer-local = "1.0.8"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.50"
@@ -84,9 +104,14 @@ members = [
 ]
 
 [package.metadata.patch]
-# Need to add async interruptions to not block the main
-# thread for too long and make it abortable
-crates = ["argon2"]
+crates = [
+    # Need to add async interruptions to not block the main
+    # thread for too long and make it abortable
+    "argon2",
+    # Update upstream
+    "icondata_si",
+]
 
 [patch.crates-io]
 argon2 = { path = "./target/patch/argon2-0.5.3" }
+icondata_si = { path = "./target/patch/icondata_si-0.0.10" }

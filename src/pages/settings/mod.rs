@@ -5,12 +5,14 @@ use leptos_router::{
     hooks::use_location,
 };
 
+mod account;
 mod connected_apps;
 mod developer;
 mod preferences;
 mod security;
 mod security_log;
 
+pub use account::AccountSettings;
 pub use connected_apps::ConnectedAppsSettings;
 pub use developer::DeveloperSettings;
 pub use preferences::PreferencesSettings;

@@ -16,19 +16,25 @@ type EthereumSignatureResponse = {
 
 export default function Overlays() {
     const [showEthereumWalletConnector, setShowEthereumWalletConnector] = useState<EthereumSignatureRequest | null>(null);
-    const onEthereumWalletSignature = useCallback((signature: string | null) => {
+    const onEthereumWalletSignature = useCallback((signature: string | null, message: string) => {
         window.postMessage({
             type: "ethereum-wallet-signature",
             signature,
+            message,
         } as EthereumSignatureResponse, window.location.origin);
         setShowEthereumWalletConnector(null);
     }, []);
 
     useEffect(() => {
         window.addEventListener("message", (event) => {
-            switch (event.data.type) {
+            let data = event.data;
+            try {
+                data = Object.fromEntries(data);
+            } catch {
+            }
+            switch (data.type) {
                 case "request-ethereum-wallet-signature":
-                    setShowEthereumWalletConnector(event.data);
+                    setShowEthereumWalletConnector(data);
                     break;
                 default:
                     break;

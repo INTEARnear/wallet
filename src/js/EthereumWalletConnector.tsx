@@ -16,7 +16,7 @@ const metadata = {
     name: 'Intear Wallet',
     description: 'Intear Wallet',
     url: 'https://wallet.intear.tech',
-    icons: ['https://assets.reown.com/reown-profile-pic.png']
+    icons: ['/favicon.svg']
 }
 
 const wagmiAdapter = new WagmiAdapter({
@@ -33,7 +33,8 @@ createAppKit({
     features: {
         analytics: false,
         socials: false,
-    }
+    },
+    themeMode: 'dark',
 })
 
 function AppKitProvider({ children }: { children: React.ReactNode }) {
@@ -44,16 +45,15 @@ function AppKitProvider({ children }: { children: React.ReactNode }) {
     )
 }
 
-function EthereumSigner({ messageToSign, onSignature }: { messageToSign: string, onSignature: (signature: string | null) => void }) {
+function EthereumSigner({ messageToSign, onSignature }: { messageToSign: string, onSignature: (signature: string | null, message: string) => void }) {
     const eip155Account = useAppKitAccount({ namespace: "eip155" });
     const { open } = useAppKit();
-    const { signMessage, data: signature, error, isPending } = useSignMessage();
+    const { signMessage, data: signature, error } = useSignMessage();
     const { disconnect } = useDisconnect();
 
     useEffect(() => {
         if (signature) {
-            onSignature(signature);
-            // Disconnect wallet after signature is received
+            onSignature(signature, messageToSign);
             disconnect();
         }
     }, [signature, onSignature, disconnect]);
@@ -61,7 +61,8 @@ function EthereumSigner({ messageToSign, onSignature }: { messageToSign: string,
     useEffect(() => {
         if (error) {
             console.error('Signing error:', error);
-            onSignature(null);
+            onSignature(null, messageToSign);
+            disconnect();
         }
     }, [error, onSignature]);
 
@@ -70,21 +71,38 @@ function EthereumSigner({ messageToSign, onSignature }: { messageToSign: string,
             await signMessage({ message: messageToSign });
         } catch (err) {
             console.error('Failed to sign message:', err);
-            onSignature(null);
+            onSignature(null, messageToSign);
         }
     };
 
     useEffect(() => {
         if (eip155Account.isConnected && messageToSign) {
-            handleSign();
+            handleSign()
+                .catch((err) => {
+                    console.error('Failed to sign message:', err);
+                    onSignature(null, messageToSign);
+                    disconnect();
+                });
         }
         if (!eip155Account.isConnected && messageToSign) {
-            // Open wallet connection modal
             open({
                 view: 'Connect',
                 namespace: 'eip155'
             });
-            return;
+            let hasAppeared = false;
+            const interval = setInterval(() => {
+                const modal = document.getElementsByTagName("w3m-modal")[0];
+                const exists = modal && modal.className === 'open';
+                if (!exists) {
+                    if (hasAppeared) {
+                        clearInterval(interval);
+                        onSignature(null, messageToSign);
+                    }
+                } else {
+                    hasAppeared = true;
+                }
+            }, 50);
+            return () => clearInterval(interval);
         }
     }, [eip155Account.isConnected, messageToSign]);
 
@@ -95,8 +113,10 @@ function EthereumSigner({ messageToSign, onSignature }: { messageToSign: string,
     );
 }
 
-export default function EthereumWalletConnector({ messageToSign, onSignature }: { messageToSign: string, onSignature: (signature: string | null) => void }) {
-    return <AppKitProvider>
-        <EthereumSigner messageToSign={messageToSign} onSignature={onSignature} />
-    </AppKitProvider>
+export default function EthereumWalletConnector({ messageToSign, onSignature }: { messageToSign: string, onSignature: (signature: string | null, message: string) => void }) {
+    return (
+        <AppKitProvider>
+            <EthereumSigner messageToSign={messageToSign} onSignature={onSignature} />
+        </AppKitProvider>
+    );
 }

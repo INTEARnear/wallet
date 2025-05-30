@@ -8,10 +8,11 @@ use base64::{engine::general_purpose, Engine as _};
 use chrono::{DateTime, Utc};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use leptos_use::{use_document, use_event_listener};
 use near_min_api::types::{near_crypto::SecretKey, AccountId};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::{closure::Closure, JsCast};
-use web_sys::{window, Event};
+use web_sys::window;
 
 use super::{
     config_context::ConfigContext, network_context::Network, security_log_context::add_security_log,
@@ -511,42 +512,31 @@ pub fn provide_accounts_context() {
 
     Effect::new(move || {
         if has_encrypted_data() && cipher.get().is_some() {
-            let events = [
-                "mousedown",
-                "mousemove",
-                "keypress",
-                "scroll",
-                "touchstart",
-                "click",
-            ];
+            reset_password_timeout();
 
-            if let Some(document) = window().and_then(|w| w.document()) {
-                for event_name in events.iter() {
-                    let listener = Closure::wrap(Box::new(move |_: Event| {
-                        reset_password_timeout();
-                    }) as Box<dyn FnMut(Event)>);
-
-                    let _ = document.add_event_listener_with_callback(
-                        event_name,
-                        listener.as_ref().unchecked_ref(),
-                    );
-
-                    // Prevent drop, listeners will be cleaned up on page unload
-                    listener.forget();
-                }
-
-                reset_password_timeout();
-
-                on_cleanup(move || {
-                    if let Some(handle) = password_timeout_handle.get_untracked() {
-                        if let Some(window) = window() {
-                            window.clear_timeout_with_handle(handle);
-                        }
+            on_cleanup(move || {
+                if let Some(handle) = password_timeout_handle.get_untracked() {
+                    if let Some(window) = window() {
+                        window.clear_timeout_with_handle(handle);
                     }
-                });
-            }
+                }
+            });
         }
     });
+
+    macro_rules! setup_event_listeners {
+        ($($event:ident),*) => {
+            $(
+                let _ = use_event_listener(use_document(), leptos::ev::$event, move |_| {
+                    if has_encrypted_data() && cipher.get_untracked().is_some() {
+                        reset_password_timeout();
+                    }
+                });
+            )*
+        };
+    }
+
+    setup_event_listeners!(mousedown, mousemove, keypress, scroll, touchstart, click);
 
     // Reset timeout when cipher changes (wallet gets unlocked)
     Effect::new(move || {
