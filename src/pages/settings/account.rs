@@ -145,8 +145,15 @@ pub fn AccountSettings() -> impl IntoView {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
 
-    // Shared state for recovery method operations
     let (recovery_in_progress, set_recovery_in_progress) = signal(false);
+
+    let format_ethereum_address =
+        |address: &alloy_primitives::Address| -> String { format!("{address:#}") };
+
+    let format_solana_address = |pubkey: &solana_pubkey::Pubkey| -> String {
+        let addr_str = format!("{pubkey}");
+        format!("{}…{}", &addr_str[0..4], &addr_str[addr_str.len() - 4..])
+    };
 
     let show_secrets_memo = Memo::new(move |_| show_secrets.get());
     Effect::new(move || {
@@ -836,9 +843,10 @@ pub fn AccountSettings() -> impl IntoView {
                                                     }
                                                 >
                                                     <div class=move || {
-                                                        let has_ethereum = recovery_methods
-                                                            .get()
-                                                            .and_then(|result| result.ok())
+                                                        let recovery_methods_result = recovery_methods.get();
+                                                        let has_ethereum = recovery_methods_result
+                                                            .as_ref()
+                                                            .and_then(|result| result.as_ref().ok())
                                                             .map(|methods| methods.ethereum.is_some())
                                                             .unwrap_or(false);
                                                         format!(
@@ -855,9 +863,10 @@ pub fn AccountSettings() -> impl IntoView {
                                                     <div class="text-center">
                                                         <div class="font-medium">Ethereum</div>
                                                         <div class=move || {
-                                                            let has_ethereum = recovery_methods
-                                                                .get()
-                                                                .and_then(|result| result.ok())
+                                                            let recovery_methods_result = recovery_methods.get();
+                                                            let has_ethereum = recovery_methods_result
+                                                                .as_ref()
+                                                                .and_then(|result| result.as_ref().ok())
                                                                 .map(|methods| methods.ethereum.is_some())
                                                                 .unwrap_or(false);
                                                             let in_progress = recovery_in_progress.get();
@@ -873,18 +882,30 @@ pub fn AccountSettings() -> impl IntoView {
                                                             )
                                                         }>
                                                             {move || {
-                                                                let has_ethereum = recovery_methods
-                                                                    .get()
-                                                                    .and_then(|result| result.ok())
+                                                                let recovery_methods_result = recovery_methods.get();
+                                                                let has_ethereum = recovery_methods_result
+                                                                    .as_ref()
+                                                                    .and_then(|result| result.as_ref().ok())
                                                                     .map(|methods| methods.ethereum.is_some())
                                                                     .unwrap_or(false);
                                                                 let in_progress = recovery_in_progress.get();
                                                                 if in_progress {
-                                                                    "Loading..."
+                                                                    "Loading...".to_string()
                                                                 } else if has_ethereum {
-                                                                    "Connected"
+                                                                    if let Some(Ok(methods)) = recovery_methods_result.as_ref()
+                                                                    {
+                                                                        if let Some(ethereum_method) = &methods.ethereum {
+                                                                            format_ethereum_address(
+                                                                                &ethereum_method.recovery_wallet_address,
+                                                                            )
+                                                                        } else {
+                                                                            "Connected".to_string()
+                                                                        }
+                                                                    } else {
+                                                                        "Connected".to_string()
+                                                                    }
                                                                 } else {
-                                                                    "Not connected"
+                                                                    "Not connected".to_string()
                                                                 }
                                                             }}
                                                         </div>
@@ -912,9 +933,10 @@ pub fn AccountSettings() -> impl IntoView {
                                                     }
                                                 >
                                                     <div class=move || {
-                                                        let has_solana = recovery_methods
-                                                            .get()
-                                                            .and_then(|result| result.ok())
+                                                        let recovery_methods_result = recovery_methods.get();
+                                                        let has_solana = recovery_methods_result
+                                                            .as_ref()
+                                                            .and_then(|result| result.as_ref().ok())
                                                             .map(|methods| methods.solana.is_some())
                                                             .unwrap_or(false);
                                                         format!(
@@ -931,9 +953,10 @@ pub fn AccountSettings() -> impl IntoView {
                                                     <div class="text-center">
                                                         <div class="font-medium">Solana</div>
                                                         <div class=move || {
-                                                            let has_solana = recovery_methods
-                                                                .get()
-                                                                .and_then(|result| result.ok())
+                                                            let recovery_methods_result = recovery_methods.get();
+                                                            let has_solana = recovery_methods_result
+                                                                .as_ref()
+                                                                .and_then(|result| result.as_ref().ok())
                                                                 .map(|methods| methods.solana.is_some())
                                                                 .unwrap_or(false);
                                                             let in_progress = recovery_in_progress.get();
@@ -949,18 +972,30 @@ pub fn AccountSettings() -> impl IntoView {
                                                             )
                                                         }>
                                                             {move || {
-                                                                let has_solana = recovery_methods
-                                                                    .get()
-                                                                    .and_then(|result| result.ok())
+                                                                let recovery_methods_result = recovery_methods.get();
+                                                                let has_solana = recovery_methods_result
+                                                                    .as_ref()
+                                                                    .and_then(|result| result.as_ref().ok())
                                                                     .map(|methods| methods.solana.is_some())
                                                                     .unwrap_or(false);
                                                                 let in_progress = recovery_in_progress.get();
                                                                 if in_progress {
-                                                                    "Loading..."
+                                                                    "Loading...".to_string()
                                                                 } else if has_solana {
-                                                                    "Connected"
+                                                                    if let Some(Ok(methods)) = recovery_methods_result.as_ref()
+                                                                    {
+                                                                        if let Some(solana_method) = &methods.solana {
+                                                                            format_solana_address(
+                                                                                &solana_method.recovery_wallet_address,
+                                                                            )
+                                                                        } else {
+                                                                            "Connected".to_string()
+                                                                        }
+                                                                    } else {
+                                                                        "Connected".to_string()
+                                                                    }
                                                                 } else {
-                                                                    "Not connected"
+                                                                    "Not connected".to_string()
                                                                 }
                                                             }}
                                                         </div>
