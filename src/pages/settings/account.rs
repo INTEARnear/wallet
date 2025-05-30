@@ -22,14 +22,24 @@ use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen;
 
 /// Sorted from newest to oldest
-const SMART_WALLET_VERSIONS: &[(CryptoHash, NaiveDate, &[&str])] = &[(
-    CryptoHash(
-        bs58::decode::<&[u8]>(b"Cznw3ewddP9KxNshCCAcNsVkBeJYAAvkT4qcpvva3Bh2")
-            .into_array_const_unwrap::<32>(),
+const SMART_WALLET_VERSIONS: &[(CryptoHash, NaiveDate, &[&str])] = &[
+    (
+        CryptoHash(
+            bs58::decode::<&[u8]>(b"2x7GPUQYkjeYucGeQod6tQbGF8vqZwUmcgs1cva9thcM")
+                .into_array_const_unwrap::<32>(),
+        ),
+        NaiveDate::from_ymd_opt(2025, 5, 30).unwrap(),
+        &["Reduce storage cost for recovery methods"],
     ),
-    NaiveDate::from_ymd_opt(2025, 5, 29).unwrap(),
-    &["Initial release"],
-)];
+    (
+        CryptoHash(
+            bs58::decode::<&[u8]>(b"Cznw3ewddP9KxNshCCAcNsVkBeJYAAvkT4qcpvva3Bh2")
+                .into_array_const_unwrap::<32>(),
+        ),
+        NaiveDate::from_ymd_opt(2025, 5, 29).unwrap(),
+        &["Initial release"],
+    ),
+];
 const CURRENT_SMART_WALLET_VERSION: CryptoHash = SMART_WALLET_VERSIONS[0].0;
 
 const RECOVERY_VERSION: CryptoHash = CryptoHash(
@@ -207,10 +217,7 @@ pub fn AccountSettings() -> impl IntoView {
                 return Err("".to_string());
             };
             if let Ok(account) = rpc_client
-                .view_account(
-                    selected_account_id,
-                    QueryFinality::Finality(Finality::DoomSlug),
-                )
+                .view_account(selected_account_id, QueryFinality::Finality(Finality::None))
                 .await
             {
                 if account.code_hash != Default::default() {
@@ -549,7 +556,6 @@ pub fn AccountSettings() -> impl IntoView {
                                                                     match receiver.await {
                                                                         Ok(Ok(_details)) => {
                                                                             smart_wallet_version.refetch();
-                                                                            set_timeout(move || smart_wallet_version.refetch(), Duration::from_millis(1000));
                                                                         }
                                                                         Ok(Err(err)) => {
                                                                             log::error!("Smart wallet transaction failed: {}", err);
@@ -621,7 +627,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                     .map(|change| {
                                                                         view! {
                                                                             <li class="flex items-start gap-2">
-                                                                                <span class="text-blue-400 mt-1">-</span>
+                                                                                <span class="text-blue-400">-</span>
                                                                                 <span>{change.to_string()}</span>
                                                                             </li>
                                                                         }
@@ -663,7 +669,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                         });
                                                                     }
                                                                 }
-                                                                class="w-full flex items-center justify-center gap-2 p-3 rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors font-medium text-white"
+                                                                class="w-full flex items-center justify-center gap-2 p-3 rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors font-medium text-white cursor-pointer"
                                                             >
                                                                 <Icon icon=icondata::LuDownload width="16" height="16" />
                                                                 "Update Smart Wallet"
