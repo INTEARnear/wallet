@@ -4,7 +4,7 @@ globs: *.rs
 alwaysApply: false
 ---
 This repository is written with Leptos 0.8 and Tailwind 4. Rules when writing code:
-- When you need to set class on custom components (not native HTML tags), use `attr:class` syntax.
+- When you need to set class on custom components (for example, `<Icon>`), use `attr:class` syntax.
 - Enclose all string literals inside `view!` macro in quotes. For example, `<div>"Text"</div>`, not `<div>Text</div>`.
 - When using signals for complex states, avoid creating multiple signals for one purpose (`is_checking`, `result`, `error`) and prefer using Rust enums:
 ```rs

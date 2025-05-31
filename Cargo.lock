@@ -6,7 +6,9 @@ version = 4
 name = "account-creation-service"
 version = "0.1.0"
 dependencies = [
+ "alloy-primitives",
  "axum",
+ "chrono",
  "dotenv",
  "near-min-api",
  "rand 0.8.5",

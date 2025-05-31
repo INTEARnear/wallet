@@ -1,3 +1,4 @@
+use alloy_primitives::Signature;
 use axum::{
     extract::{Json, State},
     http::StatusCode,
@@ -5,6 +6,7 @@ use axum::{
     routing::post,
     Router,
 };
+use chrono::{DateTime, Utc};
 use dotenv::dotenv;
 use near_min_api::{
     types::{
@@ -31,6 +33,22 @@ struct CreateAccountRequest {
 struct CreateAccountResponse {
     success: bool,
     message: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RecoverAccountRequest {
+    account_id: AccountId,
+    public_key: PublicKey,
+    ethereum_signature: Signature,
+    message: String,
+    timestamp: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+struct RecoverAccountResponse {
+    success: bool,
+    message: String,
+    transaction_hash: Option<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -146,6 +164,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/create", post(create_account))
+        .route("/recover", post(recover_account))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
@@ -322,6 +341,183 @@ async fn create_account(
             Ok(Json(CreateAccountResponse {
                 success: false,
                 message: format!("Failed to fetch transaction details: {e}"),
+            }))
+        }
+    }
+}
+
+#[axum::debug_handler]
+async fn recover_account(
+    State(state): State<AppState>,
+    Json(payload): Json<RecoverAccountRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    tracing::info!(
+        "Received account recovery request for {}",
+        payload.account_id
+    );
+
+    let now = Utc::now();
+    let time_diff = (now - payload.timestamp).num_seconds();
+    if time_diff < 0 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Signature timestamp cannot be in the future".to_string(),
+        ));
+    }
+    if time_diff > 300 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Signature timestamp is too old".to_string(),
+        ));
+    }
+
+    let recovered_address = payload
+        .ethereum_signature
+        .recover_address_from_msg(&payload.message)
+        .map_err(|e| {
+            tracing::error!("Failed to recover address from signature: {}", e);
+            (StatusCode::BAD_REQUEST, "Invalid signature".to_string())
+        })?;
+
+    tracing::info!("Recovering with Ethereum address: {:#}", recovered_address);
+
+    let expected_message = format!(
+        "I want to sign in to {} with key {}. The current date is {} UTC",
+        payload.account_id,
+        payload.public_key,
+        payload.timestamp.to_rfc3339()
+    );
+
+    if payload.message != expected_message {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Message format is invalid".to_string(),
+        ));
+    }
+
+    let (relayer_key, queue) = loop {
+        let key = state
+            .relayer_keys
+            .choose(&mut rand::thread_rng())
+            .expect("No private keys available");
+        let public_key = key.public_key();
+        if let Some(queue) = state.key_queues.get(&public_key) {
+            break (key.clone(), queue.clone());
+        }
+    };
+
+    let _guard = queue.lock().await;
+
+    let access_key = state
+        .rpc_client
+        .get_access_key(
+            state.relayer_id.clone(),
+            relayer_key.public_key(),
+            QueryFinality::Finality(Finality::None),
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get access key: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to get access key".to_string(),
+            )
+        })?;
+
+    let recover_action = Action::FunctionCall(Box::new(FunctionCallAction {
+        method_name: "ext1_recover".to_string(),
+        args: serde_json::to_vec(&serde_json::json!({
+            "message": serde_json::to_string(&serde_json::json!({
+                "signature": payload.ethereum_signature,
+                "message": payload.message
+            })).unwrap(),
+        }))
+        .unwrap(),
+        deposit: NearToken::from_yoctonear(0),
+        gas: NearGas::from_tgas(30).as_gas(),
+    }));
+
+    let tx = Transaction::V0(TransactionV0 {
+        signer_id: state.relayer_id.clone(),
+        public_key: relayer_key.public_key(),
+        nonce: access_key.nonce + 1,
+        receiver_id: payload.account_id.clone(),
+        block_hash: state
+            .rpc_client
+            .fetch_recent_block_hash()
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to fetch block hash: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to fetch block hash".to_string(),
+                )
+            })?,
+        actions: vec![recover_action],
+    });
+
+    let signature = relayer_key.sign(tx.get_hash_and_size().0.as_ref());
+    let signed_tx = SignedTransaction::new(signature, tx);
+
+    let pending_tx = state.rpc_client.send_tx(signed_tx).await.map_err(|e| {
+        tracing::error!("Failed to send transaction: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to send transaction".to_string(),
+        )
+    })?;
+
+    pending_tx
+        .wait_for(state.desired_finality, Duration::from_secs(60))
+        .await
+        .map_err(|e| {
+            tracing::error!("Transaction not included: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Transaction not included".to_string(),
+            )
+        })?;
+    let tx = pending_tx.fetch_details().await;
+
+    match tx {
+        Ok(tx) => {
+            if let Some(outcome) = tx.final_execution_outcome {
+                match outcome.status {
+                    FinalExecutionStatus::SuccessValue(_) => {
+                        tracing::info!("Successfully recovered account for {}", payload.account_id);
+                        Ok(Json(RecoverAccountResponse {
+                            success: true,
+                            message: format!(
+                                "Account recovered successfully in transaction {}",
+                                outcome.transaction.hash.to_string()
+                            ),
+                            transaction_hash: Some(outcome.transaction.hash.to_string()),
+                        }))
+                    }
+                    _ => {
+                        tracing::error!("Transaction failed: {:?}", outcome.status);
+                        Ok(Json(RecoverAccountResponse {
+                            success: false,
+                            message: format!("Transaction failed: {:?}", outcome.status),
+                            transaction_hash: None,
+                        }))
+                    }
+                }
+            } else {
+                tracing::error!("Transaction outcome not found");
+                Ok(Json(RecoverAccountResponse {
+                    success: false,
+                    message: "Transaction outcome not found".to_string(),
+                    transaction_hash: None,
+                }))
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch transaction details: {}", e);
+            Ok(Json(RecoverAccountResponse {
+                success: false,
+                message: format!("Failed to fetch transaction details: {e}"),
+                transaction_hash: None,
             }))
         }
     }

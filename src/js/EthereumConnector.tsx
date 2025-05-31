@@ -33,6 +33,11 @@ createAppKit({
     features: {
         analytics: false,
         socials: false,
+        onramp: false,
+        swaps: false,
+        receive: false,
+        send: false,
+        email: false,
     },
     themeMode: 'dark',
 })
@@ -48,15 +53,14 @@ function AppKitProvider({ children }: { children: React.ReactNode }) {
 function EthereumSigner({ messageToSign, onSignature }: { messageToSign: string, onSignature: (signature: string | null, message: string) => void }) {
     const eip155Account = useAppKitAccount({ namespace: "eip155" });
     const { open } = useAppKit();
-    const { signMessage, data: signature, error } = useSignMessage();
     const { disconnect } = useDisconnect();
+    const { signMessage, data: signature, error } = useSignMessage();
 
     useEffect(() => {
         if (signature) {
             onSignature(signature, messageToSign);
-            disconnect();
         }
-    }, [signature, onSignature, disconnect]);
+    }, [signature, onSignature]);
 
     useEffect(() => {
         if (error) {
@@ -64,25 +68,11 @@ function EthereumSigner({ messageToSign, onSignature }: { messageToSign: string,
             onSignature(null, messageToSign);
             disconnect();
         }
-    }, [error, onSignature]);
-
-    const handleSign = async () => {
-        try {
-            await signMessage({ message: messageToSign });
-        } catch (err) {
-            console.error('Failed to sign message:', err);
-            onSignature(null, messageToSign);
-        }
-    };
+    }, [error, onSignature, disconnect]);
 
     useEffect(() => {
         if (eip155Account.isConnected && messageToSign) {
-            handleSign()
-                .catch((err) => {
-                    console.error('Failed to sign message:', err);
-                    onSignature(null, messageToSign);
-                    disconnect();
-                });
+            signMessage({ message: messageToSign });
         }
         if (!eip155Account.isConnected && messageToSign) {
             open({
@@ -113,10 +103,69 @@ function EthereumSigner({ messageToSign, onSignature }: { messageToSign: string,
     );
 }
 
-export default function EthereumWalletConnector({ messageToSign, onSignature }: { messageToSign: string, onSignature: (signature: string | null, message: string) => void }) {
+function EthereumConnector({ onConnection }: { onConnection: (address: string | null) => void }) {
+    const eip155Account = useAppKitAccount({ namespace: "eip155" });
+    const { open, close } = useAppKit();
+    const { disconnect } = useDisconnect();
+
+    useEffect(() => {
+        disconnect();
+    }, []);
+
+    useEffect(() => {
+        if (eip155Account.isConnected && eip155Account.address) {
+            const address = eip155Account.address;
+            console.log(address);
+            onConnection(address);
+            close();
+        }
+    }, [eip155Account.isConnected, eip155Account.address, onConnection]);
+
+    useEffect(() => {
+        if (!eip155Account.isConnected) {
+            open({
+                view: 'Connect',
+                namespace: 'eip155'
+            });
+            let hasAppeared = false;
+            const interval = setInterval(() => {
+                const modal = document.getElementsByTagName("w3m-modal")[0];
+                const exists = modal && modal.className === 'open';
+                if (!exists) {
+                    if (hasAppeared) {
+                        clearInterval(interval);
+                        onConnection(null);
+                    }
+                } else {
+                    hasAppeared = true;
+                }
+            }, 50);
+            return () => clearInterval(interval);
+        }
+    }, [eip155Account.isConnected, onConnection]);
+
+    return (
+        <>
+            {/* Everything is handled by AppKit */}
+        </>
+    );
+}
+
+export default function EthereumWallet({ 
+    messageToSign, 
+    onSignature, 
+    needsSignIn, 
+    onConnection 
+}: { 
+    messageToSign: string, 
+    onSignature: (signature: string | null, message: string) => void,
+    needsSignIn?: boolean,
+    onConnection: (address: string | null) => void 
+}) {
     return (
         <AppKitProvider>
-            <EthereumSigner messageToSign={messageToSign} onSignature={onSignature} />
+            {messageToSign && <EthereumSigner messageToSign={messageToSign} onSignature={onSignature} />}
+            {needsSignIn && <EthereumConnector onConnection={onConnection} />}
         </AppKitProvider>
     );
 }

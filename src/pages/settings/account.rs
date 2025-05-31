@@ -10,6 +10,7 @@ use crate::contexts::{
 use chrono::NaiveDate;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
+use leptos_router::hooks::use_navigate;
 use leptos_use::{use_event_listener, use_window};
 use near_min_api::{
     types::{
@@ -23,6 +24,14 @@ use serde_wasm_bindgen;
 
 /// Sorted from newest to oldest
 const SMART_WALLET_VERSIONS: &[(CryptoHash, NaiveDate, &[&str])] = &[
+    (
+        CryptoHash(
+            bs58::decode::<&[u8]>(b"5VSWnrNQZ2EVGeEAmxiJY64G2KPSd2AqTQf6EFSZreCK")
+                .into_array_const_unwrap::<32>(),
+        ),
+        NaiveDate::from_ymd_opt(2025, 5, 31).unwrap(),
+        &["Enable recovery in wallet interface"],
+    ),
     (
         CryptoHash(
             bs58::decode::<&[u8]>(b"7jPVdfNmttfJm3FMvGsxxYgjjKAxR4Zot9XRv1YrWxYd")
@@ -147,13 +156,18 @@ struct EthereumWalletSignatureMessage {
 
 #[component]
 pub fn AccountSettings() -> impl IntoView {
-    let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+    let AccountsContext {
+        accounts,
+        set_accounts,
+        ..
+    } = expect_context::<AccountsContext>();
     let (show_secrets, set_show_secrets) = signal(false);
     let rpc_context = expect_context::<RpcContext>();
     let NetworkContext { network } = expect_context::<NetworkContext>();
     let TransactionQueueContext {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
+    let navigate = use_navigate();
 
     let (recovery_in_progress, set_recovery_in_progress) = signal(false);
 
@@ -531,7 +545,6 @@ pub fn AccountSettings() -> impl IntoView {
                                         view! {
                                             <div class="flex flex-col gap-4">
                                                 <div class="flex flex-col gap-2">
-                                                    <div class="text-lg font-medium">Smart Wallet</div>
                                                     <button
                                                         on:click=move |_| {
                                                             if let Some(selected_account_id) = accounts
@@ -948,7 +961,10 @@ pub fn AccountSettings() -> impl IntoView {
                                                         if recovery_in_progress.get_untracked() {
                                                             return;
                                                         }
-                                                        todo!("Handle Solana recovery method connection")
+                                                        web_sys::window()
+                                                            .unwrap()
+                                                            .alert_with_message("Coming soon!")
+                                                            .unwrap();
                                                     }
                                                     class=move || {
                                                         let in_progress = recovery_in_progress.get();
@@ -1044,6 +1060,37 @@ pub fn AccountSettings() -> impl IntoView {
                     })
                     .unwrap_or_else(|| ().into_any())
             }}
+        </div>
+
+        // Log Out section
+        <div class="flex flex-col gap-4 p-4">
+            <button
+                on:click=move |_| {
+                    set_accounts
+                        .maybe_update(|accounts_data| {
+                            if let Some(selected_account_id) = accounts_data
+                                .selected_account_id
+                                .as_ref()
+                            {
+                                accounts_data
+                                    .accounts
+                                    .retain(|acc| acc.account_id != *selected_account_id);
+                                accounts_data.selected_account_id = accounts_data
+                                    .accounts
+                                    .first()
+                                    .map(|acc| acc.account_id.clone());
+                                true
+                            } else {
+                                false
+                            }
+                        });
+                    navigate("/", Default::default());
+                }
+                class="flex items-center justify-center gap-2 p-3 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors font-medium cursor-pointer"
+            >
+                <Icon icon=icondata::LuLogOut width="16" height="16" />
+                "Log Out"
+            </button>
         </div>
     }
 }
