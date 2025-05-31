@@ -133,7 +133,7 @@ pub fn WalletHeader() -> impl IntoView {
                                     view! {
                                         <div class="flex items-center gap-2">
                                             <button
-                                                class="text-white text-xl font-medium hover:text-neutral-400 transition-colors wrap-anywhere"
+                                                class="text-white text-xl font-medium hover:text-neutral-400 transition-colors wrap-anywhere no-mobile-ripple"
                                                 on:click=copy_to_clipboard
                                             >
                                                 {format_account_id(&account_id)}

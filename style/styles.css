@@ -62,3 +62,41 @@ body {
 .scrollbar-hide {
     scrollbar-width: none;
 }
+
+a:not(.no-mobile-ripple), button:not(.no-mobile-ripple), .mobile-ripple {
+    position: relative;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+    transform: translateZ(0); /* Hardware acceleration */
+}
+
+.ripple-circle {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 1;
+    animation: ripple-animation 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    transform: translate(-50%, -50%) scale(4);
+    transition: all 0.1s ease-in;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+@keyframes ripple-animation {
+    0% {
+        transform: translate(-50%, -50%) scale(0);
+        background: rgba(255, 255, 255, 0.1);
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(4);
+        background: rgba(255, 255, 255, 0.03);
+    }
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .ripple-circle {
+        display: none;
+    }
+    a:not(.no-mobile-ripple), button:not(.no-mobile-ripple), .mobile-ripple:active {
+        transform: none;
+    }
+}

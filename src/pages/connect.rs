@@ -450,7 +450,26 @@ pub fn Connect() -> impl IntoView {
                                         <div>
                                             <p class="text-neutral-400 text-sm">"Connecting to"</p>
                                             <p class="text-white font-medium wrap-anywhere">
-                                                {origin()}
+                                                {move || {
+                                                    let origin = origin();
+                                                    let domain = origin
+                                                        .trim_start_matches("http://")
+                                                        .trim_start_matches("https://")
+                                                        .split("/")
+                                                        .next()
+                                                        .unwrap()
+                                                        .split(":")
+                                                        .next()
+                                                        .unwrap();
+                                                    if domain == "localhost" || domain == "127.0.0.1"
+                                                        || domain.starts_with("192.168.")
+                                                        || domain.ends_with(".local")
+                                                    {
+                                                        "🛠 Localhost".to_string()
+                                                    } else {
+                                                        format!("🔒 {}", origin)
+                                                    }
+                                                }}
                                             </p>
                                         </div>
                                     </div>

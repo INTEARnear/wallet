@@ -203,8 +203,7 @@ pub fn LoginForm(
                             let payload = RecoverAccountRequest {
                                 account_id: account_id.to_string(),
                                 public_key: public_key.to_string(),
-                                ethereum_signature: serde_json::to_value(parsed_signature)
-                                    .unwrap(),
+                                ethereum_signature: serde_json::to_value(parsed_signature).unwrap(),
                                 message: message_for_spawn,
                                 timestamp: timestamp_str,
                             };

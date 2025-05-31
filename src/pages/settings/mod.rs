@@ -27,10 +27,10 @@ pub fn Settings() -> impl IntoView {
 
     view! {
         <div class="flex flex-col h-full text-white">
-            <div class="flex flex-row gap-2 p-4 pb-0 border-b border-neutral-800 overflow-x-auto scrollbar-hide whitespace-nowrap">
+            <div class="flex flex-row gap-2 p-4 pb-0 border-b scrollbar-hide border-neutral-800 overflow-x-auto whitespace-nowrap w-full">
                 <A
                     href="/settings/security"
-                    attr:class="flex items-center gap-3 p-3 transition-colors relative"
+                    attr:class="flex items-center gap-3 p-3 transition-colors relative flex-shrink-0"
                     attr:style=move || {
                         if is_active("/settings/security") {
                             "border-bottom: 2px solid white;"
@@ -40,14 +40,14 @@ pub fn Settings() -> impl IntoView {
                     }
                     class:hover:bg-neutral-900=move || !is_active("/settings/security")
                 >
-                    <Icon icon=icondata::LuShield width="20" height="20" />
+                    <Icon icon=icondata::LuShield width="20" height="20" attr:class="min-w-5 min-h-5" />
                     <span style=move || {
                         if is_active("/settings/security") { "font-weight: bold;" } else { "" }
                     }>Security</span>
                 </A>
                 <A
                     href="/settings/preferences"
-                    attr:class="flex items-center gap-3 p-3 transition-colors relative"
+                    attr:class="flex items-center gap-3 p-3 transition-colors relative flex-shrink-0"
                     attr:style=move || {
                         if is_active("/settings/preferences") {
                             "border-bottom: 2px solid white;"
@@ -57,14 +57,14 @@ pub fn Settings() -> impl IntoView {
                     }
                     class:hover:bg-neutral-900=move || !is_active("/settings/preferences")
                 >
-                    <Icon icon=icondata::LuSettings width="20" height="20" />
+                    <Icon icon=icondata::LuSettings width="20" height="20" attr:class="min-w-5 min-h-5" />
                     <span style=move || {
                         if is_active("/settings/preferences") { "font-weight: bold;" } else { "" }
                     }>Preferences</span>
                 </A>
                 <A
                     href="/settings/developer"
-                    attr:class="flex items-center gap-3 p-3 transition-colors relative"
+                    attr:class="flex items-center gap-3 p-3 transition-colors relative flex-shrink-0"
                     attr:style=move || {
                         if is_active("/settings/developer") {
                             "border-bottom: 2px solid white;"
@@ -74,7 +74,7 @@ pub fn Settings() -> impl IntoView {
                     }
                     class:hover:bg-neutral-900=move || !is_active("/settings/developer")
                 >
-                    <Icon icon=icondata::LuCode2 width="20" height="20" />
+                    <Icon icon=icondata::LuCode2 width="20" height="20" attr:class="min-w-5 min-h-5" />
                     <span style=move || {
                         if is_active("/settings/developer") { "font-weight: bold;" } else { "" }
                     }>Developer Settings</span>

@@ -270,7 +270,7 @@ pub fn SignMessage() -> impl IntoView {
                                         "Asks you to sign the message to verify your identity:"
                                     </p>
                                     <div class="p-4 bg-neutral-900/50 rounded-lg border border-neutral-800">
-                                        <p class="text-neutral-400 text-sm">
+                                        <p class="text-neutral-400 text-sm wrap-anywhere">
                                             {move || {
                                                 deserialized_message()
                                                     .map(|s| s.message)

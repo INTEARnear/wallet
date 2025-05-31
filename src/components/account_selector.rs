@@ -297,7 +297,7 @@ pub fn AccountSelector(
 
                                         <A
                                             href="/settings/security"
-                                            attr:class="w-full aspect-square rounded-lg transition-colors flex flex-col items-center justify-center gap-1 p-1 text-neutral-400 group hover:bg-neutral-500/10"
+                                            attr:class="w-full aspect-square rounded-lg lg:rounded-bl-3xl transition-colors flex flex-col items-center justify-center gap-1 p-1 text-neutral-400 group hover:bg-neutral-500/10"
                                             on:click=move |_| set_is_expanded(false)
                                         >
                                             <div class="w-10 h-10 rounded-full flex items-center justify-center bg-neutral-500/20 group-hover:bg-neutral-300">

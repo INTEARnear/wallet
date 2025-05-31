@@ -117,7 +117,7 @@ pub fn TokenBalanceList() -> impl IntoView {
                                     view! {
                                         <A
                                             href=format!("/token/{}", token_id)
-                                            attr:class="flex items-center justify-between bg-neutral-900 rounded-xl p-4 hover:bg-neutral-800 transition-colors gap-4"
+                                            attr:class="flex items-center justify-between bg-neutral-900 rounded-xl p-4 hover:bg-neutral-800 transition-colors gap-4 mobile-ripple"
                                         >
                                             <div class="flex items-center gap-3 wrap-anywhere">
                                                 {match token.token.metadata.icon.clone() {
@@ -193,7 +193,7 @@ pub fn TokenBalanceList() -> impl IntoView {
                                 })
                                 .collect_view()} <div class="flex justify-center">
                                 <button
-                                    class="flex items-center gap-2 text-gray-400 text-sm hover:text-white transition-colors"
+                                    class="flex items-center gap-2 text-gray-400 text-sm hover:text-white transition-colors no-mobile-ripple"
                                     on:click=toggle_low_balance
                                 >
                                     {move || {
