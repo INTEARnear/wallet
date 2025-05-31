@@ -128,7 +128,7 @@ pub fn Explore() -> impl IntoView {
                             )}
                             <div class="mb-8">
                                 <a
-                                    href="https://app.nearcatalog.xyz/"
+                                    href="https://app.nearcatalog.org/"
                                     target="_blank"
                                     class="block bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl hover:opacity-90 transition-opacity p-12"
                                 >

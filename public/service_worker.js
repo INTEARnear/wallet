@@ -30,7 +30,7 @@ self.addEventListener('fetch', (event) => {
 
   // Don't cache API requests, wallet.intear.tech only hosts static files. Also don't cache localhost for development.
   const isSameOrigin = url.hostname === DOMAIN && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1';
-  const isStaticOrigin = url.hostname.endsWith('.nearcatalog.xyz') || url.hostname == 'fonts.gstatic.com' || url.hostname == 'fonts.googleapis.com';
+  const isStaticOrigin = url.hostname.endsWith('.nearcatalog.xyz') || url.hostname.endsWith('.nearcatalog.org') || url.hostname == 'fonts.gstatic.com' || url.hostname == 'fonts.googleapis.com';
   const shouldCache = isSameOrigin || isStaticOrigin;
 
   if (shouldCache) {

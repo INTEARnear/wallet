@@ -77,7 +77,7 @@ pub struct ProtocolDefinition {
 
 impl Protocol {
     pub async fn from_definition(def: &ProtocolDefinition) -> Result<Self, String> {
-        let url = format!("https://api.nearcatalog.xyz/project?pid={}", def.project_id);
+        let url = format!("https://api.nearcatalog.org/project?pid={}", def.project_id);
         let response = reqwest::get(&url)
             .await
             .map_err(|e| e.to_string())?
