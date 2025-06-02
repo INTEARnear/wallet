@@ -385,7 +385,7 @@ pub fn AccountCreationForm(
                                     disabled=move || is_creating.get()
                                 />
                                 <button
-                                    class="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 font-medium cursor-pointer"
+                                    class="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 font-medium cursor-pointer no-mobile-ripple"
                                     on:click=handle_suffix_click
                                 >
                                     {move || match network.get() {
