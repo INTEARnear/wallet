@@ -137,7 +137,7 @@ pub fn PasswordUnlock() -> impl IntoView {
 
     view! {
         <div
-            class="absolute inset-0 bg-neutral-950 lg:rounded-3xl z-50 transition-opacity duration-150"
+            class="absolute inset-0 bg-neutral-950 lg:rounded-3xl transition-opacity duration-150 z-[10000]"
             style=move || {
                 if should_show_unlock() {
                     "opacity: 1;"
