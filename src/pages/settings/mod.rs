@@ -104,7 +104,7 @@ pub fn Settings() -> impl IntoView {
                             <img src="/github.svg" alt="GitHub" class="w-6 h-6" />
                         </a>
                         <a
-                            href="https://x.com/intelnear"
+                            href="https://x.com/intea_rs"
                             target="_blank"
                             rel="noopener noreferrer"
                             class="opacity-70 hover:opacity-100 transition-opacity"

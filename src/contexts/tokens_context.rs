@@ -140,23 +140,29 @@ pub fn provide_token_context() {
     let (mint_ws, set_mint_ws) = signal(None);
     let (burn_ws, set_burn_ws) = signal(None);
     let (price_ws, set_price_ws) = signal(None);
-    let selected_account_memo =
-        Memo::new(move |_| accounts_context.accounts.get().selected_account_id.clone());
 
     // Connect / disconnect from WebSocket when realtime balance updates are toggled or account changed
     let realtime_balance_updates =
         Memo::new(move |_| config_context.config.get().realtime_balance_updates);
     Effect::new(move |_| {
-        let network = selected_account_memo().map(|acc| {
-            accounts_context
-                .accounts
-                .get_untracked()
-                .accounts
-                .into_iter()
-                .find(|a| a.account_id == acc)
-                .unwrap()
-                .network
-        });
+        if accounts_context.accounts.get().accounts.is_empty() {
+            // Not unlocked or loaded yet
+            return;
+        }
+        let network = accounts_context
+            .accounts
+            .get()
+            .selected_account_id
+            .map(|acc| {
+                accounts_context
+                    .accounts
+                    .get()
+                    .accounts
+                    .into_iter()
+                    .find(|a| a.account_id == acc)
+                    .unwrap()
+                    .network
+            });
         let ws_url = match network {
             Some(Network::Mainnet) => "ws-events-v3.intear.tech",
             Some(Network::Testnet) => "ws-events-v3-testnet.intear.tech",
@@ -189,16 +195,24 @@ pub fn provide_token_context() {
     let realtime_price_updates =
         Memo::new(move |_| config_context.config.get().realtime_price_updates);
     Effect::new(move |_| {
-        let network = selected_account_memo().map(|acc| {
-            accounts_context
-                .accounts
-                .get_untracked()
-                .accounts
-                .into_iter()
-                .find(|a| a.account_id == acc)
-                .unwrap()
-                .network
-        });
+        if accounts_context.accounts.get().accounts.is_empty() {
+            // Not unlocked or loaded yet
+            return;
+        }
+        let network = accounts_context
+            .accounts
+            .get()
+            .selected_account_id
+            .map(|acc| {
+                accounts_context
+                    .accounts
+                    .get()
+                    .accounts
+                    .into_iter()
+                    .find(|a| a.account_id == acc)
+                    .unwrap()
+                    .network
+            });
         let ws_url = match network {
             Some(Network::Mainnet) => "ws-events-v3.intear.tech",
             Some(Network::Testnet) => "ws-events-v3-testnet.intear.tech",
@@ -290,8 +304,7 @@ pub fn provide_token_context() {
         if let Some(msg) = ws.message.get() {
             if let Ok(events) = serde_json::from_str::<Vec<FtTransferEvent>>(&msg) {
                 for event in events {
-                    let current_account =
-                        accounts_context.accounts.get().selected_account_id.clone();
+                    let current_account = accounts_context.accounts.get().selected_account_id;
                     log::info!("Received transfer: {event:?}");
 
                     let event_token_id = if event.token_id == "near" {
@@ -426,7 +439,7 @@ pub fn provide_token_context() {
 
     // When the selected account changes
     Effect::new(move |_| {
-        let current_account = selected_account_memo();
+        let current_account = accounts_context.accounts.get().selected_account_id;
         let network = expect_context::<NetworkContext>().network.get();
 
         leptos::task::spawn_local(async move {
