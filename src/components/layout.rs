@@ -72,10 +72,10 @@ pub fn Layout(children: Children) -> impl IntoView {
             path: "/",
             icon: icondata::LuWallet,
         },
-        // NavItem {
-        //     path: "/swap",
-        //     icon: icondata::LuRefreshCw,
-        // },
+        NavItem {
+            path: "/swap",
+            icon: icondata::LuRefreshCw,
+        },
         NavItem {
             path: "/history",
             icon: icondata::LuHistory,
@@ -281,7 +281,7 @@ pub fn Layout(children: Children) -> impl IntoView {
                     <div class="p-2 sm:p-4">
                         <WalletHeader />
                     </div>
-                    <div class="flex-1 overflow-y-auto overflow-x-hidden px-4 transition-all duration-100 pb-4">
+                    <div class="flex-1 overflow-y-auto overflow-x-hidden px-4 transition-all duration-100 pb-4 h-full *:h-full">
                         <div
                             class=slide_direction
                             style=move || {

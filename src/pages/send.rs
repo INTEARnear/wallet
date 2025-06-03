@@ -458,7 +458,7 @@ pub fn SendToken() -> impl IntoView {
                                             }
                                         />
                                         <button
-                                            class="absolute right-2 top-1/2 -translate-y-1/2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm px-3 py-1 rounded-lg transition-colors duration-200"
+                                            class="absolute right-2 top-1/2 -translate-y-1/2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm px-3 py-1 rounded-lg transition-colors duration-200 no-mobile-ripple"
                                             on:click=move |_| {
                                                 let max_amount = token.balance as f64
                                                     / 10f64.powi(token.token.metadata.decimals as i32);

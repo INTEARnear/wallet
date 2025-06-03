@@ -478,6 +478,7 @@ pub fn provide_token_context() {
                 // Process and validate icons
                 let mut token_data = token_data
                     .into_iter()
+                    .filter(|token| !matches!(token.token.reputation, TokenScore::Spam))
                     .map(|mut token| {
                         // Validate icon is a data URL
                         if let Some(icon) = &token.token.metadata.icon {
