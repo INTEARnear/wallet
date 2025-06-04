@@ -4,7 +4,7 @@ use crate::{
         search_context::SearchContext,
         tokens_context::{Token, TokenContext, TokenScore},
     },
-    utils::{format_token_amount, format_usd_value},
+    utils::{balance_to_decimal, format_token_amount, format_usd_value},
 };
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use leptos::prelude::*;
@@ -66,13 +66,7 @@ pub fn TokenBalanceList() -> impl IntoView {
                                 let balance = token.balance;
                                 let decimals = token.token.metadata.decimals;
                                 let price = &token.token.price_usd;
-                                let balance_decimal = BigDecimal::from(balance);
-                                let ten = BigDecimal::from(10);
-                                let mut decimals_decimal = BigDecimal::from(1);
-                                for _ in 0..decimals {
-                                    decimals_decimal *= &ten;
-                                }
-                                let normalized_balance = &balance_decimal / &decimals_decimal;
+                                let normalized_balance = balance_to_decimal(balance, decimals);
                                 let threshold = BigDecimal::from_f64(0.01).unwrap_or_default();
                                 return (price * &normalized_balance) >= threshold;
                             }
@@ -92,13 +86,7 @@ pub fn TokenBalanceList() -> impl IntoView {
                                         decimals,
                                         &token.token.metadata.symbol,
                                     );
-                                    let balance_decimal = BigDecimal::from(balance);
-                                    let ten = BigDecimal::from(10);
-                                    let mut decimals_decimal = BigDecimal::from(1);
-                                    for _ in 0..decimals {
-                                        decimals_decimal *= &ten;
-                                    }
-                                    let normalized_balance = &balance_decimal / &decimals_decimal;
+                                    let normalized_balance = balance_to_decimal(balance, decimals);
                                     let usd_value = format_usd_value(
                                         &token.token.price_usd * &normalized_balance,
                                     );

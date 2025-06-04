@@ -5,9 +5,11 @@ use crate::{
         tokens_context::{Token, TokenContext},
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
-    utils::{format_token_amount, format_usd_value_no_hide},
+    utils::{
+        balance_to_decimal, decimal_to_balance, format_token_amount, format_usd_value_no_hide,
+    },
 };
-use bigdecimal::{BigDecimal, ToPrimitive};
+use bigdecimal::BigDecimal;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::Icon;
 use leptos_router::components::A;
@@ -52,13 +54,8 @@ pub fn UnwrapToken() -> impl IntoView {
                     return;
                 }
 
-                let balance_decimal = BigDecimal::from(token.balance);
-                let ten = BigDecimal::from(10);
-                let mut decimals_decimal = BigDecimal::from(1);
-                for _ in 0..token.token.metadata.decimals {
-                    decimals_decimal *= &ten;
-                }
-                let max_amount_decimal = &balance_decimal / &decimals_decimal;
+                let max_amount_decimal =
+                    balance_to_decimal(token.balance, token.token.metadata.decimals);
                 if amount_decimal > max_amount_decimal {
                     set_amount_error.set(Some("Amount exceeds balance".to_string()));
                     return;
@@ -89,13 +86,7 @@ pub fn UnwrapToken() -> impl IntoView {
         let Some(token) = wnear_token() else {
             panic!("wNEAR token not found, but tried to unwrap it");
         };
-        let ten = BigDecimal::from(10);
-        let mut multiplier = BigDecimal::from(1);
-        for _ in 0..token.token.metadata.decimals {
-            multiplier *= &ten;
-        }
-        let amount_raw_decimal = &amount_decimal * &multiplier;
-        let amount = amount_raw_decimal.to_u128().expect("Amount overflow");
+        let amount = decimal_to_balance(amount_decimal, token.token.metadata.decimals);
         let signer_id = accounts
             .get_untracked()
             .selected_account_id
@@ -210,14 +201,10 @@ pub fn UnwrapToken() -> impl IntoView {
                                         <button
                                             class="absolute right-2 top-1/2 -translate-y-1/2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm px-3 py-1 rounded-lg transition-colors duration-200 no-mobile-ripple"
                                             on:click=move |_| {
-                                                let balance_decimal = BigDecimal::from(token.balance);
-                                                let ten = BigDecimal::from(10);
-                                                let mut decimals_decimal = BigDecimal::from(1);
-                                                for _ in 0..token.token.metadata.decimals {
-                                                    decimals_decimal *= &ten;
-                                                }
-                                                let max_amount_decimal = &balance_decimal
-                                                    / &decimals_decimal;
+                                                let max_amount_decimal = balance_to_decimal(
+                                                    token.balance,
+                                                    token.token.metadata.decimals,
+                                                );
                                                 let amount_str = max_amount_decimal.to_string();
                                                 set_amount.set(amount_str.clone());
                                                 check_amount(amount_str);

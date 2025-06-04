@@ -1,7 +1,7 @@
 use crate::contexts::config_context::ConfigContext;
 use crate::contexts::network_context::{Network, NetworkContext};
 use crate::contexts::tokens_context::TokenContext;
-use crate::utils::{format_usd_value, USDT_DECIMALS};
+use crate::utils::{balance_to_decimal, format_usd_value, power_of_10, USDT_DECIMALS};
 use bigdecimal::{BigDecimal, ToPrimitive};
 use leptos::prelude::*;
 use web_sys::window;
@@ -42,13 +42,8 @@ pub fn TotalPortfolioValue() -> impl IntoView {
             "$-.--".to_string()
         } else {
             let total = tokens.get().iter().fold(BigDecimal::from(0), |acc, token| {
-                let balance_decimal = BigDecimal::from(token.balance);
-                let ten = BigDecimal::from(10);
-                let mut decimals_decimal = BigDecimal::from(1);
-                for _ in 0..token.token.metadata.decimals {
-                    decimals_decimal *= &ten;
-                }
-                let normalized_balance = &balance_decimal / &decimals_decimal;
+                let normalized_balance =
+                    balance_to_decimal(token.balance, token.token.metadata.decimals);
                 acc + (&token.token.price_usd_hardcoded * &normalized_balance)
             });
             format_usd_value(total)
@@ -62,17 +57,14 @@ pub fn TotalPortfolioValue() -> impl IntoView {
             let (current_total, previous_total) = tokens.get().iter().fold(
                 (BigDecimal::from(0), BigDecimal::from(0)),
                 |(acc_current, acc_previous), token| {
-                    let ten = BigDecimal::from(10);
-                    let mut usdt_decimals_decimal = BigDecimal::from(1);
-                    for _ in 0..USDT_DECIMALS {
-                        usdt_decimals_decimal *= &ten;
-                    }
-                    let balance_decimal = BigDecimal::from(token.balance);
+                    let normalized_balance =
+                        balance_to_decimal(token.balance, token.token.metadata.decimals);
+                    let usdt_decimals_decimal = power_of_10(USDT_DECIMALS);
                     let current_value =
-                        (&token.token.price_usd_raw / &usdt_decimals_decimal) * &balance_decimal;
+                        (&token.token.price_usd_raw / &usdt_decimals_decimal) * &normalized_balance;
                     let previous_value = (&token.token.price_usd_raw_24h_ago
                         / &usdt_decimals_decimal)
-                        * &balance_decimal;
+                        * &normalized_balance;
                     (acc_current + current_value, acc_previous + previous_value)
                 },
             );

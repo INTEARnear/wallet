@@ -1,5 +1,8 @@
 use crate::contexts::config_context::ConfigContext;
+use bigdecimal::{BigDecimal, FromPrimitive};
 use leptos::prelude::*;
+
+pub const SLIPPAGE_PRESETS: [f64; 4] = [0.5, 1.0, 2.0, 5.0];
 
 #[component]
 fn ToggleSwitch(
@@ -68,6 +71,8 @@ pub fn PreferencesSettings() -> impl IntoView {
     let prices_disabled = Signal::derive(|| false);
     let sound_disabled = Signal::derive(move || !realtime_updates.get());
 
+    let (custom_slippage_input, set_custom_slippage_input) = signal("".to_string());
+
     view! {
         <div class="flex flex-col gap-4 p-4">
             <div class="text-xl font-semibold">Preferences</div>
@@ -114,6 +119,89 @@ pub fn PreferencesSettings() -> impl IntoView {
                             });
                     }
                 />
+            </div>
+
+            // Slippage settings section
+            <div class="mt-6">
+                <div class="text-lg font-medium text-gray-300 mb-4">"Slippage Tolerance"</div>
+                <div class="bg-neutral-800 rounded-xl p-4 space-y-4">
+                    <div class="text-sm text-gray-400 mb-3">
+                        "Current: "
+                        <span class="text-white font-medium">
+                            {move || format!("{}%", config_context.config.get().slippage)}
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-4 gap-2 mb-4">
+                        {SLIPPAGE_PRESETS
+                            .into_iter()
+                            .map(|percentage| {
+                                let is_selected = move || {
+                                    let current_slippage = BigDecimal::from_f64(
+                                            config_context.config.get().slippage,
+                                        )
+                                        .unwrap_or_default();
+                                    let preset_slippage = BigDecimal::from_f64(percentage)
+                                        .unwrap_or_default();
+                                    current_slippage == preset_slippage
+                                };
+                                view! {
+                                    <button
+                                        class=move || {
+                                            format!(
+                                                "px-4 py-2 rounded-lg text-sm transition-colors cursor-pointer {}",
+                                                if is_selected() {
+                                                    "bg-blue-500 text-white"
+                                                } else {
+                                                    "bg-neutral-700 hover:bg-neutral-600 text-gray-300"
+                                                },
+                                            )
+                                        }
+                                        on:click=move |_| {
+                                            config_context
+                                                .set_config
+                                                .update(|config| {
+                                                    config.slippage = percentage;
+                                                });
+                                            set_custom_slippage_input.set("".to_string());
+                                        }
+                                    >
+                                        {format!("{}%", percentage)}
+                                    </button>
+                                }
+                            })
+                            .collect_view()}
+                    </div>
+
+                    <div class="space-y-2">
+                        <div class="text-gray-400 text-sm">"Custom"</div>
+                        <div class="flex gap-2">
+                            <input
+                                type="text"
+                                class="flex-1 bg-neutral-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="1.0"
+                                prop:value=custom_slippage_input
+                                on:input=move |ev| {
+                                    let value = event_target_value(&ev);
+                                    set_custom_slippage_input.set(value.clone());
+                                    if let Ok(percentage) = value.parse::<f64>() {
+                                        let percentage = percentage.clamp(0.01, 100.0);
+                                        config_context
+                                            .set_config
+                                            .update(|config| {
+                                                config.slippage = percentage;
+                                            });
+                                    }
+                                }
+                            />
+                            <span class="text-gray-400 text-sm self-center">"%"</span>
+                        </div>
+                    </div>
+
+                    <div class="text-xs text-gray-400">
+                        "If the price moves unfavorably by more than this percentage while you're clicking the button, the transaction will be cancelled."
+                    </div>
+                </div>
             </div>
         </div>
     }

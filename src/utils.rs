@@ -1,5 +1,5 @@
 use base64::{prelude::BASE64_STANDARD, Engine};
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
+use bigdecimal::{num_bigint::BigInt, BigDecimal, FromPrimitive, One, ToPrimitive, Zero};
 use cached::proc_macro::cached;
 use chrono::{DateTime, Utc};
 use leptos::prelude::*;
@@ -38,13 +38,7 @@ pub fn format_token_amount(balance: Balance, decimals: u32, symbol: &str) -> Str
 }
 
 pub fn format_token_amount_no_hide(amount: Balance, decimals: u32, symbol: &str) -> String {
-    let amount_decimal = BigDecimal::from(amount);
-    let ten = BigDecimal::from(10);
-    let mut divisor_decimal = BigDecimal::from(1);
-    for _ in 0..decimals {
-        divisor_decimal *= &ten;
-    }
-    let normalized_decimal = &amount_decimal / &divisor_decimal;
+    let normalized_decimal = balance_to_decimal(amount, decimals);
 
     for (divisor, suffix) in AMOUNT_SUFFIXES {
         let divisor_decimal = BigDecimal::from(*divisor);
@@ -61,7 +55,7 @@ pub fn format_token_amount_no_hide(amount: Balance, decimals: u32, symbol: &str)
     }
 
     let formatted_balance = match &normalized_decimal {
-        x if x.fractional_digit_count().abs() == 0 => format!("{normalized_decimal}"),
+        x if x.is_integer() => format!("{normalized_decimal}"),
         x if x.abs() >= BigDecimal::from_f64(0.1).unwrap() => format!("{normalized_decimal:.2}"),
         x if x.abs() >= BigDecimal::from_f64(0.01).unwrap() => format!("{normalized_decimal:.3}"),
         x if x.abs() >= BigDecimal::from_f64(0.001).unwrap() => format!("{normalized_decimal:.4}"),
@@ -86,7 +80,7 @@ pub fn format_usd_value_no_hide(value: BigDecimal) -> String {
         let sign = if is_negative { "-" } else { "" };
         let abs_value = value.abs();
         return match &abs_value {
-            x if x.fractional_digit_count() == 0 => "$0".to_string(),
+            x if x.is_zero() => "$0".to_string(),
             x if x.gt(&BigDecimal::from_f64(0.1).unwrap()) => format!("{sign}${abs_value:.2}"),
             x if x.gt(&BigDecimal::from_f64(0.01).unwrap()) => format!("{sign}${abs_value:.3}"),
             x if x.gt(&BigDecimal::from_f64(0.001).unwrap()) => format!("{sign}${abs_value:.4}"),
@@ -924,6 +918,22 @@ impl From<WalletSelectorAction> for NearAction {
             }
         }
     }
+}
+
+/// Returns 10 raised to the power of `decimals`
+pub fn power_of_10(decimals: u32) -> BigDecimal {
+    BigDecimal::from_bigint(BigInt::one(), -(decimals as i64))
+}
+
+pub fn balance_to_decimal(balance: Balance, decimals: u32) -> BigDecimal {
+    let balance_decimal = BigDecimal::from(balance);
+    let decimals_decimal = power_of_10(decimals);
+    balance_decimal / decimals_decimal
+}
+
+pub fn decimal_to_balance(decimal: BigDecimal, decimals: u32) -> Balance {
+    let decimals_decimal = power_of_10(decimals);
+    (decimal * decimals_decimal).to_u128().unwrap_or_default()
 }
 
 pub fn is_debug_enabled() -> bool {

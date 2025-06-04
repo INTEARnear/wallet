@@ -12,7 +12,7 @@ use crate::{
         tokens_context::{Token, TokenContext, TokenInfo, TokenScore},
     },
     data::learn::ARTICLES,
-    utils::format_usd_value_no_hide,
+    utils::{balance_to_decimal, format_usd_value_no_hide},
 };
 
 #[derive(Clone)]
@@ -172,9 +172,7 @@ pub fn TrendingTokensSection() -> impl IntoView {
                                                     </div>
                                                     <div class="text-right">
                                                         <div class="text-white">
-                                                            {
-                                                                format_usd_value_no_hide(token.price)
-                                                            }
+                                                            {format_usd_value_no_hide(token.price)}
                                                         </div>
                                                         <div style=format!(
                                                             "color: {}",
@@ -341,13 +339,8 @@ pub fn ForYouSection() -> impl IntoView {
         let total_value: BigDecimal = tokens_data
             .iter()
             .map(|token| {
-                let balance_decimal = BigDecimal::from(token.balance);
-                let ten = BigDecimal::from(10);
-                let mut decimals_decimal = BigDecimal::from(1);
-                for _ in 0..token.token.metadata.decimals {
-                    decimals_decimal *= &ten;
-                }
-                let normalized_balance = &balance_decimal / &decimals_decimal;
+                let normalized_balance =
+                    balance_to_decimal(token.balance, token.token.metadata.decimals);
                 &normalized_balance * &token.token.price_usd
             })
             .sum();
@@ -387,13 +380,8 @@ pub fn ForYouSection() -> impl IntoView {
                     Token::Nep141(account_id) => account_id.as_str(),
                     Token::Near => return None,
                 }) {
-                    let balance_decimal = BigDecimal::from(token.balance);
-                    let ten = BigDecimal::from(10);
-                    let mut decimals_decimal = BigDecimal::from(1);
-                    for _ in 0..token.token.metadata.decimals {
-                        decimals_decimal *= &ten;
-                    }
-                    let normalized_balance = &balance_decimal / &decimals_decimal;
+                    let normalized_balance =
+                        balance_to_decimal(token.balance, token.token.metadata.decimals);
                     if normalized_balance >= BigDecimal::from(100) {
                         Some((
                             token.token.metadata.icon.clone(),
@@ -426,13 +414,8 @@ pub fn ForYouSection() -> impl IntoView {
                     || token.token.account_id == Token::Nep141("wrap.testnet".parse().unwrap())
                     || token.token.account_id == Token::Near
                 {
-                    let balance_decimal = BigDecimal::from(token.balance);
-                    let ten = BigDecimal::from(10);
-                    let mut decimals_decimal = BigDecimal::from(1);
-                    for _ in 0..token.token.metadata.decimals {
-                        decimals_decimal *= &ten;
-                    }
-                    let normalized_balance = &balance_decimal / &decimals_decimal;
+                    let normalized_balance =
+                        balance_to_decimal(token.balance, token.token.metadata.decimals);
                     if normalized_balance >= BigDecimal::from(100) {
                         Some((
                             token.token.metadata.icon.clone(),
@@ -464,13 +447,8 @@ pub fn ForYouSection() -> impl IntoView {
                 if token.token.account_id
                     == Token::Nep141("token.v2.ref-finance.near".parse().unwrap())
                 {
-                    let balance_decimal = BigDecimal::from(token.balance);
-                    let ten = BigDecimal::from(10);
-                    let mut decimals_decimal = BigDecimal::from(1);
-                    for _ in 0..token.token.metadata.decimals {
-                        decimals_decimal *= &ten;
-                    }
-                    let normalized_balance = &balance_decimal / &decimals_decimal;
+                    let normalized_balance =
+                        balance_to_decimal(token.balance, token.token.metadata.decimals);
                     let usd_value = &normalized_balance * &token.token.price_usd;
                     if usd_value >= BigDecimal::from(50) {
                         Some((

@@ -80,10 +80,16 @@ pub struct WalletConfig {
     pub realtime_price_updates: bool,
     #[serde(default)]
     pub password_remember_duration: PasswordRememberDuration,
+    #[serde(default = "default_slippage")]
+    pub slippage: f64,
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_slippage() -> f64 {
+    1.0 // Default 1% slippage
 }
 
 #[derive(Clone)]

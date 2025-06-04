@@ -10,7 +10,7 @@ use crate::{
         network_context::{Network, NetworkContext},
         tokens_context::{Token, TokenContext, TokenInfo, TokenScore},
     },
-    utils::{format_token_amount, format_usd_value, format_usd_value_no_hide},
+    utils::{balance_to_decimal, format_token_amount, format_usd_value, format_usd_value_no_hide},
 };
 
 async fn fetch_token_info(token_id: AccountId, network: Network) -> Option<TokenInfo> {
@@ -52,20 +52,14 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
             .iter()
             .find(|t| t.token.account_id == token_account_id)
             .map(|t| {
-                let balance_decimal = BigDecimal::from(t.balance);
-                let ten = BigDecimal::from(10);
-                let mut decimals_decimal = BigDecimal::from(1);
-                for _ in 0..t.token.metadata.decimals {
-                    decimals_decimal *= &ten;
-                }
-                let normalized_balance = &balance_decimal / &decimals_decimal;
+                let formatted_balance = balance_to_decimal(t.balance, t.token.metadata.decimals);
                 (
                     format_token_amount(
                         t.balance,
                         t.token.metadata.decimals,
                         &t.token.metadata.symbol,
                     ),
-                    format_usd_value(&normalized_balance * &t.token.price_usd),
+                    format_usd_value(&formatted_balance * &t.token.price_usd),
                 )
             })
     };

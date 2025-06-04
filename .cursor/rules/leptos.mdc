@@ -21,3 +21,4 @@ This ensures that a state would always be valid, with no edge cases or flickerin
 - Add `cursor-pointer` style to clickable elements manually, it's not added to buttons and links by default.
 - For icons, use lucide or simple-icons with `leptos_icons` and `icondata`. If an icon is not present, ask a human to download it or download it from a known url using curl or wget, instead of trying to design your own SVG.
 - Avoid indexing into raw `serde_json::Value`, create structs and deserialize instead, with proper error handling.
+- This project has `#![deny(float_arithmetic)]`, use `bigdecimal::BigDecimal` instead.

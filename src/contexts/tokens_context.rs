@@ -13,7 +13,7 @@ use near_min_api::{
 use serde::{Deserialize, Serialize};
 use web_sys::HtmlAudioElement;
 
-use crate::utils::USDT_DECIMALS;
+use crate::utils::{power_of_10, USDT_DECIMALS};
 
 use super::{
     accounts_context::AccountsContext,
@@ -418,18 +418,7 @@ pub fn provide_token_context() {
                             if let Ok(raw_price) = update.price_usd.parse::<f64>() {
                                 let decimals = token.token.metadata.decimals;
                                 let raw_price_decimal = BigDecimal::from_f64(raw_price).unwrap_or_default();
-                                let ten = BigDecimal::from(10);
-                                let exponent = decimals as i32 - USDT_DECIMALS as i32;
-                                let mut multiplier = BigDecimal::from(1);
-                                if exponent > 0 {
-                                    for _ in 0..exponent {
-                                        multiplier *= &ten;
-                                    }
-                                } else if exponent < 0 {
-                                    for _ in 0..(-exponent) {
-                                        multiplier = &multiplier / &ten;
-                                    }
-                                }
+                                let multiplier = power_of_10(decimals) / power_of_10(USDT_DECIMALS);
                                 let normalized_price = &raw_price_decimal * &multiplier;
                                 token.token.price_usd_raw = raw_price_decimal.clone();
                                 token.token.price_usd = normalized_price.clone();

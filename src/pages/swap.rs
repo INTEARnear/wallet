@@ -1,6 +1,9 @@
-use std::{fmt, fmt::Display};
+use std::{
+    fmt::{self, Display},
+    num::NonZeroU64,
+};
 
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
+use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, ToPrimitive, Zero};
 use chrono::{DateTime, Utc};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -14,10 +17,14 @@ use serde::{Deserialize, Serialize};
 use crate::{
     contexts::{
         accounts_context::{Account, AccountsContext},
+        config_context::ConfigContext,
         network_context::Network,
         tokens_context::{Token, TokenContext, TokenData, TokenInfo, TokenScore},
     },
-    utils::{format_token_amount, format_usd_value_no_hide},
+    pages::settings::SLIPPAGE_PRESETS,
+    utils::{
+        balance_to_decimal, decimal_to_balance, format_token_amount, format_usd_value_no_hide,
+    },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -257,13 +264,10 @@ fn TokenSelector(
                                             .into_iter()
                                             .map(|token_data| {
                                                 let token_clone = token_data.clone();
-                                                let balance_decimal = BigDecimal::from(token_data.balance);
-                                                let ten = BigDecimal::from(10);
-                                                let mut decimals_decimal = BigDecimal::from(1);
-                                                for _ in 0..token_data.token.metadata.decimals {
-                                                    decimals_decimal *= &ten;
-                                                }
-                                                let balance_formatted = balance_decimal / decimals_decimal;
+                                                let balance_formatted = balance_to_decimal(
+                                                    token_data.balance,
+                                                    token_data.token.metadata.decimals,
+                                                );
                                                 let price_decimal = token_data
                                                     .token
                                                     .price_usd_hardcoded
@@ -308,8 +312,27 @@ fn TokenSelector(
                                                                         .into_any()
                                                                 }
                                                             }} <div class="text-left">
-                                                                <div class="text-white font-medium">
-                                                                    {token_data.token.metadata.symbol.clone()}
+                                                                <div class="flex items-center gap-1">
+                                                                    <div class="text-white font-medium">
+                                                                        {token_data.token.metadata.symbol.clone()}
+                                                                    </div>
+                                                                    {if matches!(
+                                                                        token_data.token.reputation,
+                                                                        TokenScore::Unknown
+                                                                    ) {
+                                                                        view! {
+                                                                            <Icon
+                                                                                icon=icondata::LuAlertTriangle
+                                                                                width="16"
+                                                                                height="16"
+                                                                                attr:class="text-yellow-500 flex-shrink-0"
+                                                                                attr:title="Warning: This token has unknown reputation. Exercise caution."
+                                                                            />
+                                                                        }
+                                                                            .into_any()
+                                                                    } else {
+                                                                        ().into_any()
+                                                                    }}
                                                                 </div>
                                                                 <div class="text-gray-400 text-sm">
                                                                     {token_data.token.metadata.name.clone()}
@@ -399,8 +422,27 @@ fn TokenSelector(
                                                                                     .into_any()
                                                                             }
                                                                         }} <div class="text-left">
-                                                                            <div class="text-white font-medium">
-                                                                                {token_data.token.metadata.symbol.clone()}
+                                                                            <div class="flex items-center gap-1">
+                                                                                <div class="text-white font-medium">
+                                                                                    {token_data.token.metadata.symbol.clone()}
+                                                                                </div>
+                                                                                {if matches!(
+                                                                                    token_data.token.reputation,
+                                                                                    TokenScore::Unknown
+                                                                                ) {
+                                                                                    view! {
+                                                                                        <Icon
+                                                                                            icon=icondata::LuAlertTriangle
+                                                                                            width="16"
+                                                                                            height="16"
+                                                                                            attr:class="text-yellow-500 flex-shrink-0"
+                                                                                            attr:title="Warning: This token has unknown reputation. Exercise caution."
+                                                                                        />
+                                                                                    }
+                                                                                        .into_any()
+                                                                                } else {
+                                                                                    ().into_any()
+                                                                                }}
                                                                             </div>
                                                                             <div class="text-gray-400 text-sm">
                                                                                 {token_data.token.metadata.name.clone()}
@@ -410,13 +452,10 @@ fn TokenSelector(
                                                                     <div class="text-right">
                                                                         {move || {
                                                                             if is_owned {
-                                                                                let balance_decimal = BigDecimal::from(balance);
-                                                                                let ten = BigDecimal::from(10);
-                                                                                let mut decimals_decimal = BigDecimal::from(1);
-                                                                                for _ in 0..token_data.token.metadata.decimals {
-                                                                                    decimals_decimal *= &ten;
-                                                                                }
-                                                                                let balance_formatted = balance_decimal / decimals_decimal;
+                                                                                let balance_formatted = balance_to_decimal(
+                                                                                    balance,
+                                                                                    token_data.token.metadata.decimals,
+                                                                                );
                                                                                 let price_decimal = token_data
                                                                                     .token
                                                                                     .price_usd_hardcoded
@@ -483,6 +522,38 @@ fn TokenSelector(
     }
 }
 
+/// Round amount down to either 6 significant digits or 6 decimals, whichever is longest
+fn round_precision_or_significant(amount: BigDecimal) -> String {
+    if amount.is_zero() {
+        return "0".to_string();
+    }
+
+    let six_sig_digits =
+        amount.with_precision_round(NonZeroU64::new(6).unwrap(), RoundingMode::Down);
+
+    let six_decimals = amount.with_scale_round(6, RoundingMode::Down);
+
+    let sig_str = six_sig_digits.to_string();
+    let dec_str = six_decimals.to_string();
+
+    let trim_trailing =
+        |s: &str| -> String { s.trim_end_matches('0').trim_end_matches('.').to_string() };
+
+    let sig_str_trimmed = trim_trailing(&sig_str);
+    let dec_str_trimmed = trim_trailing(&dec_str);
+
+    let count_digits = |s: &str| -> usize { s.chars().filter(|c| c.is_ascii_digit()).count() };
+
+    let sig_count = count_digits(&sig_str_trimmed);
+    let dec_count = count_digits(&dec_str_trimmed);
+
+    if sig_count > dec_count {
+        trim_trailing(&six_sig_digits.to_string())
+    } else {
+        trim_trailing(&six_decimals.to_string())
+    }
+}
+
 #[component]
 pub fn Swap() -> impl IntoView {
     let TokenContext {
@@ -490,9 +561,13 @@ pub fn Swap() -> impl IntoView {
         loading_tokens,
     } = expect_context::<TokenContext>();
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+    let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
 
     let (token_in, set_token_in) = signal::<Option<TokenData>>(None);
     let (token_out, set_token_out) = signal::<Option<TokenData>>(None);
+
+    let (show_slippage_settings, set_show_slippage_settings) = signal(false);
+    let (custom_slippage_input, set_custom_slippage_input) = signal("".to_string());
 
     Effect::new(move |_| {
         let tokens_list = tokens.get();
@@ -608,13 +683,7 @@ pub fn Swap() -> impl IntoView {
         }
 
         let decimals = token_data.token.metadata.decimals;
-        let ten = BigDecimal::from(10);
-        let mut multiplier = BigDecimal::from(1);
-        for _ in 0..decimals {
-            multiplier *= &ten;
-        }
-        let amount_raw_decimal = amount_decimal * multiplier;
-        let amount_raw = amount_raw_decimal.to_u128()?;
+        let amount_raw = decimal_to_balance(amount_decimal, decimals);
 
         Some(amount_raw)
     };
@@ -736,7 +805,13 @@ pub fn Swap() -> impl IntoView {
             token_out: token_out_id,
             amount,
             max_wait_ms: 5000,
-            slippage: 0.01, // 1%
+            slippage: {
+                let slippage_decimal =
+                    BigDecimal::from_f64(config.get().slippage).unwrap_or_default();
+                let hundred = BigDecimal::from_f64(100.0).unwrap_or_default();
+                let result = &slippage_decimal / &hundred;
+                result.to_f64().unwrap_or(0.01)
+            },
             dexes: None,
             trader_account_id: Some(current_account.account_id),
         })
@@ -787,28 +862,20 @@ pub fn Swap() -> impl IntoView {
         match route.estimated_amount {
             Amount::AmountIn(amount) => {
                 if let (Some(token_in), SwapMode::ExactOut) = (token_in.get(), current_mode) {
-                    let amount_decimal = BigDecimal::from(amount);
-                    let ten = BigDecimal::from(10);
-                    let mut decimals_decimal = BigDecimal::from(1);
-                    for _ in 0..token_in.token.metadata.decimals {
-                        decimals_decimal *= &ten;
-                    }
-                    let formatted_amount = amount_decimal / decimals_decimal;
-                    Some(formatted_amount.to_string())
+                    let formatted_amount =
+                        balance_to_decimal(amount, token_in.token.metadata.decimals);
+                    let formatted_amount = round_precision_or_significant(formatted_amount);
+                    Some(formatted_amount)
                 } else {
                     None
                 }
             }
             Amount::AmountOut(amount) => {
                 if let (Some(token_out), SwapMode::ExactIn) = (token_out.get(), current_mode) {
-                    let amount_decimal = BigDecimal::from(amount);
-                    let ten = BigDecimal::from(10);
-                    let mut decimals_decimal = BigDecimal::from(1);
-                    for _ in 0..token_out.token.metadata.decimals {
-                        decimals_decimal *= &ten;
-                    }
-                    let formatted_amount = amount_decimal / decimals_decimal;
-                    Some(formatted_amount.to_string())
+                    let formatted_amount =
+                        balance_to_decimal(amount, token_out.token.metadata.decimals);
+                    let formatted_amount = round_precision_or_significant(formatted_amount);
+                    Some(formatted_amount)
                 } else {
                     None
                 }
@@ -820,7 +887,101 @@ pub fn Swap() -> impl IntoView {
         <div class="max-w-lg mx-auto h-full">
             <div class="flex items-center justify-center h-full">
                 <div class="w-full">
-                    <div class="bg-neutral-900 rounded-2xl p-4 space-y-4">
+                    <div class="bg-neutral-900 rounded-2xl p-4 space-y-4 relative">
+                        <div class="absolute -top-4 right-4">
+                            <button
+                                class="flex items-center gap-1 bg-neutral-800 hover:bg-neutral-700 rounded-lg px-2 py-1 text-sm text-gray-400 hover:text-white transition-colors cursor-pointer"
+                                on:click=move |_| {
+                                    set_show_slippage_settings.set(!show_slippage_settings.get())
+                                }
+                            >
+                                <Icon icon=icondata::LuSettings width="16" height="16" />
+                                <span>{move || format!("{}%", config.get().slippage)}</span>
+                            </button>
+
+                            <Show when=move || show_slippage_settings.get()>
+                                <>
+                                    <div
+                                        class="fixed inset-0 z-[5]"
+                                        on:click=move |_| set_show_slippage_settings.set(false)
+                                    ></div>
+                                    <div
+                                        class="absolute top-8 right-0 bg-neutral-800 rounded-xl p-3 shadow-lg border border-neutral-700 z-10 w-48"
+                                        on:click=|ev| ev.stop_propagation()
+                                    >
+                                        <div class="text-white text-sm font-medium mb-3">
+                                            "Slippage Tolerance"
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-2 mb-3">
+                                            {SLIPPAGE_PRESETS
+                                                .into_iter()
+                                                .map(|percentage| {
+                                                    let is_selected = move || {
+                                                        let current_slippage = BigDecimal::from_f64(
+                                                                config.get().slippage,
+                                                            )
+                                                            .unwrap_or_default();
+                                                        let preset_slippage = BigDecimal::from_f64(percentage)
+                                                            .unwrap_or_default();
+                                                        current_slippage == preset_slippage
+                                                    };
+                                                    view! {
+                                                        <button
+                                                            class=move || {
+                                                                format!(
+                                                                    "px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer {}",
+                                                                    if is_selected() {
+                                                                        "bg-blue-500 text-white"
+                                                                    } else {
+                                                                        "bg-neutral-700 hover:bg-neutral-600 text-gray-300"
+                                                                    },
+                                                                )
+                                                            }
+                                                            on:click=move |_| {
+                                                                set_config
+                                                                    .update(|config| {
+                                                                        config.slippage = percentage;
+                                                                    });
+                                                                set_custom_slippage_input.set("".to_string());
+                                                            }
+                                                        >
+                                                            {format!("{}%", percentage)}
+                                                        </button>
+                                                    }
+                                                })
+                                                .collect_view()}
+                                        </div>
+                                        <div class="space-y-2">
+                                            <div class="text-gray-400 text-xs">"Custom"</div>
+                                            <div class="flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    class="flex-1 bg-neutral-700 text-white rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-36"
+                                                    placeholder="1.0"
+                                                    prop:value=custom_slippage_input
+                                                    on:input=move |ev| {
+                                                        let value = event_target_value(&ev);
+                                                        set_custom_slippage_input.set(value.clone());
+                                                        if let Ok(percentage) = value.parse::<f64>() {
+                                                            let percentage = percentage.clamp(0.01, 100.0);
+                                                            set_config
+                                                                .update(|config| {
+                                                                    config.slippage = percentage;
+                                                                });
+                                                        }
+                                                    }
+                                                />
+                                                <span class="text-gray-400 text-sm self-center">"%"</span>
+                                            </div>
+                                        </div>
+                                        <div class="mt-3 text-xs text-gray-400">
+                                            "If the price moves unfavorably by more than this percentage while you're clicking the button, the transaction will be cancelled."
+                                        </div>
+                                    </div>
+                                </>
+                            </Show>
+                        </div>
+
                         <div class="space-y-3">
                             <div class="flex justify-between items-center">
                                 <label class="text-gray-400 text-sm">"From"</label>
@@ -885,24 +1046,19 @@ pub fn Swap() -> impl IntoView {
                                             class="absolute right-2 top-1/2 -translate-y-1/2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm px-3 py-1 rounded-lg transition-colors duration-200 no-mobile-ripple"
                                             on:click=move |_| {
                                                 if let Some(token) = token_in.get() {
-                                                    let balance_decimal = BigDecimal::from(token.balance);
-                                                    let ten = BigDecimal::from(10);
-                                                    let mut decimals_decimal = BigDecimal::from(1);
-                                                    for _ in 0..token.token.metadata.decimals {
-                                                        decimals_decimal *= &ten;
-                                                    }
-                                                    let max_amount_decimal = balance_decimal / decimals_decimal;
+                                                    let max_amount_decimal = balance_to_decimal(
+                                                        token.balance,
+                                                        token.token.metadata.decimals,
+                                                    );
                                                     let gas_cost_decimal = match token.token.account_id {
-                                                        Token::Near => {
-                                                            BigDecimal::from_f64(0.0001).unwrap_or_default()
-                                                        }
-                                                        Token::Nep141(_) => {
-                                                            BigDecimal::from_f64(0.001).unwrap_or_default()
-                                                        }
+                                                        Token::Near => BigDecimal::from_f64(0.05).unwrap(),
+                                                        Token::Nep141(_) => BigDecimal::from_u32(0).unwrap(),
                                                     };
                                                     let final_amount = (max_amount_decimal - gas_cost_decimal)
                                                         .max(BigDecimal::from(0));
-                                                    let amount_str = final_amount.to_string();
+                                                    let amount_str = round_precision_or_significant(
+                                                        final_amount,
+                                                    );
                                                     handle_amount_change(amount_str, SwapMode::ExactIn);
                                                 }
                                             }
@@ -1127,6 +1283,10 @@ pub fn Swap() -> impl IntoView {
                                     || validated_amount_entered.get().is_none()
                                     || !has_sufficient_balance.get()
                                     || get_routes_action.value().get().is_none()
+                                    || get_routes_action.pending().get()
+                            }
+                            on:click=move |_| {
+                                web_sys::window().unwrap().alert_with_message("123").unwrap();
                             }
                         >
                             {move || {
@@ -1144,6 +1304,19 @@ pub fn Swap() -> impl IntoView {
                             }}
                         </button>
                     </div>
+
+                    <a
+                        href="http://t.me/bettearbot?start=smile-trade"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="block mt-3 hover:opacity-80 transition-opacity border border-neutral-700 rounded-lg"
+                    >
+                        <img
+                            src="/bettear-ad.png"
+                            alt="Bettear Bot - #1 Trading Bot on NEAR"
+                            class="w-full h-auto"
+                        />
+                    </a>
                 </div>
             </div>
         </div>
