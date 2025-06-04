@@ -1,3 +1,5 @@
+#![deny(clippy::float_arithmetic)]
+
 use contexts::account_selector_swipe_context::provide_account_selector_swipe_context;
 use contexts::accounts_context::provide_accounts_context;
 use contexts::config_context::provide_config_context;

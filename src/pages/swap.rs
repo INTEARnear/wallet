@@ -1,5 +1,6 @@
 use std::{fmt, fmt::Display};
 
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use chrono::{DateTime, Utc};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -91,50 +92,32 @@ fn TokenSelector(
 ) -> impl IntoView {
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
 
-    // Modal show/hide state
     let (show, set_show) = signal(false);
-
-    // Internal state for search
     let (search_query, set_search_query) = signal("".to_string());
-    let (search_results, set_search_results) = signal::<Vec<TokenInfo>>(vec![]);
-    let (searching, set_searching) = signal(false);
 
-    // Search handling
-    let handle_search = move |query: String| {
-        set_search_query.set(query.clone());
-        if !query.is_empty() {
-            set_searching.set(true);
-            let current_account = accounts.get().selected_account_id.map(|id| {
-                accounts
-                    .get()
-                    .accounts
-                    .into_iter()
-                    .find(|a| a.account_id == id)
-                    .unwrap()
-            });
-            let Some(current_account) = current_account else {
-                set_search_results.set(vec![]);
-                set_searching.set(false);
-                return;
-            };
-            spawn_local(async move {
-                match search_tokens(&query, current_account).await {
-                    Ok(results) => {
-                        set_search_results.set(results);
-                    }
-                    Err(_) => {
-                        set_search_results.set(vec![]);
-                    }
-                }
-                set_searching.set(false);
-            });
-        } else {
-            set_search_results.set(vec![]);
+    let search_resource = LocalResource::new(move || async move {
+        let query = search_query.get();
+        if query.is_empty() {
+            return Ok::<Vec<TokenInfo>, String>(vec![]);
         }
-    };
+
+        let current_account = accounts.get().selected_account_id.map(|id| {
+            accounts
+                .get()
+                .accounts
+                .into_iter()
+                .find(|a| a.account_id == id)
+                .unwrap()
+        });
+
+        if let Some(current_account) = current_account {
+            search_tokens(&query, current_account).await
+        } else {
+            Ok(vec![])
+        }
+    });
 
     view! {
-        // Token selector button
         <button
             class="flex items-center justify-between bg-neutral-800 hover:bg-neutral-700 rounded-xl px-2 py-1 sm:px-3 sm:py-2 md:px-4 md:py-3 transition-colors cursor-pointer w-[120px] sm:w-[140px] md:w-[160px] wrap-anywhere text-[13px] sm:text-[16px]"
             on:click=move |_| set_show.set(true)
@@ -205,7 +188,6 @@ fn TokenSelector(
             }}
         </button>
 
-        // Modal
         <Show when=move || show.get()>
             <div
                 class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
@@ -213,10 +195,18 @@ fn TokenSelector(
                     set_show.set(false);
                 }
             >
-                <div on:click=|ev| ev.stop_propagation()>
+                <div on:click=|ev| ev.stop_propagation() class="md:min-w-md">
                     <div class="bg-neutral-900 rounded-2xl w-full max-w-lg max-h-[60vh] overflow-hidden flex flex-col">
                         <div class="p-4 border-b border-neutral-800 flex-shrink-0">
-                            // Search input
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-white font-medium">"Select Token"</h3>
+                                <button
+                                    class="text-gray-400 hover:text-white transition-colors cursor-pointer"
+                                    on:click=move |_| set_show.set(false)
+                                >
+                                    <Icon icon=icondata::LuX width="20" height="20" />
+                                </button>
+                            </div>
                             <div class="relative">
                                 <Icon
                                     icon=icondata::LuSearch
@@ -231,11 +221,13 @@ fn TokenSelector(
                                     prop:value=search_query
                                     on:input=move |ev| {
                                         let value = event_target_value(&ev);
-                                        handle_search(value);
+                                        set_search_query.set(value);
                                     }
                                 />
                                 {move || {
-                                    if searching.get() {
+                                    let is_loading = search_resource.get().is_none()
+                                        && !search_query.get().is_empty();
+                                    if is_loading {
                                         view! {
                                             <div class="absolute right-3 top-1/2 -translate-y-1/2">
                                                 <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
@@ -258,7 +250,6 @@ fn TokenSelector(
                                     }
                                         .into_any()
                                 } else {
-                                    let search_results = search_results.get();
                                     let search_query = search_query.get();
                                     let user_tokens = tokens.get();
                                     if search_query.is_empty() {
@@ -266,12 +257,19 @@ fn TokenSelector(
                                             .into_iter()
                                             .map(|token_data| {
                                                 let token_clone = token_data.clone();
-                                                let balance_f64 = token_data.balance as f64
-                                                    / 10f64.powi(token_data.token.metadata.decimals as i32);
-                                                let usd_value = balance_f64
-                                                    * token_data.token.price_usd_hardcoded;
-
-                                                // Show user's owned tokens when no search query
+                                                let balance_decimal = BigDecimal::from(token_data.balance);
+                                                let ten = BigDecimal::from(10);
+                                                let mut decimals_decimal = BigDecimal::from(1);
+                                                for _ in 0..token_data.token.metadata.decimals {
+                                                    decimals_decimal *= &ten;
+                                                }
+                                                let balance_formatted = balance_decimal / decimals_decimal;
+                                                let price_decimal = BigDecimal::from_f64(
+                                                        token_data.token.price_usd_hardcoded,
+                                                    )
+                                                    .unwrap_or_default();
+                                                let usd_value_decimal = balance_formatted * price_decimal;
+                                                let usd_value = usd_value_decimal.to_f64().unwrap_or(0.0);
 
                                                 view! {
                                                     <button
@@ -336,118 +334,145 @@ fn TokenSelector(
                                             })
                                             .collect_view()
                                             .into_any()
-                                    } else if search_results.is_empty() && !searching.get() {
-                                        view! {
-                                            <div class="flex items-center justify-center h-32 text-gray-400">
-                                                "No tokens found"
-                                            </div>
-                                        }
-                                            .into_any()
                                     } else {
-                                        search_results
-                                            .into_iter()
-                                            .map(|token_info| {
-                                                log::info!("user_tokens: {:?}", user_tokens);
-                                                let owned_token = user_tokens
-                                                    .iter()
-                                                    .find(|t| t.token.account_id == token_info.account_id);
-                                                log::info!(
-                                                    "owned_token {:?}: {:?}", token_info.account_id, owned_token
-                                                );
-                                                let (balance, is_owned) = if let Some(owned) = owned_token {
-                                                    (owned.balance, true)
-                                                } else {
-                                                    (0, false)
-                                                };
-                                                let token_data = TokenData {
-                                                    balance,
-                                                    token: token_info,
-                                                };
-                                                let token_clone = token_data.clone();
-                                                let balance_f64 = balance as f64
-                                                    / 10f64.powi(token_data.token.metadata.decimals as i32);
-                                                let usd_value = balance_f64
-                                                    * token_data.token.price_usd_hardcoded;
-
-                                                view! {
-                                                    <button
-                                                        class="w-full flex items-center justify-between bg-neutral-800 hover:bg-neutral-700 rounded-xl p-4 transition-colors cursor-pointer"
-                                                        on:click={
-                                                            let token_clone = token_clone.clone();
-                                                            move |_| {
-                                                                on_select(token_clone.clone());
-                                                                set_show.set(false);
-                                                            }
-                                                        }
-                                                    >
-                                                        <div class="flex items-center gap-3">
-                                                            {match token_data.token.metadata.icon {
-                                                                Some(icon) => {
-                                                                    view! {
-                                                                        <img
-                                                                            src=icon
-                                                                            alt=token_data.token.metadata.symbol.clone()
-                                                                            class="w-10 h-10 rounded-full"
-                                                                        />
-                                                                    }
-                                                                        .into_any()
-                                                                }
-                                                                None => {
-                                                                    view! {
-                                                                        <div class="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center text-white">
-                                                                            {token_data
-                                                                                .token
-                                                                                .metadata
-                                                                                .symbol
-                                                                                .chars()
-                                                                                .next()
-                                                                                .unwrap_or('?')}
-                                                                        </div>
-                                                                    }
-                                                                        .into_any()
-                                                                }
-                                                            }} <div class="text-left">
-                                                                <div class="text-white font-medium">
-                                                                    {token_data.token.metadata.symbol.clone()}
-                                                                </div>
-                                                                <div class="text-gray-400 text-sm">
-                                                                    {token_data.token.metadata.name.clone()}
-                                                                </div>
-                                                            </div>
+                                        match search_resource.get() {
+                                            Some(Ok(search_results)) => {
+                                                if search_results.is_empty() {
+                                                    view! {
+                                                        <div class="flex items-center justify-center h-32 text-gray-400">
+                                                            "No tokens found"
                                                         </div>
-                                                        <div class="text-right">
-                                                            {move || {
-                                                                if is_owned {
-                                                                    view! {
-                                                                        <>
-                                                                            <div class="text-white">
-                                                                                {format_token_amount(
-                                                                                    balance,
-                                                                                    token_data.token.metadata.decimals,
-                                                                                    "",
-                                                                                )}
+                                                    }
+                                                        .into_any()
+                                                } else {
+                                                    search_results
+                                                        .into_iter()
+                                                        .map(|token_info| {
+                                                            let owned_token = user_tokens
+                                                                .iter()
+                                                                .find(|t| t.token.account_id == token_info.account_id);
+                                                            let (balance, is_owned) = if let Some(owned) = owned_token {
+                                                                (owned.balance, true)
+                                                            } else {
+                                                                (0, false)
+                                                            };
+                                                            let token_data = TokenData {
+                                                                balance,
+                                                                token: token_info,
+                                                            };
+                                                            let token_clone = token_data.clone();
+                                                            let balance_decimal = BigDecimal::from(balance);
+                                                            let ten = BigDecimal::from(10);
+                                                            let mut decimals_decimal = BigDecimal::from(1);
+                                                            for _ in 0..token_data.token.metadata.decimals {
+                                                                decimals_decimal *= &ten;
+                                                            }
+                                                            let balance_formatted = balance_decimal / decimals_decimal;
+                                                            let price_decimal = BigDecimal::from_f64(
+                                                                    token_data.token.price_usd_hardcoded,
+                                                                )
+                                                                .unwrap_or_default();
+                                                            let usd_value_decimal = balance_formatted * price_decimal;
+                                                            let usd_value = usd_value_decimal.to_f64().unwrap_or(0.0);
+
+                                                            view! {
+                                                                <button
+                                                                    class="w-full flex items-center justify-between bg-neutral-800 hover:bg-neutral-700 rounded-xl p-4 transition-colors cursor-pointer"
+                                                                    on:click={
+                                                                        let token_clone = token_clone.clone();
+                                                                        move |_| {
+                                                                            on_select(token_clone.clone());
+                                                                            set_show.set(false);
+                                                                        }
+                                                                    }
+                                                                >
+                                                                    <div class="flex items-center gap-3">
+                                                                        {match token_data.token.metadata.icon {
+                                                                            Some(icon) => {
+                                                                                view! {
+                                                                                    <img
+                                                                                        src=icon
+                                                                                        alt=token_data.token.metadata.symbol.clone()
+                                                                                        class="w-10 h-10 rounded-full"
+                                                                                    />
+                                                                                }
+                                                                                    .into_any()
+                                                                            }
+                                                                            None => {
+                                                                                view! {
+                                                                                    <div class="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center text-white">
+                                                                                        {token_data
+                                                                                            .token
+                                                                                            .metadata
+                                                                                            .symbol
+                                                                                            .chars()
+                                                                                            .next()
+                                                                                            .unwrap_or('?')}
+                                                                                    </div>
+                                                                                }
+                                                                                    .into_any()
+                                                                            }
+                                                                        }} <div class="text-left">
+                                                                            <div class="text-white font-medium">
+                                                                                {token_data.token.metadata.symbol.clone()}
                                                                             </div>
                                                                             <div class="text-gray-400 text-sm">
-                                                                                {format_usd_value_no_hide(usd_value)}
+                                                                                {token_data.token.metadata.name.clone()}
                                                                             </div>
-                                                                        </>
-                                                                    }
-                                                                        .into_any()
-                                                                } else {
-                                                                    view! {
-                                                                        <>
-                                                                            <div class="text-gray-500">"0"</div>
-                                                                        </>
-                                                                    }
-                                                                        .into_any()
-                                                                }
-                                                            }}
-                                                        </div>
-                                                    </button>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div class="text-right">
+                                                                        {move || {
+                                                                            if is_owned {
+                                                                                view! {
+                                                                                    <>
+                                                                                        <div class="text-white">
+                                                                                            {format_token_amount(
+                                                                                                balance,
+                                                                                                token_data.token.metadata.decimals,
+                                                                                                "",
+                                                                                            )}
+                                                                                        </div>
+                                                                                        <div class="text-gray-400 text-sm">
+                                                                                            {format_usd_value_no_hide(usd_value)}
+                                                                                        </div>
+                                                                                    </>
+                                                                                }
+                                                                                    .into_any()
+                                                                            } else {
+                                                                                view! {
+                                                                                    <>
+                                                                                        <div class="text-gray-500">"0"</div>
+                                                                                    </>
+                                                                                }
+                                                                                    .into_any()
+                                                                            }
+                                                                        }}
+                                                                    </div>
+                                                                </button>
+                                                            }
+                                                        })
+                                                        .collect_view()
+                                                        .into_any()
                                                 }
-                                            })
-                                            .collect_view()
-                                            .into_any()
+                                            }
+                                            Some(Err(_)) => {
+                                                view! {
+                                                    <div class="flex items-center justify-center h-32 text-red-400">
+                                                        "Error loading search results"
+                                                    </div>
+                                                }
+                                                    .into_any()
+                                            }
+                                            None => {
+                                                view! {
+                                                    <div class="flex items-center justify-center h-32">
+                                                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                                                    </div>
+                                                }
+                                                    .into_any()
+                                            }
+                                        }
                                     }
                                 }
                             }}
@@ -467,20 +492,18 @@ pub fn Swap() -> impl IntoView {
     } = expect_context::<TokenContext>();
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
 
-    // Token selection states with defaults based on network
     let (token_in, set_token_in) = signal::<Option<TokenData>>(None);
     let (token_out, set_token_out) = signal::<Option<TokenData>>(None);
 
-    // Set default tokens based on network
     Effect::new(move |_| {
         let tokens_list = tokens.get();
         if tokens_list.is_empty() {
             return;
         }
 
-        let current_account = accounts.get().selected_account_id.map(|id| {
+        let current_account = accounts.get_untracked().selected_account_id.map(|id| {
             accounts
-                .get()
+                .get_untracked()
                 .accounts
                 .into_iter()
                 .find(|a| a.account_id == id)
@@ -489,7 +512,7 @@ pub fn Swap() -> impl IntoView {
 
         if let Some(account) = current_account {
             // Set default input token (NEAR)
-            if token_in.get().is_none() {
+            if token_in.get_untracked().is_none() {
                 let near_token = tokens_list
                     .iter()
                     .find(|t| matches!(t.token.account_id, Token::Near));
@@ -498,8 +521,8 @@ pub fn Swap() -> impl IntoView {
                 }
             }
 
-            // Set default output token
-            if token_out.get().is_none() {
+            // Set default output token (USDC)
+            if token_out.get_untracked().is_none() {
                 let default_token_id = match account.network {
                     Network::Mainnet => {
                         "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
@@ -541,80 +564,257 @@ pub fn Swap() -> impl IntoView {
         }
     });
 
-    // Amount states
-    let (amount_in, set_amount_in) = signal("".to_string());
-    let (amount_out, set_amount_out) = signal("".to_string());
+    // Update selected token balances when accounts or tokens change
+    Effect::new(move |_| {
+        accounts.track();
+        tokens.track();
+        let tokens_list = tokens.get();
+
+        if let Some(current_token_in) = token_in.get_untracked() {
+            if let Some(updated_token) = tokens_list
+                .iter()
+                .find(|t| t.token.account_id == current_token_in.token.account_id)
+            {
+                if updated_token.balance != current_token_in.balance {
+                    set_token_in.set(Some(updated_token.clone()));
+                }
+            }
+        }
+
+        if let Some(current_token_out) = token_out.get_untracked() {
+            if let Some(updated_token) = tokens_list
+                .iter()
+                .find(|t| t.token.account_id == current_token_out.token.account_id)
+            {
+                if updated_token.balance != current_token_out.balance {
+                    set_token_out.set(Some(updated_token.clone()));
+                }
+            }
+        }
+    });
+
+    let (amount_entered, set_amount_entered) = signal("".to_string());
     let (swap_mode, set_swap_mode) = signal(SwapMode::ExactIn);
+    let swap_mode_memo = Memo::new(move |_| swap_mode.get());
 
-    // Error states
-    let (amount_in_error, set_amount_in_error) = signal::<Option<String>>(None);
-    let (amount_out_error, set_amount_out_error) = signal::<Option<String>>(None);
+    let validate_amount = |amount_str: &str, token_data: &TokenData| -> Option<u128> {
+        if amount_str.is_empty() {
+            return None;
+        }
 
-    // Handle swap direction change
-    let handle_swap_tokens = move |_| {
+        let amount_decimal = amount_str.parse::<BigDecimal>().ok()?;
+
+        if amount_decimal <= BigDecimal::from(0) {
+            return None;
+        }
+
+        let decimals = token_data.token.metadata.decimals;
+        let ten = BigDecimal::from(10);
+        let mut multiplier = BigDecimal::from(1);
+        for _ in 0..decimals {
+            multiplier *= &ten;
+        }
+        let amount_raw_decimal = amount_decimal * multiplier;
+        let amount_raw = amount_raw_decimal.to_u128()?;
+
+        Some(amount_raw)
+    };
+
+    let validated_amount_entered = Memo::new(move |_| {
+        let amount_str = amount_entered.get();
+        let token_data = match swap_mode_memo.get() {
+            SwapMode::ExactIn => token_in.get()?,
+            SwapMode::ExactOut => token_out.get()?,
+        };
+        validate_amount(&amount_str, &token_data)
+    });
+
+    let get_routes_action = leptos::prelude::Action::new(|swap_request: &SwapRequest| {
+        let swap_request = swap_request.clone();
+        async move {
+            let (oneshot_tx, oneshot_rx) = futures_channel::oneshot::channel();
+            spawn_local(async move {
+                let routes = get_routes(swap_request).await;
+                oneshot_tx.send(routes).unwrap();
+            });
+            oneshot_rx.await.unwrap()
+        }
+    });
+
+    let has_sufficient_balance = Memo::new(move |_| {
+        let swap_mode = swap_mode_memo.get();
+
+        if let Some(amount_raw) = validated_amount_entered.get() {
+            match swap_mode {
+                SwapMode::ExactIn => {
+                    if let Some(token) = token_in.get() {
+                        amount_raw <= token.balance
+                    } else {
+                        false
+                    }
+                }
+                SwapMode::ExactOut => {
+                    if let (Some(routes), Some(input_token)) =
+                        (get_routes_action.value().get().flatten(), token_in.get())
+                    {
+                        if let Some(route) = routes.first() {
+                            match route.estimated_amount {
+                                Amount::AmountIn(estimated_input_needed) => {
+                                    estimated_input_needed <= input_token.balance
+                                }
+                                _ => false, // Should not happen in ExactOut mode
+                            }
+                        } else {
+                            false
+                        }
+                    } else {
+                        true // No route yet
+                    }
+                }
+            }
+        } else {
+            false
+        }
+    });
+
+    let get_input_style = move |is_from_field: bool, is_loading: bool| -> String {
+        let current_mode = swap_mode_memo.get();
+        let is_editable = match (is_from_field, current_mode) {
+            (true, SwapMode::ExactIn) => true,   // From field in ExactIn mode
+            (false, SwapMode::ExactOut) => true, // To field in ExactOut mode
+            _ => false,                          // All other combinations are read-only
+        };
+
+        if !is_editable && !has_sufficient_balance.get() && is_from_field && !is_loading {
+            "border: 2px solid rgb(239 68 68);".to_string() // Insufficient balance
+        } else if !is_editable {
+            "opacity: 0.6; border: 2px solid rgba(255, 255, 255, 0.2);".to_string()
+        } else if !amount_entered.get().is_empty() && validated_amount_entered.get().is_none() {
+            "border: 2px solid rgb(239 68 68);".to_string() // Invalid format
+        } else if !amount_entered.get().is_empty() && !has_sufficient_balance.get() && is_from_field
+        {
+            "border: 2px solid rgb(239 68 68);".to_string() // Insufficient balance
+        } else if !amount_entered.get().is_empty() {
+            "border: 2px solid rgb(34 197 94);".to_string() // Valid amount
+        } else {
+            "border: 2px solid rgba(255, 255, 255, 0.2);".to_string() // Default
+        }
+    };
+
+    let create_swap_request = move |token_in: TokenData,
+                                    token_out: TokenData,
+                                    amount_raw: Balance,
+                                    mode: SwapMode|
+          -> Option<SwapRequest> {
+        let current_account = accounts
+            .get_untracked()
+            .selected_account_id
+            .and_then(|id| {
+                accounts
+                    .get_untracked()
+                    .accounts
+                    .into_iter()
+                    .find(|a| a.account_id == id)
+            })?;
+
+        let token_in_id = match &token_in.token.account_id {
+            Token::Near => TokenId::Near,
+            Token::Nep141(account_id) => TokenId::Nep141(account_id.clone()),
+        };
+
+        let token_out_id = match &token_out.token.account_id {
+            Token::Near => TokenId::Near,
+            Token::Nep141(account_id) => TokenId::Nep141(account_id.clone()),
+        };
+
+        let amount = match mode {
+            SwapMode::ExactIn => Amount::AmountIn(amount_raw),
+            SwapMode::ExactOut => Amount::AmountOut(amount_raw),
+        };
+
+        Some(SwapRequest {
+            token_in: token_in_id,
+            token_out: token_out_id,
+            amount,
+            max_wait_ms: 5000,
+            slippage: 0.01, // 1%
+            dexes: None,
+            trader_account_id: Some(current_account.account_id),
+        })
+    };
+
+    Effect::new(move |_| {
+        let current_mode = swap_mode_memo.get();
+        let token_in_data = token_in.get();
+        let token_out_data = token_out.get();
+        validated_amount_entered.track();
+
+        if let (Some(token_in), Some(token_out)) = (token_in_data, token_out_data) {
+            if let Some(validated_amount) = validated_amount_entered.get() {
+                if let Some(swap_request) =
+                    create_swap_request(token_in, token_out, validated_amount, current_mode)
+                {
+                    get_routes_action.dispatch(swap_request);
+                }
+            }
+        }
+    });
+
+    let handle_amount_change = move |value: String, mode: SwapMode| {
+        set_amount_entered.set(value);
+        set_swap_mode.set(mode);
+    };
+
+    let handle_reverse = move |_| {
         let current_token_in = token_in.get();
         let current_token_out = token_out.get();
         set_token_in.set(current_token_out);
         set_token_out.set(current_token_in);
-
-        // Clear amounts when swapping
-        set_amount_in.set("".to_string());
-        set_amount_out.set("".to_string());
-        set_amount_in_error.set(None);
-        set_amount_out_error.set(None);
+        handle_amount_change(
+            amount_entered.get(),
+            match swap_mode_memo.get() {
+                SwapMode::ExactIn => SwapMode::ExactOut,
+                SwapMode::ExactOut => SwapMode::ExactIn,
+            },
+        );
     };
 
-    // Validate amount input
-    let validate_amount = move |amount: String, token: Option<TokenData>| -> Option<String> {
-        if amount.is_empty() {
-            return None;
+    // Helper to get estimated amount from route response
+    let get_estimated_amount = move || -> Option<String> {
+        let routes = get_routes_action.value().get()??;
+        let route = routes.first()?;
+        let current_mode = swap_mode_memo.get();
+
+        match route.estimated_amount {
+            Amount::AmountIn(amount) => {
+                if let (Some(token_in), SwapMode::ExactOut) = (token_in.get(), current_mode) {
+                    let amount_decimal = BigDecimal::from(amount);
+                    let ten = BigDecimal::from(10);
+                    let mut decimals_decimal = BigDecimal::from(1);
+                    for _ in 0..token_in.token.metadata.decimals {
+                        decimals_decimal *= &ten;
+                    }
+                    let formatted_amount = amount_decimal / decimals_decimal;
+                    Some(formatted_amount.to_string())
+                } else {
+                    None
+                }
+            }
+            Amount::AmountOut(amount) => {
+                if let (Some(token_out), SwapMode::ExactIn) = (token_out.get(), current_mode) {
+                    let amount_decimal = BigDecimal::from(amount);
+                    let ten = BigDecimal::from(10);
+                    let mut decimals_decimal = BigDecimal::from(1);
+                    for _ in 0..token_out.token.metadata.decimals {
+                        decimals_decimal *= &ten;
+                    }
+                    let formatted_amount = amount_decimal / decimals_decimal;
+                    Some(formatted_amount.to_string())
+                } else {
+                    None
+                }
+            }
         }
-
-        let Some(token_data) = token else {
-            return Some("Please select a token".to_string());
-        };
-
-        let Ok(amount_value) = amount.parse::<f64>() else {
-            return Some("Invalid amount".to_string());
-        };
-
-        if amount_value <= 0.0 {
-            return Some("Amount must be greater than 0".to_string());
-        }
-
-        // Convert user input to raw balance for precise comparison
-        let decimals = token_data.token.metadata.decimals;
-        let multiplier = 10f64.powi(decimals as i32);
-        let amount_raw = (amount_value * multiplier).round() as u128;
-
-        if amount_raw > token_data.balance {
-            return Some("Amount exceeds balance".to_string());
-        }
-
-        None
-    };
-
-    // Handle amount input changes
-    let handle_amount_in_change = move |value: String| {
-        set_amount_in.set(value.clone());
-        set_swap_mode.set(SwapMode::ExactIn);
-        let error = validate_amount(value, token_in.get());
-        set_amount_in_error.set(error);
-
-        // Clear out amount when typing in
-        set_amount_out.set("".to_string());
-        set_amount_out_error.set(None);
-    };
-
-    let handle_amount_out_change = move |value: String| {
-        set_amount_out.set(value.clone());
-        set_swap_mode.set(SwapMode::ExactOut);
-        let error = validate_amount(value, token_out.get());
-        set_amount_out_error.set(error);
-
-        // Clear in amount when typing out
-        set_amount_in.set("".to_string());
-        set_amount_in_error.set(None);
     };
 
     view! {
@@ -622,7 +822,6 @@ pub fn Swap() -> impl IntoView {
             <div class="flex items-center justify-center h-full">
                 <div class="w-full">
                     <div class="bg-neutral-900 rounded-2xl p-4 space-y-4">
-                        // Token In Section
                         <div class="space-y-3">
                             <div class="flex justify-between items-center">
                                 <label class="text-gray-400 text-sm">"From"</label>
@@ -645,50 +844,90 @@ pub fn Swap() -> impl IntoView {
                             </div>
 
                             <div class="flex gap-3">
-                                // Token selector
                                 <TokenSelector
                                     selected_token=token_in
                                     on_select=move |token: TokenData| {
                                         set_token_in.set(Some(token));
-                                        set_amount_in.set("".to_string());
-                                        set_amount_out.set("".to_string());
-                                        set_amount_in_error.set(None);
-                                        set_amount_out_error.set(None);
+                                        set_amount_entered.set("".to_string());
                                     }
                                     tokens=tokens
                                     loading_tokens=loading_tokens
                                     placeholder="Select token"
                                 />
 
-                                // Amount input
                                 <div class="flex-1 relative">
-                                    <input
-                                        type="text"
-                                        class="w-full bg-neutral-800 text-white rounded-xl px-4 py-3 text-right text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                                        style=move || {
-                                            if swap_mode.get() == SwapMode::ExactOut {
-                                                "opacity: 0.6;"
-                                            } else if amount_in_error.get().is_some() {
-                                                "border: 2px solid rgb(239 68 68);"
-                                            } else if !amount_in.get().is_empty() {
-                                                "border: 2px solid rgb(34 197 94);"
-                                            } else {
-                                                ""
+                                    <div class="relative">
+                                        <input
+                                            type="text"
+                                            class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 transition-all duration-200"
+                                            style=move || get_input_style(
+                                                true,
+                                                get_routes_action.pending().get(),
+                                            )
+                                            placeholder="0.0"
+                                            prop:value=move || {
+                                                match swap_mode_memo.get() {
+                                                    SwapMode::ExactIn => amount_entered.get(),
+                                                    SwapMode::ExactOut => {
+                                                        if get_routes_action.pending().get() {
+                                                            "".to_string()
+                                                        } else {
+                                                            get_estimated_amount().unwrap_or_default()
+                                                        }
+                                                    }
+                                                }
                                             }
-                                        }
-                                        placeholder="0.0"
-                                        prop:value=amount_in
-                                        prop:disabled=move || swap_mode.get() == SwapMode::ExactOut
-                                        on:input=move |ev| {
-                                            let value = event_target_value(&ev);
-                                            handle_amount_in_change(value);
-                                        }
-                                    />
+                                            on:input=move |ev| {
+                                                let value = event_target_value(&ev);
+                                                handle_amount_change(value, SwapMode::ExactIn);
+                                            }
+                                        />
+                                        <button
+                                            class="absolute right-2 top-1/2 -translate-y-1/2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm px-3 py-1 rounded-lg transition-colors duration-200 no-mobile-ripple"
+                                            on:click=move |_| {
+                                                if let Some(token) = token_in.get() {
+                                                    let balance_decimal = BigDecimal::from(token.balance);
+                                                    let ten = BigDecimal::from(10);
+                                                    let mut decimals_decimal = BigDecimal::from(1);
+                                                    for _ in 0..token.token.metadata.decimals {
+                                                        decimals_decimal *= &ten;
+                                                    }
+                                                    let max_amount_decimal = balance_decimal / decimals_decimal;
+                                                    let gas_cost_decimal = match token.token.account_id {
+                                                        Token::Near => {
+                                                            BigDecimal::from_f64(0.0001).unwrap_or_default()
+                                                        }
+                                                        Token::Nep141(_) => {
+                                                            BigDecimal::from_f64(0.001).unwrap_or_default()
+                                                        }
+                                                    };
+                                                    let final_amount = (max_amount_decimal - gas_cost_decimal)
+                                                        .max(BigDecimal::from(0));
+                                                    let amount_str = final_amount.to_string();
+                                                    handle_amount_change(amount_str, SwapMode::ExactIn);
+                                                }
+                                            }
+                                        >
+                                            "MAX"
+                                        </button>
+                                    </div>
                                     {move || {
                                         if let Some(token) = token_in.get() {
-                                            if let Ok(amount_value) = amount_in.get().parse::<f64>() {
-                                                let usd_value = amount_value
-                                                    * token.token.price_usd_hardcoded;
+                                            let amount_to_use = match swap_mode_memo.get() {
+                                                SwapMode::ExactIn => amount_entered.get(),
+                                                SwapMode::ExactOut => {
+                                                    get_estimated_amount().unwrap_or_default()
+                                                }
+                                            };
+                                            if let Ok(amount_decimal) = amount_to_use
+                                                .parse::<BigDecimal>()
+                                            {
+                                                let price_decimal = BigDecimal::from_f64(
+                                                        token.token.price_usd_hardcoded,
+                                                    )
+                                                    .unwrap_or_default();
+                                                let usd_value_decimal = amount_decimal * price_decimal;
+                                                let usd_value = usd_value_decimal.to_f64().unwrap_or(0.0);
                                                 view! {
                                                     <div class="absolute right-3 -bottom-5 text-xs text-gray-400">
                                                         {format_usd_value_no_hide(usd_value)}
@@ -704,21 +943,12 @@ pub fn Swap() -> impl IntoView {
                                     }}
                                 </div>
                             </div>
-
-                            {move || {
-                                if let Some(error) = amount_in_error.get() {
-                                    view! { <p class="text-red-400 text-xs">{error}</p> }.into_any()
-                                } else {
-                                    ().into_any()
-                                }
-                            }}
                         </div>
 
-                        // Swap direction button
                         <div class="flex justify-center">
                             <button
                                 class="bg-neutral-800 hover:bg-neutral-700 rounded-full p-2 transition-colors cursor-pointer"
-                                on:click=handle_swap_tokens
+                                on:click=handle_reverse
                             >
                                 <Icon
                                     icon=icondata::LuArrowUpDown
@@ -729,8 +959,7 @@ pub fn Swap() -> impl IntoView {
                             </button>
                         </div>
 
-                        // Token Out Section
-                        <div class="space-y-3">
+                        <div class="space-y-3 mb-8">
                             <div class="flex justify-between items-center">
                                 <label class="text-gray-400 text-sm">"To"</label>
                                 {move || {
@@ -752,50 +981,60 @@ pub fn Swap() -> impl IntoView {
                             </div>
 
                             <div class="flex gap-3">
-                                // Token selector
                                 <TokenSelector
                                     selected_token=token_out
                                     on_select=move |token: TokenData| {
                                         set_token_out.set(Some(token));
-                                        set_amount_in.set("".to_string());
-                                        set_amount_out.set("".to_string());
-                                        set_amount_in_error.set(None);
-                                        set_amount_out_error.set(None);
+                                        set_amount_entered.set("".to_string());
                                     }
                                     tokens=tokens
                                     loading_tokens=loading_tokens
                                     placeholder="Select token"
                                 />
 
-                                // Amount input
                                 <div class="flex-1 relative">
                                     <input
                                         type="text"
-                                        class="w-full bg-neutral-800 text-white rounded-xl px-4 py-3 text-right text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                                        style=move || {
-                                            if swap_mode.get() == SwapMode::ExactIn {
-                                                "opacity: 0.6;"
-                                            } else if amount_out_error.get().is_some() {
-                                                "border: 2px solid rgb(239 68 68);"
-                                            } else if !amount_out.get().is_empty() {
-                                                "border: 2px solid rgb(34 197 94);"
-                                            } else {
-                                                ""
+                                        class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 transition-all duration-200"
+                                        style=move || get_input_style(
+                                            false,
+                                            get_routes_action.pending().get(),
+                                        )
+                                        placeholder="0.0"
+                                        prop:value=move || {
+                                            match swap_mode_memo.get() {
+                                                SwapMode::ExactOut => amount_entered.get(),
+                                                SwapMode::ExactIn => {
+                                                    if get_routes_action.pending().get() {
+                                                        "".to_string()
+                                                    } else {
+                                                        get_estimated_amount().unwrap_or_default()
+                                                    }
+                                                }
                                             }
                                         }
-                                        placeholder="0.0"
-                                        prop:value=amount_out
-                                        prop:disabled=move || swap_mode.get() == SwapMode::ExactIn
                                         on:input=move |ev| {
                                             let value = event_target_value(&ev);
-                                            handle_amount_out_change(value);
+                                            handle_amount_change(value, SwapMode::ExactOut);
                                         }
                                     />
                                     {move || {
                                         if let Some(token) = token_out.get() {
-                                            if let Ok(amount_value) = amount_out.get().parse::<f64>() {
-                                                let usd_value = amount_value
-                                                    * token.token.price_usd_hardcoded;
+                                            let amount_to_use = match swap_mode_memo.get() {
+                                                SwapMode::ExactOut => amount_entered.get(),
+                                                SwapMode::ExactIn => {
+                                                    get_estimated_amount().unwrap_or_default()
+                                                }
+                                            };
+                                            if let Ok(amount_decimal) = amount_to_use
+                                                .parse::<BigDecimal>()
+                                            {
+                                                let price_decimal = BigDecimal::from_f64(
+                                                        token.token.price_usd_hardcoded,
+                                                    )
+                                                    .unwrap_or_default();
+                                                let usd_value_decimal = amount_decimal * price_decimal;
+                                                let usd_value = usd_value_decimal.to_f64().unwrap_or(0.0);
                                                 view! {
                                                     <div class="absolute right-3 -bottom-5 text-xs text-gray-400">
                                                         {format_usd_value_no_hide(usd_value)}
@@ -811,27 +1050,104 @@ pub fn Swap() -> impl IntoView {
                                     }}
                                 </div>
                             </div>
+                        </div>
 
-                            {move || {
-                                if let Some(error) = amount_out_error.get() {
-                                    view! { <p class="text-red-400 text-xs">{error}</p> }.into_any()
+                        {move || {
+                            if let Some(Some(routes)) = get_routes_action.value().get() {
+                                if let Some(best_route) = routes.first() {
+                                    view! {
+                                        <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-between gap-3 w-full">
+                                            {match best_route.dex_id {
+                                                DexId::Aidols => {
+                                                    view! {
+                                                        <img src="/aidols.svg" alt="Aidols" class="w-auto h-8" />
+                                                    }
+                                                        .into_any()
+                                                }
+                                                DexId::GraFun => {
+                                                    view! {
+                                                        <img src="/grafun.svg" alt="GraFun" class="w-auto h-8" />
+                                                    }
+                                                        .into_any()
+                                                }
+                                                DexId::NearIntents => {
+                                                    view! {
+                                                        <img
+                                                            src="/near-intents.svg"
+                                                            alt="Near Intents"
+                                                            class="w-auto h-8"
+                                                        />
+                                                    }
+                                                        .into_any()
+                                                }
+                                                DexId::Rhea => {
+                                                    view! {
+                                                        <img src="/rhea.svg" alt="Rhea" class="w-auto h-8" />
+                                                    }
+                                                        .into_any()
+                                                }
+                                                DexId::Veax => {
+                                                    view! {
+                                                        <img src="/veax.svg" alt="Veax" class="w-auto h-8" />
+                                                    }
+                                                        .into_any()
+                                                }
+                                                DexId::Jumpdefi => {
+                                                    view! {
+                                                        <img
+                                                            src="/jumpdefi.svg"
+                                                            alt="Jumpdefi"
+                                                            class="w-auto h-8"
+                                                        />
+                                                    }
+                                                        .into_any()
+                                                }
+                                                _ => {
+                                                    view! {
+                                                        <span class="text-white font-medium text-sm">
+                                                            {format!("{:?}", best_route.dex_id)}
+                                                        </span>
+                                                    }
+                                                        .into_any()
+                                                }
+                                            }}
+                                            <span class="text-white font-medium text-sm">
+                                                "Best Route"
+                                            </span>
+                                        </div>
+                                    }
+                                        .into_any()
                                 } else {
                                     ().into_any()
                                 }
-                            }}
-                        </div>
+                            } else {
+                                ().into_any()
+                            }
+                        }}
 
-                        // Swap button
                         <button
                             class="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 disabled:opacity-50 disabled:from-neutral-600 disabled:to-neutral-700 text-white rounded-xl px-4 py-4 font-medium transition-all cursor-pointer disabled:cursor-not-allowed"
                             disabled=move || {
                                 token_in.get().is_none() || token_out.get().is_none()
-                                    || (amount_in.get().is_empty() && amount_out.get().is_empty())
-                                    || amount_in_error.get().is_some()
-                                    || amount_out_error.get().is_some()
+                                    || amount_entered.get().is_empty()
+                                    || validated_amount_entered.get().is_none()
+                                    || !has_sufficient_balance.get()
+                                    || get_routes_action.value().get().is_none()
                             }
                         >
-                            "Get Quote"
+                            {move || {
+                                if get_routes_action.pending().get() {
+                                    view! {
+                                        <div class="flex items-center justify-center gap-2">
+                                            <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                            <span>"Loading..."</span>
+                                        </div>
+                                    }
+                                        .into_any()
+                                } else {
+                                    view! { <span>"Swap"</span> }.into_any()
+                                }
+                            }}
                         </button>
                     </div>
                 </div>

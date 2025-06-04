@@ -78,6 +78,7 @@ alloy-primitives = { version = "1.1.2", features = [
 ], default-features = false }
 alloy-signer = "1.0.8"
 alloy-signer-local = "1.0.8"
+bigdecimal = { version = "0.4.8", features = ["serde-json"] }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.50"
