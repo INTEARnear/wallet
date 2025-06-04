@@ -82,6 +82,7 @@ fn get_secret_key_from_mnemonic(
     Some(SecretKey::ED25519(secret_key))
 }
 
+#[allow(clippy::float_arithmetic)] // Not important for UI colors
 fn get_account_gradient(account_id: &str, brightness: f32) -> String {
     let mut hasher = DefaultHasher::new();
     account_id.hash(&mut hasher);

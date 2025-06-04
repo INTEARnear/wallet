@@ -1,3 +1,4 @@
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use leptos::prelude::*;
 use leptos_icons::*;
 use leptos_router::components::A;
@@ -11,14 +12,15 @@ use crate::{
         tokens_context::{Token, TokenContext, TokenInfo, TokenScore},
     },
     data::learn::ARTICLES,
+    utils::format_usd_value_no_hide,
 };
 
 #[derive(Clone)]
 pub struct TrendingToken {
     pub name: String,
     pub symbol: String,
-    pub price: f64,
-    pub change_24h: f64,
+    pub price: BigDecimal,
+    pub change_24h: BigDecimal,
     pub account_id: Token,
 }
 
@@ -41,17 +43,20 @@ async fn fetch_trending_tokens(network: Network) -> Vec<TrendingToken> {
         .await
         .unwrap();
 
+    #[allow(clippy::float_arithmetic)] // Ranking is not precision-critical
     let mut tokens_with_scores: Vec<(f64, TrendingToken)> = response
         .into_iter()
         .filter(|(_, data)| {
             data.account_id != Token::Nep141("wrap.near".parse().unwrap())
                 && data.account_id != Token::Nep141("wrap.testnet".parse().unwrap())
                 && data.account_id != Token::Near
-                && data.price_usd_hardcoded != 1.0
+                && data.price_usd_hardcoded != BigDecimal::from(1)
         })
         .map(|(_, data)| {
-            let change_24h = if data.price_usd_raw_24h_ago > 0.0 {
-                ((data.price_usd_raw - data.price_usd_raw_24h_ago) / data.price_usd_raw_24h_ago)
+            let change_24h = if data.price_usd_raw_24h_ago > BigDecimal::from(0) {
+                ((&data.price_usd_raw - &data.price_usd_raw_24h_ago) / &data.price_usd_raw_24h_ago)
+                    .to_f64()
+                    .expect("Could not convert to f64")
                     * 100.0
             } else {
                 0.0
@@ -83,7 +88,8 @@ async fn fetch_trending_tokens(network: Network) -> Vec<TrendingToken> {
                     name: data.metadata.name,
                     symbol: data.metadata.symbol,
                     price: data.price_usd,
-                    change_24h,
+                    change_24h: BigDecimal::from_f64(change_24h)
+                        .expect("Could not convert to BigDecimal"),
                     account_id: data.account_id,
                 },
             )
@@ -166,21 +172,13 @@ pub fn TrendingTokensSection() -> impl IntoView {
                                                     </div>
                                                     <div class="text-right">
                                                         <div class="text-white">
-                                                            $
-                                                            {match token.price {
-                                                                1.0.. => format!("{:.2}", token.price),
-                                                                0.1.. => format!("{:.3}", token.price),
-                                                                0.01.. => format!("{:.4}", token.price),
-                                                                0.001.. => format!("{:.5}", token.price),
-                                                                0.0001.. => format!("{:.6}", token.price),
-                                                                0.00001.. => format!("{:.7}", token.price),
-                                                                0.000001.. => format!("{:.8}", token.price),
-                                                                _ => format!("{:.9}", token.price),
-                                                            }}
+                                                            {
+                                                                format_usd_value_no_hide(token.price)
+                                                            }
                                                         </div>
                                                         <div style=format!(
                                                             "color: {}",
-                                                            if token.change_24h >= 0.0 {
+                                                            if token.change_24h >= BigDecimal::from(0) {
                                                                 "rgb(34 197 94)"
                                                             } else {
                                                                 "rgb(239 68 68)"
@@ -188,7 +186,11 @@ pub fn TrendingTokensSection() -> impl IntoView {
                                                         )>
                                                             {format!(
                                                                 "{}{:.1}%",
-                                                                if token.change_24h >= 0.0 { "+" } else { "" },
+                                                                if token.change_24h >= BigDecimal::from(0) {
+                                                                    "+"
+                                                                } else {
+                                                                    ""
+                                                                },
                                                                 token.change_24h,
                                                             )}
                                                         </div>
@@ -336,17 +338,22 @@ pub fn ForYouSection() -> impl IntoView {
         let tokens_data = tokens.get();
 
         // Calculate total portfolio value
-        let total_value: f64 = tokens_data
+        let total_value: BigDecimal = tokens_data
             .iter()
             .map(|token| {
-                let normalized_balance =
-                    token.balance as f64 / 10f64.powi(token.token.metadata.decimals as i32);
-                normalized_balance * token.token.price_usd
+                let balance_decimal = BigDecimal::from(token.balance);
+                let ten = BigDecimal::from(10);
+                let mut decimals_decimal = BigDecimal::from(1);
+                for _ in 0..token.token.metadata.decimals {
+                    decimals_decimal *= &ten;
+                }
+                let normalized_balance = &balance_decimal / &decimals_decimal;
+                &normalized_balance * &token.token.price_usd
             })
             .sum();
 
         // Add Shitzu Boost recommendation if total value is less than $100
-        if total_value < 100.0 {
+        if total_value < BigDecimal::from(100) {
             recs.push((
                 "Earn with Shitzu Boost",
                 "https://t.me/ShitzuTasks",
@@ -380,9 +387,14 @@ pub fn ForYouSection() -> impl IntoView {
                     Token::Nep141(account_id) => account_id.as_str(),
                     Token::Near => return None,
                 }) {
-                    let normalized_balance =
-                        token.balance as f64 / 10f64.powi(token.token.metadata.decimals as i32);
-                    if normalized_balance >= 100.0 {
+                    let balance_decimal = BigDecimal::from(token.balance);
+                    let ten = BigDecimal::from(10);
+                    let mut decimals_decimal = BigDecimal::from(1);
+                    for _ in 0..token.token.metadata.decimals {
+                        decimals_decimal *= &ten;
+                    }
+                    let normalized_balance = &balance_decimal / &decimals_decimal;
+                    if normalized_balance >= BigDecimal::from(100) {
                         Some((
                             token.token.metadata.icon.clone(),
                             token.token.metadata.symbol.clone(),
@@ -414,9 +426,14 @@ pub fn ForYouSection() -> impl IntoView {
                     || token.token.account_id == Token::Nep141("wrap.testnet".parse().unwrap())
                     || token.token.account_id == Token::Near
                 {
-                    let normalized_balance =
-                        token.balance as f64 / 10f64.powi(token.token.metadata.decimals as i32);
-                    if normalized_balance >= 100.0 {
+                    let balance_decimal = BigDecimal::from(token.balance);
+                    let ten = BigDecimal::from(10);
+                    let mut decimals_decimal = BigDecimal::from(1);
+                    for _ in 0..token.token.metadata.decimals {
+                        decimals_decimal *= &ten;
+                    }
+                    let normalized_balance = &balance_decimal / &decimals_decimal;
+                    if normalized_balance >= BigDecimal::from(100) {
                         Some((
                             token.token.metadata.icon.clone(),
                             token.token.metadata.symbol.clone(),
@@ -447,10 +464,15 @@ pub fn ForYouSection() -> impl IntoView {
                 if token.token.account_id
                     == Token::Nep141("token.v2.ref-finance.near".parse().unwrap())
                 {
-                    let normalized_balance =
-                        token.balance as f64 / 10f64.powi(token.token.metadata.decimals as i32);
-                    let usd_value = normalized_balance * token.token.price_usd;
-                    if usd_value >= 50.0 {
+                    let balance_decimal = BigDecimal::from(token.balance);
+                    let ten = BigDecimal::from(10);
+                    let mut decimals_decimal = BigDecimal::from(1);
+                    for _ in 0..token.token.metadata.decimals {
+                        decimals_decimal *= &ten;
+                    }
+                    let normalized_balance = &balance_decimal / &decimals_decimal;
+                    let usd_value = &normalized_balance * &token.token.price_usd;
+                    if usd_value >= BigDecimal::from(50) {
                         Some((
                             token.token.metadata.icon.clone(),
                             token.token.metadata.symbol.clone(),

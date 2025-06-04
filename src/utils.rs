@@ -1,4 +1,5 @@
 use base64::{prelude::BASE64_STANDARD, Engine};
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use cached::proc_macro::cached;
 use chrono::{DateTime, Utc};
 use leptos::prelude::*;
@@ -21,7 +22,12 @@ use crate::contexts::{
 
 pub const USDT_DECIMALS: u32 = 6;
 
-const AMOUNT_SUFFIXES: &[(f64, &str)] = &[(1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K")];
+const AMOUNT_SUFFIXES: &[(u64, &str)] = &[
+    (1_000_000_000_000, "T"),
+    (1_000_000_000, "B"),
+    (1_000_000, "M"),
+    (1_000, "K"),
+];
 
 pub fn format_token_amount(balance: Balance, decimals: u32, symbol: &str) -> String {
     let ConfigContext { config, .. } = expect_context::<ConfigContext>();
@@ -31,28 +37,41 @@ pub fn format_token_amount(balance: Balance, decimals: u32, symbol: &str) -> Str
     format_token_amount_no_hide(balance, decimals, symbol)
 }
 
-pub fn format_token_amount_no_hide(balance: Balance, decimals: u32, symbol: &str) -> String {
-    let normalized_balance = balance as f64 / 10f64.powi(decimals as i32);
+pub fn format_token_amount_no_hide(amount: Balance, decimals: u32, symbol: &str) -> String {
+    let amount_decimal = BigDecimal::from(amount);
+    let ten = BigDecimal::from(10);
+    let mut divisor_decimal = BigDecimal::from(1);
+    for _ in 0..decimals {
+        divisor_decimal *= &ten;
+    }
+    let normalized_decimal = &amount_decimal / &divisor_decimal;
 
     for (divisor, suffix) in AMOUNT_SUFFIXES {
-        if normalized_balance >= *divisor {
-            let value = normalized_balance / divisor;
-            return format!("{value:.2}{suffix} {symbol}");
+        let divisor_decimal = BigDecimal::from(*divisor);
+        if normalized_decimal.abs() >= divisor_decimal {
+            let value_decimal = &normalized_decimal / &divisor_decimal;
+            let value_f64 = value_decimal.to_f64().unwrap_or(0.0);
+            return match value_f64 {
+                x if x.fract().abs() < f64::EPSILON => {
+                    format!("{} {suffix} {symbol}", value_decimal.with_scale(0))
+                }
+                _ => format!("{:.2} {suffix} {symbol}", value_f64),
+            };
         }
     }
 
-    let formatted_balance = match normalized_balance {
-        integer if integer % 1.0 == 0.0 => format!("{normalized_balance}"),
-        0.1.. => format!("{normalized_balance:.2}"),
-        0.01.. => format!("{normalized_balance:.3}"),
-        0.001.. => format!("{normalized_balance:.4}"),
-        0.0001.. => format!("{normalized_balance:.5}"),
-        _ => format!("{normalized_balance:.6}"),
+    let formatted_balance = match &normalized_decimal {
+        x if x.fractional_digit_count().abs() == 0 => format!("{normalized_decimal}"),
+        x if x.abs() >= BigDecimal::from_f64(0.1).unwrap() => format!("{normalized_decimal:.2}"),
+        x if x.abs() >= BigDecimal::from_f64(0.01).unwrap() => format!("{normalized_decimal:.3}"),
+        x if x.abs() >= BigDecimal::from_f64(0.001).unwrap() => format!("{normalized_decimal:.4}"),
+        x if x.abs() >= BigDecimal::from_f64(0.0001).unwrap() => format!("{normalized_decimal:.5}"),
+        _ => format!("{normalized_decimal:.6}"),
     };
     format!("{formatted_balance} {symbol}")
 }
 
-pub fn format_usd_value(value: f64) -> String {
+pub fn format_usd_value(value: BigDecimal) -> String {
     let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     if config().amounts_hidden {
         return "😭".to_string();
@@ -60,26 +79,34 @@ pub fn format_usd_value(value: f64) -> String {
     format_usd_value_no_hide(value)
 }
 
-pub fn format_usd_value_no_hide(value: f64) -> String {
-    if value.abs() < 1.00 {
-        let sign = if value < 0.0 { "-" } else { "" };
-        let value = value.abs();
-        return match value {
-            0.0 => "$0".to_string(),
-            1e-1.. => format!("{sign}${value:.2}"),
-            1e-2.. => format!("{sign}${value:.3}"),
-            1e-3.. => format!("{sign}${value:.4}"),
-            1e-4.. => format!("{sign}${value:.5}"),
-            1e-5.. => format!("{sign}${value:.6}"),
-            1e-6.. => format!("{sign}${value:.7}"),
-            1e-7.. => format!("{sign}${value:.8}"),
-            1e-8.. => format!("{sign}${value:.9}"),
-            1e-9.. => format!("{sign}${value:.10}"),
-            _ => format!("{sign}${value:.11}"),
+pub fn format_usd_value_no_hide(value: BigDecimal) -> String {
+    let one = BigDecimal::from(1);
+    if value.abs() < one {
+        let is_negative = value < BigDecimal::from(0);
+        let sign = if is_negative { "-" } else { "" };
+        let abs_value = value.abs();
+        return match &abs_value {
+            x if x.fractional_digit_count() == 0 => "$0".to_string(),
+            x if x.gt(&BigDecimal::from_f64(0.1).unwrap()) => format!("{sign}${abs_value:.2}"),
+            x if x.gt(&BigDecimal::from_f64(0.01).unwrap()) => format!("{sign}${abs_value:.3}"),
+            x if x.gt(&BigDecimal::from_f64(0.001).unwrap()) => format!("{sign}${abs_value:.4}"),
+            x if x.gt(&BigDecimal::from_f64(0.0001).unwrap()) => format!("{sign}${abs_value:.5}"),
+            x if x.gt(&BigDecimal::from_f64(0.00001).unwrap()) => format!("{sign}${abs_value:.6}"),
+            x if x.gt(&BigDecimal::from_f64(0.000001).unwrap()) => format!("{sign}${abs_value:.7}"),
+            x if x.gt(&BigDecimal::from_f64(0.0000001).unwrap()) => {
+                format!("{sign}${abs_value:.8}")
+            }
+            x if x.gt(&BigDecimal::from_f64(0.00000001).unwrap()) => {
+                format!("{sign}${abs_value:.9}")
+            }
+            x if x.gt(&BigDecimal::from_f64(0.000000001).unwrap()) => {
+                format!("{sign}${abs_value:.10}")
+            }
+            _ => format!("{sign}${abs_value:.11}"),
         };
     }
 
-    let is_negative = value < 0.0;
+    let is_negative = value < BigDecimal::from(0);
     let abs_value = value.abs();
     let formatted = format!("{abs_value:.2}");
     let parts: Vec<&str> = formatted.split('.').collect();

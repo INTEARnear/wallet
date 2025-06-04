@@ -1,4 +1,5 @@
 use base64::{prelude::BASE64_STANDARD, Engine};
+use bigdecimal::{BigDecimal, FromPrimitive};
 use codee::string::FromToStringCodec;
 use futures_util::future::join;
 use json_filter::{Filter, Operator};
@@ -40,14 +41,10 @@ pub enum TokenScore {
 pub struct TokenInfo {
     pub account_id: Token,
     pub metadata: TokenMetadata,
-    #[serde(with = "dec_format")]
-    pub price_usd: f64,
-    #[serde(with = "dec_format")]
-    pub price_usd_hardcoded: f64,
-    #[serde(with = "dec_format")]
-    pub price_usd_raw: f64,
-    #[serde(with = "dec_format")]
-    pub price_usd_raw_24h_ago: f64,
+    pub price_usd: BigDecimal,
+    pub price_usd_hardcoded: BigDecimal,
+    pub price_usd_raw: BigDecimal,
+    pub price_usd_raw_24h_ago: BigDecimal,
     pub volume_usd_24h: f64,
     pub liquidity_usd: f64,
     #[serde(with = "dec_format")]
@@ -420,10 +417,23 @@ pub fn provide_token_context() {
                         }) {
                             if let Ok(raw_price) = update.price_usd.parse::<f64>() {
                                 let decimals = token.token.metadata.decimals;
-                                let normalized_price = raw_price * (10f64.powi(decimals as i32 - USDT_DECIMALS as i32));
-                                token.token.price_usd_raw = raw_price;
-                                token.token.price_usd = normalized_price;
-                                if token.token.price_usd_hardcoded != 1.0 {
+                                let raw_price_decimal = BigDecimal::from_f64(raw_price).unwrap_or_default();
+                                let ten = BigDecimal::from(10);
+                                let exponent = decimals as i32 - USDT_DECIMALS as i32;
+                                let mut multiplier = BigDecimal::from(1);
+                                if exponent > 0 {
+                                    for _ in 0..exponent {
+                                        multiplier *= &ten;
+                                    }
+                                } else if exponent < 0 {
+                                    for _ in 0..(-exponent) {
+                                        multiplier = &multiplier / &ten;
+                                    }
+                                }
+                                let normalized_price = &raw_price_decimal * &multiplier;
+                                token.token.price_usd_raw = raw_price_decimal.clone();
+                                token.token.price_usd = normalized_price.clone();
+                                if token.token.price_usd_hardcoded != BigDecimal::from(1) {
                                     // Don't update stablecoin prices in realtime. They're unlikely
                                     // to change in real time, but UX is shit when USDC costs $0.99
                                     // or $1.01.
@@ -469,10 +479,13 @@ pub fn provide_token_context() {
                     return;
                 };
 
-                let Ok(token_data) = token_response.json::<Vec<TokenData>>().await else {
-                    log::error!("Failed to parse token data");
-                    set_loading(false);
-                    return;
+                let token_data = match token_response.json::<Vec<TokenData>>().await {
+                    Ok(token_data) => token_data,
+                    Err(err) => {
+                        log::error!("Failed to parse token data: {err:?}");
+                        set_loading(false);
+                        return;
+                    }
                 };
 
                 // Process and validate icons
@@ -492,8 +505,10 @@ pub fn provide_token_context() {
 
                 // Sort by USD value
                 token_data.sort_by(|a, b| {
-                    let a_value = a.token.price_usd_raw * a.balance as f64;
-                    let b_value = b.token.price_usd_raw * b.balance as f64;
+                    let a_balance_decimal = BigDecimal::from(a.balance);
+                    let b_balance_decimal = BigDecimal::from(b.balance);
+                    let a_value = &a.token.price_usd_raw * &a_balance_decimal;
+                    let b_value = &b.token.price_usd_raw * &b_balance_decimal;
                     b_value
                         .partial_cmp(&a_value)
                         .unwrap_or(std::cmp::Ordering::Equal)
@@ -517,10 +532,10 @@ pub fn provide_token_context() {
                                     BASE64_STANDARD.encode(include_bytes!("../data/near.svg"))
                                 )),
                             },
-                            price_usd: wnear_token.token.price_usd,
-                            price_usd_hardcoded: wnear_token.token.price_usd_hardcoded,
-                            price_usd_raw: wnear_token.token.price_usd_raw,
-                            price_usd_raw_24h_ago: wnear_token.token.price_usd_raw_24h_ago,
+                            price_usd: wnear_token.token.price_usd.clone(),
+                            price_usd_hardcoded: wnear_token.token.price_usd_hardcoded.clone(),
+                            price_usd_raw: wnear_token.token.price_usd_raw.clone(),
+                            price_usd_raw_24h_ago: wnear_token.token.price_usd_raw_24h_ago.clone(),
                             volume_usd_24h: wnear_token.token.volume_usd_24h,
                             liquidity_usd: wnear_token.token.liquidity_usd,
                             circulating_supply: wnear_token.token.circulating_supply,

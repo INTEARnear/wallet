@@ -27,6 +27,7 @@ use zxcvbn::zxcvbn;
 
 const MIN_ROUNDS: u32 = 2;
 
+#[allow(clippy::float_arithmetic)] // Nanoseconds for benchmarking is not precision-critical
 async fn benchmark_argon2() -> (u32, f64) {
     let benchmark_salt = &[69; 32];
     let mut best_rounds = 1u32;

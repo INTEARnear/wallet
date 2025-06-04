@@ -1,3 +1,9 @@
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
+use leptos::{prelude::*, task::spawn_local};
+use leptos_icons::Icon;
+use leptos_router::{components::A, hooks::use_params_map};
+use near_min_api::types::AccountId;
+
 use crate::{
     components::tooltip::Tooltip,
     contexts::{
@@ -6,11 +12,6 @@ use crate::{
     },
     utils::{format_token_amount, format_usd_value, format_usd_value_no_hide},
 };
-use leptos::{prelude::*, task::spawn_local};
-use leptos_icons::Icon;
-use leptos_router::components::A;
-use leptos_router::hooks::use_params_map;
-use near_min_api::types::AccountId;
 
 async fn fetch_token_info(token_id: AccountId, network: Network) -> Option<TokenInfo> {
     let api_url = match network {
@@ -26,16 +27,18 @@ async fn fetch_token_info(token_id: AccountId, network: Network) -> Option<Token
 
 #[component]
 fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
-    let price_change = if token_info.price_usd_hardcoded == 1.0 {
-        0.0
-    } else if token_info.price_usd_raw_24h_ago > 0.0 {
-        ((token_info.price_usd_raw - token_info.price_usd_raw_24h_ago)
-            / token_info.price_usd_raw_24h_ago)
-            * 100.0
+    let price_change = if token_info.price_usd_hardcoded == BigDecimal::from(1) {
+        BigDecimal::from(0)
+    } else if token_info.price_usd_raw_24h_ago > BigDecimal::from(0) {
+        let hundred = BigDecimal::from(100);
+        ((&token_info.price_usd_raw - &token_info.price_usd_raw_24h_ago)
+            / &token_info.price_usd_raw_24h_ago)
+            * &hundred
     } else {
-        0.0
+        BigDecimal::from(0)
     };
-    let price_change_formatted = if price_change > 0.0 {
+    let price_change_f64 = price_change.to_f64().unwrap_or(0.0);
+    let price_change_formatted = if price_change_f64 > 0.0 {
         format!("+{price_change:.2}%")
     } else {
         format!("{price_change:.2}%")
@@ -49,15 +52,20 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
             .iter()
             .find(|t| t.token.account_id == token_account_id)
             .map(|t| {
-                let normalized_balance =
-                    t.balance as f64 / 10f64.powi(t.token.metadata.decimals as i32);
+                let balance_decimal = BigDecimal::from(t.balance);
+                let ten = BigDecimal::from(10);
+                let mut decimals_decimal = BigDecimal::from(1);
+                for _ in 0..t.token.metadata.decimals {
+                    decimals_decimal *= &ten;
+                }
+                let normalized_balance = &balance_decimal / &decimals_decimal;
                 (
                     format_token_amount(
                         t.balance,
                         t.token.metadata.decimals,
                         &t.token.metadata.symbol,
                     ),
-                    format_usd_value(normalized_balance * t.token.price_usd),
+                    format_usd_value(&normalized_balance * &t.token.price_usd),
                 )
             })
     };
@@ -68,6 +76,7 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
     let token_account_id3 = token_info.account_id.clone();
     let token_account_id4 = token_info.account_id.clone();
     let network = expect_context::<NetworkContext>().network;
+
     view! {
         <div class="flex flex-col gap-4 wrap-anywhere">
             <div class="flex items-center gap-3">
@@ -174,7 +183,7 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                     <div>
                         <p class="text-gray-400">Price</p>
                         <p class="text-white text-xl">
-                            {move || format_usd_value(token_info.price_usd)}
+                            {move || format_usd_value(token_info.price_usd.clone())}
                         </p>
                     </div>
                     <div class="text-right">
@@ -182,9 +191,9 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                         <p
                             class="text-xl"
                             style=move || {
-                                let color = if price_change > 0.0 {
+                                let color = if price_change_f64 > 0.0 {
                                     "rgb(34 197 94)"
-                                } else if price_change < 0.0 {
+                                } else if price_change_f64 < 0.0 {
                                     "rgb(239 68 68)"
                                 } else {
                                     "rgb(156 163 175)"
@@ -262,13 +271,17 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                     <div class="bg-neutral-900 rounded-xl p-4">
                         <p class="text-gray-400">Liquidity</p>
                         <p class="text-white text-xl">
-                            {move || format_usd_value_no_hide(token_info.liquidity_usd)}
+                            {move || format_usd_value_no_hide(
+                                BigDecimal::from_f64(token_info.liquidity_usd).unwrap(),
+                            )}
                         </p>
                     </div>
                 </Show> <div class="bg-neutral-900 rounded-xl p-4">
                     <p class="text-gray-400">24h Volume</p>
                     <p class="text-white text-xl">
-                        {move || format_usd_value_no_hide(token_info.volume_usd_24h)}
+                        {move || format_usd_value_no_hide(
+                            BigDecimal::from_f64(token_info.volume_usd_24h).unwrap(),
+                        )}
                     </p>
                 </div> <div class="bg-neutral-900 rounded-xl p-4">
                     <div class="flex items-center gap-2">
@@ -277,8 +290,12 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                     </div>
                     <p class="text-white text-xl">
                         {move || {
-                            let market_cap = token_info.price_usd_raw
-                                * token_info.circulating_supply as f64 / 1e6;
+                            let circulating_supply_decimal = BigDecimal::from(
+                                token_info.circulating_supply,
+                            );
+                            let million = BigDecimal::from(1_000_000);
+                            let market_cap = &token_info.price_usd_raw * &circulating_supply_decimal
+                                / &million;
                             format_usd_value_no_hide(market_cap)
                         }}
                     </p>

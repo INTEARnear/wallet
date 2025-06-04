@@ -6,6 +6,7 @@ use crate::{
     },
     utils::{format_token_amount, format_usd_value},
 };
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use leptos::prelude::*;
 use leptos_icons::Icon;
 use leptos_router::components::A;
@@ -64,10 +65,16 @@ pub fn TokenBalanceList() -> impl IntoView {
                             {
                                 let balance = token.balance;
                                 let decimals = token.token.metadata.decimals;
-                                let price = token.token.price_usd;
-                                let normalized_balance = balance as f64
-                                    / 10f64.powi(decimals as i32);
-                                return (price * normalized_balance) >= 0.01;
+                                let price = &token.token.price_usd;
+                                let balance_decimal = BigDecimal::from(balance);
+                                let ten = BigDecimal::from(10);
+                                let mut decimals_decimal = BigDecimal::from(1);
+                                for _ in 0..decimals {
+                                    decimals_decimal *= &ten;
+                                }
+                                let normalized_balance = &balance_decimal / &decimals_decimal;
+                                let threshold = BigDecimal::from_f64(0.01).unwrap_or_default();
+                                return (price * &normalized_balance) >= threshold;
                             }
                             true
                         })
@@ -85,20 +92,32 @@ pub fn TokenBalanceList() -> impl IntoView {
                                         decimals,
                                         &token.token.metadata.symbol,
                                     );
+                                    let balance_decimal = BigDecimal::from(balance);
+                                    let ten = BigDecimal::from(10);
+                                    let mut decimals_decimal = BigDecimal::from(1);
+                                    for _ in 0..decimals {
+                                        decimals_decimal *= &ten;
+                                    }
+                                    let normalized_balance = &balance_decimal / &decimals_decimal;
                                     let usd_value = format_usd_value(
-                                        token.token.price_usd * balance as f64
-                                            / 10f64.powi(decimals as i32),
+                                        &token.token.price_usd * &normalized_balance,
                                     );
-                                    let price_change = if token.token.price_usd_hardcoded == 1.0 {
-                                        0.0
-                                    } else if token.token.price_usd_raw_24h_ago > 0.0 {
-                                        ((token.token.price_usd_raw
-                                            - token.token.price_usd_raw_24h_ago)
-                                            / token.token.price_usd_raw_24h_ago) * 100.0
+                                    let price_change = if token.token.price_usd_hardcoded
+                                        == BigDecimal::from(1)
+                                    {
+                                        BigDecimal::from(0)
+                                    } else if token.token.price_usd_raw_24h_ago
+                                        > BigDecimal::from(0)
+                                    {
+                                        let hundred = BigDecimal::from(100);
+                                        ((&token.token.price_usd_raw
+                                            - &token.token.price_usd_raw_24h_ago)
+                                            / &token.token.price_usd_raw_24h_ago) * &hundred
                                     } else {
-                                        0.0
+                                        BigDecimal::from(0)
                                     };
-                                    let price_change_formatted = if price_change > 0.0 {
+                                    let price_change_f64 = price_change.to_f64().unwrap_or(0.0);
+                                    let price_change_formatted = if price_change_f64 > 0.0 {
                                         format!("+{price_change:.2}%")
                                     } else {
                                         format!("{price_change:.2}%")
@@ -176,9 +195,9 @@ pub fn TokenBalanceList() -> impl IntoView {
                                                     class="text-sm text-right"
                                                     style=format!(
                                                         "color: {}",
-                                                        if price_change > 0.0 {
+                                                        if price_change_f64 > 0.0 {
                                                             "rgb(34 197 94)"
-                                                        } else if price_change < 0.0 {
+                                                        } else if price_change_f64 < 0.0 {
                                                             "rgb(239 68 68)"
                                                         } else {
                                                             "rgb(156 163 175)"

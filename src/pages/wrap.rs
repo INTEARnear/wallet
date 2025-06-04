@@ -7,10 +7,11 @@ use crate::{
     },
     utils::{format_token_amount, format_usd_value_no_hide},
 };
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::Icon;
 use leptos_router::components::A;
-use near_min_api::types::{AccountId, Action, Balance, FunctionCallAction, NearGas, NearToken};
+use near_min_api::types::{AccountId, Action, FunctionCallAction, NearGas, NearToken};
 
 #[component]
 pub fn WrapToken() -> impl IntoView {
@@ -36,15 +37,20 @@ pub fn WrapToken() -> impl IntoView {
         set_has_typed_amount.set(true);
 
         if let Some(token) = near_token() {
-            if let Ok(amount_value) = amount.parse::<f64>() {
-                if amount_value <= 0.0 {
+            if let Ok(amount_decimal) = amount.parse::<BigDecimal>() {
+                if amount_decimal <= BigDecimal::from(0) {
                     set_amount_error.set(Some("Amount must be greater than 0".to_string()));
                     return;
                 }
 
-                let max_amount =
-                    token.balance as f64 / 10f64.powi(token.token.metadata.decimals as i32);
-                if amount_value > max_amount {
+                let balance_decimal = BigDecimal::from(token.balance);
+                let ten = BigDecimal::from(10);
+                let mut decimals_decimal = BigDecimal::from(1);
+                for _ in 0..token.token.metadata.decimals {
+                    decimals_decimal *= &ten;
+                }
+                let max_amount_decimal = &balance_decimal / &decimals_decimal;
+                if amount_decimal > max_amount_decimal {
                     set_amount_error.set(Some("Amount exceeds balance".to_string()));
                     return;
                 }
@@ -65,17 +71,22 @@ pub fn WrapToken() -> impl IntoView {
         }
 
         let transaction_description = format!("Wrap {} NEAR", amount.get(),);
-        let Ok(amount_normalized) = amount.get().parse::<f64>() else {
+        let Ok(amount_decimal) = amount.get().parse::<BigDecimal>() else {
             panic!(
-                "Amount '{}' cannot be parsed as f64, yet amount_error is None",
+                "Amount '{}' cannot be parsed as BigDecimal, yet amount_error is None",
                 amount()
             );
         };
         let Some(token) = near_token() else {
             panic!("NEAR token not found, but tried to wrap it");
         };
-        let amount =
-            (amount_normalized * 10f64.powi(token.token.metadata.decimals as i32)) as Balance;
+        let ten = BigDecimal::from(10);
+        let mut multiplier = BigDecimal::from(1);
+        for _ in 0..token.token.metadata.decimals {
+            multiplier *= &ten;
+        }
+        let amount_raw_decimal = &amount_decimal * &multiplier;
+        let amount = amount_raw_decimal.to_u128().expect("Amount overflow");
         let signer_id = accounts
             .get_untracked()
             .selected_account_id
@@ -191,12 +202,21 @@ pub fn WrapToken() -> impl IntoView {
                                         <button
                                             class="absolute right-2 top-1/2 -translate-y-1/2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm px-3 py-1 rounded-lg transition-colors duration-200 no-mobile-ripple"
                                             on:click=move |_| {
-                                                let max_amount = token.balance as f64
-                                                    / 10f64.powi(token.token.metadata.decimals as i32);
-                                                let rounded_gas_cost = 0.001;
-                                                let max_amount = (max_amount - rounded_gas_cost).max(0.0);
-                                                set_amount.set(max_amount.to_string());
-                                                check_amount(max_amount.to_string());
+                                                let balance_decimal = BigDecimal::from(token.balance);
+                                                let ten = BigDecimal::from(10);
+                                                let mut decimals_decimal = BigDecimal::from(1);
+                                                for _ in 0..token.token.metadata.decimals {
+                                                    decimals_decimal *= &ten;
+                                                }
+                                                let max_amount_decimal = &balance_decimal
+                                                    / &decimals_decimal;
+                                                let rounded_gas_cost = BigDecimal::from_f64(0.001)
+                                                    .unwrap_or_default();
+                                                let final_amount = (&max_amount_decimal - &rounded_gas_cost)
+                                                    .max(BigDecimal::from(0));
+                                                let amount_str = final_amount.to_string();
+                                                set_amount.set(amount_str.clone());
+                                                check_amount(amount_str);
                                             }
                                         >
                                             MAX
@@ -204,13 +224,13 @@ pub fn WrapToken() -> impl IntoView {
                                     </div>
                                     {move || {
                                         let error_message = amount_error.get();
-                                        let usd_display = if let Ok(amount_value) = amount
+                                        let usd_display = if let Ok(amount_decimal) = amount
                                             .get()
-                                            .parse::<f64>()
+                                            .parse::<BigDecimal>()
                                         {
-                                            let usd_value = amount_value
-                                                * token.token.price_usd_hardcoded;
-                                            format_usd_value_no_hide(usd_value)
+                                            let usd_value_decimal = &amount_decimal
+                                                * &token.token.price_usd_hardcoded;
+                                            format_usd_value_no_hide(usd_value_decimal)
                                         } else {
                                             "$0".to_string()
                                         };

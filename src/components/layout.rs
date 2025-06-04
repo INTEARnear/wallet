@@ -1,3 +1,5 @@
+#![allow(clippy::float_arithmetic)] // Not important for UI layout
+
 use leptos::prelude::*;
 use leptos_icons::*;
 use leptos_router::{

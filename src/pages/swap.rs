@@ -264,12 +264,11 @@ fn TokenSelector(
                                                     decimals_decimal *= &ten;
                                                 }
                                                 let balance_formatted = balance_decimal / decimals_decimal;
-                                                let price_decimal = BigDecimal::from_f64(
-                                                        token_data.token.price_usd_hardcoded,
-                                                    )
-                                                    .unwrap_or_default();
+                                                let price_decimal = token_data
+                                                    .token
+                                                    .price_usd_hardcoded
+                                                    .clone();
                                                 let usd_value_decimal = balance_formatted * price_decimal;
-                                                let usd_value = usd_value_decimal.to_f64().unwrap_or(0.0);
 
                                                 view! {
                                                     <button
@@ -326,7 +325,7 @@ fn TokenSelector(
                                                                 )}
                                                             </div>
                                                             <div class="text-gray-400 text-sm">
-                                                                {format_usd_value_no_hide(usd_value)}
+                                                                {format_usd_value_no_hide(usd_value_decimal)}
                                                             </div>
                                                         </div>
                                                     </button>
@@ -361,19 +360,6 @@ fn TokenSelector(
                                                                 token: token_info,
                                                             };
                                                             let token_clone = token_data.clone();
-                                                            let balance_decimal = BigDecimal::from(balance);
-                                                            let ten = BigDecimal::from(10);
-                                                            let mut decimals_decimal = BigDecimal::from(1);
-                                                            for _ in 0..token_data.token.metadata.decimals {
-                                                                decimals_decimal *= &ten;
-                                                            }
-                                                            let balance_formatted = balance_decimal / decimals_decimal;
-                                                            let price_decimal = BigDecimal::from_f64(
-                                                                    token_data.token.price_usd_hardcoded,
-                                                                )
-                                                                .unwrap_or_default();
-                                                            let usd_value_decimal = balance_formatted * price_decimal;
-                                                            let usd_value = usd_value_decimal.to_f64().unwrap_or(0.0);
 
                                                             view! {
                                                                 <button
@@ -424,6 +410,19 @@ fn TokenSelector(
                                                                     <div class="text-right">
                                                                         {move || {
                                                                             if is_owned {
+                                                                                let balance_decimal = BigDecimal::from(balance);
+                                                                                let ten = BigDecimal::from(10);
+                                                                                let mut decimals_decimal = BigDecimal::from(1);
+                                                                                for _ in 0..token_data.token.metadata.decimals {
+                                                                                    decimals_decimal *= &ten;
+                                                                                }
+                                                                                let balance_formatted = balance_decimal / decimals_decimal;
+                                                                                let price_decimal = token_data
+                                                                                    .token
+                                                                                    .price_usd_hardcoded
+                                                                                    .clone();
+                                                                                let usd_value_decimal = balance_formatted * price_decimal;
+
                                                                                 view! {
                                                                                     <>
                                                                                         <div class="text-white">
@@ -434,7 +433,7 @@ fn TokenSelector(
                                                                                             )}
                                                                                         </div>
                                                                                         <div class="text-gray-400 text-sm">
-                                                                                            {format_usd_value_no_hide(usd_value)}
+                                                                                            {format_usd_value_no_hide(usd_value_decimal)}
                                                                                         </div>
                                                                                     </>
                                                                                 }
@@ -689,11 +688,11 @@ pub fn Swap() -> impl IntoView {
             "border: 2px solid rgb(239 68 68);".to_string() // Insufficient balance
         } else if !is_editable {
             "opacity: 0.6; border: 2px solid rgba(255, 255, 255, 0.2);".to_string()
-        } else if !amount_entered.get().is_empty() && validated_amount_entered.get().is_none() {
-            "border: 2px solid rgb(239 68 68);".to_string() // Invalid format
-        } else if !amount_entered.get().is_empty() && !has_sufficient_balance.get() && is_from_field
+        } else if !amount_entered.get().is_empty()
+            && (validated_amount_entered.get().is_none()
+                || (!has_sufficient_balance.get() && is_from_field))
         {
-            "border: 2px solid rgb(239 68 68);".to_string() // Insufficient balance
+            "border: 2px solid rgb(239 68 68);".to_string() // Invalid format or insufficient balance
         } else if !amount_entered.get().is_empty() {
             "border: 2px solid rgb(34 197 94);".to_string() // Valid amount
         } else {
@@ -922,15 +921,12 @@ pub fn Swap() -> impl IntoView {
                                             if let Ok(amount_decimal) = amount_to_use
                                                 .parse::<BigDecimal>()
                                             {
-                                                let price_decimal = BigDecimal::from_f64(
-                                                        token.token.price_usd_hardcoded,
-                                                    )
-                                                    .unwrap_or_default();
+                                                let price_decimal = token.token.price_usd_hardcoded.clone();
                                                 let usd_value_decimal = amount_decimal * price_decimal;
-                                                let usd_value = usd_value_decimal.to_f64().unwrap_or(0.0);
+
                                                 view! {
                                                     <div class="absolute right-3 -bottom-5 text-xs text-gray-400">
-                                                        {format_usd_value_no_hide(usd_value)}
+                                                        {format_usd_value_no_hide(usd_value_decimal)}
                                                     </div>
                                                 }
                                                     .into_any()
@@ -1029,15 +1025,12 @@ pub fn Swap() -> impl IntoView {
                                             if let Ok(amount_decimal) = amount_to_use
                                                 .parse::<BigDecimal>()
                                             {
-                                                let price_decimal = BigDecimal::from_f64(
-                                                        token.token.price_usd_hardcoded,
-                                                    )
-                                                    .unwrap_or_default();
+                                                let price_decimal = token.token.price_usd_hardcoded.clone();
                                                 let usd_value_decimal = amount_decimal * price_decimal;
-                                                let usd_value = usd_value_decimal.to_f64().unwrap_or(0.0);
+
                                                 view! {
                                                     <div class="absolute right-3 -bottom-5 text-xs text-gray-400">
-                                                        {format_usd_value_no_hide(usd_value)}
+                                                        {format_usd_value_no_hide(usd_value_decimal)}
                                                     </div>
                                                 }
                                                     .into_any()
@@ -1102,6 +1095,7 @@ pub fn Swap() -> impl IntoView {
                                                     }
                                                         .into_any()
                                                 }
+                                                #[allow(unreachable_patterns)]
                                                 _ => {
                                                     view! {
                                                         <span class="text-white font-medium text-sm">

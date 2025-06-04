@@ -23,20 +23,20 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
         if queue_len == 0 {
             0.0
         } else {
-            let stage_progress = queue
+            let stage_progress_sum = queue
                 .read()
                 .iter()
                 .take(current_index.get() + 1)
                 .map(|tx| match &tx.stage {
-                    TransactionStage::Preparing => 0.0,
-                    TransactionStage::Publishing => 0.25,
-                    TransactionStage::Included => 0.5,
-                    TransactionStage::Doomslug => 0.75,
-                    TransactionStage::Finalized => 1.0,
-                    TransactionStage::Failed(_) => 0.0,
+                    TransactionStage::Preparing => 0,
+                    TransactionStage::Publishing => 25,
+                    TransactionStage::Included => 50,
+                    TransactionStage::Doomslug => 75,
+                    TransactionStage::Finalized => 100,
+                    TransactionStage::Failed(_) => 0,
                 })
-                .sum::<f64>();
-            stage_progress / queue_len as f64 * 100.0
+                .sum::<u32>();
+            (stage_progress_sum / queue_len as u32) as f64
         }
     };
 

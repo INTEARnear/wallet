@@ -2,6 +2,7 @@ use crate::contexts::config_context::ConfigContext;
 use crate::contexts::network_context::{Network, NetworkContext};
 use crate::contexts::tokens_context::TokenContext;
 use crate::utils::{format_usd_value, USDT_DECIMALS};
+use bigdecimal::{BigDecimal, ToPrimitive};
 use leptos::prelude::*;
 use web_sys::window;
 
@@ -13,34 +14,42 @@ pub fn TotalPortfolioValue() -> impl IntoView {
     } = expect_context::<TokenContext>();
     let ConfigContext { set_config, .. } = expect_context::<ConfigContext>();
     let network = expect_context::<NetworkContext>().network;
-    let (last_tap, set_last_tap) = signal(0.0);
+    let (last_tap, set_last_tap) = signal(0u64);
 
     let handle_tap = move |_| {
-        let now = window()
+        let now_ms = window()
             .and_then(|w| w.performance())
-            .map(|p| p.now())
-            .unwrap_or(0.0);
-        let time_since_last_tap = now - last_tap.get();
+            .map(|p| p.now() as u64)
+            .unwrap_or(0);
+        let last_tap_time = last_tap.get();
+        let time_since_last_tap_ms = if now_ms > last_tap_time {
+            now_ms - last_tap_time
+        } else {
+            u64::MAX
+        };
 
-        if time_since_last_tap < 300.0 {
+        if time_since_last_tap_ms < 300 {
             // 300ms threshold for double tap
             set_config.update(|config| {
                 config.amounts_hidden = !config.amounts_hidden;
             });
-            set_last_tap(0.0);
-        } else {
-            set_last_tap(now);
         }
+        set_last_tap.set(now_ms);
     };
 
     let display_value = move || {
         if loading_tokens.get() {
             "$-.--".to_string()
         } else {
-            let total = tokens.get().iter().fold(0.0, |acc, token| {
-                let normalized_balance =
-                    token.balance as f64 / 10f64.powi(token.token.metadata.decimals as i32);
-                acc + (token.token.price_usd_hardcoded * normalized_balance)
+            let total = tokens.get().iter().fold(BigDecimal::from(0), |acc, token| {
+                let balance_decimal = BigDecimal::from(token.balance);
+                let ten = BigDecimal::from(10);
+                let mut decimals_decimal = BigDecimal::from(1);
+                for _ in 0..token.token.metadata.decimals {
+                    decimals_decimal *= &ten;
+                }
+                let normalized_balance = &balance_decimal / &decimals_decimal;
+                acc + (&token.token.price_usd_hardcoded * &normalized_balance)
             });
             format_usd_value(total)
         }
@@ -48,26 +57,30 @@ pub fn TotalPortfolioValue() -> impl IntoView {
 
     let pnl_24h = move || {
         if loading_tokens.get() {
-            (0.0, 0.0)
+            (BigDecimal::from(0), BigDecimal::from(0))
         } else {
-            let (current_total, previous_total) =
-                tokens
-                    .get()
-                    .iter()
-                    .fold((0.0, 0.0), |(acc_current, acc_previous), token| {
-                        let current_value = (token.token.price_usd_raw
-                            / 10f64.powi(USDT_DECIMALS as i32))
-                            * token.balance as f64;
-                        let previous_value = (token.token.price_usd_raw_24h_ago
-                            / 10f64.powi(USDT_DECIMALS as i32))
-                            * token.balance as f64;
-                        (acc_current + current_value, acc_previous + previous_value)
-                    });
-            let pnl = current_total - previous_total;
-            let pnl_percentage = if previous_total > 0.0 {
-                (pnl / previous_total) * 100.0
+            let (current_total, previous_total) = tokens.get().iter().fold(
+                (BigDecimal::from(0), BigDecimal::from(0)),
+                |(acc_current, acc_previous), token| {
+                    let ten = BigDecimal::from(10);
+                    let mut usdt_decimals_decimal = BigDecimal::from(1);
+                    for _ in 0..USDT_DECIMALS {
+                        usdt_decimals_decimal *= &ten;
+                    }
+                    let balance_decimal = BigDecimal::from(token.balance);
+                    let current_value =
+                        (&token.token.price_usd_raw / &usdt_decimals_decimal) * &balance_decimal;
+                    let previous_value = (&token.token.price_usd_raw_24h_ago
+                        / &usdt_decimals_decimal)
+                        * &balance_decimal;
+                    (acc_current + current_value, acc_previous + previous_value)
+                },
+            );
+            let pnl = &current_total - &previous_total;
+            let pnl_percentage = if previous_total > BigDecimal::from(0) {
+                (&pnl / &previous_total) * BigDecimal::from(100)
             } else {
-                0.0
+                BigDecimal::from(0)
             };
             (pnl, pnl_percentage)
         }
@@ -96,16 +109,17 @@ pub fn TotalPortfolioValue() -> impl IntoView {
             <div class="text-neutral-400 text-lg">
                 {move || {
                     let (pnl, _) = pnl_24h();
-                    let pnl_class = if pnl > 0.0 {
+                    let pnl_f64 = pnl.to_f64().unwrap_or(0.0);
+                    let pnl_class = if pnl_f64 > 0.0 {
                         "text-green-500"
-                    } else if pnl < 0.0 {
+                    } else if pnl_f64 < 0.0 {
                         "text-red-500"
                     } else {
                         "text-neutral-400"
                     };
                     view! {
                         <span class=pnl_class>
-                            {if pnl > 0.0 {
+                            {if pnl_f64 > 0.0 {
                                 format!("+{}", format_usd_value(pnl))
                             } else {
                                 format_usd_value(pnl)
