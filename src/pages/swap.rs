@@ -1125,7 +1125,7 @@ pub fn Swap() -> impl IntoView {
                                                     let is_selected = move || {
                                                         if let Slippage::Fixed { slippage } = config.get().slippage
                                                         {
-                                                            slippage == BigDecimal::from_f64(percentage).unwrap()
+                                                            slippage == BigDecimal::from_f64(percentage).unwrap() / BigDecimal::from(100)
                                                         } else {
                                                             false
                                                         }
@@ -1146,7 +1146,7 @@ pub fn Swap() -> impl IntoView {
                                                                 set_config
                                                                     .update(|config| {
                                                                         config.slippage = Slippage::Fixed {
-                                                                            slippage: BigDecimal::from_f64(percentage).unwrap(),
+                                                                            slippage: BigDecimal::from_f64(percentage).unwrap() / BigDecimal::from(100),
                                                                         };
                                                                     });
                                                                 set_custom_slippage_input.set("".to_string());
@@ -1169,12 +1169,12 @@ pub fn Swap() -> impl IntoView {
                                                     on:input=move |ev| {
                                                         let value = event_target_value(&ev);
                                                         set_custom_slippage_input.set(value.clone());
-                                                        if let Ok(percentage) = value.parse::<f64>() {
-                                                            let percentage = percentage.clamp(0.01, 100.0);
+                                                        if let Ok(percentage) = value.parse::<BigDecimal>() {
+                                                            let percentage = percentage.clamp(BigDecimal::from_f64(0.01).unwrap(), BigDecimal::from_f64(100.0).unwrap());
                                                             set_config
                                                                 .update(|config| {
                                                                     config.slippage = Slippage::Fixed {
-                                                                        slippage: BigDecimal::from_f64(percentage).unwrap(),
+                                                                        slippage: percentage / BigDecimal::from(100),
                                                                     };
                                                                 });
                                                         }
@@ -1895,7 +1895,7 @@ const EXTENDED_WAIT_MS: u64 = 4000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WaitMode {
-    /// Up to 1.5ms for fast fetch, don't use intents
+    /// Up to 1.5s for fast fetch, don't use intents
     Fast,
     /// 3s for slow intents, wait for better quote
     Extended,
