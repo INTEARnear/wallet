@@ -1,17 +1,23 @@
 use std::{
     fmt::{self, Display},
     num::NonZeroU64,
+    str::FromStr,
     time::Duration,
 };
 
-use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, Zero};
-use chrono::{DateTime, Utc};
+use bigdecimal::{num_bigint::Sign, BigDecimal, FromPrimitive, RoundingMode, Zero};
+use chrono::{DateTime, TimeDelta, Utc};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_icons::Icon;
+use leptos_router::{hooks::use_location, location::Location};
 use near_min_api::{
-    types::{AccountId, Action, Balance, CryptoHash},
+    types::{
+        AccountId, AccountIdRef, Action, Balance, CryptoHash, Finality, FunctionCallAction,
+        NearGas, NearToken,
+    },
     utils::dec_format,
+    QueryFinality, RpcClient,
 };
 use serde::{Deserialize, Serialize};
 
@@ -20,11 +26,14 @@ use crate::{
         accounts_context::{Account, AccountsContext},
         config_context::ConfigContext,
         network_context::Network,
+        rpc_context::RpcContext,
         tokens_context::{Token, TokenContext, TokenData, TokenInfo, TokenScore},
+        transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
     pages::settings::SLIPPAGE_PRESETS,
     utils::{
-        balance_to_decimal, decimal_to_balance, format_token_amount, format_usd_value_no_hide,
+        balance_to_decimal, decimal_to_balance, fetch_token_info, format_token_amount,
+        format_token_amount_no_hide, format_usd_value_no_hide,
     },
 };
 
@@ -32,27 +41,6 @@ use crate::{
 pub enum SwapMode {
     ExactIn,
     ExactOut,
-}
-
-async fn fetch_token_by_id(token_id: &str, account: Account) -> Result<TokenInfo, String> {
-    let api_url = match account.network {
-        Network::Mainnet => "https://prices.intear.tech",
-        Network::Testnet => "https://prices-testnet.intear.tech",
-    };
-
-    let response = reqwest::Client::new()
-        .get(format!("{api_url}/token"))
-        .query(&[("token_id", token_id)])
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch token: {}", e))?;
-
-    let token_info: TokenInfo = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse token response: {}", e))?;
-
-    Ok(token_info)
 }
 
 async fn search_tokens(query: &str, account: Account) -> Result<Vec<TokenInfo>, String> {
@@ -99,6 +87,7 @@ fn TokenSelector(
     placeholder: &'static str,
 ) -> impl IntoView {
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+    let TokenContext { set_tokens, .. } = expect_context::<TokenContext>();
 
     let (show, set_show) = signal(false);
     let (search_query, set_search_query) = signal("".to_string());
@@ -135,26 +124,44 @@ fn TokenSelector(
                     view! {
                         <>
                             <div class="flex items-center gap-2 min-w-0">
-                                {match token.token.metadata.icon {
-                                    Some(icon) => {
-                                        view! {
-                                            <img
-                                                src=icon
-                                                alt=token.token.metadata.symbol.clone()
-                                                class="w-6 h-6 rounded-full flex-shrink-0"
-                                            />
+                                <div class="relative flex-shrink-0">
+                                    {match token.token.metadata.icon {
+                                        Some(icon) => {
+                                            view! {
+                                                <img
+                                                    src=icon
+                                                    alt=token.token.metadata.symbol.clone()
+                                                    class="w-6 h-6 rounded-full flex-shrink-0"
+                                                />
+                                            }
+                                                .into_any()
                                         }
-                                            .into_any()
-                                    }
-                                    None => {
+                                        None => {
+                                            view! {
+                                                <div class="w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs flex-shrink-0">
+                                                    {token.token.metadata.symbol.chars().next().unwrap_or('?')}
+                                                </div>
+                                            }
+                                                .into_any()
+                                        }
+                                    }}
+                                    {if matches!(token.token.reputation, TokenScore::Unknown) {
                                         view! {
-                                            <div class="w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs flex-shrink-0">
-                                                {token.token.metadata.symbol.chars().next().unwrap_or('?')}
+                                            <div class="absolute -bottom-1 -right-1 bg-neutral-900 rounded-full p-0.5">
+                                                <Icon
+                                                    icon=icondata::LuAlertTriangle
+                                                    width="12"
+                                                    height="12"
+                                                    attr:class="text-yellow-500"
+                                                    attr:title="Warning: This token has unknown reputation. Exercise caution."
+                                                />
                                             </div>
                                         }
                                             .into_any()
-                                    }
-                                }}
+                                    } else {
+                                        ().into_any()
+                                    }}
+                                </div>
                                 <span class="text-white font-bold truncate">
                                     {if token.token.metadata.symbol.len() >= 10 {
                                         format!(
@@ -281,6 +288,19 @@ fn TokenSelector(
                                                         on:click={
                                                             let token_clone = token_clone.clone();
                                                             move |_| {
+                                                                set_tokens
+                                                                    .update(|tokens| {
+                                                                        if let Some(token) = tokens
+                                                                            .iter_mut()
+                                                                            .find(|t| {
+                                                                                t.token.account_id == token_clone.token.account_id
+                                                                            })
+                                                                        {
+                                                                            *token = token_clone.clone();
+                                                                        } else {
+                                                                            tokens.push(token_clone.clone());
+                                                                        }
+                                                                    });
                                                                 on_select(token_clone.clone());
                                                                 set_show.set(false);
                                                             }
@@ -391,6 +411,19 @@ fn TokenSelector(
                                                                     on:click={
                                                                         let token_clone = token_clone.clone();
                                                                         move |_| {
+                                                                            set_tokens
+                                                                                .update(|tokens| {
+                                                                                    if let Some(token) = tokens
+                                                                                        .iter_mut()
+                                                                                        .find(|t| {
+                                                                                            t.token.account_id == token_clone.token.account_id
+                                                                                        })
+                                                                                    {
+                                                                                        *token = token_clone.clone();
+                                                                                    } else {
+                                                                                        tokens.push(token_clone.clone());
+                                                                                    }
+                                                                                });
                                                                             on_select(token_clone.clone());
                                                                             set_show.set(false);
                                                                         }
@@ -560,9 +593,11 @@ pub fn Swap() -> impl IntoView {
     let TokenContext {
         tokens,
         loading_tokens,
+        set_tokens,
     } = expect_context::<TokenContext>();
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
+    let Location { query, .. } = use_location();
 
     let (token_in, set_token_in) = signal::<Option<TokenData>>(None);
     let (token_out, set_token_out) = signal::<Option<TokenData>>(None);
@@ -592,11 +627,54 @@ pub fn Swap() -> impl IntoView {
         if let Some(account) = current_account {
             // Set default input token (NEAR)
             if token_in.get_untracked().is_none() {
-                let near_token = tokens_list
+                let default_token_id = Token::Near;
+
+                let initial_token_in: Token = if let Some(from) = query.get().get("from") {
+                    from.parse().unwrap_or(default_token_id)
+                } else {
+                    default_token_id
+                };
+
+                let owned_token = tokens_list
                     .iter()
-                    .find(|t| matches!(t.token.account_id, Token::Near));
-                if let Some(near) = near_token {
-                    set_token_in.set(Some(near.clone()));
+                    .find(|t| t.token.account_id == initial_token_in);
+
+                if let Some(token) = owned_token {
+                    // User owns the token, use it
+                    set_token_in.set(Some(token.clone()));
+                } else {
+                    // User doesn't own the token, fetch from API
+                    let account_clone = account.clone();
+                    let initial_token_in = match initial_token_in {
+                        Token::Near => unreachable!(), // user always owns NEAR
+                        Token::Nep141(token_id) => token_id,
+                    };
+                    spawn_local(async move {
+                        match fetch_token_info(initial_token_in.clone(), account_clone.network)
+                            .await
+                        {
+                            Some(token_info) => {
+                                let token_data = TokenData {
+                                    balance: 0,
+                                    token: token_info,
+                                };
+                                set_tokens.update(|tokens| {
+                                    if let Some(token) = tokens.iter_mut().find(|t| {
+                                        t.token.account_id
+                                            == Token::Nep141(initial_token_in.clone())
+                                    }) {
+                                        *token = token_data.clone();
+                                    } else {
+                                        tokens.push(token_data.clone());
+                                    }
+                                });
+                                set_token_in.set(Some(token_data));
+                            }
+                            None => {
+                                log::warn!("Failed to fetch default output token");
+                            }
+                        }
+                    });
                 }
             }
 
@@ -607,15 +685,19 @@ pub fn Swap() -> impl IntoView {
                         "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
                     }
                     Network::Testnet => "usdc.fakes.testnet",
+                }
+                .parse()
+                .unwrap();
+
+                let initial_token_out: Token = if let Some(to) = query.get().get("to") {
+                    to.parse().unwrap_or(default_token_id)
+                } else {
+                    default_token_id
                 };
 
-                let owned_token = tokens_list.iter().find(|t| {
-                    if let Token::Nep141(account_id) = &t.token.account_id {
-                        account_id.as_str() == default_token_id
-                    } else {
-                        false
-                    }
-                });
+                let owned_token = tokens_list
+                    .iter()
+                    .find(|t| t.token.account_id == initial_token_out);
 
                 if let Some(token) = owned_token {
                     // User owns the token, use it
@@ -623,18 +705,33 @@ pub fn Swap() -> impl IntoView {
                 } else {
                     // User doesn't own the token, fetch from API
                     let account_clone = account.clone();
-                    let default_token_id = default_token_id.to_string();
+                    let initial_token_out = match initial_token_out {
+                        Token::Near => unreachable!(), // user always owns NEAR
+                        Token::Nep141(token_id) => token_id,
+                    };
                     spawn_local(async move {
-                        match fetch_token_by_id(&default_token_id, account_clone).await {
-                            Ok(token_info) => {
+                        match fetch_token_info(initial_token_out.clone(), account_clone.network)
+                            .await
+                        {
+                            Some(token_info) => {
                                 let token_data = TokenData {
                                     balance: 0,
                                     token: token_info,
                                 };
+                                set_tokens.update(|tokens| {
+                                    if let Some(token) = tokens.iter_mut().find(|t| {
+                                        t.token.account_id
+                                            == Token::Nep141(initial_token_out.clone())
+                                    }) {
+                                        *token = token_data.clone();
+                                    } else {
+                                        tokens.push(token_data.clone());
+                                    }
+                                });
                                 set_token_out.set(Some(token_data));
                             }
-                            Err(e) => {
-                                log::warn!("Failed to fetch default output token: {}", e);
+                            None => {
+                                log::warn!("Failed to fetch default output token");
                             }
                         }
                     });
@@ -701,26 +798,36 @@ pub fn Swap() -> impl IntoView {
 
     let (_routes_action_handle, set_routes_action_handle) =
         signal::<Option<ActionAbortHandle>>(None);
-    let get_routes_action = leptos::prelude::Action::new(move |swap_request: &SwapRequest| {
-        let swap_request = swap_request.clone();
-        // This should always run before set_routes_action_handle.set(get_routes_action.dispatch(...)),
-        // so we have time to abort the previous request
-        if let Some(handle) = set_routes_action_handle.write().take() {
-            handle.abort();
-        }
-        async move {
-            let (oneshot_tx, oneshot_rx) = futures_channel::oneshot::channel();
-            spawn_local(async move {
-                let routes = get_routes(swap_request).await;
-                let _ = oneshot_tx.send(routes);
-            });
-            oneshot_rx.await.unwrap()
-        }
-    });
+    let get_routes_action =
+        leptos::prelude::Action::new(move |(swap_request, wait_mode): &(SwapRequest, WaitMode)| {
+            let swap_request = swap_request.clone();
+            // This should always run before set_routes_action_handle.set(get_routes_action.dispatch(...)),
+            // so we have time to abort the previous request
+            if let Some(handle) = set_routes_action_handle.write().take() {
+                handle.abort();
+            }
+            let wait_mode = *wait_mode;
+            async move {
+                let (oneshot_tx, oneshot_rx) = futures_channel::oneshot::channel();
+                spawn_local(async move {
+                    let routes = get_routes(swap_request, wait_mode).await;
+                    let _ = oneshot_tx.send(routes);
+                });
+                oneshot_rx.await.unwrap()
+            }
+        });
 
     Effect::new(move || {
         validated_amount_entered.track();
         get_routes_action.clear();
+    });
+
+    Effect::new(move || {
+        if get_routes_action.value().get().is_some()
+            && validated_amount_entered.get_untracked().is_none()
+        {
+            get_routes_action.clear();
+        }
     });
 
     let has_sufficient_balance = Memo::new(move |_| {
@@ -736,10 +843,10 @@ pub fn Swap() -> impl IntoView {
                     }
                 }
                 SwapMode::ExactOut => {
-                    if let (Some(Some(routes)), Some(input_token)) =
+                    if let (Some(Ok(routes)), Some(input_token)) =
                         (get_routes_action.value().get(), token_in.get())
                     {
-                        if let Some(route) = routes.first() {
+                        if let Some(route) = routes.routes.first() {
                             match route.estimated_amount {
                                 Amount::AmountIn(estimated_input_needed) => {
                                     estimated_input_needed <= input_token.balance
@@ -768,7 +875,7 @@ pub fn Swap() -> impl IntoView {
         };
 
         let no_routes_found = match get_routes_action.value().get() {
-            Some(Some(routes)) => routes.is_empty(),
+            Some(Ok(routes)) => routes.routes.is_empty(),
             _ => false,
         };
 
@@ -833,9 +940,9 @@ pub fn Swap() -> impl IntoView {
             token_in: token_in_id,
             token_out: token_out_id,
             amount,
-            max_wait_ms: 2000,
+            max_wait_ms: 0, // will be set by WaitMode
             slippage: config.get().slippage,
-            dexes: None,
+            dexes: None, // will be set by WaitMode
             trader_account_id: Some(current_account.account_id),
         })
     };
@@ -851,7 +958,9 @@ pub fn Swap() -> impl IntoView {
                 if let Some(swap_request) =
                     create_swap_request(token_in, token_out, validated_amount, current_mode)
                 {
-                    set_routes_action_handle.set(Some(get_routes_action.dispatch(swap_request)));
+                    set_routes_action_handle.set(Some(
+                        get_routes_action.dispatch((swap_request, WaitMode::Fast)),
+                    ));
                 }
             }
         }
@@ -878,8 +987,8 @@ pub fn Swap() -> impl IntoView {
     };
 
     let get_estimated_amount = move || -> Option<String> {
-        let routes = get_routes_action.value().get()??;
-        let route = routes.first()?;
+        let routes = get_routes_action.value().get()?.ok()?;
+        let route = routes.routes.first()?;
         let current_mode = swap_mode_memo.get();
 
         match route.estimated_amount {
@@ -906,10 +1015,14 @@ pub fn Swap() -> impl IntoView {
         }
     };
 
+    let (last_dispatched_at, set_last_dispatched_at) = signal::<Option<DateTime<Utc>>>(None);
     Effect::new(move || {
         let handle = set_interval_with_handle(
             move || {
-                if let Some(Some(_)) = get_routes_action.value().get_untracked() {
+                if let Some(Ok(_)) = get_routes_action.value().get_untracked() {
+                    if get_routes_action.pending().get_untracked() {
+                        return;
+                    }
                     let Some(token_in) = token_in.get_untracked() else {
                         return;
                     };
@@ -919,18 +1032,27 @@ pub fn Swap() -> impl IntoView {
                     let Some(validated_amount) = validated_amount_entered.get_untracked() else {
                         return;
                     };
+                    if let Some(last_dispatched_at) = last_dispatched_at.get_untracked() {
+                        if Utc::now() - last_dispatched_at
+                            < TimeDelta::from_std(Duration::from_secs(5)).unwrap()
+                        {
+                            return;
+                        }
+                    }
                     if let Some(swap_request) = create_swap_request(
                         token_in,
                         token_out,
                         validated_amount,
                         swap_mode_memo.get_untracked(),
                     ) {
-                        set_routes_action_handle
-                            .set(Some(get_routes_action.dispatch(swap_request)));
+                        set_last_dispatched_at.set(Some(Utc::now()));
+                        set_routes_action_handle.set(Some(
+                            get_routes_action.dispatch((swap_request, WaitMode::Extended)),
+                        ));
                     }
                 }
             },
-            Duration::from_secs(5),
+            Duration::from_millis(100),
         )
         .unwrap();
 
@@ -939,10 +1061,15 @@ pub fn Swap() -> impl IntoView {
         });
     });
 
+    let TransactionQueueContext {
+        add_transaction, ..
+    } = expect_context::<TransactionQueueContext>();
+    let RpcContext { client: rpc_client } = expect_context::<RpcContext>();
+
     view! {
-        <div class="max-w-lg mx-auto h-full">
-            <div class="flex items-center justify-center h-full">
-                <div class="w-full">
+        <div class="max-w-lg mx-auto min-h-full flex flex-col">
+            <div class="flex items-center justify-center flex-1">
+                <div class="w-full mt-8">
                     <div class="bg-neutral-900 rounded-2xl p-4 space-y-4 relative">
                         <div class="absolute -top-4 right-4">
                             <button
@@ -1108,7 +1235,7 @@ pub fn Swap() -> impl IntoView {
                                                 let no_input = validated_amount_entered.get().is_none();
                                                 let no_routes_found = match get_routes_action.value().get()
                                                 {
-                                                    Some(Some(routes)) => routes.is_empty(),
+                                                    Some(Ok(routes)) => routes.routes.is_empty(),
                                                     _ => false,
                                                 };
                                                 if no_routes_found {
@@ -1245,7 +1372,7 @@ pub fn Swap() -> impl IntoView {
                                             let no_input = validated_amount_entered.get().is_none();
                                             let no_routes_found = match get_routes_action.value().get()
                                             {
-                                                Some(Some(routes)) => routes.is_empty(),
+                                                Some(Ok(routes)) => routes.routes.is_empty(),
                                                 _ => false,
                                             };
                                             if no_routes_found {
@@ -1302,10 +1429,31 @@ pub fn Swap() -> impl IntoView {
                         </div>
 
                         {move || {
-                            if let Some(Some(routes)) = get_routes_action.value().get() {
-                                if let Some(best_route) = routes.first() {
+                            let has_amount = validated_amount_entered.get().is_some();
+                            let is_loading = get_routes_action.pending().get()
+                                && get_routes_action.value().get().is_none();
+                            if !has_amount {
+                                view! {
+                                    <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-start gap-3 w-full min-h-[56px]">
+                                        <span class="text-gray-400 font-medium text-sm">
+                                            "Enter amount"
+                                        </span>
+                                    </div>
+                                }
+                                    .into_any()
+                            } else if is_loading {
+                                view! {
+                                    <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-center gap-3 w-full min-h-[56px]">
+                                        <span class="text-white font-medium text-sm">
+                                            "Fetching best route"
+                                        </span>
+                                    </div>
+                                }
+                                    .into_any()
+                            } else if let Some(Ok(routes)) = get_routes_action.value().get() {
+                                if let Some(best_route) = routes.routes.first() {
                                     view! {
-                                        <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-between gap-3 w-full">
+                                        <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-between gap-3 w-full min-h-[56px]">
                                             {match best_route.dex_id {
                                                 DexId::Aidols => {
                                                     view! {
@@ -1360,39 +1508,77 @@ pub fn Swap() -> impl IntoView {
                                                     }
                                                         .into_any()
                                                 }
-                                            }}
+                                            }} <div class="flex items-center gap-2">
+                                                <span class="text-white font-medium text-sm">
+                                                    "Best Route"
+                                                </span>
+                                                {if !best_route.has_slippage {
+                                                    view! {
+                                                        <span class="hidden md:inline bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded-full">
+                                                            "No Slippage"
+                                                        </span>
+                                                    }
+                                                        .into_any()
+                                                } else {
+                                                    ().into_any()
+                                                }}
+                                                {if routes.wait_mode == WaitMode::Fast {
+                                                    view! {
+                                                        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                                    }
+                                                        .into_any()
+                                                } else {
+                                                    ().into_any()
+                                                }}
+                                            </div>
+                                        </div>
+                                    }
+                                        .into_any()
+                                } else if routes.wait_mode == WaitMode::Fast {
+                                    view! {
+                                        <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-center gap-3 w-full min-h-[56px]">
                                             <span class="text-white font-medium text-sm">
-                                                "Best Route"
+                                                "Fetching more routes"
                                             </span>
                                         </div>
                                     }
                                         .into_any()
                                 } else {
                                     view! {
-                                        <div class="bg-red-900/20 border border-red-500/30 rounded-lg px-4 py-3 text-center">
-                                            <div class="text-red-400 text-sm font-medium mb-1">
-                                                "No routes found"
-                                            </div>
-                                            <div class="text-red-300 text-xs">
-                                                {move || {
-                                                    let base_message = "Try adjusting the amount or selecting different tokens";
-                                                    match swap_mode_memo.get() {
-                                                        SwapMode::ExactOut => {
-                                                            format!(
-                                                                "{}, or specifying the input amount instead of output amount",
-                                                                base_message,
-                                                            )
+                                        <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-center gap-3 w-full min-h-[56px]">
+                                            <div class="text-center">
+                                                <div class="text-red-400 text-sm font-medium mb-1">
+                                                    "No routes found"
+                                                </div>
+                                                <div class="text-red-300 text-xs">
+                                                    {move || {
+                                                        let base_message = "Try adjusting the amount or selecting different tokens";
+                                                        match swap_mode_memo.get() {
+                                                            SwapMode::ExactOut => {
+                                                                format!(
+                                                                    "{}, or specifying the input amount instead of output amount",
+                                                                    base_message,
+                                                                )
+                                                            }
+                                                            SwapMode::ExactIn => base_message.to_string(),
                                                         }
-                                                        SwapMode::ExactIn => base_message.to_string(),
-                                                    }
-                                                }}
+                                                    }}
+                                                </div>
                                             </div>
                                         </div>
                                     }
                                         .into_any()
                                 }
                             } else {
-                                ().into_any()
+                                // Fallback case
+                                view! {
+                                    <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-center gap-3 w-full min-h-[56px]">
+                                        <span class="text-gray-400 font-medium text-sm">
+                                            "Enter amount"
+                                        </span>
+                                    </div>
+                                }
+                                    .into_any()
                             }
                         }}
 
@@ -1404,24 +1590,65 @@ pub fn Swap() -> impl IntoView {
                                     || validated_amount_entered.get().is_none()
                                     || !has_sufficient_balance.get()
                                     || match get_routes_action.value().get() {
-                                        Some(Some(routes)) => routes.is_empty(),
+                                        Some(Ok(routes)) => routes.routes.is_empty(),
                                         _ => true,
                                     }
                             }
                             on:click=move |_| {
-                                if let Some(Some(routes)) = get_routes_action.value().get() {
-                                    if let Some(best_route) = routes.first() {
+                                if let Some(Ok(routes)) = get_routes_action.value().write().take() {
+                                    if let Some(best_route) = routes.routes.into_iter().next() {
+                                        let Some(selected_account_id) = accounts
+                                            .get_untracked()
+                                            .selected_account_id else {
+                                            return;
+                                        };
                                         log::info!("Swapping with route: {best_route:?}");
-                                        execute_route(best_route);
-                                        set_swap_mode.set(SwapMode::ExactIn);
-                                        set_amount_entered.set("".to_string());
+                                        let Some(validated_amount_entered) = validated_amount_entered
+                                            .get() else {
+                                            log::error!(
+                                                "No validated amount entered, yet clicked swap"
+                                            );
+                                            return;
+                                        };
+                                        let Some(token_in) = token_in.get() else {
+                                            log::error!("No token in selected, yet clicked swap");
+                                            return;
+                                        };
+                                        let Some(token_out) = token_out.get() else {
+                                            log::error!("No token out selected, yet clicked swap");
+                                            return;
+                                        };
+                                        spawn_local(
+                                            execute_route(
+                                                validated_amount_entered,
+                                                swap_mode_memo.get(),
+                                                token_in.token,
+                                                token_out.token,
+                                                best_route,
+                                                selected_account_id,
+                                                add_transaction,
+                                                rpc_client.get_untracked(),
+                                            ),
+                                        );
                                     }
                                 }
+                                set_swap_mode.set(SwapMode::ExactIn);
+                                set_amount_entered.set("".to_string());
                             }
                         >
                             {move || {
-                                if get_routes_action.pending().get()
+                                if (get_routes_action.pending().get()
                                     && get_routes_action.value().get().is_none()
+                                    && validated_amount_entered.get().is_some())
+                                    || get_routes_action
+                                        .value()
+                                        .get()
+                                        .and_then(|routes| routes.ok())
+                                        .map(|routes| {
+                                            routes.routes.is_empty()
+                                                && routes.wait_mode == WaitMode::Fast
+                                        })
+                                        .unwrap_or(false)
                                 {
                                     view! {
                                         <div class="flex items-center justify-center gap-2">
@@ -1474,7 +1701,10 @@ pub fn Swap() -> impl IntoView {
                                 output_usd,
                             ) {
                                 if !input_usd_val.is_zero() && !output_usd_val.is_zero() {
-                                    let difference = (&input_usd_val - &output_usd_val).abs();
+                                    let difference = &input_usd_val - &output_usd_val;
+                                    if difference.sign() != Sign::Plus {
+                                        return ().into_any();
+                                    }
                                     let percentage_diff = (&difference / &input_usd_val)
                                         * BigDecimal::from(100);
                                     let five_percent = BigDecimal::from(5);
@@ -1525,7 +1755,7 @@ pub fn Swap() -> impl IntoView {
                         href="http://t.me/bettearbot?start=smile-trade"
                         target="_blank"
                         rel="noopener noreferrer"
-                        class="block mt-3 hover:opacity-80 transition-opacity border border-neutral-700 rounded-lg"
+                        class="block mt-4 hover:opacity-80 transition-opacity border border-neutral-700 rounded-lg"
                     >
                         <img
                             src="/bettear-ad.png"
@@ -1539,12 +1769,159 @@ pub fn Swap() -> impl IntoView {
     }
 }
 
-fn execute_route(route: &Route) {
-    // todo!()
+#[allow(clippy::too_many_arguments)]
+async fn execute_route(
+    amount: Balance,
+    swap_mode: SwapMode,
+    token_in: TokenInfo,
+    token_out: TokenInfo,
+    route: Route,
+    account_id: AccountId,
+    add_transaction: WriteSignal<Vec<EnqueuedTransaction>>,
+    rpc: RpcClient,
+) {
+    if route.dex_id == DexId::NearIntents {
+        window()
+            .alert_with_message("Near Intents will be supported tomorrow!")
+            .unwrap();
+        return;
+    }
+    let wrap_near_balance: Option<NearToken> = if route.needs_unwrap {
+        get_wrap_near_balance(&account_id, &rpc).await
+    } else {
+        None
+    };
+    let steps = route.execution_instructions.len();
+    let mut last_rx = None;
+    for (i, step) in route.execution_instructions.into_iter().enumerate() {
+        match step {
+            ExecutionInstruction::NearTransaction {
+                receiver_id,
+                actions,
+                continue_if_failed: _,
+            } => {
+                let (rx, pending_tx) = EnqueuedTransaction::create(
+                    format!(
+                        "Swap {} for {}{}",
+                        match swap_mode {
+                            SwapMode::ExactIn => format_token_amount_no_hide(
+                                amount,
+                                token_in.metadata.decimals,
+                                &token_in.metadata.symbol
+                            ),
+                            SwapMode::ExactOut => token_in.metadata.symbol.clone(),
+                        },
+                        match swap_mode {
+                            SwapMode::ExactIn => token_out.metadata.symbol.clone(),
+                            SwapMode::ExactOut => format_token_amount_no_hide(
+                                amount,
+                                token_out.metadata.decimals,
+                                &token_out.metadata.symbol
+                            ),
+                        },
+                        if steps > 1 {
+                            format!(" {}/{steps}", i + 1)
+                        } else {
+                            String::new()
+                        }
+                    ),
+                    account_id.clone(),
+                    receiver_id.clone(),
+                    actions,
+                );
+                add_transaction.update(|txs| {
+                    txs.push(pending_tx);
+                });
+                last_rx = Some(rx);
+            }
+            ExecutionInstruction::IntentsQuote {
+                message_to_sign: _,
+                quote_hash: _,
+            } => {
+                todo!()
+            }
+        }
+    }
+    let Some(last_rx) = last_rx else {
+        // Should never happen as long as router is ok
+        return;
+    };
+    let _ = last_rx.await;
+    if let Some(wrap_near_balance) = wrap_near_balance {
+        if let Some(new_wrap_near_balance) = get_wrap_near_balance(&account_id, &rpc).await {
+            if let Some(difference) = new_wrap_near_balance.checked_sub(wrap_near_balance) {
+                if difference.is_zero() {
+                    return;
+                }
+                add_transaction.update(|txs| {
+                    txs.push(
+                        EnqueuedTransaction::create(
+                            "Unwrap NEAR after swap".to_string(),
+                            account_id.clone(),
+                            "wrap.near".parse().unwrap(),
+                            vec![Action::FunctionCall(Box::new(FunctionCallAction {
+                                method_name: "near_withdraw".to_string(),
+                                args: serde_json::to_vec(&serde_json::json!({
+                                    "amount": difference,
+                                }))
+                                .unwrap(),
+                                gas: NearGas::from_tgas(5).as_gas(),
+                                deposit: NearToken::from_yoctonear(1),
+                            }))],
+                        )
+                        .1,
+                    )
+                });
+            }
+        }
+    }
 }
 
-async fn get_routes(swap_request: SwapRequest) -> Option<Vec<Route>> {
-    let response = reqwest::Client::new()
+async fn get_wrap_near_balance(account_id: &AccountIdRef, rpc: &RpcClient) -> Option<NearToken> {
+    rpc.call(
+        "wrap.near".parse().unwrap(),
+        "ft_balance_of",
+        serde_json::json!({
+            "account_id": account_id,
+        }),
+        QueryFinality::Finality(Finality::None),
+    )
+    .await
+    .ok()
+}
+
+const FAST_WAIT_MS: u64 = 1500;
+const EXTENDED_WAIT_MS: u64 = 4000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum WaitMode {
+    /// Up to 1.5ms for fast fetch, don't use intents
+    Fast,
+    /// 3s for slow intents, wait for better quote
+    Extended,
+}
+
+async fn get_routes(swap_request: SwapRequest, wait_mode: WaitMode) -> Result<Routes, String> {
+    let swap_request = SwapRequest {
+        max_wait_ms: match wait_mode {
+            WaitMode::Fast => FAST_WAIT_MS,
+            WaitMode::Extended => EXTENDED_WAIT_MS,
+        },
+        dexes: match wait_mode {
+            WaitMode::Fast => Some(vec![
+                DexId::Rhea,
+                // Skipping NearIntents as it's slow
+                DexId::Veax,
+                DexId::Aidols,
+                DexId::GraFun,
+                DexId::Jumpdefi,
+                DexId::Wrap,
+            ]),
+            WaitMode::Extended => None,
+        },
+        ..swap_request
+    };
+    let routes = reqwest::Client::new()
         .get(format!(
             "{}/route",
             std::env::var("ROUTER_URL")
@@ -1553,11 +1930,17 @@ async fn get_routes(swap_request: SwapRequest) -> Option<Vec<Route>> {
         .query(&swap_request)
         .send()
         .await
-        .ok()?
+        .map_err(|e| e.to_string())?
         .json::<Vec<Route>>()
         .await
-        .ok()?;
-    Some(response)
+        .map_err(|e| e.to_string())?;
+    Ok(Routes { routes, wait_mode })
+}
+
+#[derive(Debug, Clone)]
+struct Routes {
+    routes: Vec<Route>,
+    wait_mode: WaitMode,
 }
 
 impl Default for Slippage {
@@ -1607,13 +1990,7 @@ impl<'de> Deserialize<'de> for TokenId {
         D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        if s == "near" {
-            Ok(TokenId::Near)
-        } else {
-            Ok(TokenId::Nep141(
-                s.parse().map_err(serde::de::Error::custom)?,
-            ))
-        }
+        s.parse().map_err(serde::de::Error::custom)
     }
 }
 
@@ -1622,6 +1999,18 @@ impl Display for TokenId {
         match self {
             TokenId::Near => write!(f, "near"),
             TokenId::Nep141(account_id) => write!(f, "{account_id}"),
+        }
+    }
+}
+
+impl FromStr for TokenId {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s == "near" {
+            Ok(TokenId::Near)
+        } else {
+            Ok(TokenId::Nep141(s.parse().map_err(|_| "Invalid token ID")?))
         }
     }
 }
@@ -1646,10 +2035,53 @@ pub struct SwapRequest {
     /// to implement its own swap logic, which relies on signing and sending messages
     /// to a centralized RPC rather than just sending a transaction. If not provided,
     /// all dexes will be used. Must not be an empty array.
+    #[serde(with = "comma_separated", default)]
     pub dexes: Option<Vec<DexId>>,
     /// The account ID of the trader. If provided, the route will include storage
     /// deposit actions.
     pub trader_account_id: Option<AccountId>,
+}
+
+mod comma_separated {
+    use std::{fmt::Display, str::FromStr};
+
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S, T>(value: &Option<Vec<T>>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+        T: Display,
+    {
+        if let Some(value) = value {
+            let s = value
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            Some(s).serialize(serializer)
+        } else {
+            None::<String>.serialize(serializer)
+        }
+    }
+
+    pub fn deserialize<'de, D, T>(deserializer: D) -> Result<Option<Vec<T>>, D::Error>
+    where
+        D: Deserializer<'de>,
+        T: FromStr,
+        T::Err: Display,
+    {
+        let s = Option::<String>::deserialize(deserializer)?;
+        if let Some(s) = s {
+            let values = s
+                .split(',')
+                .map(|v| v.parse::<T>())
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(serde::de::Error::custom)?;
+            Ok(Some(values))
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1751,4 +2183,47 @@ pub enum DexId {
     ///
     /// Not implemented yet
     Jumpdefi,
+    /// Directly wrap NEAR to wNEAR, or unwrap wNEAR to NEAR
+    ///
+    /// Supports both AmountIn and AmountOut
+    Wrap,
+}
+
+const RHEA_STR: &str = "Rhea";
+const NEAR_INTENTS_STR: &str = "NearIntents";
+const VEAX_STR: &str = "Veax";
+const AIDOLS_STR: &str = "Aidols";
+const GRA_FUN_STR: &str = "GraFun";
+const JUMPDEFI_STR: &str = "Jumpdefi";
+const WRAP_STR: &str = "Wrap";
+
+impl Display for DexId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DexId::Rhea => f.write_str(RHEA_STR),
+            DexId::NearIntents => f.write_str(NEAR_INTENTS_STR),
+            DexId::Veax => f.write_str(VEAX_STR),
+            DexId::Aidols => f.write_str(AIDOLS_STR),
+            DexId::GraFun => f.write_str(GRA_FUN_STR),
+            DexId::Jumpdefi => f.write_str(JUMPDEFI_STR),
+            DexId::Wrap => f.write_str(WRAP_STR),
+        }
+    }
+}
+
+impl FromStr for DexId {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            RHEA_STR => DexId::Rhea,
+            NEAR_INTENTS_STR => DexId::NearIntents,
+            VEAX_STR => DexId::Veax,
+            AIDOLS_STR => DexId::Aidols,
+            GRA_FUN_STR => DexId::GraFun,
+            JUMPDEFI_STR => DexId::Jumpdefi,
+            WRAP_STR => DexId::Wrap,
+            _ => return Err(format!("Invalid dex id: {}", s)),
+        })
+    }
 }

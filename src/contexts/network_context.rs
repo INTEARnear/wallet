@@ -9,7 +9,7 @@ pub struct NetworkContext {
     pub network: RwSignal<Network>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum Network {
     Mainnet,
     Testnet,

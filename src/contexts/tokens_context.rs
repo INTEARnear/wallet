@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use base64::{prelude::BASE64_STANDARD, Engine};
 use bigdecimal::{BigDecimal, FromPrimitive};
 use codee::string::FromToStringCodec;
@@ -27,6 +29,18 @@ use super::{
 pub enum Token {
     Near,
     Nep141(AccountId),
+}
+
+impl FromStr for Token {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s == "near" {
+            Ok(Token::Near)
+        } else {
+            Ok(Token::Nep141(s.parse().map_err(|_| "Invalid token ID")?))
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -123,6 +137,7 @@ pub struct TokenPriceUpdate {
 pub struct TokenContext {
     pub tokens: ReadSignal<Vec<TokenData>>,
     pub loading_tokens: ReadSignal<bool>,
+    pub set_tokens: WriteSignal<Vec<TokenData>>,
 }
 
 pub fn provide_token_context() {
@@ -337,6 +352,10 @@ pub fn provide_token_context() {
                                     .find(|token| token.token.account_id == event_token_id)
                                 {
                                     token.balance = token.balance.saturating_add(event.amount);
+                                } else {
+                                    log::info!(
+                                        "Token not found in tokens list: {event_token_id:?}"
+                                    );
                                 }
                             });
                         }
@@ -365,6 +384,11 @@ pub fn provide_token_context() {
                                     token.token.account_id == Token::Nep141(event.token_id.clone())
                                 }) {
                                     token.balance = token.balance.saturating_add(event.amount);
+                                } else {
+                                    log::info!(
+                                        "Token not found in tokens list: {:?}",
+                                        event.token_id
+                                    );
                                 }
                             });
                         }
@@ -394,6 +418,11 @@ pub fn provide_token_context() {
                                     token.token.account_id == Token::Nep141(event.token_id.clone())
                                 }) {
                                     token.balance = token.balance.saturating_sub(event.amount);
+                                } else {
+                                    log::info!(
+                                        "Token not found in tokens list: {:?}",
+                                        event.token_id
+                                    );
                                 }
                             });
                         }
@@ -545,6 +574,7 @@ pub fn provide_token_context() {
 
     provide_context(TokenContext {
         tokens,
+        set_tokens,
         loading_tokens: loading,
     });
 }

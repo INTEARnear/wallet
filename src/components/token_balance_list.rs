@@ -16,6 +16,7 @@ pub fn TokenBalanceList() -> impl IntoView {
     let TokenContext {
         tokens,
         loading_tokens,
+        ..
     } = expect_context::<TokenContext>();
     let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
     let SearchContext { query, .. } = expect_context::<SearchContext>();

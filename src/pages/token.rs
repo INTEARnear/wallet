@@ -2,7 +2,6 @@ use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::Icon;
 use leptos_router::{components::A, hooks::use_params_map};
-use near_min_api::types::AccountId;
 
 use crate::{
     components::tooltip::Tooltip,
@@ -10,20 +9,11 @@ use crate::{
         network_context::{Network, NetworkContext},
         tokens_context::{Token, TokenContext, TokenInfo, TokenScore},
     },
-    utils::{balance_to_decimal, format_token_amount, format_usd_value, format_usd_value_no_hide},
+    utils::{
+        balance_to_decimal, fetch_token_info, format_token_amount, format_usd_value,
+        format_usd_value_no_hide,
+    },
 };
-
-async fn fetch_token_info(token_id: AccountId, network: Network) -> Option<TokenInfo> {
-    let api_url = match network {
-        Network::Mainnet => "https://prices.intear.tech",
-        Network::Testnet => "https://prices-testnet.intear.tech",
-    };
-    let response = reqwest::get(format!("{api_url}/token?token_id={token_id}"))
-        .await
-        .ok()?;
-    let token_data: TokenInfo = response.json().await.ok()?;
-    Some(token_data)
-}
 
 #[component]
 fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
@@ -69,6 +59,7 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
     let token_account_id2 = token_info.account_id.clone();
     let token_account_id3 = token_info.account_id.clone();
     let token_account_id4 = token_info.account_id.clone();
+    let token_account_id5 = token_info.account_id.clone();
     let network = expect_context::<NetworkContext>().network;
 
     view! {
@@ -105,6 +96,26 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                         >
                             <Icon icon=icondata::LuSend width="20" height="20" />
                             <span>Send</span>
+                        </button>
+                    </A>
+
+                    <A href=move || format!(
+                        "/swap?from={}&to={}",
+                        match &token_account_id5 {
+                            Token::Near => "near".to_string(),
+                            Token::Nep141(account_id) => account_id.to_string(),
+                        },
+                        match &token_account_id5 {
+                            Token::Nep141(_) => "near".to_string(),
+                            Token::Near => match network.get() {
+                                Network::Mainnet => "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1".to_string(),
+                                Network::Testnet => "usdc.fakes.testnet".to_string(),
+                            },
+                        },
+                    )>
+                        <button class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors flex items-center gap-2 cursor-pointer w-full">
+                            <Icon icon=icondata::LuArrowLeftRight width="20" height="20" />
+                            <span>Swap</span>
                         </button>
                     </A>
 
@@ -327,6 +338,7 @@ pub fn TokenDetails() -> impl IntoView {
     let TokenContext {
         tokens,
         loading_tokens,
+        ..
     } = expect_context::<TokenContext>();
     let (token_info, set_token_info) = signal::<Option<TokenInfo>>(None);
     let (loading_api, set_loading_api) = signal(false);

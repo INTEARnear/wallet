@@ -11,6 +11,7 @@ pub fn TotalPortfolioValue() -> impl IntoView {
     let TokenContext {
         tokens,
         loading_tokens,
+        ..
     } = expect_context::<TokenContext>();
     let ConfigContext { set_config, .. } = expect_context::<ConfigContext>();
     let network = expect_context::<NetworkContext>().network;

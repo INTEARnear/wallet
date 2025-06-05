@@ -17,7 +17,8 @@ use std::{fmt::Display, ops::Deref, time::Duration};
 use web_sys::{js_sys::Reflect, MouseEvent};
 
 use crate::contexts::{
-    accounts_context::AccountsContext, config_context::ConfigContext, rpc_context::RpcContext,
+    accounts_context::AccountsContext, config_context::ConfigContext, network_context::Network,
+    rpc_context::RpcContext, tokens_context::TokenInfo,
 };
 
 pub const USDT_DECIMALS: u32 = 6;
@@ -59,7 +60,13 @@ pub fn format_token_amount_no_hide(amount: Balance, decimals: u32, symbol: &str)
         x if x.abs() >= BigDecimal::from_f64(0.01).unwrap() => format!("{normalized_decimal:.3}"),
         x if x.abs() >= BigDecimal::from_f64(0.001).unwrap() => format!("{normalized_decimal:.4}"),
         x if x.abs() >= BigDecimal::from_f64(0.0001).unwrap() => format!("{normalized_decimal:.5}"),
-        _ => format!("{normalized_decimal:.6}"),
+        x if x.abs() >= BigDecimal::from_f64(0.00001).unwrap() => {
+            format!("{normalized_decimal:.6}")
+        }
+        x if x.abs() >= BigDecimal::from_f64(0.000001).unwrap() => {
+            format!("{normalized_decimal:.7}")
+        }
+        _ => "0".to_string(),
     };
     format!("{formatted_balance} {symbol}")
 }
@@ -83,19 +90,7 @@ pub fn format_usd_value_no_hide(value: BigDecimal) -> String {
             x if x.gt(&BigDecimal::from_f64(0.1).unwrap()) => format!("{sign}${abs_value:.2}"),
             x if x.gt(&BigDecimal::from_f64(0.01).unwrap()) => format!("{sign}${abs_value:.3}"),
             x if x.gt(&BigDecimal::from_f64(0.001).unwrap()) => format!("{sign}${abs_value:.4}"),
-            x if x.gt(&BigDecimal::from_f64(0.0001).unwrap()) => format!("{sign}${abs_value:.5}"),
-            x if x.gt(&BigDecimal::from_f64(0.00001).unwrap()) => format!("{sign}${abs_value:.6}"),
-            x if x.gt(&BigDecimal::from_f64(0.000001).unwrap()) => format!("{sign}${abs_value:.7}"),
-            x if x.gt(&BigDecimal::from_f64(0.0000001).unwrap()) => {
-                format!("{sign}${abs_value:.8}")
-            }
-            x if x.gt(&BigDecimal::from_f64(0.00000001).unwrap()) => {
-                format!("{sign}${abs_value:.9}")
-            }
-            x if x.gt(&BigDecimal::from_f64(0.000000001).unwrap()) => {
-                format!("{sign}${abs_value:.10}")
-            }
-            _ => format!("{sign}${abs_value:.11}"),
+            _ => format!("{sign}$0"),
         };
     }
 
@@ -953,4 +948,17 @@ pub fn is_debug_enabled() -> bool {
         }
     }
     false
+}
+
+#[cached(time = 5, option = true)]
+pub async fn fetch_token_info(token_id: AccountId, network: Network) -> Option<TokenInfo> {
+    let api_url = match network {
+        Network::Mainnet => "https://prices.intear.tech",
+        Network::Testnet => "https://prices-testnet.intear.tech",
+    };
+    let response = reqwest::get(format!("{api_url}/token?token_id={token_id}"))
+        .await
+        .ok()?;
+    let token_data: TokenInfo = response.json().await.ok()?;
+    Some(token_data)
 }

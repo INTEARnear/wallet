@@ -329,6 +329,7 @@ pub fn ForYouSection() -> impl IntoView {
     let TokenContext {
         tokens,
         loading_tokens,
+        ..
     } = expect_context::<TokenContext>();
 
     let recommendations = move || {
