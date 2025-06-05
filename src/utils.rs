@@ -44,18 +44,17 @@ pub fn format_token_amount_no_hide(amount: Balance, decimals: u32, symbol: &str)
         let divisor_decimal = BigDecimal::from(*divisor);
         if normalized_decimal.abs() >= divisor_decimal {
             let value_decimal = &normalized_decimal / &divisor_decimal;
-            let value_f64 = value_decimal.to_f64().unwrap_or(0.0);
-            return match value_f64 {
-                x if x.fract().abs() < f64::EPSILON => {
-                    format!("{} {suffix} {symbol}", value_decimal.with_scale(0))
+            return match &value_decimal {
+                x if x.is_integer() => {
+                    format!("{value_decimal:.0} {suffix} {symbol}")
                 }
-                _ => format!("{:.2} {suffix} {symbol}", value_f64),
+                _ => format!("{value_decimal:.2} {suffix} {symbol}"),
             };
         }
     }
 
     let formatted_balance = match &normalized_decimal {
-        x if x.is_integer() => format!("{normalized_decimal}"),
+        x if x.is_integer() => format!("{normalized_decimal:.0}"),
         x if x.abs() >= BigDecimal::from_f64(0.1).unwrap() => format!("{normalized_decimal:.2}"),
         x if x.abs() >= BigDecimal::from_f64(0.01).unwrap() => format!("{normalized_decimal:.3}"),
         x if x.abs() >= BigDecimal::from_f64(0.001).unwrap() => format!("{normalized_decimal:.4}"),

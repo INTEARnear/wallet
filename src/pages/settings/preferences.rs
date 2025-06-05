@@ -128,7 +128,7 @@ pub fn PreferencesSettings() -> impl IntoView {
                     <div class="text-sm text-gray-400 mb-3">
                         "Current: "
                         <span class="text-white font-medium">
-                            {move || format!("{}%", config_context.config.get().slippage)}
+                            {move || format!("{}", config_context.config.get().slippage)}
                         </span>
                     </div>
 
@@ -137,31 +137,33 @@ pub fn PreferencesSettings() -> impl IntoView {
                             .into_iter()
                             .map(|percentage| {
                                 let is_selected = move || {
-                                    let current_slippage = BigDecimal::from_f64(
-                                            config_context.config.get().slippage,
-                                        )
-                                        .unwrap_or_default();
-                                    let preset_slippage = BigDecimal::from_f64(percentage)
-                                        .unwrap_or_default();
-                                    current_slippage == preset_slippage
+                                    if let crate::pages::swap::Slippage::Fixed { slippage } = config_context
+                                        .config
+                                        .get()
+                                        .slippage
+                                    {
+                                        slippage == BigDecimal::from_f64(percentage).unwrap()
+                                    } else {
+                                        false
+                                    }
                                 };
                                 view! {
                                     <button
-                                        class=move || {
-                                            format!(
-                                                "px-4 py-2 rounded-lg text-sm transition-colors cursor-pointer {}",
-                                                if is_selected() {
-                                                    "bg-blue-500 text-white"
-                                                } else {
-                                                    "bg-neutral-700 hover:bg-neutral-600 text-gray-300"
-                                                },
-                                            )
+                                        class="py-2 rounded-lg text-sm transition-colors cursor-pointer"
+                                        style=move || {
+                                            if is_selected() {
+                                                "background-color: rgb(59 130 246); color: white;"
+                                            } else {
+                                                "background-color: rgb(64 64 64); color: rgb(209 213 219);"
+                                            }
                                         }
                                         on:click=move |_| {
                                             config_context
                                                 .set_config
                                                 .update(|config| {
-                                                    config.slippage = percentage;
+                                                    config.slippage = crate::pages::swap::Slippage::Fixed {
+                                                        slippage: BigDecimal::from_f64(percentage).unwrap(),
+                                                    };
                                                 });
                                             set_custom_slippage_input.set("".to_string());
                                         }
@@ -178,7 +180,7 @@ pub fn PreferencesSettings() -> impl IntoView {
                         <div class="flex gap-2">
                             <input
                                 type="text"
-                                class="flex-1 bg-neutral-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                class="bg-neutral-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-[calc(100%-1em)]"
                                 placeholder="1.0"
                                 prop:value=custom_slippage_input
                                 on:input=move |ev| {
@@ -189,12 +191,39 @@ pub fn PreferencesSettings() -> impl IntoView {
                                         config_context
                                             .set_config
                                             .update(|config| {
-                                                config.slippage = percentage;
+                                                config.slippage = crate::pages::swap::Slippage::Fixed {
+                                                    slippage: BigDecimal::from_f64(percentage).unwrap(),
+                                                };
                                             });
                                     }
                                 }
                             />
-                            <span class="text-gray-400 text-sm self-center">"%"</span>
+                            <span class="text-gray-400 text-sm self-center shrink-0">"%"</span>
+                            <div class="h-6 w-[1px] bg-neutral-500 self-center shrink-0"></div>
+                            <span class="text-gray-400 text-sm self-center shrink-0">"or"</span>
+                            <button
+                                class="px-3 min-w-20 shrink-0 py-2 rounded-lg text-sm transition-colors cursor-pointer"
+                                style=move || {
+                                    if matches!(
+                                        config_context.config.get().slippage,
+                                        crate::pages::swap::Slippage::Auto { .. }
+                                    ) {
+                                        "background-color: rgb(59 130 246); color: white;"
+                                    } else {
+                                        "background-color: rgb(64 64 64); color: rgb(209 213 219);"
+                                    }
+                                }
+                                on:click=move |_| {
+                                    config_context
+                                        .set_config
+                                        .update(|config| {
+                                            config.slippage = crate::pages::swap::Slippage::default();
+                                        });
+                                    set_custom_slippage_input.set("".to_string());
+                                }
+                            >
+                                "Auto"
+                            </button>
                         </div>
                     </div>
 

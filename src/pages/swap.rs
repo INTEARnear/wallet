@@ -1,9 +1,10 @@
 use std::{
     fmt::{self, Display},
     num::NonZeroU64,
+    time::Duration,
 };
 
-use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, ToPrimitive, Zero};
+use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, Zero};
 use chrono::{DateTime, Utc};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -567,7 +568,11 @@ pub fn Swap() -> impl IntoView {
     let (token_out, set_token_out) = signal::<Option<TokenData>>(None);
 
     let (show_slippage_settings, set_show_slippage_settings) = signal(false);
-    let (custom_slippage_input, set_custom_slippage_input) = signal("".to_string());
+    let (custom_slippage_input, set_custom_slippage_input) =
+        signal(match config.get_untracked().slippage {
+            Slippage::Auto { .. } => "".to_string(),
+            Slippage::Fixed { slippage } => slippage.to_string(),
+        });
 
     Effect::new(move |_| {
         let tokens_list = tokens.get();
@@ -575,9 +580,9 @@ pub fn Swap() -> impl IntoView {
             return;
         }
 
-        let current_account = accounts.get_untracked().selected_account_id.map(|id| {
+        let current_account = accounts.get().selected_account_id.map(|id| {
             accounts
-                .get_untracked()
+                .get()
                 .accounts
                 .into_iter()
                 .find(|a| a.account_id == id)
@@ -671,7 +676,13 @@ pub fn Swap() -> impl IntoView {
     let (swap_mode, set_swap_mode) = signal(SwapMode::ExactIn);
     let swap_mode_memo = Memo::new(move |_| swap_mode.get());
 
-    let validate_amount = |amount_str: &str, token_data: &TokenData| -> Option<u128> {
+    let validated_amount_entered = Memo::new(move |_| {
+        let amount_str = amount_entered.get();
+        let token_data = match swap_mode_memo.get() {
+            SwapMode::ExactIn => token_in.get()?,
+            SwapMode::ExactOut => token_out.get()?,
+        };
+
         if amount_str.is_empty() {
             return None;
         }
@@ -686,15 +697,6 @@ pub fn Swap() -> impl IntoView {
         let amount_raw = decimal_to_balance(amount_decimal, decimals);
 
         Some(amount_raw)
-    };
-
-    let validated_amount_entered = Memo::new(move |_| {
-        let amount_str = amount_entered.get();
-        let token_data = match swap_mode_memo.get() {
-            SwapMode::ExactIn => token_in.get()?,
-            SwapMode::ExactOut => token_out.get()?,
-        };
-        validate_amount(&amount_str, &token_data)
     });
 
     let get_routes_action = leptos::prelude::Action::new(|swap_request: &SwapRequest| {
@@ -707,6 +709,11 @@ pub fn Swap() -> impl IntoView {
             });
             oneshot_rx.await.unwrap()
         }
+    });
+
+    Effect::new(move || {
+        validated_amount_entered.track();
+        get_routes_action.clear();
     });
 
     let has_sufficient_balance = Memo::new(move |_| {
@@ -722,8 +729,8 @@ pub fn Swap() -> impl IntoView {
                     }
                 }
                 SwapMode::ExactOut => {
-                    if let (Some(routes), Some(input_token)) =
-                        (get_routes_action.value().get().flatten(), token_in.get())
+                    if let (Some(Some(routes)), Some(input_token)) =
+                        (get_routes_action.value().get(), token_in.get())
                     {
                         if let Some(route) = routes.first() {
                             match route.estimated_amount {
@@ -755,11 +762,13 @@ pub fn Swap() -> impl IntoView {
 
         if !is_editable && !has_sufficient_balance.get() && is_from_field && !is_loading {
             "border: 2px solid rgb(239 68 68);".to_string() // Insufficient balance
+        } else if !is_editable && is_from_field {
+            "border: 2px solid rgba(255, 255, 255, 0.2);".to_string()
         } else if !is_editable {
             "opacity: 0.6; border: 2px solid rgba(255, 255, 255, 0.2);".to_string()
-        } else if !amount_entered.get().is_empty()
-            && (validated_amount_entered.get().is_none()
-                || (!has_sufficient_balance.get() && is_from_field))
+        } else if validated_amount_entered.get().is_some()
+            && !has_sufficient_balance.get()
+            && is_from_field
         {
             "border: 2px solid rgb(239 68 68);".to_string() // Invalid format or insufficient balance
         } else if !amount_entered.get().is_empty() {
@@ -804,14 +813,8 @@ pub fn Swap() -> impl IntoView {
             token_in: token_in_id,
             token_out: token_out_id,
             amount,
-            max_wait_ms: 5000,
-            slippage: {
-                let slippage_decimal =
-                    BigDecimal::from_f64(config.get().slippage).unwrap_or_default();
-                let hundred = BigDecimal::from_f64(100.0).unwrap_or_default();
-                let result = &slippage_decimal / &hundred;
-                result.to_f64().unwrap_or(0.01)
-            },
+            max_wait_ms: 2000,
+            slippage: config.get().slippage,
             dexes: None,
             trader_account_id: Some(current_account.account_id),
         })
@@ -840,6 +843,7 @@ pub fn Swap() -> impl IntoView {
     };
 
     let handle_reverse = move |_| {
+        get_routes_action.clear();
         let current_token_in = token_in.get();
         let current_token_out = token_out.get();
         set_token_in.set(current_token_out);
@@ -853,7 +857,6 @@ pub fn Swap() -> impl IntoView {
         );
     };
 
-    // Helper to get estimated amount from route response
     let get_estimated_amount = move || -> Option<String> {
         let routes = get_routes_action.value().get()??;
         let route = routes.first()?;
@@ -883,6 +886,38 @@ pub fn Swap() -> impl IntoView {
         }
     };
 
+    Effect::new(move || {
+        let handle = set_interval_with_handle(
+            move || {
+                if let Some(Some(_)) = get_routes_action.value().get_untracked() {
+                    let Some(token_in) = token_in.get_untracked() else {
+                        return;
+                    };
+                    let Some(token_out) = token_out.get_untracked() else {
+                        return;
+                    };
+                    let Some(validated_amount) = validated_amount_entered.get_untracked() else {
+                        return;
+                    };
+                    if let Some(swap_request) = create_swap_request(
+                        token_in,
+                        token_out,
+                        validated_amount,
+                        swap_mode_memo.get_untracked(),
+                    ) {
+                        get_routes_action.dispatch(swap_request);
+                    }
+                }
+            },
+            Duration::from_secs(5),
+        )
+        .unwrap();
+
+        on_cleanup(move || {
+            handle.clear();
+        });
+    });
+
     view! {
         <div class="max-w-lg mx-auto h-full">
             <div class="flex items-center justify-center h-full">
@@ -896,7 +931,7 @@ pub fn Swap() -> impl IntoView {
                                 }
                             >
                                 <Icon icon=icondata::LuSettings width="16" height="16" />
-                                <span>{move || format!("{}%", config.get().slippage)}</span>
+                                <span>{move || format!("{}", config.get().slippage)}</span>
                             </button>
 
                             <Show when=move || show_slippage_settings.get()>
@@ -912,18 +947,40 @@ pub fn Swap() -> impl IntoView {
                                         <div class="text-white text-sm font-medium mb-3">
                                             "Slippage Tolerance"
                                         </div>
+                                        <div class="mb-3">
+                                            <button
+                                                class=move || {
+                                                    format!(
+                                                        "w-full px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer {}",
+                                                        if matches!(config.get().slippage, Slippage::Auto { .. }) {
+                                                            "bg-blue-500 text-white"
+                                                        } else {
+                                                            "bg-neutral-700 hover:bg-neutral-600 text-gray-300"
+                                                        },
+                                                    )
+                                                }
+                                                on:click=move |_| {
+                                                    set_config
+                                                        .update(|config| {
+                                                            config.slippage = Slippage::default();
+                                                        });
+                                                    set_custom_slippage_input.set("".to_string());
+                                                }
+                                            >
+                                                "Auto"
+                                            </button>
+                                        </div>
                                         <div class="grid grid-cols-2 gap-2 mb-3">
                                             {SLIPPAGE_PRESETS
                                                 .into_iter()
                                                 .map(|percentage| {
                                                     let is_selected = move || {
-                                                        let current_slippage = BigDecimal::from_f64(
-                                                                config.get().slippage,
-                                                            )
-                                                            .unwrap_or_default();
-                                                        let preset_slippage = BigDecimal::from_f64(percentage)
-                                                            .unwrap_or_default();
-                                                        current_slippage == preset_slippage
+                                                        if let Slippage::Fixed { slippage } = config.get().slippage
+                                                        {
+                                                            slippage == BigDecimal::from_f64(percentage).unwrap()
+                                                        } else {
+                                                            false
+                                                        }
                                                     };
                                                     view! {
                                                         <button
@@ -940,7 +997,9 @@ pub fn Swap() -> impl IntoView {
                                                             on:click=move |_| {
                                                                 set_config
                                                                     .update(|config| {
-                                                                        config.slippage = percentage;
+                                                                        config.slippage = Slippage::Fixed {
+                                                                            slippage: BigDecimal::from_f64(percentage).unwrap(),
+                                                                        };
                                                                     });
                                                                 set_custom_slippage_input.set("".to_string());
                                                             }
@@ -957,7 +1016,7 @@ pub fn Swap() -> impl IntoView {
                                                 <input
                                                     type="text"
                                                     class="flex-1 bg-neutral-700 text-white rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-36"
-                                                    placeholder="1.0"
+                                                    placeholder="0-100"
                                                     prop:value=custom_slippage_input
                                                     on:input=move |ev| {
                                                         let value = event_target_value(&ev);
@@ -966,7 +1025,9 @@ pub fn Swap() -> impl IntoView {
                                                             let percentage = percentage.clamp(0.01, 100.0);
                                                             set_config
                                                                 .update(|config| {
-                                                                    config.slippage = percentage;
+                                                                    config.slippage = Slippage::Fixed {
+                                                                        slippage: BigDecimal::from_f64(percentage).unwrap(),
+                                                                    };
                                                                 });
                                                         }
                                                     }
@@ -1009,6 +1070,7 @@ pub fn Swap() -> impl IntoView {
                                     on_select=move |token: TokenData| {
                                         set_token_in.set(Some(token));
                                         set_amount_entered.set("".to_string());
+                                        get_routes_action.clear();
                                     }
                                     tokens=tokens
                                     loading_tokens=loading_tokens
@@ -1022,18 +1084,20 @@ pub fn Swap() -> impl IntoView {
                                             class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 transition-all duration-200"
                                             style=move || get_input_style(
                                                 true,
-                                                get_routes_action.pending().get(),
+                                                get_routes_action.pending().get()
+                                                    && get_routes_action.value().get().is_none(),
                                             )
-                                            placeholder="0.0"
+                                            prop:placeholder=move || {
+                                                match swap_mode_memo.get() {
+                                                    SwapMode::ExactIn => "0.0",
+                                                    SwapMode::ExactOut => "Loading...",
+                                                }
+                                            }
                                             prop:value=move || {
                                                 match swap_mode_memo.get() {
                                                     SwapMode::ExactIn => amount_entered.get(),
                                                     SwapMode::ExactOut => {
-                                                        if get_routes_action.pending().get() {
-                                                            "".to_string()
-                                                        } else {
-                                                            get_estimated_amount().unwrap_or_default()
-                                                        }
+                                                        get_estimated_amount().unwrap_or_default()
                                                     }
                                                 }
                                             }
@@ -1138,6 +1202,7 @@ pub fn Swap() -> impl IntoView {
                                     on_select=move |token: TokenData| {
                                         set_token_out.set(Some(token));
                                         set_amount_entered.set("".to_string());
+                                        get_routes_action.clear();
                                     }
                                     tokens=tokens
                                     loading_tokens=loading_tokens
@@ -1150,18 +1215,20 @@ pub fn Swap() -> impl IntoView {
                                         class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 transition-all duration-200"
                                         style=move || get_input_style(
                                             false,
-                                            get_routes_action.pending().get(),
+                                            get_routes_action.pending().get()
+                                                && get_routes_action.value().get().is_none(),
                                         )
-                                        placeholder="0.0"
+                                        prop:placeholder=move || {
+                                            match swap_mode_memo.get() {
+                                                SwapMode::ExactIn => "Loading...",
+                                                SwapMode::ExactOut => "0.0",
+                                            }
+                                        }
                                         prop:value=move || {
                                             match swap_mode_memo.get() {
                                                 SwapMode::ExactOut => amount_entered.get(),
                                                 SwapMode::ExactIn => {
-                                                    if get_routes_action.pending().get() {
-                                                        "".to_string()
-                                                    } else {
-                                                        get_estimated_amount().unwrap_or_default()
-                                                    }
+                                                    get_estimated_amount().unwrap_or_default()
                                                 }
                                             }
                                         }
@@ -1283,14 +1350,22 @@ pub fn Swap() -> impl IntoView {
                                     || validated_amount_entered.get().is_none()
                                     || !has_sufficient_balance.get()
                                     || get_routes_action.value().get().is_none()
-                                    || get_routes_action.pending().get()
                             }
                             on:click=move |_| {
-                                web_sys::window().unwrap().alert_with_message("123").unwrap();
+                                if let Some(Some(routes)) = get_routes_action.value().get() {
+                                    if let Some(best_route) = routes.first() {
+                                        log::info!("Swapping with route: {best_route:?}");
+                                        execute_route(best_route);
+                                        set_swap_mode.set(SwapMode::ExactIn);
+                                        set_amount_entered.set("".to_string());
+                                    }
+                                }
                             }
                         >
                             {move || {
-                                if get_routes_action.pending().get() {
+                                if get_routes_action.pending().get()
+                                    && get_routes_action.value().get().is_none()
+                                {
                                     view! {
                                         <div class="flex items-center justify-center gap-2">
                                             <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
@@ -1320,6 +1395,46 @@ pub fn Swap() -> impl IntoView {
                 </div>
             </div>
         </div>
+    }
+}
+
+fn execute_route(route: &Route) {
+    // todo!()
+}
+
+async fn get_routes(swap_request: SwapRequest) -> Option<Vec<Route>> {
+    let response = reqwest::Client::new()
+        .get(format!(
+            "{}/route",
+            std::env::var("ROUTER_URL")
+                .unwrap_or_else(|_| "https://router.intear.tech".to_string())
+        ))
+        .query(&swap_request)
+        .send()
+        .await
+        .ok()?
+        .json::<Vec<Route>>()
+        .await
+        .ok()?;
+    Some(response)
+}
+
+impl Default for Slippage {
+    fn default() -> Self {
+        Self::Auto {
+            // From 0.1% to 10%
+            max_slippage: "0.1".parse().unwrap(),
+            min_slippage: "0.001".parse().unwrap(),
+        }
+    }
+}
+
+impl Display for Slippage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Slippage::Auto { .. } => write!(f, "Auto"),
+            Slippage::Fixed { slippage } => write!(f, "{slippage:.2}%"),
+        }
     }
 }
 
@@ -1383,9 +1498,9 @@ pub struct SwapRequest {
     /// like near intents might show a better quote if you wait a bit longer.
     /// Usually, 2-3 seconds is enough. Maximum is 60 seconds.
     pub max_wait_ms: u64,
-    /// The slippage tolerance. `1.00` means 100%, `0.001` means 0.1%. Must be
-    /// between 0.00 and 1.00.
-    pub slippage: f64,
+    /// The slippage tolerance. `1.00` means 100%, `0.001` means 0.1%.
+    #[serde(flatten)]
+    pub slippage: Slippage,
     /// The dexes to use. You might want to remove Near Intents if you don't want
     /// to implement its own swap logic, which relies on signing and sending messages
     /// to a centralized RPC rather than just sending a transaction. If not provided,
@@ -1394,6 +1509,19 @@ pub struct SwapRequest {
     /// The account ID of the trader. If provided, the route will include storage
     /// deposit actions.
     pub trader_account_id: Option<AccountId>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "slippage_type")]
+pub enum Slippage {
+    /// Automatically determine the optimal slippage based on the current market
+    /// conditions (liquidity, 24h volume, etc).
+    Auto {
+        max_slippage: BigDecimal,
+        min_slippage: BigDecimal,
+    },
+    /// Fixed slippage percentage. Must be between 0.00 and 1.00.
+    Fixed { slippage: BigDecimal },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1482,21 +1610,4 @@ pub enum DexId {
     ///
     /// Not implemented yet
     Jumpdefi,
-}
-
-async fn get_routes(swap_request: SwapRequest) -> Option<Vec<Route>> {
-    let response = reqwest::Client::new()
-        .get(format!(
-            "{}/route",
-            std::env::var("ROUTER_URL")
-                .unwrap_or_else(|_| "https://router.intear.tech".to_string())
-        ))
-        .query(&swap_request)
-        .send()
-        .await
-        .ok()?
-        .json::<Vec<Route>>()
-        .await
-        .ok()?;
-    Some(response)
 }

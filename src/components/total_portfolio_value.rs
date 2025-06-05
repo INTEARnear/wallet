@@ -57,14 +57,12 @@ pub fn TotalPortfolioValue() -> impl IntoView {
             let (current_total, previous_total) = tokens.get().iter().fold(
                 (BigDecimal::from(0), BigDecimal::from(0)),
                 |(acc_current, acc_previous), token| {
-                    let normalized_balance =
-                        balance_to_decimal(token.balance, token.token.metadata.decimals);
                     let usdt_decimals_decimal = power_of_10(USDT_DECIMALS);
                     let current_value =
-                        (&token.token.price_usd_raw / &usdt_decimals_decimal) * &normalized_balance;
+                        (&token.token.price_usd_raw / &usdt_decimals_decimal) * token.balance;
                     let previous_value = (&token.token.price_usd_raw_24h_ago
                         / &usdt_decimals_decimal)
-                        * &normalized_balance;
+                        * token.balance;
                     (acc_current + current_value, acc_previous + previous_value)
                 },
             );

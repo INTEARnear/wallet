@@ -2,6 +2,8 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use web_sys::window;
 
+use crate::pages::Slippage;
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub enum TimestampFormat {
     #[default]
@@ -66,7 +68,7 @@ impl PasswordRememberDuration {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Default)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct WalletConfig {
     pub show_low_balance_tokens: bool,
     #[serde(skip)]
@@ -80,16 +82,28 @@ pub struct WalletConfig {
     pub realtime_price_updates: bool,
     #[serde(default)]
     pub password_remember_duration: PasswordRememberDuration,
-    #[serde(default = "default_slippage")]
-    pub slippage: f64,
+    #[serde(default)]
+    pub slippage: Slippage,
+}
+
+impl Default for WalletConfig {
+    fn default() -> Self {
+        Self {
+            show_low_balance_tokens: false,
+            amounts_hidden: false,
+            timestamp_format: TimestampFormat::TimeAgo,
+            show_transaction_details: false,
+            play_transfer_sound: false,
+            realtime_balance_updates: true,
+            realtime_price_updates: true,
+            password_remember_duration: PasswordRememberDuration::default(),
+            slippage: Slippage::default(),
+        }
+    }
 }
 
 fn default_true() -> bool {
     true
-}
-
-fn default_slippage() -> f64 {
-    1.0 // Default 1% slippage
 }
 
 #[derive(Clone)]
