@@ -752,7 +752,7 @@ pub fn Swap() -> impl IntoView {
         }
     });
 
-    let get_input_style = move |is_from_field: bool, is_loading: bool| -> String {
+    let get_input_style = move |is_from_field: bool| -> String {
         let current_mode = swap_mode_memo.get();
         let is_editable = match (is_from_field, current_mode) {
             (true, SwapMode::ExactIn) => true,   // From field in ExactIn mode
@@ -760,12 +760,25 @@ pub fn Swap() -> impl IntoView {
             _ => false,                          // All other combinations are read-only
         };
 
-        if !is_editable && !has_sufficient_balance.get() && is_from_field && !is_loading {
+        let no_routes_found = match get_routes_action.value().get() {
+            Some(Some(routes)) => routes.is_empty(),
+            _ => false,
+        };
+
+        let is_loading =
+            get_routes_action.pending().get() && get_routes_action.value().get().is_none();
+
+        if no_routes_found {
+            "border: 2px solid rgb(234 179 8);".to_string() // No route found
+        } else if validated_amount_entered.get().is_none() {
+            "border: 2px solid rgba(255, 255, 255, 0.2);".to_string() // Default
+        } else if !is_editable && !has_sufficient_balance.get() && is_from_field && !is_loading {
             "border: 2px solid rgb(239 68 68);".to_string() // Insufficient balance
         } else if !is_editable && is_from_field {
-            "border: 2px solid rgba(255, 255, 255, 0.2);".to_string()
+            "border: 2px solid rgba(255, 255, 255, 0.2);".to_string() // Estimated input amount
         } else if !is_editable {
             "opacity: 0.6; border: 2px solid rgba(255, 255, 255, 0.2);".to_string()
+        // Estimated output amount
         } else if validated_amount_entered.get().is_some()
             && !has_sufficient_balance.get()
             && is_from_field
@@ -1082,14 +1095,20 @@ pub fn Swap() -> impl IntoView {
                                         <input
                                             type="text"
                                             class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 transition-all duration-200"
-                                            style=move || get_input_style(
-                                                true,
-                                                get_routes_action.pending().get()
-                                                    && get_routes_action.value().get().is_none(),
-                                            )
+                                            style=move || get_input_style(true)
                                             prop:placeholder=move || {
+                                                let no_input = validated_amount_entered.get().is_none();
+                                                let no_routes_found = match get_routes_action.value().get()
+                                                {
+                                                    Some(Some(routes)) => routes.is_empty(),
+                                                    _ => false,
+                                                };
+                                                if no_routes_found {
+                                                    return "-";
+                                                }
                                                 match swap_mode_memo.get() {
                                                     SwapMode::ExactIn => "0.0",
+                                                    SwapMode::ExactOut if no_input => "0.0",
                                                     SwapMode::ExactOut => "Loading...",
                                                 }
                                             }
@@ -1213,13 +1232,19 @@ pub fn Swap() -> impl IntoView {
                                     <input
                                         type="text"
                                         class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 transition-all duration-200"
-                                        style=move || get_input_style(
-                                            false,
-                                            get_routes_action.pending().get()
-                                                && get_routes_action.value().get().is_none(),
-                                        )
+                                        style=move || get_input_style(false)
                                         prop:placeholder=move || {
+                                            let no_input = validated_amount_entered.get().is_none();
+                                            let no_routes_found = match get_routes_action.value().get()
+                                            {
+                                                Some(Some(routes)) => routes.is_empty(),
+                                                _ => false,
+                                            };
+                                            if no_routes_found {
+                                                return "-";
+                                            }
                                             match swap_mode_memo.get() {
+                                                SwapMode::ExactIn if no_input => "0.0",
                                                 SwapMode::ExactIn => "Loading...",
                                                 SwapMode::ExactOut => "0.0",
                                             }
@@ -1335,7 +1360,28 @@ pub fn Swap() -> impl IntoView {
                                     }
                                         .into_any()
                                 } else {
-                                    ().into_any()
+                                    view! {
+                                        <div class="bg-red-900/20 border border-red-500/30 rounded-lg px-4 py-3 text-center">
+                                            <div class="text-red-400 text-sm font-medium mb-1">
+                                                "No routes found"
+                                            </div>
+                                            <div class="text-red-300 text-xs">
+                                                {move || {
+                                                    let base_message = "Try adjusting the amount or selecting different tokens";
+                                                    match swap_mode_memo.get() {
+                                                        SwapMode::ExactOut => {
+                                                            format!(
+                                                                "{}, or specifying the input amount instead of output amount",
+                                                                base_message,
+                                                            )
+                                                        }
+                                                        SwapMode::ExactIn => base_message.to_string(),
+                                                    }
+                                                }}
+                                            </div>
+                                        </div>
+                                    }
+                                        .into_any()
                                 }
                             } else {
                                 ().into_any()
@@ -1349,7 +1395,10 @@ pub fn Swap() -> impl IntoView {
                                     || amount_entered.get().is_empty()
                                     || validated_amount_entered.get().is_none()
                                     || !has_sufficient_balance.get()
-                                    || get_routes_action.value().get().is_none()
+                                    || match get_routes_action.value().get() {
+                                        Some(Some(routes)) => routes.is_empty(),
+                                        _ => true,
+                                    }
                             }
                             on:click=move |_| {
                                 if let Some(Some(routes)) = get_routes_action.value().get() {
@@ -1378,6 +1427,90 @@ pub fn Swap() -> impl IntoView {
                                 }
                             }}
                         </button>
+
+                        {move || {
+                            let input_usd = if let Some(token_in_data) = token_in.get() {
+                                let amount_to_use = match swap_mode_memo.get() {
+                                    SwapMode::ExactIn => amount_entered.get(),
+                                    SwapMode::ExactOut => get_estimated_amount().unwrap_or_default(),
+                                };
+                                if let Ok(amount_decimal) = amount_to_use.parse::<BigDecimal>() {
+                                    Some(
+                                        amount_decimal
+                                            * token_in_data.token.price_usd_hardcoded.clone(),
+                                    )
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            };
+                            let output_usd = if let Some(token_out_data) = token_out.get() {
+                                let amount_to_use = match swap_mode_memo.get() {
+                                    SwapMode::ExactOut => amount_entered.get(),
+                                    SwapMode::ExactIn => get_estimated_amount().unwrap_or_default(),
+                                };
+                                if let Ok(amount_decimal) = amount_to_use.parse::<BigDecimal>() {
+                                    Some(
+                                        amount_decimal
+                                            * token_out_data.token.price_usd_hardcoded.clone(),
+                                    )
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            };
+                            if let (Some(input_usd_val), Some(output_usd_val)) = (
+                                input_usd,
+                                output_usd,
+                            ) {
+                                if !input_usd_val.is_zero() && !output_usd_val.is_zero() {
+                                    let difference = (&input_usd_val - &output_usd_val).abs();
+                                    let percentage_diff = (&difference / &input_usd_val)
+                                        * BigDecimal::from(100);
+                                    let five_percent = BigDecimal::from(5);
+                                    let two_percent = BigDecimal::from(2);
+                                    if percentage_diff > five_percent {
+                                        view! {
+                                            <div class="bg-red-900/20 border border-red-500/30 rounded-lg px-4 py-3 text-center">
+                                                <div class="text-red-400 text-sm font-medium mb-1">
+                                                    "High Price Impact"
+                                                </div>
+                                                <div class="text-red-300 text-xs">
+                                                    {format!(
+                                                        "Price difference: {:.1}% - You may receive significantly less value. We recommend splitting the swap into multiple smaller swaps (dollar-cost averaging) to avoid price impact.",
+                                                        percentage_diff,
+                                                    )}
+                                                </div>
+                                            </div>
+                                        }
+                                            .into_any()
+                                    } else if percentage_diff > two_percent {
+                                        view! {
+                                            <div class="bg-yellow-900/20 border border-yellow-500/30 rounded-lg px-4 py-3 text-center">
+                                                <div class="text-yellow-400 text-sm font-medium mb-1">
+                                                    "High Price Impact"
+                                                </div>
+                                                <div class="text-yellow-300 text-xs">
+                                                    {format!(
+                                                        "Price difference: {:.2}% - Please review the swap carefully, as you might incur losses. We recommend splitting the swap into multiple smaller swaps (dollar-cost averaging) to avoid price impact.",
+                                                        percentage_diff,
+                                                    )}
+                                                </div>
+                                            </div>
+                                        }
+                                            .into_any()
+                                    } else {
+                                        ().into_any()
+                                    }
+                                } else {
+                                    ().into_any()
+                                }
+                            } else {
+                                ().into_any()
+                            }
+                        }}
                     </div>
 
                     <a
