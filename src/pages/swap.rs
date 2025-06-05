@@ -699,13 +699,20 @@ pub fn Swap() -> impl IntoView {
         Some(amount_raw)
     });
 
-    let get_routes_action = leptos::prelude::Action::new(|swap_request: &SwapRequest| {
+    let (_routes_action_handle, set_routes_action_handle) =
+        signal::<Option<ActionAbortHandle>>(None);
+    let get_routes_action = leptos::prelude::Action::new(move |swap_request: &SwapRequest| {
         let swap_request = swap_request.clone();
+        // This should always run before set_routes_action_handle.set(get_routes_action.dispatch(...)),
+        // so we have time to abort the previous request
+        if let Some(handle) = set_routes_action_handle.write().take() {
+            handle.abort();
+        }
         async move {
             let (oneshot_tx, oneshot_rx) = futures_channel::oneshot::channel();
             spawn_local(async move {
                 let routes = get_routes(swap_request).await;
-                oneshot_tx.send(routes).unwrap();
+                let _ = oneshot_tx.send(routes);
             });
             oneshot_rx.await.unwrap()
         }
@@ -844,7 +851,7 @@ pub fn Swap() -> impl IntoView {
                 if let Some(swap_request) =
                     create_swap_request(token_in, token_out, validated_amount, current_mode)
                 {
-                    get_routes_action.dispatch(swap_request);
+                    set_routes_action_handle.set(Some(get_routes_action.dispatch(swap_request)));
                 }
             }
         }
@@ -918,7 +925,8 @@ pub fn Swap() -> impl IntoView {
                         validated_amount,
                         swap_mode_memo.get_untracked(),
                     ) {
-                        get_routes_action.dispatch(swap_request);
+                        set_routes_action_handle
+                            .set(Some(get_routes_action.dispatch(swap_request)));
                     }
                 }
             },
