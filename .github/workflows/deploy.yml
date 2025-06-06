@@ -25,15 +25,18 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
+      
+      - name: Install cargo-binstall
+        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
 
       - name: Install patch-crate
-        run: cargo install patch-crate
+        run: cargo binstall patch-crate
 
-      - name: Apply patches
-        run: cargo patch-crate
+      - name: Install dylint
+        run: cargo binstall cargo-dylint dylint-link
 
       - name: Install Trunk
-        run: cargo install trunk
+        run: cargo binstall trunk
 
       - name: Install npm dependencies
         run: npm install
@@ -44,14 +47,14 @@ jobs:
       - name: Add WASM target
         run: rustup target add wasm32-unknown-unknown
 
+      - name: Apply patches
+        run: cargo patch-crate
+
       - name: Build JavaScript bundle
         run: npm run js:build
 
       - name: Lint with clippy
         run: cargo clippy --all-targets -- -D warnings
-
-      - name: Install dylint
-        run: cargo install cargo-dylint dylint-link
 
       - name: Lint with dylint
         run: cargo dylint --all
