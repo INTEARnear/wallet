@@ -2,7 +2,7 @@
 linker = "clang"
 rustflags = [
     "-C",
-    "link-arg=-fuse-ld=/usr/bin/mold",
+    "link-arg=-fuse-ld=mold",
     "-Z",
     "share-generics=y",
     "-Z",
