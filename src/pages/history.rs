@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
+    components::tooltip::Tooltip,
     contexts::{
         accounts_context::AccountsContext,
         config_context::{ConfigContext, TimestampFormat},
@@ -14,7 +15,7 @@ use crate::{
 };
 use base64::{self, Engine};
 use chrono::{DateTime as ChronoDateTime, Local, Utc};
-use icondata::{LuCalendar, LuClock, LuInfo, LuPackage, LuPackageOpen};
+use icondata::{LuCalendar, LuClock, LuPackage, LuPackageOpen};
 use leptos::prelude::*;
 use leptos_icons::Icon;
 use near_min_api::{
@@ -766,14 +767,16 @@ fn add_storage_actions(
                                             deposit_amount.as_yoctonear(),
                                             24,
                                             "NEAR",
-                                        )} <div class="group relative hover-capable-only">
-                                            <div class="text-neutral-400 hover:text-neutral-300 cursor-help">
-                                                <Icon icon=LuInfo width="16" height="16" />
-                                            </div>
-                                            <div class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 p-2 bg-neutral-800 text-white text-sm rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
-                                                "Storage deposits are needed for dapps to store your data on NEAR blockchain. Once you stop using this dapp, most dapps allow you to withdraw this deposit."
-                                            </div>
-                                        </div>
+                                        )}
+                                        // <div class="group relative hover-capable-only">
+                                        //     <div class="text-neutral-400 hover:text-neutral-300 cursor-help">
+                                        //         <Icon icon=LuInfo width="16" height="16" />
+                                        //     </div>
+                                        //     <div class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 p-2 bg-neutral-800 text-white text-sm rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
+                                        //         "Storage deposits are needed for dapps to store your data on NEAR blockchain. Once you stop using this dapp, most dapps allow you to withdraw this deposit."
+                                        //     </div>
+                                        // </div>
+                                        <Tooltip text="Storage deposits are needed for dapps to store your data on NEAR blockchain. Once you stop using this dapp, most dapps allow you to withdraw this deposit." />
                                     </span>
                                 </div>
                             }

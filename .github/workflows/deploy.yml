@@ -47,6 +47,18 @@ jobs:
       - name: Build JavaScript bundle
         run: npm run js:build
 
+      - name: Lint with clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Install dylint
+        run: cargo install cargo-dylint dylint-link
+
+      - name: Lint with dylint
+        run: cargo dylint --all
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
       - name: Build with Trunk
         run: trunk build --release --minify
 

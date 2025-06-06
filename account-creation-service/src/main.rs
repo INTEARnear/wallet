@@ -489,7 +489,7 @@ async fn recover_account(
                             success: true,
                             message: format!(
                                 "Account recovered successfully in transaction {}",
-                                outcome.transaction.hash.to_string()
+                                outcome.transaction.hash
                             ),
                             transaction_hash: Some(outcome.transaction.hash.to_string()),
                         }))

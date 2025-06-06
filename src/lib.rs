@@ -11,6 +11,7 @@ use contexts::transaction_queue_context::provide_transaction_queue_context;
 use leptos::prelude::*;
 use leptos_meta::*;
 use leptos_router::{components::*, path};
+use thaw::{ConfigProvider, Theme};
 use wasm_bindgen::prelude::*;
 
 pub mod components;
@@ -69,6 +70,7 @@ pub fn App() -> impl IntoView {
         <Meta charset="UTF-8" />
         <Meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
+        <ConfigProvider theme=RwSignal::new(Theme::dark())>
         <Router>
             <Layout>
                 <Routes fallback=|| view! { NotFound }>
@@ -97,5 +99,6 @@ pub fn App() -> impl IntoView {
                 </Routes>
             </Layout>
         </Router>
+        </ConfigProvider>
     }
 }

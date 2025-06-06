@@ -79,6 +79,7 @@ alloy-primitives = { version = "1.1.2", features = [
 alloy-signer = "1.0.8"
 alloy-signer-local = "1.0.8"
 bigdecimal = { version = "0.4.8", features = ["serde-json"] }
+thaw = { version = "0.5.0-beta", features = ["csr", "nightly"] }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.50"
@@ -91,6 +92,9 @@ opt-level = 'z'
 lto = true
 codegen-units = 1
 panic = "abort"
+
+[workspace.metadata.dylint]
+libraries = [{ git = "https://github.com/leptos-rs/leptos-lints", tag = "v0.1.0" }]
 
 [profile.dev.package.argon2]
 opt-level = 3
