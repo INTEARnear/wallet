@@ -1000,8 +1000,9 @@ pub fn Swap() -> impl IntoView {
                 if let Some(swap_request) =
                     create_swap_request(token_in, token_out, validated_amount, current_mode)
                 {
+                    get_routes_action.dispatch((swap_request.clone(), WaitMode::Fast));
                     set_routes_action_handle.set(Some(
-                        get_routes_action.dispatch((swap_request, WaitMode::Fast)),
+                        get_routes_action.dispatch((swap_request, WaitMode::Extended)),
                     ));
                 }
             }
@@ -1832,7 +1833,10 @@ pub fn Swap() -> impl IntoView {
             match swap_modal_state.get() {
                 SwapModalState::Success(result) => {
                     view! {
-                        <SwapSuccessModal result=*result set_swap_modal_state=set_swap_modal_state />
+                        <SwapSuccessModal
+                            result=*result
+                            set_swap_modal_state=set_swap_modal_state
+                        />
                     }
                         .into_any()
                 }
@@ -2051,13 +2055,13 @@ async fn get_ft_balance(
 }
 
 const FAST_WAIT_MS: u64 = 1500;
-const EXTENDED_WAIT_MS: u64 = 3000;
+const EXTENDED_WAIT_MS: u64 = 2500;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WaitMode {
     /// Up to 1.5s for fast fetch, don't use intents
     Fast,
-    /// 3s for slow intents, wait for better quote
+    /// 2.5s for slow intents, wait for better quote
     Extended,
 }
 
