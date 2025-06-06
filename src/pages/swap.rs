@@ -13,8 +13,8 @@ use leptos_icons::Icon;
 use leptos_router::{hooks::use_location, location::Location};
 use near_min_api::{
     types::{
-        AccountId, AccountIdRef, Action, Balance, CryptoHash, Finality, FunctionCallAction,
-        NearGas, NearToken,
+        near_crypto::PublicKey, AccountId, AccountIdRef, Action, Balance, CryptoHash, Finality,
+        FunctionCallAction, NearGas, NearToken, U128,
     },
     utils::dec_format,
     QueryFinality, RpcClient,
@@ -28,7 +28,9 @@ use crate::{
         network_context::Network,
         rpc_context::RpcContext,
         tokens_context::{Token, TokenContext, TokenData, TokenInfo, TokenScore},
-        transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
+        transaction_queue_context::{
+            EnqueuedTransaction, OverlayMode, TransactionQueueContext, TransactionType,
+        },
     },
     pages::settings::SLIPPAGE_PRESETS,
     utils::{
@@ -41,6 +43,21 @@ use crate::{
 pub enum SwapMode {
     ExactIn,
     ExactOut,
+}
+
+#[derive(Debug, Clone)]
+pub struct SwapResult {
+    pub token_in: TokenInfo,
+    pub token_out: TokenInfo,
+    pub amount_in: Balance,
+    pub amount_out: Balance,
+}
+
+#[derive(Debug, Clone)]
+pub enum SwapModalState {
+    None,
+    Success(Box<SwapResult>),
+    Error,
 }
 
 async fn search_tokens(query: &str, account: Account) -> Result<Vec<TokenInfo>, String> {
@@ -210,8 +227,8 @@ fn TokenSelector(
                     set_show.set(false);
                 }
             >
-                <div on:click=|ev| ev.stop_propagation() class="md:min-w-md">
-                    <div class="bg-neutral-900 rounded-2xl w-full max-w-lg max-h-[60vh] overflow-hidden flex flex-col">
+                <div on:click=|ev| ev.stop_propagation() class="md:w-md">
+                    <div class="bg-neutral-900 rounded-2xl w-full max-h-[60vh] overflow-hidden flex flex-col">
                         <div class="p-4 border-b border-neutral-800 flex-shrink-0">
                             <div class="flex items-center justify-between mb-4">
                                 <h3 class="text-white font-medium">"Select Token"</h3>
@@ -358,6 +375,17 @@ fn TokenSelector(
                                                                 <div class="text-gray-400 text-sm">
                                                                     {token_data.token.metadata.name.clone()}
                                                                 </div>
+                                                                {match &token_data.token.account_id {
+                                                                    Token::Near => ().into_any(),
+                                                                    Token::Nep141(account_id) => {
+                                                                        view! {
+                                                                            <div class="text-gray-500 text-xs mt-1 font-mono wrap-anywhere pr-2">
+                                                                                {account_id.to_string()}
+                                                                            </div>
+                                                                        }
+                                                                            .into_any()
+                                                                    }
+                                                                }}
                                                             </div>
                                                         </div>
                                                         <div class="text-right">
@@ -481,6 +509,17 @@ fn TokenSelector(
                                                                             <div class="text-gray-400 text-sm">
                                                                                 {token_data.token.metadata.name.clone()}
                                                                             </div>
+                                                                            {match &token_data.token.account_id {
+                                                                                Token::Near => ().into_any(),
+                                                                                Token::Nep141(account_id) => {
+                                                                                    view! {
+                                                                                        <div class="text-gray-500 text-xs mt-1 font-mono wrap-anywhere pr-2">
+                                                                                            {account_id.to_string()}
+                                                                                        </div>
+                                                                                    }
+                                                                                        .into_any()
+                                                                                }
+                                                                            }}
                                                                         </div>
                                                                     </div>
                                                                     <div class="text-right">
@@ -608,6 +647,8 @@ pub fn Swap() -> impl IntoView {
             Slippage::Auto { .. } => "".to_string(),
             Slippage::Fixed { slippage } => slippage.to_string(),
         });
+
+    let (swap_modal_state, set_swap_modal_state) = signal(SwapModalState::None);
 
     Effect::new(move |_| {
         let tokens_list = tokens.get();
@@ -944,6 +985,7 @@ pub fn Swap() -> impl IntoView {
             slippage: config.get().slippage,
             dexes: None, // will be set by WaitMode
             trader_account_id: Some(current_account.account_id),
+            signing_public_key: Some(current_account.secret_key.public_key()),
         })
     };
 
@@ -1062,7 +1104,9 @@ pub fn Swap() -> impl IntoView {
     });
 
     let TransactionQueueContext {
-        add_transaction, ..
+        add_transaction,
+        overlay_mode,
+        ..
     } = expect_context::<TransactionQueueContext>();
     let RpcContext { client: rpc_client } = expect_context::<RpcContext>();
 
@@ -1125,7 +1169,9 @@ pub fn Swap() -> impl IntoView {
                                                     let is_selected = move || {
                                                         if let Slippage::Fixed { slippage } = config.get().slippage
                                                         {
-                                                            slippage == BigDecimal::from_f64(percentage).unwrap() / BigDecimal::from(100)
+                                                            slippage
+                                                                == BigDecimal::from_f64(percentage).unwrap()
+                                                                    / BigDecimal::from(100)
                                                         } else {
                                                             false
                                                         }
@@ -1146,7 +1192,8 @@ pub fn Swap() -> impl IntoView {
                                                                 set_config
                                                                     .update(|config| {
                                                                         config.slippage = Slippage::Fixed {
-                                                                            slippage: BigDecimal::from_f64(percentage).unwrap() / BigDecimal::from(100),
+                                                                            slippage: BigDecimal::from_f64(percentage).unwrap()
+                                                                                / BigDecimal::from(100),
                                                                         };
                                                                     });
                                                                 set_custom_slippage_input.set("".to_string());
@@ -1170,7 +1217,11 @@ pub fn Swap() -> impl IntoView {
                                                         let value = event_target_value(&ev);
                                                         set_custom_slippage_input.set(value.clone());
                                                         if let Ok(percentage) = value.parse::<BigDecimal>() {
-                                                            let percentage = percentage.clamp(BigDecimal::from_f64(0.01).unwrap(), BigDecimal::from_f64(100.0).unwrap());
+                                                            let percentage = percentage
+                                                                .clamp(
+                                                                    BigDecimal::from_f64(0.01).unwrap(),
+                                                                    BigDecimal::from_f64(100.0).unwrap(),
+                                                                );
                                                             set_config
                                                                 .update(|config| {
                                                                     config.slippage = Slippage::Fixed {
@@ -1602,6 +1653,14 @@ pub fn Swap() -> impl IntoView {
                                             .selected_account_id else {
                                             return;
                                         };
+                                        let Some(selected_account) = accounts
+                                            .get_untracked()
+                                            .accounts
+                                            .into_iter()
+                                            .find(|account| account.account_id == selected_account_id)
+                                        else {
+                                            return;
+                                        };
                                         log::info!("Swapping with route: {best_route:?}");
                                         let Some(validated_amount_entered) = validated_amount_entered
                                             .get() else {
@@ -1625,9 +1684,11 @@ pub fn Swap() -> impl IntoView {
                                                 token_in.token,
                                                 token_out.token,
                                                 best_route,
-                                                selected_account_id,
+                                                selected_account,
                                                 add_transaction,
+                                                overlay_mode,
                                                 rpc_client.get_untracked(),
+                                                set_swap_modal_state,
                                             ),
                                         );
                                     }
@@ -1766,6 +1827,22 @@ pub fn Swap() -> impl IntoView {
                 </div>
             </div>
         </div>
+
+        {move || {
+            match swap_modal_state.get() {
+                SwapModalState::Success(result) => {
+                    view! {
+                        <SwapSuccessModal result=*result set_swap_modal_state=set_swap_modal_state />
+                    }
+                        .into_any()
+                }
+                SwapModalState::Error => {
+                    view! { <SwapErrorModal set_swap_modal_state=set_swap_modal_state /> }
+                        .into_any()
+                }
+                SwapModalState::None => ().into_any(),
+            }
+        }}
     }
 }
 
@@ -1776,23 +1853,47 @@ async fn execute_route(
     token_in: TokenInfo,
     token_out: TokenInfo,
     route: Route,
-    account_id: AccountId,
+    account: Account,
     add_transaction: WriteSignal<Vec<EnqueuedTransaction>>,
+    set_tx_overlay_mode: RwSignal<OverlayMode>,
     rpc: RpcClient,
+    set_swap_modal_state: WriteSignal<SwapModalState>,
 ) {
-    if route.dex_id == DexId::NearIntents {
-        window()
-            .alert_with_message("Near Intents will be supported tomorrow!")
-            .unwrap();
-        return;
-    }
-    let wrap_near_balance: Option<NearToken> = if route.needs_unwrap {
-        get_wrap_near_balance(&account_id, &rpc).await
-    } else {
-        None
-    };
-    let steps = route.execution_instructions.len();
+    let wrap_near_id = Token::Nep141("wrap.near".parse().unwrap());
+
+    let initial_balance_futures = vec![
+        get_ft_balance(&account.account_id, token_in.account_id.clone(), &rpc),
+        get_ft_balance(&account.account_id, token_out.account_id.clone(), &rpc),
+        get_ft_balance(&account.account_id, wrap_near_id.clone(), &rpc),
+    ];
+
+    let initial_balances = futures_util::future::join_all(initial_balance_futures).await;
+    let initial_token_in_balance = initial_balances[0];
+    let initial_token_out_balance = initial_balances[1];
+    let initial_wrap_balance = initial_balances[2];
+
+    let steps = route.execution_instructions.len() + if route.needs_unwrap { 1 } else { 0 };
     let mut last_rx = None;
+    let description = format!(
+        "Swap {} for {}",
+        match swap_mode {
+            SwapMode::ExactIn => format_token_amount_no_hide(
+                amount,
+                token_in.metadata.decimals,
+                &token_in.metadata.symbol
+            ),
+            SwapMode::ExactOut => token_in.metadata.symbol.clone(),
+        },
+        match swap_mode {
+            SwapMode::ExactIn => token_out.metadata.symbol.clone(),
+            SwapMode::ExactOut => format_token_amount_no_hide(
+                amount,
+                token_out.metadata.decimals,
+                &token_out.metadata.symbol
+            ),
+        }
+    );
+
     for (i, step) in route.execution_instructions.into_iter().enumerate() {
         match step {
             ExecutionInstruction::NearTransaction {
@@ -1802,30 +1903,14 @@ async fn execute_route(
             } => {
                 let (rx, pending_tx) = EnqueuedTransaction::create(
                     format!(
-                        "Swap {} for {}{}",
-                        match swap_mode {
-                            SwapMode::ExactIn => format_token_amount_no_hide(
-                                amount,
-                                token_in.metadata.decimals,
-                                &token_in.metadata.symbol
-                            ),
-                            SwapMode::ExactOut => token_in.metadata.symbol.clone(),
-                        },
-                        match swap_mode {
-                            SwapMode::ExactIn => token_out.metadata.symbol.clone(),
-                            SwapMode::ExactOut => format_token_amount_no_hide(
-                                amount,
-                                token_out.metadata.decimals,
-                                &token_out.metadata.symbol
-                            ),
-                        },
+                        "{description}{}",
                         if steps > 1 {
                             format!(" {}/{steps}", i + 1)
                         } else {
                             String::new()
                         }
                     ),
-                    account_id.clone(),
+                    account.account_id.clone(),
                     receiver_id.clone(),
                     actions,
                 );
@@ -1835,63 +1920,138 @@ async fn execute_route(
                 last_rx = Some(rx);
             }
             ExecutionInstruction::IntentsQuote {
-                message_to_sign: _,
-                quote_hash: _,
+                message_to_sign,
+                quote_hash,
             } => {
-                todo!()
+                let (rx, pending_tx) = EnqueuedTransaction::create_with_type(
+                    format!(
+                        "{description}{}",
+                        if steps > 1 {
+                            format!(" {}/{steps}", i + 1)
+                        } else {
+                            String::new()
+                        }
+                    ),
+                    account.account_id.clone(),
+                    TransactionType::NearIntents {
+                        message_to_sign,
+                        quote_hash,
+                    },
+                );
+                add_transaction.update(|txs| {
+                    txs.push(pending_tx);
+                });
+                last_rx = Some(rx);
             }
         }
     }
+
     let Some(last_rx) = last_rx else {
         // Should never happen as long as router is ok
         return;
     };
-    let _ = last_rx.await;
-    if let Some(wrap_near_balance) = wrap_near_balance {
-        if let Some(new_wrap_near_balance) = get_wrap_near_balance(&account_id, &rpc).await {
+
+    let tx_result = last_rx.await;
+    let Ok(Ok(_)) = tx_result else {
+        set_swap_modal_state.set(SwapModalState::Error);
+        return;
+    };
+
+    let final_balance_futures = vec![
+        get_ft_balance(&account.account_id, token_in.account_id.clone(), &rpc),
+        get_ft_balance(&account.account_id, token_out.account_id.clone(), &rpc),
+        get_ft_balance(&account.account_id, wrap_near_id, &rpc),
+    ];
+
+    let final_balances = futures_util::future::join_all(final_balance_futures).await;
+    let final_token_in_balance = final_balances[0];
+    let final_token_out_balance = final_balances[1];
+    let final_wrap_balance = final_balances[2];
+
+    if let Some(wrap_near_balance) = initial_wrap_balance {
+        if let Some(new_wrap_near_balance) = final_wrap_balance {
             if let Some(difference) = new_wrap_near_balance.checked_sub(wrap_near_balance) {
-                if difference.is_zero() {
-                    return;
-                }
-                add_transaction.update(|txs| {
-                    txs.push(
-                        EnqueuedTransaction::create(
-                            "Unwrap NEAR after swap".to_string(),
-                            account_id.clone(),
-                            "wrap.near".parse().unwrap(),
-                            vec![Action::FunctionCall(Box::new(FunctionCallAction {
-                                method_name: "near_withdraw".to_string(),
-                                args: serde_json::to_vec(&serde_json::json!({
-                                    "amount": difference,
-                                }))
-                                .unwrap(),
-                                gas: NearGas::from_tgas(5).as_gas(),
-                                deposit: NearToken::from_yoctonear(1),
-                            }))],
+                if !difference.is_zero() {
+                    set_tx_overlay_mode.set(OverlayMode::Background);
+                    add_transaction.update(|txs| {
+                        txs.push(
+                            EnqueuedTransaction::create(
+                                format!("{description} ({steps}/{steps})"),
+                                account.account_id.clone(),
+                                "wrap.near".parse().unwrap(),
+                                vec![Action::FunctionCall(Box::new(FunctionCallAction {
+                                    method_name: "near_withdraw".to_string(),
+                                    args: serde_json::to_vec(&serde_json::json!({
+                                        "amount": difference,
+                                    }))
+                                    .unwrap(),
+                                    gas: NearGas::from_tgas(5).as_gas(),
+                                    deposit: NearToken::from_yoctonear(1),
+                                }))],
+                            )
+                            .1,
                         )
-                        .1,
-                    )
-                });
+                    });
+                }
             }
         }
     }
+
+    let amount_spent = if let (Some(initial), Some(final_balance)) =
+        (initial_token_in_balance, final_token_in_balance)
+    {
+        initial.saturating_sub(final_balance)
+    } else {
+        return;
+    };
+
+    let amount_received = if let (Some(initial), Some(final_balance)) =
+        (initial_token_out_balance, final_token_out_balance)
+    {
+        final_balance.saturating_sub(initial)
+    } else {
+        return;
+    };
+
+    set_swap_modal_state.set(SwapModalState::Success(Box::new(SwapResult {
+        token_in,
+        token_out,
+        amount_in: amount_spent,
+        amount_out: amount_received,
+    })));
 }
 
-async fn get_wrap_near_balance(account_id: &AccountIdRef, rpc: &RpcClient) -> Option<NearToken> {
-    rpc.call(
-        "wrap.near".parse().unwrap(),
-        "ft_balance_of",
-        serde_json::json!({
-            "account_id": account_id,
-        }),
-        QueryFinality::Finality(Finality::None),
-    )
-    .await
-    .ok()
+async fn get_ft_balance(
+    account_id: &AccountIdRef,
+    token_id: Token,
+    rpc: &RpcClient,
+) -> Option<Balance> {
+    match token_id {
+        Token::Nep141(token_id) => rpc
+            .call::<U128>(
+                token_id,
+                "ft_balance_of",
+                serde_json::json!({
+                    "account_id": account_id,
+                }),
+                QueryFinality::Finality(Finality::None),
+            )
+            .await
+            .ok()
+            .map(|balance| *balance),
+        Token::Near => rpc
+            .view_account(
+                account_id.to_owned(),
+                QueryFinality::Finality(Finality::None),
+            )
+            .await
+            .ok()
+            .map(|account_view| account_view.amount.as_yoctonear()),
+    }
 }
 
 const FAST_WAIT_MS: u64 = 1500;
-const EXTENDED_WAIT_MS: u64 = 4000;
+const EXTENDED_WAIT_MS: u64 = 3000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WaitMode {
@@ -1957,7 +2117,7 @@ impl Display for Slippage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Slippage::Auto { .. } => write!(f, "Auto"),
-            Slippage::Fixed { slippage } => write!(f, "{slippage:.2}%"),
+            Slippage::Fixed { slippage } => write!(f, "{:.2}%", slippage * BigDecimal::from(100)),
         }
     }
 }
@@ -2040,6 +2200,9 @@ pub struct SwapRequest {
     /// The account ID of the trader. If provided, the route will include storage
     /// deposit actions.
     pub trader_account_id: Option<AccountId>,
+    /// The public key to use for signing. Can be used for `add_public_key` method in
+    /// NEAR Intents.
+    pub signing_public_key: Option<PublicKey>,
 }
 
 mod comma_separated {
@@ -2225,5 +2388,177 @@ impl FromStr for DexId {
             WRAP_STR => DexId::Wrap,
             _ => return Err(format!("Invalid dex id: {}", s)),
         })
+    }
+}
+
+#[component]
+fn SwapSuccessModal(
+    result: SwapResult,
+    set_swap_modal_state: WriteSignal<SwapModalState>,
+) -> impl IntoView {
+    let amount_in_formatted = format_token_amount_no_hide(
+        result.amount_in,
+        result.token_in.metadata.decimals,
+        &result.token_in.metadata.symbol,
+    );
+    let amount_out_formatted = format_token_amount_no_hide(
+        result.amount_out,
+        result.token_out.metadata.decimals,
+        &result.token_out.metadata.symbol,
+    );
+
+    view! {
+        <div
+            class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            on:click=move |_| set_swap_modal_state.set(SwapModalState::None)
+        >
+            <div
+                on:click=|ev| ev.stop_propagation()
+                class="bg-neutral-900 rounded-2xl p-6 max-w-md w-full"
+            >
+                <div class="text-center">
+                    <div class="mb-4">
+                        <div class="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <Icon
+                                icon=icondata::LuCheck
+                                width="32"
+                                height="32"
+                                attr:class="text-white"
+                            />
+                        </div>
+                        <h3 class="text-white font-bold text-xl mb-2">"Swap Successful!"</h3>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="bg-neutral-800 rounded-lg p-4">
+                            <div class="text-gray-400 text-sm mb-2">"You spent"</div>
+                            <div class="flex items-center gap-3">
+                                {match result.token_in.metadata.icon {
+                                    Some(icon) => {
+                                        view! {
+                                            <img
+                                                src=icon
+                                                alt=result.token_in.metadata.symbol.clone()
+                                                class="w-8 h-8 rounded-full"
+                                            />
+                                        }
+                                            .into_any()
+                                    }
+                                    None => {
+                                        view! {
+                                            <div class="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white text-sm">
+                                                {result
+                                                    .token_in
+                                                    .metadata
+                                                    .symbol
+                                                    .chars()
+                                                    .next()
+                                                    .unwrap_or('?')}
+                                            </div>
+                                        }
+                                            .into_any()
+                                    }
+                                }} <div>
+                                    <div class="text-white font-medium text-lg">
+                                        {amount_in_formatted}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-center">
+                            <Icon
+                                icon=icondata::LuArrowDown
+                                width="20"
+                                height="20"
+                                attr:class="text-gray-400"
+                            />
+                        </div>
+
+                        <div class="bg-neutral-800 rounded-lg p-4">
+                            <div class="text-gray-400 text-sm mb-2">"You received"</div>
+                            <div class="flex items-center gap-3">
+                                {match result.token_out.metadata.icon {
+                                    Some(icon) => {
+                                        view! {
+                                            <img
+                                                src=icon
+                                                alt=result.token_out.metadata.symbol.clone()
+                                                class="w-8 h-8 rounded-full"
+                                            />
+                                        }
+                                            .into_any()
+                                    }
+                                    None => {
+                                        view! {
+                                            <div class="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white text-sm">
+                                                {result
+                                                    .token_out
+                                                    .metadata
+                                                    .symbol
+                                                    .chars()
+                                                    .next()
+                                                    .unwrap_or('?')}
+                                            </div>
+                                        }
+                                            .into_any()
+                                    }
+                                }} <div>
+                                    <div class="text-white font-medium text-lg">
+                                        {amount_out_formatted}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button
+                        class="w-full mt-6 bg-blue-500 hover:bg-blue-600 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
+                        on:click=move |_| set_swap_modal_state.set(SwapModalState::None)
+                    >
+                        "Close"
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn SwapErrorModal(set_swap_modal_state: WriteSignal<SwapModalState>) -> impl IntoView {
+    view! {
+        <div
+            class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            on:click=move |_| set_swap_modal_state.set(SwapModalState::None)
+        >
+            <div
+                on:click=|ev| ev.stop_propagation()
+                class="bg-neutral-900 rounded-2xl p-6 max-w-md w-full"
+            >
+                <div class="text-center">
+                    <div class="mb-4">
+                        <div class="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <Icon
+                                icon=icondata::LuX
+                                width="32"
+                                height="32"
+                                attr:class="text-white"
+                            />
+                        </div>
+                        <h3 class="text-white font-bold text-xl mb-2">"Swap Failed"</h3>
+                        <p class="text-gray-400 text-sm">
+                            "The swap transaction was rejected or failed. Please try again."
+                        </p>
+                    </div>
+
+                    <button
+                        class="w-full mt-6 bg-red-500 hover:bg-red-600 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
+                        on:click=move |_| set_swap_modal_state.set(SwapModalState::None)
+                    >
+                        "Close"
+                    </button>
+                </div>
+            </div>
+        </div>
     }
 }

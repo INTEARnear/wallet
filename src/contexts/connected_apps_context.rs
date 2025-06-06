@@ -9,6 +9,8 @@ use near_min_api::types::{
 use serde::{Deserialize, Serialize};
 use web_sys::window;
 
+use crate::contexts::transaction_queue_context::TransactionType;
+
 use super::transaction_queue_context::EnqueuedTransaction;
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -47,25 +49,29 @@ pub struct ConnectedApp {
 
 impl ConnectedApp {
     pub fn should_autoconfirm(&self, transaction: &EnqueuedTransaction) -> bool {
-        if self.autoconfirm_all {
-            return true;
+        match &transaction.transaction_type {
+            TransactionType::NearTransaction {
+                actions,
+                receiver_id,
+            } => {
+                if self.autoconfirm_all {
+                    return true;
+                }
+
+                let attaches_deposit = actions.iter().any(action_attaches_deposit);
+
+                if self.autoconfirm_non_financial && !attaches_deposit {
+                    return true;
+                }
+
+                if self.autoconfirm_contracts.contains(receiver_id) && !attaches_deposit {
+                    return true;
+                }
+
+                false
+            }
+            TransactionType::NearIntents { .. } => false,
         }
-
-        let attaches_deposit = transaction.actions.iter().any(action_attaches_deposit);
-
-        if self.autoconfirm_non_financial && !attaches_deposit {
-            return true;
-        }
-
-        if self
-            .autoconfirm_contracts
-            .contains(&transaction.receiver_id)
-            && !attaches_deposit
-        {
-            return true;
-        }
-
-        false
     }
 }
 

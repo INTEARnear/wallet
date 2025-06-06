@@ -338,7 +338,10 @@ pub fn provide_token_context() {
                             });
                         }
                         if event.new_owner_id == *account_id {
-                            if config_context.config.get().play_transfer_sound {
+                            // Don't play sound for unwrapping wNEAR
+                            if event.old_owner_id != "wrap.near"
+                                && config_context.config.get().play_transfer_sound
+                            {
                                 if let Ok(audio) = HtmlAudioElement::new() {
                                     audio.set_src("/cash-register-sound.mp3");
                                     let _ = audio.play();

@@ -1,4 +1,6 @@
-use crate::contexts::transaction_queue_context::{TransactionQueueContext, TransactionStage};
+use crate::contexts::transaction_queue_context::{
+    OverlayMode, TransactionQueueContext, TransactionStage,
+};
 use leptos::prelude::*;
 use leptos_icons::*;
 
@@ -7,14 +9,14 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
     let TransactionQueueContext {
         queue,
         current_index,
+        overlay_mode,
         ..
     } = expect_context::<TransactionQueueContext>();
-    let (show_modal, set_show_modal) = signal(false);
 
     Effect::new(move |_| {
         let queue_len = queue.read().len();
         if queue_len == 0 {
-            set_show_modal.set(true);
+            overlay_mode.set(OverlayMode::Modal);
         }
     });
 
@@ -58,6 +60,10 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                         view! { <Icon icon=icondata::LuCheckCircle2 attr:class="text-green-500" /> }
                             .into_any()
                     }
+                    TransactionStage::Doomslug => {
+                        view! { <Icon icon=icondata::LuCheckCircle2 attr:class="text-green-300" /> }
+                            .into_any()
+                    }
                     TransactionStage::Preparing => {
                         view! { <Icon icon=icondata::LuClock attr:class="text-neutral-500" /> }
                             .into_any()
@@ -66,7 +72,7 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                         view! { <Icon icon=icondata::LuXCircle attr:class="text-red-500" /> }
                             .into_any()
                     }
-                    _ => {
+                    TransactionStage::Publishing | TransactionStage::Included => {
                         view! {
                             <div class=move || {
                                 format!(
@@ -85,9 +91,9 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
 
     view! {
         <Show
-            when=move || { !show_modal.get() && !queue.read().is_empty() }
+            when=move || { overlay_mode.get() == OverlayMode::Background && !queue.read().is_empty() }
             attr:class="relative top-0 pt-2 w-full lg:rounded-t-3xl bg-neutral-900/90 text-white text-sm font-medium transition-all duration-200 cursor-pointer"
-            on:click=move |_| set_show_modal.set(true)
+            on:click=move |_| overlay_mode.set(OverlayMode::Modal)
         >
             <div class="w-full pt-2">
                 <div class="flex items-center justify-between gap-2 px-4">
@@ -124,9 +130,9 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
         </Show>
 
         <Show
-            when=move || show_modal.get() && !queue.read().is_empty()
+            when=move || overlay_mode.get() == OverlayMode::Modal && !queue.read().is_empty()
             attr:class="fixed inset-0 bg-black/50 transition-opacity duration-200 z-100 text-white"
-            on:click=move |_| set_show_modal.set(false)
+            on:click=move |_| overlay_mode.set(OverlayMode::Background)
         >
             <div>
                 <div
@@ -137,8 +143,8 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                         <h2 class="text-lg font-medium">Transaction Queue</h2>
                         <div class="flex items-center gap-2">
                             <button
-                                on:mouseup=move |_| set_show_modal.set(false)
-                                on:touchend=move |_| set_show_modal.set(false)
+                                on:mouseup=move |_| overlay_mode.set(OverlayMode::Background)
+                                on:touchend=move |_| overlay_mode.set(OverlayMode::Background)
                                 class="p-1 hover:bg-neutral-800 rounded-lg transition-colors"
                             >
                                 <Icon icon=icondata::LuChevronUp width="20" height="20" />
