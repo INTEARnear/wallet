@@ -1586,14 +1586,6 @@ pub fn Swap() -> impl IntoView {
                                                 } else {
                                                     ().into_any()
                                                 }}
-                                                {if routes.wait_mode == WaitMode::Fast {
-                                                    view! {
-                                                        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                                                    }
-                                                        .into_any()
-                                                } else {
-                                                    ().into_any()
-                                                }}
                                             </div>
                                         </div>
                                     }
