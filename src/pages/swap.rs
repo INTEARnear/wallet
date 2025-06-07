@@ -2404,15 +2404,19 @@ fn SwapSuccessModal(
     result: SwapResult,
     set_swap_modal_state: WriteSignal<SwapModalState>,
 ) -> impl IntoView {
-    let amount_in_formatted = format_token_amount_no_hide(
-        result.amount_in,
-        result.token_in.metadata.decimals,
-        &result.token_in.metadata.symbol,
+    let amount_in_decimal = balance_to_decimal(result.amount_in, result.token_in.metadata.decimals);
+    let amount_in_formatted = format!(
+        "{} {}",
+        round_precision_or_significant(amount_in_decimal),
+        result.token_in.metadata.symbol
     );
-    let amount_out_formatted = format_token_amount_no_hide(
-        result.amount_out,
-        result.token_out.metadata.decimals,
-        &result.token_out.metadata.symbol,
+
+    let amount_out_decimal =
+        balance_to_decimal(result.amount_out, result.token_out.metadata.decimals);
+    let amount_out_formatted = format!(
+        "{} {}",
+        round_precision_or_significant(amount_out_decimal),
+        result.token_out.metadata.symbol
     );
 
     view! {
