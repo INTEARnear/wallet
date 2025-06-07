@@ -99,25 +99,41 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                         </button>
                     </A>
 
-                    <A href=move || format!(
-                        "/swap?from={}&to={}",
-                        match &token_account_id5 {
-                            Token::Near => "near".to_string(),
-                            Token::Nep141(account_id) => account_id.to_string(),
-                        },
-                        match &token_account_id5 {
-                            Token::Nep141(_) => "near".to_string(),
-                            Token::Near => match network.get() {
-                                Network::Mainnet => "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1".to_string(),
-                                Network::Testnet => "usdc.fakes.testnet".to_string(),
-                            },
-                        },
-                    )>
-                        <button class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors flex items-center gap-2 cursor-pointer w-full">
-                            <Icon icon=icondata::LuArrowLeftRight width="20" height="20" />
-                            <span>Swap</span>
-                        </button>
-                    </A>
+                    {move || {
+                        if network.get() != Network::Testnet {
+                            let token_account_id5 = token_account_id5.clone();
+                            view! {
+                                <A href=move || {
+                                    format!(
+                                        "/swap?from={}&to={}",
+                                        match &token_account_id5 {
+                                            Token::Near => "near".to_string(),
+                                            Token::Nep141(account_id) => account_id.to_string(),
+                                        },
+                                        match &token_account_id5 {
+                                            Token::Nep141(_) => "near".to_string(),
+                                            Token::Near => {
+                                                match network.get() {
+                                                    Network::Mainnet => {
+                                                        "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
+                                                            .to_string()
+                                                    }
+                                                    Network::Testnet => "usdc.fakes.testnet".to_string(),
+                                                }
+                                            }
+                                        },
+                                    )
+                                }>
+                                    <button class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors flex items-center gap-2 cursor-pointer w-full">
+                                        <Icon icon=icondata::LuArrowLeftRight width="20" height="20" />
+                                        <span>Swap</span>
+                                    </button>
+                                </A>
+                            }.into_any()
+                        } else {
+                            ().into_any()
+                        }
+                    }}
 
                     {move || {
                         if let Token::Nep141(account_id) = &token_account_id3 {
@@ -160,28 +176,28 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                             ().into_any()
                         }
                     }}
-                </div>
-                {move || {
-                    if matches!(token_info.account_id, Token::Near)
-                        && matches!(network.get(), Network::Testnet)
-                    {
-                        view! {
-                            <a
-                                href="https://near-faucet.io"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                            >
-                                <button class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors flex items-center gap-2 cursor-pointer">
-                                    <Icon icon=icondata::LuDroplet width="20" height="20" />
-                                    <span>Get Test Tokens</span>
-                                </button>
-                            </a>
+                    {move || {
+                        if matches!(token_info.account_id, Token::Near)
+                            && matches!(network.get(), Network::Testnet)
+                        {
+                            view! {
+                                <a
+                                    href="https://near-faucet.io"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                >
+                                    <button class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors flex items-center gap-2 cursor-pointer w-full">
+                                        <Icon icon=icondata::LuDroplet width="20" height="20" />
+                                        <span>"Get test NEAR"</span>
+                                    </button>
+                                </a>
+                            }
+                                .into_any()
+                        } else {
+                            ().into_any()
                         }
-                            .into_any()
-                    } else {
-                        ().into_any()
-                    }
-                }}
+                    }}
+                </div>
             </div>
             <div class="bg-neutral-900 rounded-xl p-4">
                 <div class="flex justify-between items-center">

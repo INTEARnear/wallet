@@ -10,9 +10,12 @@ use rand::{rngs::OsRng, Rng};
 use std::time::Duration;
 use web_sys::TouchEvent;
 
-use crate::components::wallet_header::WalletHeader;
 use crate::components::{transaction_queue_overlay::TransactionQueueOverlay, PasswordUnlock};
 use crate::contexts::account_selector_swipe_context::AccountSelectorSwipeContext;
+use crate::{
+    components::wallet_header::WalletHeader,
+    contexts::network_context::{Network, NetworkContext},
+};
 
 /// Height of the bottom navbar with buttons
 const BOTTOM_NAV_HEIGHT_PX: u32 = 64;
@@ -68,25 +71,32 @@ pub fn Layout(children: Children) -> impl IntoView {
         state: _,
         set_state: set_account_selector_state,
     } = expect_context::<AccountSelectorSwipeContext>();
+    let NetworkContext { network } = expect_context::<NetworkContext>();
 
-    const NAV_ITEMS: &[NavItem] = &[
-        NavItem {
-            path: "/",
-            icon: icondata::LuWallet,
-        },
-        NavItem {
-            path: "/swap",
-            icon: icondata::LuRefreshCw,
-        },
-        NavItem {
-            path: "/history",
-            icon: icondata::LuHistory,
-        },
-        NavItem {
-            path: "/explore",
-            icon: icondata::LuCompass,
-        },
-    ];
+    const HOME_ITEM: &NavItem = &NavItem {
+        path: "/",
+        icon: icondata::LuWallet,
+    };
+    const SWAP_ITEM: &NavItem = &NavItem {
+        path: "/swap",
+        icon: icondata::LuRefreshCw,
+    };
+    const HISTORY_ITEM: &NavItem = &NavItem {
+        path: "/history",
+        icon: icondata::LuHistory,
+    };
+    const EXPLORE_ITEM: &NavItem = &NavItem {
+        path: "/explore",
+        icon: icondata::LuCompass,
+    };
+    let nav_items = move || match network.get() {
+        Network::Mainnet => {
+            vec![HOME_ITEM, SWAP_ITEM, HISTORY_ITEM, EXPLORE_ITEM]
+        }
+        Network::Testnet => {
+            vec![HOME_ITEM, HISTORY_ITEM, EXPLORE_ITEM]
+        }
+    };
 
     let handle_touch_start = move |event: TouchEvent| {
         if let Some(touch) = event.touches().get(0) {
@@ -139,7 +149,7 @@ pub fn Layout(children: Children) -> impl IntoView {
 
             // Only process horizontal swipes if the initial movement was horizontal
             if initial_movement_direction.get() == Some(MovementDirection::Horizontal) {
-                let current_index = NAV_ITEMS
+                let current_index = nav_items()
                     .iter()
                     .position(|item| item.path == location.pathname.get().as_str())
                     .unwrap_or(0);
@@ -153,7 +163,7 @@ pub fn Layout(children: Children) -> impl IntoView {
                 };
 
                 // Only allow swiping if we're not at the edge
-                if (delta_x < 0.0 && current_index < NAV_ITEMS.len() - 1)
+                if (delta_x < 0.0 && current_index < nav_items().len() - 1)
                     || (delta_x > 0.0 && current_index > 0)
                 {
                     set_swipe_progress(progress);
@@ -188,18 +198,18 @@ pub fn Layout(children: Children) -> impl IntoView {
                 && delta_y.abs() < SWIPE_Y_THRESHOLD_PX
                 && delta_x.abs() > SWIPE_X_THRESHOLD_PX
             {
-                let current_index = NAV_ITEMS
+                let current_index = nav_items()
                     .iter()
                     .position(|item| item.path == location.pathname.get().as_str())
                     .unwrap_or(0);
 
-                if delta_x < 0.0 && current_index < NAV_ITEMS.len() - 1 {
+                if delta_x < 0.0 && current_index < nav_items().len() - 1 {
                     // Swipe left - go to next page
-                    let next_path = NAV_ITEMS[current_index + 1].path;
+                    let next_path = nav_items()[current_index + 1].path;
                     navigate(next_path, Default::default());
                 } else if delta_x > 0.0 && current_index > 0 {
                     // Swipe right - go to previous page
-                    let prev_path = NAV_ITEMS[current_index - 1].path;
+                    let prev_path = nav_items()[current_index - 1].path;
                     navigate(prev_path, Default::default());
                 }
             }
@@ -220,11 +230,11 @@ pub fn Layout(children: Children) -> impl IntoView {
         }
 
         if !prev.is_empty() {
-            let current_index = NAV_ITEMS
+            let current_index = nav_items()
                 .iter()
                 .position(|item| item.path == current_path.as_str())
                 .unwrap_or(0);
-            let prev_index = NAV_ITEMS
+            let prev_index = nav_items()
                 .iter()
                 .position(|item| item.path == prev.as_str())
                 .unwrap_or(0);
@@ -311,7 +321,7 @@ pub fn Layout(children: Children) -> impl IntoView {
                                     <div
                                         class="absolute bg-neutral-700 transition-all duration-150"
                                         class:nav-indicator-first=move || {
-                                            let current_index = NAV_ITEMS
+                                            let current_index = nav_items()
                                                 .iter()
                                                 .position(|item| {
                                                     item.path == location.pathname.get().as_str()
@@ -320,16 +330,16 @@ pub fn Layout(children: Children) -> impl IntoView {
                                             current_index == 0
                                         }
                                         class:nav-indicator-last=move || {
-                                            let current_index = NAV_ITEMS
+                                            let current_index = nav_items()
                                                 .iter()
                                                 .position(|item| {
                                                     item.path == location.pathname.get().as_str()
                                                 })
                                                 .unwrap_or(0);
-                                            current_index == NAV_ITEMS.len() - 1
+                                            current_index == nav_items().len() - 1
                                         }
                                         style=move || {
-                                            let current_index = NAV_ITEMS
+                                            let current_index = nav_items()
                                                 .iter()
                                                 .position(|item| {
                                                     item.path == location.pathname.get().as_str()
@@ -337,15 +347,16 @@ pub fn Layout(children: Children) -> impl IntoView {
                                                 .unwrap_or(0);
                                             format!(
                                                 "left: calc({}% - {}px); height: {BOTTOM_NAV_HEIGHT_PX}px; width: calc(100% / {})",
-                                                current_index as f64 * 100.0 / NAV_ITEMS.len() as f64,
+                                                current_index as f64 * 100.0 / nav_items().len() as f64,
                                                 swipe_progress.get() / 4.0,
-                                                NAV_ITEMS.len(),
+                                                nav_items().len(),
                                             )
                                         }
                                     />
                                     {move || {
-                                        NAV_ITEMS
+                                        nav_items()
                                             .iter()
+                                            .copied()
                                             .map(|item| {
                                                 view! {
                                                     <A
@@ -353,7 +364,7 @@ pub fn Layout(children: Children) -> impl IntoView {
                                                         attr:class="flex flex-col items-center justify-center cursor-pointer z-10"
                                                         attr:style=format!(
                                                             "width: calc(100% / {}); {}",
-                                                            NAV_ITEMS.len(),
+                                                            nav_items().len(),
                                                             if location.pathname.get() == item.path {
                                                                 "color: white"
                                                             } else {

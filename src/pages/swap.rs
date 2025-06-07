@@ -10,7 +10,10 @@ use chrono::{DateTime, TimeDelta, Utc};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_icons::Icon;
-use leptos_router::{hooks::use_location, location::Location};
+use leptos_router::{
+    hooks::{use_location, use_navigate},
+    location::Location,
+};
 use near_min_api::{
     types::{
         near_crypto::PublicKey, AccountId, AccountIdRef, Action, Balance, CryptoHash, Finality,
@@ -25,7 +28,7 @@ use crate::{
     contexts::{
         accounts_context::{Account, AccountsContext},
         config_context::ConfigContext,
-        network_context::Network,
+        network_context::{Network, NetworkContext},
         rpc_context::RpcContext,
         tokens_context::{Token, TokenContext, TokenData, TokenInfo, TokenScore},
         transaction_queue_context::{
@@ -629,6 +632,15 @@ fn round_precision_or_significant(amount: BigDecimal) -> String {
 
 #[component]
 pub fn Swap() -> impl IntoView {
+    let NetworkContext { network } = expect_context::<NetworkContext>();
+    let navigate = use_navigate();
+
+    Effect::new(move |_| {
+        if network.get() == Network::Testnet {
+            navigate("/", Default::default());
+        }
+    });
+
     let TokenContext {
         tokens,
         loading_tokens,
