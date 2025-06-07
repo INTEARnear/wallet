@@ -126,13 +126,7 @@ pub fn PasswordUnlock() -> impl IntoView {
     };
 
     let should_show_unlock = move || {
-        accounts_context.is_encrypted.get()
-            && accounts_context
-                .accounts
-                .get()
-                .selected_account_id
-                .is_none()
-            && accounts_context.accounts.get().accounts.is_empty()
+        accounts_context.is_encrypted.get() && accounts_context.accounts.get().accounts.is_empty()
     };
 
     view! {
