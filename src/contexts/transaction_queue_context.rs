@@ -4,6 +4,7 @@ use borsh::BorshSerialize;
 use futures_channel::oneshot;
 use futures_timer::Delay;
 use futures_util::future::Either;
+use futures_util::TryFutureExt;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use near_min_api::types::near_crypto::{SecretKey, Signature};
@@ -16,6 +17,7 @@ use near_min_api::types::{
 use near_min_api::{ExperimentalTxDetails, PendingTransaction, QueryFinality, RpcClient};
 use rand::rngs::OsRng;
 use rand::RngCore;
+use std::cell::OnceCell;
 use std::collections::VecDeque;
 use std::time::Duration;
 
@@ -51,16 +53,12 @@ enum TransactionResult<'a> {
     PendingIntent {
         intent_hash: CryptoHash,
         rpc_client: &'a RpcClient,
-        tx_hash: Option<CryptoHash>,
+        tx_hash: OnceCell<CryptoHash>,
     },
 }
 
 impl<'a> TransactionResult<'a> {
-    async fn wait_for(
-        &mut self,
-        status: TxExecutionStatus,
-        timeout: Duration,
-    ) -> Result<(), String> {
+    async fn wait_for(&self, status: TxExecutionStatus, timeout: Duration) -> Result<(), String> {
         match self {
             TransactionResult::PendingTransaction(tx) => tx
                 .wait_for(status, timeout)
@@ -71,6 +69,9 @@ impl<'a> TransactionResult<'a> {
                 tx_hash,
                 ..
             } => {
+                if tx_hash.get().is_some() {
+                    return Ok(());
+                }
                 match futures_util::future::select(
                     Box::pin(async {
                         loop {
@@ -99,14 +100,12 @@ impl<'a> TransactionResult<'a> {
                                     result.get("status").and_then(|s| s.as_str())
                                 {
                                     if status_str == "SETTLED" {
-                                        log::info!("Intent settled: {:#?}", result);
                                         if let Some(hash) = result
                                             .get("data")
                                             .and_then(|d| d.get("hash").and_then(|h| h.as_str()))
                                             .and_then(|h| h.parse::<CryptoHash>().ok())
                                         {
-                                            log::info!("Replacing tx hash with {hash}");
-                                            tx_hash.replace(hash);
+                                            tx_hash.set(hash).unwrap();
                                         }
                                         return Ok(());
                                     } else if status_str != "PENDING"
@@ -147,7 +146,7 @@ impl<'a> TransactionResult<'a> {
                 tx_hash,
                 ..
             } => {
-                if let Some(tx_hash) = tx_hash {
+                if let Some(tx_hash) = tx_hash.get() {
                     rpc_client
                         .EXPERIMENTAL_tx_status(*tx_hash)
                         .await
@@ -402,7 +401,7 @@ impl TransactionType {
                             Ok(TransactionResult::PendingIntent {
                                 intent_hash,
                                 rpc_client,
-                                tx_hash: None,
+                                tx_hash: OnceCell::new(),
                             })
                         } else {
                             Err("Invalid intent hash".to_string())
@@ -582,7 +581,7 @@ pub fn provide_transaction_queue_context() {
                     log::info!("Transaction started: {}", transaction.description);
                     set_queue.update(|q| q[tx_current_index].stage = TransactionStage::Publishing);
 
-                    let mut pending_tx = match transaction
+                    let pending_tx = match transaction
                         .transaction_type
                         .execute(account, &rpc_client)
                         .await
@@ -601,7 +600,7 @@ pub fn provide_transaction_queue_context() {
                             });
                             set_is_processing.set(false);
                             set_current_index.update(|i| *i += 1);
-                            Delay::new(Duration::from_secs(3)).await;
+                            Delay::new(Duration::from_secs(5)).await;
                             set_queue.update(|q| {
                                 let prev_len = q.len();
                                 q.retain(|tx| tx.queue_id != current_queue_id);
@@ -617,13 +616,21 @@ pub fn provide_transaction_queue_context() {
                     match pending_tx
                         .wait_for(
                             TxExecutionStatus::ExecutedOptimistic,
-                            Duration::from_millis(10000),
+                            Duration::from_millis(60000),
                         )
+                        .and_then(|_| pending_tx.get_tx_details())
                         .await
                     {
-                        Ok(_) => {
+                        Ok(details) => {
                             set_queue
                                 .update(|q| q[tx_current_index].stage = TransactionStage::Doomslug);
+                            transaction
+                            .details_tx
+                            .expect(
+                                "Transaction details sender should have been taken by this task",
+                            )
+                            .send(Ok(details))
+                            .ok();
                         }
                         Err(e) => {
                             let error = format!("Transaction failed to execute: {e}");
@@ -644,20 +651,6 @@ pub fn provide_transaction_queue_context() {
                         }
                     }
 
-                    match pending_tx.get_tx_details().await {
-                        Ok(details) => {
-                            transaction
-                            .details_tx
-                            .expect(
-                                "Transaction details sender should have been taken by this task",
-                            )
-                            .send(Ok(details))
-                            .ok();
-                        }
-                        Err(e) => {
-                            panic!("Failed to send transaction details: {e}");
-                        }
-                    };
                     set_current_index.update(|i| *i += 1);
                     set_is_processing.set(false);
                     if tx_current_index < queue.read_untracked().len() - 1 {
@@ -701,6 +694,28 @@ pub fn provide_transaction_queue_context() {
                 });
             } else if current_index.get() < queue_mut.len() {
                 set_current_index.update(|i| *i += 1);
+            } else {
+                let had_error = queue_mut
+                    .get(current_index.get().saturating_sub(1))
+                    .map(|tx| matches!(tx.stage, TransactionStage::Failed(_)))
+                    .unwrap_or(false);
+                set_timeout(
+                    move || {
+                        if queue.read_untracked().len() <= current_index.get_untracked() + 1
+                            && !queue.read_untracked().is_empty()
+                        {
+                            set_queue.update(|q| {
+                                q.clear();
+                            });
+                            set_current_index.set(0);
+                        }
+                    },
+                    if had_error {
+                        Duration::from_millis(5000)
+                    } else {
+                        Duration::from_millis(200)
+                    },
+                );
             }
         }
     });
