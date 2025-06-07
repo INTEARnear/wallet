@@ -804,7 +804,10 @@ pub fn Swap() -> impl IntoView {
                 .iter()
                 .find(|t| t.token.account_id == current_token_in.token.account_id)
             {
-                if updated_token.balance != current_token_in.balance {
+                if updated_token.balance != current_token_in.balance
+                    || updated_token.token.price_usd_hardcoded
+                        != current_token_in.token.price_usd_hardcoded
+                {
                     set_token_in.set(Some(updated_token.clone()));
                 }
             }
