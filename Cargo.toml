@@ -65,7 +65,7 @@ shell-words = "1.1.0"
 deli = "0.2.0"
 zxcvbn = "3.1.0"
 bs58 = "0.5.1"
-solana-pubkey = "2.4.0"
+solana-pubkey = { version = "2.4.0", features = ["serde"] }
 solana-keypair = { version = "2.2.1", features = [] }
 solana-signer = "2.2.1"
 solana-signature = { version = "2.3.0", features = [

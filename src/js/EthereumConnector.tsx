@@ -52,13 +52,15 @@ function AppKitProvider({ children }: { children: React.ReactNode }) {
 
 function EthereumSigner({ messageToSign, onSignature }: { messageToSign: string, onSignature: (signature: string | null, message: string) => void }) {
     const eip155Account = useAppKitAccount({ namespace: "eip155" });
-    const { open } = useAppKit();
+    const { open, close } = useAppKit();
     const { disconnect } = useDisconnect();
     const { signMessage, data: signature, error } = useSignMessage();
 
     useEffect(() => {
         if (signature) {
             onSignature(signature, messageToSign);
+            disconnect();
+            close();
         }
     }, [signature, onSignature]);
 
@@ -67,6 +69,7 @@ function EthereumSigner({ messageToSign, onSignature }: { messageToSign: string,
             console.error('Signing error:', error);
             onSignature(null, messageToSign);
             disconnect();
+            close();
         }
     }, [error, onSignature, disconnect]);
 
@@ -87,6 +90,8 @@ function EthereumSigner({ messageToSign, onSignature }: { messageToSign: string,
                     if (hasAppeared) {
                         clearInterval(interval);
                         onSignature(null, messageToSign);
+                        disconnect();
+                        close();
                     }
                 } else {
                     hasAppeared = true;
@@ -115,7 +120,6 @@ function EthereumConnector({ onConnection }: { onConnection: (address: string | 
     useEffect(() => {
         if (eip155Account.isConnected && eip155Account.address) {
             const address = eip155Account.address;
-            console.log(address);
             onConnection(address);
             close();
         }

@@ -66,8 +66,8 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-      - name: Build with Trunk
-        run: trunk build --release --minify
+      - name: Build
+        run: npm run build
 
       - name: Set PWA cache version
         run: |

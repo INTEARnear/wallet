@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "@reown/appkit": "^1.7.7",
+    "@reown/appkit-adapter-solana": "^1.7.8",
     "@reown/appkit-adapter-wagmi": "^1.7.7",
     "@tailwindcss/cli": "4.1.8",
     "@tanstack/react-query": "^5.79.0",
@@ -17,7 +18,7 @@
   "scripts": {
     "js:build": "esbuild src/js/index.tsx --bundle --outdir=js-out --format=esm --splitting --minify",
     "js:watch": "esbuild src/js/index.tsx --bundle --outdir=js-out --format=esm --splitting --sourcemap --watch=forever",
-    "build": "npm run js:build && trunk build --release",
+    "build": "npm run js:build && trunk build --release --minify",
     "dev": "npm run js:watch & trunk serve"
   }
 }

@@ -8,7 +8,6 @@ use near_min_api::types::{
     near_crypto::{ED25519SecretKey, SecretKey},
     AccountId,
 };
-use serde::{Deserialize, Serialize};
 use slipped10::BIP32Path;
 
 use crate::components::account_creation_form::AccountCreationForm;
@@ -31,13 +30,6 @@ pub enum LoginMethod {
     SeedPhrase,
     EthereumWallet,
     SolanaWallet,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct EthereumWalletConnectionMessage {
-    #[serde(rename = "type")]
-    pub message_type: String,
-    pub address: Option<alloy_primitives::Address>,
 }
 
 pub const HD_PATH: &str = "m/44'/397'/0'";

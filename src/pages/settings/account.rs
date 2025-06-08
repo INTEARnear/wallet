@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{str::FromStr, time::Duration};
 
 use crate::contexts::{
     accounts_context::AccountsContext,
@@ -15,11 +15,11 @@ use leptos_use::{use_event_listener, use_window};
 use near_min_api::{
     types::{
         Action, CryptoHash, Finality, FunctionCallAction, GlobalContractIdentifier, NearGas,
-        UseGlobalContractAction,
+        NearToken, UseGlobalContractAction,
     },
     QueryFinality,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_wasm_bindgen;
 
 /// Sorted from newest to oldest
@@ -77,7 +77,7 @@ fn supports_feature(
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub enum RecoveryMethod {
     /// Recover with an EIP-712 signature. The `message` format is JSON string of [`EvmSignature`]
     Evm(EvmRecoveryMethod),
@@ -85,12 +85,12 @@ pub enum RecoveryMethod {
     Solana(SolanaRecoveryMethod),
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct EvmRecoveryMethod {
     pub recovery_wallet_address: alloy_primitives::Address,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct EvmSignature {
     pub signature: alloy_primitives::Signature,
     /// Example message: 'I want to sign in to alice.near with key ed25519:HbRkc1dTdSLwA1wFTDVNxJE4PCQVmpwwXwTzTGrqdhaP. The current date is 2025-01-01T00:00:00Z UTC'
@@ -98,7 +98,7 @@ pub struct EvmSignature {
     pub message: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct SolanaSignature {
     pub signature: solana_signature::Signature,
     /// Example message: 'I want to sign in to alice.near with key ed25519:HbRkc1dTdSLwA1wFTDVNxJE4PCQVmpwwXwTzTGrqdhaP. The current date is 2025-01-01T00:00:00Z UTC'
@@ -106,7 +106,7 @@ pub struct SolanaSignature {
     pub message: String,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct SolanaRecoveryMethod {
     #[serde(with = "pubkey_serde")]
     pub recovery_wallet_address: solana_pubkey::Pubkey,
@@ -146,12 +146,67 @@ struct UserRecoveryMethods {
     solana: Option<SolanaRecoveryMethod>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct EthereumWalletSignatureMessage {
-    #[serde(rename = "type")]
-    message_type: String,
-    signature: Option<String>,
+#[derive(Deserialize, Debug)]
+#[serde(tag = "type", rename_all = "kebab-case")]
+pub enum JsWalletMessage {
+    EthereumWalletSignature {
+        signature: Option<String>,
+        message: String,
+    },
+    SolanaWalletSignature {
+        signature: Option<solana_signature::Signature>,
+        message: String,
+        #[serde(deserialize_with = "solana_pubkey_from_string", default)]
+        address: Option<solana_pubkey::Pubkey>,
+    },
+    EthereumWalletConnection {
+        address: Option<alloy_primitives::Address>,
+    },
+    SolanaWalletConnection {
+        #[serde(deserialize_with = "solana_pubkey_from_string", default)]
+        address: Option<solana_pubkey::Pubkey>,
+    },
+}
+
+#[derive(Serialize, Debug)]
+#[serde(tag = "type", rename_all = "kebab-case")]
+pub enum JsWalletRequest {
+    RequestEthereumWalletConnection,
+    RequestSolanaWalletConnection,
+    #[serde(rename_all = "camelCase")]
+    RequestEthereumWalletSignature {
+        message_to_sign: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    RequestSolanaWalletSignature {
+        message_to_sign: String,
+    },
+}
+
+fn solana_pubkey_from_string<'de, D>(
+    deserializer: D,
+) -> Result<Option<solana_pubkey::Pubkey>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = Option::<String>::deserialize(deserializer)?;
+    match s {
+        Some(s) => Ok(Some(
+            solana_pubkey::Pubkey::from_str(&s).map_err(serde::de::Error::custom)?,
+        )),
+        None => Ok(None),
+    }
+}
+
+#[derive(Serialize)]
+struct AddRecoveryMethodArgs {
+    recovery_method: RecoveryMethod,
     message: String,
+}
+
+#[derive(Serialize)]
+struct SetRecoveryMethodsArgs {
+    recovery_methods: Vec<RecoveryMethod>,
 }
 
 #[component]
@@ -169,7 +224,7 @@ pub fn AccountSettings() -> impl IntoView {
     } = expect_context::<TransactionQueueContext>();
     let navigate = use_navigate();
 
-    let (recovery_in_progress, set_recovery_in_progress) = signal(false);
+    let (recovery_change_in_progress, set_recovery_change_in_progress) = signal(false);
 
     let format_ethereum_address =
         |address: &alloy_primitives::Address| -> String { format!("{address:#}") };
@@ -308,92 +363,184 @@ pub fn AccountSettings() -> impl IntoView {
         }
     });
 
-    // Message listener for Ethereum signature responses
+    // Message listener for wallet communication (from JS)
     let _ = use_event_listener(
         use_window(),
         leptos::ev::message,
         move |event: web_sys::MessageEvent| {
-            if let Ok(data) =
-                serde_wasm_bindgen::from_value::<EthereumWalletSignatureMessage>(event.data())
-            {
-                if data.message_type == "ethereum-wallet-signature" {
-                    let Some(signature) = data.signature else {
-                        set_recovery_in_progress(false);
-                        return;
-                    };
-                    let Ok(parsed_signature) = signature.parse::<alloy_primitives::Signature>()
-                    else {
-                        set_recovery_in_progress(false);
-                        return;
-                    };
-                    let evm_signature = EvmSignature {
-                        signature: parsed_signature,
-                        message: data.message.clone(),
-                    };
+            log::info!(
+                "Message: {:?}",
+                serde_json::to_string(
+                    &serde_wasm_bindgen::from_value::<serde_json::Value>(event.data()).unwrap()
+                )
+                .unwrap()
+            );
+            log::info!(
+                "Deserialization: {:?}",
+                serde_wasm_bindgen::from_value::<JsWalletMessage>(event.data())
+            );
 
-                    let Some(selected_account_id) = accounts.get_untracked().selected_account_id
-                    else {
-                        set_recovery_in_progress(false);
-                        return;
-                    };
-                    let Ok(recovery_wallet_address) =
-                        parsed_signature.recover_address_from_msg(data.message.as_bytes())
-                    else {
-                        log::error!("Failed to recover wallet address from signature");
-                        set_recovery_in_progress(false);
-                        return;
-                    };
-                    let recovery_method = RecoveryMethod::Evm(EvmRecoveryMethod {
-                        recovery_wallet_address,
-                    });
+            if let Ok(data) = serde_wasm_bindgen::from_value::<JsWalletMessage>(event.data()) {
+                match data {
+                    JsWalletMessage::EthereumWalletSignature { signature, message } => {
+                        let Some(signature) = signature else {
+                            set_recovery_change_in_progress(false);
+                            return;
+                        };
+                        let Ok(parsed_signature) = signature.parse::<alloy_primitives::Signature>()
+                        else {
+                            set_recovery_change_in_progress(false);
+                            return;
+                        };
+                        let evm_signature = EvmSignature {
+                            signature: parsed_signature,
+                            message: message.clone(),
+                        };
 
-                    let signature_json = serde_json::to_string(&evm_signature).unwrap();
+                        let Some(selected_account_id) =
+                            accounts.get_untracked().selected_account_id
+                        else {
+                            set_recovery_change_in_progress(false);
+                            return;
+                        };
+                        let Ok(recovery_wallet_address) =
+                            parsed_signature.recover_address_from_msg(message.as_bytes())
+                        else {
+                            log::error!("Failed to recover wallet address from signature");
+                            set_recovery_change_in_progress(false);
+                            return;
+                        };
+                        let recovery_method = RecoveryMethod::Evm(EvmRecoveryMethod {
+                            recovery_wallet_address,
+                        });
 
-                    let action = Action::FunctionCall(Box::new(FunctionCallAction {
-                        method_name: "ext1_add_recovery_method".to_string(),
-                        args: serde_json::json!({
-                            "recovery_method": recovery_method,
-                            "message": signature_json
-                        })
-                        .to_string()
-                        .into_bytes(),
-                        gas: NearGas::from_tgas(30).as_gas(),
-                        deposit: near_min_api::types::NearToken::from_yoctonear(0),
-                    }));
+                        let signature_json = serde_json::to_string(&evm_signature).unwrap();
 
-                    let (receiver, transaction) = EnqueuedTransaction::create(
-                        "Add Ethereum recovery method".to_string(),
-                        selected_account_id.clone(),
-                        selected_account_id.clone(),
-                        vec![action],
-                    );
+                        let action = Action::FunctionCall(Box::new(FunctionCallAction {
+                            method_name: "ext1_add_recovery_method".to_string(),
+                            args: serde_json::to_vec(&AddRecoveryMethodArgs {
+                                recovery_method: recovery_method.clone(),
+                                message: signature_json,
+                            })
+                            .unwrap(),
+                            gas: NearGas::from_tgas(30).as_gas(),
+                            deposit: NearToken::from_yoctonear(0),
+                        }));
 
-                    add_transaction.update(|queue| queue.push(transaction));
+                        let (receiver, transaction) = EnqueuedTransaction::create(
+                            "Add Ethereum recovery method".to_string(),
+                            selected_account_id.clone(),
+                            selected_account_id.clone(),
+                            vec![action],
+                        );
 
-                    spawn_local(async move {
-                        match receiver.await {
-                            Ok(Ok(_details)) => {
-                                log::info!("Successfully added recovery method");
-                                recovery_methods.refetch();
-                                set_recovery_in_progress(false);
-                                add_security_log(
-                                    format!(
-                                        "Added Ethereum recovery method: {:?}",
-                                        recovery_method
-                                    ),
-                                    selected_account_id.clone(),
-                                );
+                        add_transaction.update(|queue| queue.push(transaction));
+
+                        spawn_local(async move {
+                            match receiver.await {
+                                Ok(Ok(_details)) => {
+                                    log::info!("Successfully added Ethereum recovery method");
+                                    recovery_methods.refetch();
+                                    set_recovery_change_in_progress(false);
+                                    add_security_log(
+                                        format!(
+                                            "Added Ethereum recovery method: {:?}",
+                                            recovery_method
+                                        ),
+                                        selected_account_id.clone(),
+                                    );
+                                }
+                                Ok(Err(err)) => {
+                                    log::error!("Failed to add Ethereum recovery method: {}", err);
+                                    set_recovery_change_in_progress(false);
+                                }
+                                Err(_) => {
+                                    log::error!("Failed to receive transaction result");
+                                    set_recovery_change_in_progress(false);
+                                }
                             }
-                            Ok(Err(err)) => {
-                                log::error!("Failed to add recovery method: {}", err);
-                                set_recovery_in_progress(false);
+                        });
+                    }
+                    JsWalletMessage::SolanaWalletSignature {
+                        signature,
+                        message,
+                        address,
+                    } => {
+                        let Some(signature) = signature else {
+                            set_recovery_change_in_progress(false);
+                            return;
+                        };
+
+                        let solana_sig_struct = SolanaSignature {
+                            signature,
+                            message: message.clone(),
+                        };
+
+                        let Some(selected_account_id) =
+                            accounts.get_untracked().selected_account_id
+                        else {
+                            set_recovery_change_in_progress(false);
+                            return;
+                        };
+
+                        let Some(recovery_wallet_address) = address else {
+                            log::error!("No Solana address provided in signature message");
+                            set_recovery_change_in_progress(false);
+                            return;
+                        };
+
+                        let recovery_method = RecoveryMethod::Solana(SolanaRecoveryMethod {
+                            recovery_wallet_address,
+                        });
+
+                        let signature_json = serde_json::to_string(&solana_sig_struct).unwrap();
+
+                        let action = Action::FunctionCall(Box::new(FunctionCallAction {
+                            method_name: "ext1_add_recovery_method".to_string(),
+                            args: serde_json::to_vec(&AddRecoveryMethodArgs {
+                                recovery_method: recovery_method.clone(),
+                                message: signature_json,
+                            })
+                            .unwrap(),
+                            gas: NearGas::from_tgas(30).as_gas(),
+                            deposit: NearToken::from_yoctonear(0),
+                        }));
+
+                        let (receiver, transaction) = EnqueuedTransaction::create(
+                            "Add Solana recovery method".to_string(),
+                            selected_account_id.clone(),
+                            selected_account_id.clone(),
+                            vec![action],
+                        );
+
+                        add_transaction.update(|queue| queue.push(transaction));
+
+                        spawn_local(async move {
+                            match receiver.await {
+                                Ok(Ok(_details)) => {
+                                    log::info!("Successfully added Solana recovery method");
+                                    recovery_methods.refetch();
+                                    set_recovery_change_in_progress(false);
+                                    add_security_log(
+                                        format!(
+                                            "Added Solana recovery method: {:?}",
+                                            recovery_method
+                                        ),
+                                        selected_account_id.clone(),
+                                    );
+                                }
+                                Ok(Err(err)) => {
+                                    log::error!("Failed to add Solana recovery method: {}", err);
+                                    set_recovery_change_in_progress(false);
+                                }
+                                Err(_) => {
+                                    log::error!("Failed to receive transaction result");
+                                    set_recovery_change_in_progress(false);
+                                }
                             }
-                            Err(_) => {
-                                log::error!("Failed to receive transaction result");
-                                set_recovery_in_progress(false);
-                            }
-                        }
-                    });
+                        });
+                    }
+                    _ => {}
                 }
             }
         },
@@ -658,7 +805,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                                 method_name: "before_upgrade".to_string(),
                                                                                 args: serde_json::to_vec(&serde_json::json!({})).unwrap(),
                                                                                 gas: NearGas::from_tgas(5).as_gas(),
-                                                                                deposit: near_min_api::types::NearToken::from_yoctonear(0),
+                                                                                deposit: NearToken::from_yoctonear(0),
                                                                             }),
                                                                         );
                                                                         let use_global_contract = Action::UseGlobalContract(
@@ -673,7 +820,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                                 method_name: "after_upgrade".to_string(),
                                                                                 args: serde_json::to_vec(&serde_json::json!({})).unwrap(),
                                                                                 gas: NearGas::from_tgas(30).as_gas(),
-                                                                                deposit: near_min_api::types::NearToken::from_yoctonear(0),
+                                                                                deposit: NearToken::from_yoctonear(0),
                                                                             }),
                                                                         );
                                                                         let (receiver, transaction) = EnqueuedTransaction::create(
@@ -753,7 +900,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                 // Ethereum connection
                                                 <button
                                                     on:click=move |_| {
-                                                        if recovery_in_progress.get_untracked() {
+                                                        if recovery_change_in_progress.get_untracked() {
                                                             return;
                                                         }
                                                         if let Some(selected_account_id) = accounts
@@ -768,7 +915,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                 .map(|methods| methods.ethereum.is_some())
                                                                 .unwrap_or(false);
                                                             if has_ethereum {
-                                                                set_recovery_in_progress(true);
+                                                                set_recovery_change_in_progress(true);
                                                                 let rpc_client = rpc_context.client.get_untracked();
                                                                 spawn_local(async move {
                                                                     match rpc_client
@@ -788,15 +935,14 @@ pub fn AccountSettings() -> impl IntoView {
                                                                             let action = Action::FunctionCall(
                                                                                 Box::new(FunctionCallAction {
                                                                                     method_name: "ext1_set_recovery_methods".to_string(),
-                                                                                    args: serde_json::json!(
-                                                                                        {
-                                                                                            "recovery_methods": all_methods
-                                                                                        }
-                                                                                    )
-                                                                                        .to_string()
-                                                                                        .into_bytes(),
+                                                                                    args: serde_json::to_vec(
+                                                                                            &SetRecoveryMethodsArgs {
+                                                                                                recovery_methods: all_methods,
+                                                                                            },
+                                                                                        )
+                                                                                        .unwrap(),
                                                                                     gas: NearGas::from_tgas(30).as_gas(),
-                                                                                    deposit: near_min_api::types::NearToken::from_yoctonear(0),
+                                                                                    deposit: NearToken::from_yoctonear(0),
                                                                                 }),
                                                                             );
                                                                             let (receiver, transaction) = EnqueuedTransaction::create(
@@ -814,28 +960,28 @@ pub fn AccountSettings() -> impl IntoView {
                                                                                     );
                                                                                     log::info!("Successfully removed Ethereum recovery method");
                                                                                     recovery_methods.refetch();
-                                                                                    set_recovery_in_progress(false);
+                                                                                    set_recovery_change_in_progress(false);
                                                                                 }
                                                                                 Ok(Err(err)) => {
                                                                                     log::error!(
                                                                                         "Failed to remove Ethereum recovery method: {}", err
                                                                                     );
-                                                                                    set_recovery_in_progress(false);
+                                                                                    set_recovery_change_in_progress(false);
                                                                                 }
                                                                                 Err(_) => {
                                                                                     log::error!("Failed to receive transaction result");
-                                                                                    set_recovery_in_progress(false);
+                                                                                    set_recovery_change_in_progress(false);
                                                                                 }
                                                                             }
                                                                         }
                                                                         Err(err) => {
                                                                             log::error!("Failed to fetch recovery methods: {}", err);
-                                                                            set_recovery_in_progress(false);
+                                                                            set_recovery_change_in_progress(false);
                                                                         }
                                                                     }
                                                                 });
                                                             } else {
-                                                                set_recovery_in_progress(true);
+                                                                set_recovery_change_in_progress(true);
                                                                 if let Some(account) = accounts
                                                                     .get_untracked()
                                                                     .accounts
@@ -848,12 +994,9 @@ pub fn AccountSettings() -> impl IntoView {
                                                                         account.secret_key.public_key(),
                                                                         chrono::Utc::now().to_rfc3339(),
                                                                     );
-                                                                    let request = serde_json::json!(
-                                                                        {
-                                                                            "type": "request-ethereum-wallet-signature",
-                                                                            "messageToSign": message
-                                                                        }
-                                                                    );
+                                                                    let request = JsWalletRequest::RequestEthereumWalletSignature {
+                                                                        message_to_sign: message,
+                                                                    };
                                                                     if let Ok(js_value) = serde_wasm_bindgen::to_value(
                                                                         &request,
                                                                     ) {
@@ -863,18 +1006,18 @@ pub fn AccountSettings() -> impl IntoView {
                                                                             .unwrap_or_else(|_| "*".to_string());
                                                                         if window().post_message(&js_value, &origin).is_err() {
                                                                             log::error!("Failed to send signature request");
-                                                                            set_recovery_in_progress(false);
+                                                                            set_recovery_change_in_progress(false);
                                                                         }
                                                                     } else {
                                                                         log::error!("Failed to serialize signature request");
-                                                                        set_recovery_in_progress(false);
+                                                                        set_recovery_change_in_progress(false);
                                                                     }
                                                                 }
                                                             }
                                                         }
                                                     }
                                                     class=move || {
-                                                        let in_progress = recovery_in_progress.get();
+                                                        let in_progress = recovery_change_in_progress.get();
                                                         format!(
                                                             "flex flex-col items-center gap-3 p-4 rounded-lg bg-neutral-900 transition-colors {}",
                                                             if in_progress {
@@ -912,7 +1055,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                 .and_then(|result| result.as_ref().ok())
                                                                 .map(|methods| methods.ethereum.is_some())
                                                                 .unwrap_or(false);
-                                                            let in_progress = recovery_in_progress.get();
+                                                            let in_progress = recovery_change_in_progress.get();
                                                             format!(
                                                                 "text-xs {}",
                                                                 if in_progress {
@@ -931,7 +1074,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                     .and_then(|result| result.as_ref().ok())
                                                                     .map(|methods| methods.ethereum.is_some())
                                                                     .unwrap_or(false);
-                                                                let in_progress = recovery_in_progress.get();
+                                                                let in_progress = recovery_change_in_progress.get();
                                                                 if in_progress {
                                                                     "Loading...".to_string()
                                                                 } else if has_ethereum {
@@ -958,16 +1101,126 @@ pub fn AccountSettings() -> impl IntoView {
                                                 // Solana connection
                                                 <button
                                                     on:click=move |_| {
-                                                        if recovery_in_progress.get_untracked() {
+                                                        if recovery_change_in_progress.get_untracked() {
                                                             return;
                                                         }
-                                                        web_sys::window()
-                                                            .unwrap()
-                                                            .alert_with_message("Coming soon!")
-                                                            .unwrap();
+                                                        if let Some(selected_account_id) = accounts
+                                                            .get_untracked()
+                                                            .selected_account_id
+                                                        {
+                                                            let current_methods_result = recovery_methods
+                                                                .get_untracked();
+                                                            let has_solana = current_methods_result
+                                                                .as_ref()
+                                                                .and_then(|result| result.as_ref().ok())
+                                                                .map(|methods| methods.solana.is_some())
+                                                                .unwrap_or(false);
+                                                            if has_solana {
+                                                                set_recovery_change_in_progress(true);
+                                                                let rpc_client = rpc_context.client.get_untracked();
+                                                                spawn_local(async move {
+                                                                    match rpc_client
+                                                                        .call::<
+                                                                            Vec<RecoveryMethod>,
+                                                                        >(
+                                                                            selected_account_id.clone(),
+                                                                            "ext1_get_recovery_methods",
+                                                                            serde_json::json!({}),
+                                                                            QueryFinality::Finality(Finality::DoomSlug),
+                                                                        )
+                                                                        .await
+                                                                    {
+                                                                        Ok(mut all_methods) => {
+                                                                            all_methods
+                                                                                .retain(|method| {
+                                                                                    !matches!(method, RecoveryMethod::Solana(_))
+                                                                                });
+                                                                            let action = Action::FunctionCall(
+                                                                                Box::new(FunctionCallAction {
+                                                                                    method_name: "ext1_set_recovery_methods".to_string(),
+                                                                                    args: serde_json::to_vec(
+                                                                                            &SetRecoveryMethodsArgs {
+                                                                                                recovery_methods: all_methods,
+                                                                                            },
+                                                                                        )
+                                                                                        .unwrap(),
+                                                                                    gas: NearGas::from_tgas(30).as_gas(),
+                                                                                    deposit: NearToken::from_yoctonear(0),
+                                                                                }),
+                                                                            );
+                                                                            let (receiver, transaction) = EnqueuedTransaction::create(
+                                                                                "Remove Solana recovery method".to_string(),
+                                                                                selected_account_id.clone(),
+                                                                                selected_account_id.clone(),
+                                                                                vec![action],
+                                                                            );
+                                                                            add_transaction.update(|queue| queue.push(transaction));
+                                                                            match receiver.await {
+                                                                                Ok(Ok(_details)) => {
+                                                                                    add_security_log(
+                                                                                        "Removed Solana recovery method".to_string(),
+                                                                                        selected_account_id.clone(),
+                                                                                    );
+                                                                                    log::info!("Successfully removed Solana recovery method");
+                                                                                    recovery_methods.refetch();
+                                                                                    set_recovery_change_in_progress(false);
+                                                                                }
+                                                                                Ok(Err(err)) => {
+                                                                                    log::error!(
+                                                                                        "Failed to remove Solana recovery method: {}", err
+                                                                                    );
+                                                                                    set_recovery_change_in_progress(false);
+                                                                                }
+                                                                                Err(_) => {
+                                                                                    log::error!("Failed to receive transaction result");
+                                                                                    set_recovery_change_in_progress(false);
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                        Err(err) => {
+                                                                            log::error!("Failed to fetch recovery methods: {}", err);
+                                                                            set_recovery_change_in_progress(false);
+                                                                        }
+                                                                    }
+                                                                });
+                                                            } else {
+                                                                set_recovery_change_in_progress(true);
+                                                                if let Some(account) = accounts
+                                                                    .get_untracked()
+                                                                    .accounts
+                                                                    .iter()
+                                                                    .find(|acc| acc.account_id == selected_account_id)
+                                                                {
+                                                                    let message = format!(
+                                                                        "I want to sign in to {} with key {}. The current date is {} UTC",
+                                                                        selected_account_id,
+                                                                        account.secret_key.public_key(),
+                                                                        chrono::Utc::now().to_rfc3339(),
+                                                                    );
+                                                                    let request = JsWalletRequest::RequestSolanaWalletSignature {
+                                                                        message_to_sign: message,
+                                                                    };
+                                                                    if let Ok(js_value) = serde_wasm_bindgen::to_value(
+                                                                        &request,
+                                                                    ) {
+                                                                        let origin = window()
+                                                                            .location()
+                                                                            .origin()
+                                                                            .unwrap_or_else(|_| "*".to_string());
+                                                                        if window().post_message(&js_value, &origin).is_err() {
+                                                                            log::error!("Failed to send Solana signature request");
+                                                                            set_recovery_change_in_progress(false);
+                                                                        }
+                                                                    } else {
+                                                                        log::error!("Failed to serialize Solana signature request");
+                                                                        set_recovery_change_in_progress(false);
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
                                                     }
                                                     class=move || {
-                                                        let in_progress = recovery_in_progress.get();
+                                                        let in_progress = recovery_change_in_progress.get();
                                                         format!(
                                                             "flex flex-col items-center gap-3 p-4 rounded-lg bg-neutral-900 transition-colors {}",
                                                             if in_progress {
@@ -1005,7 +1258,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                 .and_then(|result| result.as_ref().ok())
                                                                 .map(|methods| methods.solana.is_some())
                                                                 .unwrap_or(false);
-                                                            let in_progress = recovery_in_progress.get();
+                                                            let in_progress = recovery_change_in_progress.get();
                                                             format!(
                                                                 "text-xs {}",
                                                                 if in_progress {
@@ -1024,7 +1277,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                     .and_then(|result| result.as_ref().ok())
                                                                     .map(|methods| methods.solana.is_some())
                                                                     .unwrap_or(false);
-                                                                let in_progress = recovery_in_progress.get();
+                                                                let in_progress = recovery_change_in_progress.get();
                                                                 if in_progress {
                                                                     "Loading...".to_string()
                                                                 } else if has_solana {

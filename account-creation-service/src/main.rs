@@ -6,7 +6,6 @@ use axum::{
     routing::post,
     Router,
 };
-use chrono::{DateTime, Utc};
 use dotenv::dotenv;
 use near_min_api::{
     types::{
@@ -36,12 +35,18 @@ struct CreateAccountResponse {
 }
 
 #[derive(Debug, Deserialize)]
-struct RecoverAccountRequest {
-    account_id: AccountId,
-    public_key: PublicKey,
-    ethereum_signature: Signature,
-    message: String,
-    timestamp: DateTime<Utc>,
+#[serde(tag = "type", rename_all = "kebab-case")]
+enum RecoverAccountRequest {
+    EthereumSignature {
+        account_id: AccountId,
+        ethereum_signature: Signature,
+        message: String,
+    },
+    SolanaSignature {
+        account_id: AccountId,
+        solana_signature: solana_signature::Signature,
+        message: String,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -251,8 +256,8 @@ async fn create_account(
     let create_account_action = Action::FunctionCall(Box::new(FunctionCallAction {
         method_name: "create_account".to_string(),
         args: serde_json::to_vec(&serde_json::json!({
-            "new_account_id": payload.account_id,
-            "new_public_key": payload.public_key,
+            "new_account_id": payload.account_id.clone(),
+            "new_public_key": payload.public_key.clone(),
         }))
         .unwrap(),
         deposit: actual_deposit,
@@ -351,49 +356,38 @@ async fn recover_account(
     State(state): State<AppState>,
     Json(payload): Json<RecoverAccountRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    tracing::info!(
-        "Received account recovery request for {}",
-        payload.account_id
-    );
-
-    let now = Utc::now();
-    let time_diff = (now - payload.timestamp).num_seconds();
-    if time_diff < 0 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Signature timestamp cannot be in the future".to_string(),
-        ));
-    }
-    if time_diff > 300 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Signature timestamp is too old".to_string(),
-        ));
-    }
-
-    let recovered_address = payload
-        .ethereum_signature
-        .recover_address_from_msg(&payload.message)
-        .map_err(|e| {
-            tracing::error!("Failed to recover address from signature: {}", e);
-            (StatusCode::BAD_REQUEST, "Invalid signature".to_string())
-        })?;
-
-    tracing::info!("Recovering with Ethereum address: {:#}", recovered_address);
-
-    let expected_message = format!(
-        "I want to sign in to {} with key {}. The current date is {} UTC",
-        payload.account_id,
-        payload.public_key,
-        payload.timestamp.to_rfc3339()
-    );
-
-    if payload.message != expected_message {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Message format is invalid".to_string(),
-        ));
-    }
+    let (account_id, signature_data, message) = match payload {
+        RecoverAccountRequest::EthereumSignature {
+            account_id,
+            ethereum_signature,
+            message,
+        } => {
+            tracing::info!(
+                "Received Ethereum account recovery request for {}",
+                account_id
+            );
+            (
+                account_id,
+                serde_json::to_value(ethereum_signature).unwrap(),
+                message,
+            )
+        }
+        RecoverAccountRequest::SolanaSignature {
+            account_id,
+            solana_signature,
+            message,
+        } => {
+            tracing::info!(
+                "Received Solana account recovery request for {}",
+                account_id
+            );
+            (
+                account_id,
+                serde_json::to_value(solana_signature).unwrap(),
+                message,
+            )
+        }
+    };
 
     let (relayer_key, queue) = loop {
         let key = state
@@ -428,8 +422,8 @@ async fn recover_account(
         method_name: "ext1_recover".to_string(),
         args: serde_json::to_vec(&serde_json::json!({
             "message": serde_json::to_string(&serde_json::json!({
-                "signature": payload.ethereum_signature,
-                "message": payload.message
+                "signature": signature_data,
+                "message": message,
             })).unwrap(),
         }))
         .unwrap(),
@@ -441,7 +435,7 @@ async fn recover_account(
         signer_id: state.relayer_id.clone(),
         public_key: relayer_key.public_key(),
         nonce: access_key.nonce + 1,
-        receiver_id: payload.account_id.clone(),
+        receiver_id: account_id.clone(),
         block_hash: state
             .rpc_client
             .fetch_recent_block_hash()
@@ -484,7 +478,7 @@ async fn recover_account(
             if let Some(outcome) = tx.final_execution_outcome {
                 match outcome.status {
                     FinalExecutionStatus::SuccessValue(_) => {
-                        tracing::info!("Successfully recovered account for {}", payload.account_id);
+                        tracing::info!("Successfully recovered account for {}", account_id);
                         Ok(Json(RecoverAccountResponse {
                             success: true,
                             message: format!(
