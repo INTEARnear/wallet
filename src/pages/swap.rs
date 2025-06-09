@@ -1015,10 +1015,31 @@ pub fn Swap() -> impl IntoView {
                 if let Some(swap_request) =
                     create_swap_request(token_in, token_out, validated_amount, current_mode)
                 {
-                    get_routes_action.dispatch((swap_request.clone(), WaitMode::Fast));
-                    set_routes_action_handle.set(Some(
-                        get_routes_action.dispatch((swap_request, WaitMode::Extended)),
+                    // Request 1: Fast, skip intents. When skipping intents,
+                    // usually the best quote is found in less than 1.5 seconds.
+                    get_routes_action.dispatch((
+                        swap_request.clone(),
+                        WaitMode::Fast {
+                            skip_intents: true,
+                            duration: Duration::from_millis(1500),
+                        },
                     ));
+                    // Request 2: Fast, include intents. When including intents,
+                    // usually takes nearly 1.5 seconds.
+                    get_routes_action.dispatch((
+                        swap_request.clone(),
+                        WaitMode::Fast {
+                            skip_intents: false,
+                            duration: Duration::from_millis(1500),
+                        },
+                    ));
+                    // Request 3: Full, include intents. Takes nearly 3 seconds.
+                    set_routes_action_handle.set(Some(get_routes_action.dispatch((
+                        swap_request,
+                        WaitMode::Full {
+                            duration: Duration::from_millis(3000),
+                        },
+                    ))));
                 }
             }
         }
@@ -1104,9 +1125,12 @@ pub fn Swap() -> impl IntoView {
                         swap_mode_memo.get_untracked(),
                     ) {
                         set_last_dispatched_at.set(Some(Utc::now()));
-                        set_routes_action_handle.set(Some(
-                            get_routes_action.dispatch((swap_request, WaitMode::Extended)),
-                        ));
+                        set_routes_action_handle.set(Some(get_routes_action.dispatch((
+                            swap_request,
+                            WaitMode::Full {
+                                duration: Duration::from_millis(3000),
+                            },
+                        ))));
                     }
                 }
             },
@@ -1552,7 +1576,7 @@ pub fn Swap() -> impl IntoView {
                                                 }
                                                 DexId::Veax => {
                                                     view! {
-                                                        <img src="/veax.svg" alt="Veax" class="w-auto h-8" />
+                                                        <img src="/veax.svg" alt="Veax" class="w-auto h-5" />
                                                     }
                                                         .into_any()
                                                 }
@@ -1598,7 +1622,7 @@ pub fn Swap() -> impl IntoView {
                                         </div>
                                     }
                                         .into_any()
-                                } else if routes.wait_mode == WaitMode::Fast {
+                                } else if matches!(routes.wait_mode, WaitMode::Fast { .. }) {
                                     view! {
                                         <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-center gap-3 w-full min-h-[56px]">
                                             <span class="text-white font-medium text-sm">
@@ -1720,7 +1744,7 @@ pub fn Swap() -> impl IntoView {
                                         .and_then(|routes| routes.ok())
                                         .map(|routes| {
                                             routes.routes.is_empty()
-                                                && routes.wait_mode == WaitMode::Fast
+                                                && matches!(routes.wait_mode, WaitMode::Fast { .. })
                                         })
                                         .unwrap_or(false)
                                 {
@@ -2066,35 +2090,41 @@ async fn get_ft_balance(
     }
 }
 
-const FAST_WAIT_MS: u64 = 1500;
-const EXTENDED_WAIT_MS: u64 = 2500;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WaitMode {
-    /// Up to 1.5s for fast fetch, don't use intents
-    Fast,
-    /// 2.5s for slow intents, wait for better quote
-    Extended,
+    /// Fast fetch, don't use intents
+    Fast {
+        skip_intents: bool,
+        duration: Duration,
+    },
+    /// Include slow dexes like near intents, wait for better quote
+    Full { duration: Duration },
 }
 
 async fn get_routes(swap_request: SwapRequest, wait_mode: WaitMode) -> Result<Routes, String> {
     let swap_request = SwapRequest {
         max_wait_ms: match wait_mode {
-            WaitMode::Fast => FAST_WAIT_MS,
-            WaitMode::Extended => EXTENDED_WAIT_MS,
+            WaitMode::Fast { duration, .. } => duration.as_millis() as u64,
+            WaitMode::Full { duration } => duration.as_millis() as u64,
         },
         dexes: match wait_mode {
-            WaitMode::Fast => Some(vec![
-                DexId::Rhea,
-                // Skipping NearIntents as it's slow
-                DexId::Veax,
-                DexId::Aidols,
-                DexId::GraFun,
-                DexId::Jumpdefi,
-                DexId::Wrap,
-                DexId::RheaDcl,
-            ]),
-            WaitMode::Extended => None,
+            WaitMode::Fast { skip_intents, .. } => {
+                if skip_intents {
+                    Some(vec![
+                        DexId::Rhea,
+                        // Skipping NearIntents as it's slow
+                        DexId::Veax,
+                        DexId::Aidols,
+                        DexId::GraFun,
+                        DexId::Jumpdefi,
+                        DexId::Wrap,
+                        DexId::RheaDcl,
+                    ])
+                } else {
+                    None
+                }
+            }
+            WaitMode::Full { .. } => None,
         },
         ..swap_request
     };
@@ -2365,7 +2395,7 @@ pub enum DexId {
     /// https://dex.rhea.finance/
     /// AMM DEX
     ///
-    /// Supports both AmountIn and AmountOut
+    /// Supports AmountIn, doesn't support AmountOut
     RheaDcl,
 }
 
