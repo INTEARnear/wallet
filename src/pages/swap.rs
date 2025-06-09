@@ -1566,11 +1566,16 @@ pub fn Swap() -> impl IntoView {
                                                     }
                                                         .into_any()
                                                 }
-                                                #[allow(unreachable_patterns)]
-                                                _ => {
+                                                DexId::RheaDcl => {
+                                                    view! {
+                                                        <img src="/rhea.svg" alt="Rhea" class="w-auto h-8" />
+                                                    }
+                                                        .into_any()
+                                                }
+                                                DexId::Wrap => {
                                                     view! {
                                                         <span class="text-white font-medium text-sm">
-                                                            {format!("{:?}", best_route.dex_id)}
+                                                            "Wrap Directly"
                                                         </span>
                                                     }
                                                         .into_any()
@@ -1993,7 +1998,7 @@ async fn execute_route(
                                 vec![Action::FunctionCall(Box::new(FunctionCallAction {
                                     method_name: "near_withdraw".to_string(),
                                     args: serde_json::to_vec(&serde_json::json!({
-                                        "amount": difference,
+                                        "amount": difference.to_string(),
                                     }))
                                     .unwrap(),
                                     gas: NearGas::from_tgas(5).as_gas(),
@@ -2087,17 +2092,14 @@ async fn get_routes(swap_request: SwapRequest, wait_mode: WaitMode) -> Result<Ro
                 DexId::GraFun,
                 DexId::Jumpdefi,
                 DexId::Wrap,
+                DexId::RheaDcl,
             ]),
             WaitMode::Extended => None,
         },
         ..swap_request
     };
     let routes = reqwest::Client::new()
-        .get(format!(
-            "{}/route",
-            std::env::var("ROUTER_URL")
-                .unwrap_or_else(|_| "https://router.intear.tech".to_string())
-        ))
+        .get(format!("{}/route", dotenvy_macro::dotenv!("ROUTER_URL")))
         .query(&swap_request)
         .send()
         .await
@@ -2325,7 +2327,6 @@ pub enum ExecutionInstruction {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
 pub enum DexId {
     /// https://dex.rhea.finance/
     /// AMM DEX
@@ -2361,6 +2362,11 @@ pub enum DexId {
     ///
     /// Supports both AmountIn and AmountOut
     Wrap,
+    /// https://dex.rhea.finance/
+    /// AMM DEX
+    ///
+    /// Supports both AmountIn and AmountOut
+    RheaDcl,
 }
 
 const RHEA_STR: &str = "Rhea";
@@ -2370,6 +2376,7 @@ const AIDOLS_STR: &str = "Aidols";
 const GRA_FUN_STR: &str = "GraFun";
 const JUMPDEFI_STR: &str = "Jumpdefi";
 const WRAP_STR: &str = "Wrap";
+const RHEA_DCL_STR: &str = "RheaDcl";
 
 impl Display for DexId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -2381,6 +2388,7 @@ impl Display for DexId {
             DexId::GraFun => f.write_str(GRA_FUN_STR),
             DexId::Jumpdefi => f.write_str(JUMPDEFI_STR),
             DexId::Wrap => f.write_str(WRAP_STR),
+            DexId::RheaDcl => f.write_str(RHEA_DCL_STR),
         }
     }
 }
@@ -2397,6 +2405,7 @@ impl FromStr for DexId {
             GRA_FUN_STR => DexId::GraFun,
             JUMPDEFI_STR => DexId::Jumpdefi,
             WRAP_STR => DexId::Wrap,
+            RHEA_DCL_STR => DexId::RheaDcl,
             _ => return Err(format!("Invalid dex id: {}", s)),
         })
     }

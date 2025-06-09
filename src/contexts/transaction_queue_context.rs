@@ -574,6 +574,7 @@ pub fn provide_transaction_queue_context() {
                         q[tx_current_index].stage =
                             TransactionStage::Failed("Account not found".into())
                     });
+                    set_is_processing.set(false);
                     return;
                 };
 
@@ -598,7 +599,6 @@ pub fn provide_transaction_queue_context() {
                                 }
                                 transaction.details_tx.expect("Transaction details sender should have been taken by this task").send(Err(error.clone())).ok();
                             });
-                            set_is_processing.set(false);
                             set_current_index.update(|i| *i += 1);
                             Delay::new(Duration::from_secs(5)).await;
                             set_queue.update(|q| {
@@ -607,6 +607,7 @@ pub fn provide_transaction_queue_context() {
                                 set_current_index
                                     .update(|i| *i = i.saturating_sub(prev_len - q.len()));
                             });
+                            set_is_processing.set(false);
                             return;
                         }
                     };
@@ -683,6 +684,7 @@ pub fn provide_transaction_queue_context() {
                             move || {
                                 if queue.read_untracked().len() == tx_current_index + 1 {
                                     set_queue.update(|q| {
+                                        log::info!("Clearing queue: reached end of queue");
                                         q.clear();
                                     });
                                     set_current_index.set(0);
@@ -701,10 +703,11 @@ pub fn provide_transaction_queue_context() {
                     .unwrap_or(false);
                 set_timeout(
                     move || {
-                        if queue.read_untracked().len() <= current_index.get_untracked() + 1
+                        if queue.read_untracked().len() < current_index.get_untracked() + 1
                             && !queue.read_untracked().is_empty()
                         {
                             set_queue.update(|q| {
+                                log::info!("Clearing queue: next transaction was not found");
                                 q.clear();
                             });
                             set_current_index.set(0);
