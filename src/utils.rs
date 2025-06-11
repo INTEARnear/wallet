@@ -147,7 +147,6 @@ pub fn format_duration(duration: Duration) -> String {
 
 pub fn format_account_id(account_id: &AccountIdRef) -> AnyView {
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
-    let account_id2 = account_id.to_owned();
     if let Some(selected_account) = accounts().selected_account_id {
         if selected_account == *account_id {
             let ConfigContext { config, .. } = expect_context::<ConfigContext>();
@@ -156,29 +155,10 @@ pub fn format_account_id(account_id: &AccountIdRef) -> AnyView {
             }
         }
     }
-    let badge = LocalResource::new(move || get_user_badge(account_id2.clone()));
-    view! {
-        <span class="items-center gap-1 inline-flex">
-            {move || {
-                badge
-                    .read()
-                    .as_ref()
-                    .and_then(|badge| badge.as_ref().map(|get_badge| (get_badge)()))
-                    .map(|badge| badge.into_any())
-            }} <span>{account_id.to_string()}</span>
-        </span>
-    }
-    .into_any()
+    format_account_id_no_hide(account_id)
 }
 
 pub fn format_account_id_no_hide(account_id: &AccountIdRef) -> AnyView {
-    let account_id_str = if account_id.len() > 24 {
-        let first = &account_id.as_str()[..8];
-        let last = &account_id.as_str()[account_id.len() - 8..];
-        format!("{first}...{last}")
-    } else {
-        account_id.to_string()
-    };
     let account_id2 = account_id.to_owned();
     let badge = LocalResource::new(move || get_user_badge(account_id2.clone()));
     view! {
@@ -189,7 +169,7 @@ pub fn format_account_id_no_hide(account_id: &AccountIdRef) -> AnyView {
                     .as_ref()
                     .and_then(|badge| badge.as_ref().map(|get_badge| (get_badge)()))
                     .map(|badge| badge.into_any())
-            }} <span>{account_id_str}</span>
+            }} <span class="truncate max-w-60">{account_id.to_string()}</span>
         </span>
     }
     .into_any()

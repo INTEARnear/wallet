@@ -262,7 +262,7 @@ pub fn AccountSelector(
                                                                     if account_id_str.len() > 24 {
                                                                         let first = &account_id_str[..8];
                                                                         let last = &account_id_str[account_id_str.len() - 8..];
-                                                                        format!("{first}...{last}")
+                                                                        format!("{first}…{last}")
                                                                     } else {
                                                                         account_id_str.clone()
                                                                     }

@@ -183,18 +183,7 @@ fn TokenSelector(
                                     }}
                                 </div>
                                 <span class="text-white font-bold truncate">
-                                    {if token.token.metadata.symbol.len() >= 10 {
-                                        format!(
-                                            "{}…{}",
-                                            &token.token.metadata.symbol[..4],
-                                            &token
-                                                .token
-                                                .metadata
-                                                .symbol[token.token.metadata.symbol.len() - 4..],
-                                        )
-                                    } else {
-                                        token.token.metadata.symbol
-                                    }}
+                                    {token.token.metadata.symbol}
                                 </span>
                             </div>
                             <Icon
