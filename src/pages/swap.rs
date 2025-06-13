@@ -1928,7 +1928,6 @@ async fn execute_route(
             ExecutionInstruction::NearTransaction {
                 receiver_id,
                 actions,
-                continue_if_failed: _,
             } => {
                 let (rx, pending_tx) = EnqueuedTransaction::create(
                     format!(
@@ -1986,16 +1985,7 @@ async fn execute_route(
         return;
     };
 
-    let final_balance_futures = vec![
-        get_ft_balance(&account.account_id, token_in.account_id.clone(), &rpc),
-        get_ft_balance(&account.account_id, token_out.account_id.clone(), &rpc),
-        get_ft_balance(&account.account_id, wrap_near_id, &rpc),
-    ];
-
-    let final_balances = futures_util::future::join_all(final_balance_futures).await;
-    let final_token_in_balance = final_balances[0];
-    let final_token_out_balance = final_balances[1];
-    let final_wrap_balance = final_balances[2];
+    let final_wrap_balance = get_ft_balance(&account.account_id, wrap_near_id, &rpc).await;
 
     if let Some(wrap_near_balance) = initial_wrap_balance {
         if let Some(new_wrap_near_balance) = final_wrap_balance {
@@ -2024,6 +2014,14 @@ async fn execute_route(
             }
         }
     }
+
+    let final_balance_futures = vec![
+        get_ft_balance(&account.account_id, token_in.account_id.clone(), &rpc),
+        get_ft_balance(&account.account_id, token_out.account_id.clone(), &rpc),
+    ];
+    let final_balances = futures_util::future::join_all(final_balance_futures).await;
+    let final_token_in_balance = final_balances[0];
+    let final_token_out_balance = final_balances[1];
 
     let amount_spent = if let (Some(initial), Some(final_balance)) =
         (initial_token_in_balance, final_token_in_balance)
@@ -2330,9 +2328,6 @@ pub enum ExecutionInstruction {
     NearTransaction {
         receiver_id: AccountId,
         actions: Vec<Action>,
-        /// Some .omft.near tokens don't implement `storage_deposit` method and
-        /// fail
-        continue_if_failed: bool,
     },
     /// A quote from Near Intents. You should sign the message and send it to
     /// POST https://solver-relay-v2.chaindefuser.com/rpc with method
