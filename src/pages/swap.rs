@@ -1860,10 +1860,28 @@ pub fn Swap() -> impl IntoView {
                                                     }
                                                 }
                                             } else {
-                                                ().into_any()
+                                                view! {
+                                                    <div>
+                                                        <div class="text-gray-400 text-xs mb-1">
+                                                            "Minimum Received"
+                                                        </div>
+                                                        <div class="text-white text-sm">
+                                                            "-"
+                                                        </div>
+                                                    </div>
+                                                }.into_any()
                                             }
                                         } else {
-                                            ().into_any()
+                                            view! {
+                                                <div>
+                                                    <div class="text-gray-400 text-xs mb-1">
+                                                        "Minimum Received"
+                                                    </div>
+                                                    <div class="text-white text-sm">
+                                                        "-"
+                                                    </div>
+                                                </div>
+                                            }.into_any()
                                         }
                                     }} // DEX Selection
                                     <div>
