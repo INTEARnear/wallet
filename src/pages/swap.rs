@@ -1895,7 +1895,7 @@ pub fn Swap() -> impl IntoView {
                                                     DexId::Veax,
                                                     DexId::Aidols,
                                                     DexId::GraFun,
-                                                    DexId::Jumpdefi,
+                                                    // DexId::Jumpdefi,
                                                     DexId::Wrap,
                                                 ];
                                                 all_dexes
