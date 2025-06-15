@@ -292,7 +292,7 @@ impl TransactionType {
                                                                 InvalidTxError::InvalidSignature =>
                                                                     "Invalid transaction signature".to_string(),
                                                                 InvalidTxError::NotEnoughBalance { signer_id, balance, cost } =>
-                                                                    format!("Not enough balance: {signer_id} has {balance} but needs {cost}{is_difference_small}", is_difference_small = if balance.saturating_sub(cost) < NearToken::from_millinear(1) { " (difference is less than 0.001 NEAR)" } else { "" }),
+                                                                    format!("Not enough balance: {signer_id} has {balance} but needs {cost}{is_difference_small}", is_difference_small = if cost.checked_sub(balance).expect("Invalid NotEnoughBalance error received from RPC, unable to display the error") < NearToken::from_millinear(1) { " (difference is less than 0.001 NEAR)" } else { "" }),
                                                                 InvalidTxError::LackBalanceForState { signer_id, amount } =>
                                                                     format!("Account {signer_id} needs {amount} more to cover state"),
                                                                 InvalidTxError::CostOverflow =>
