@@ -24,7 +24,7 @@ pub use send::SendToken;
 pub use send_transactions::SendTransactions;
 pub use settings::Settings;
 pub use sign_message::SignMessage;
-pub use swap::{Slippage, Swap};
+pub use swap::{DexId, Slippage, Swap};
 pub use token::TokenDetails;
 pub use unwrap::UnwrapToken;
 pub use wrap::WrapToken;

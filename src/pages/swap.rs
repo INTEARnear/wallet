@@ -650,6 +650,19 @@ pub fn Swap() -> impl IntoView {
         });
 
     let (swap_modal_state, set_swap_modal_state) = signal(SwapModalState::None);
+    let (show_advanced_options, set_show_advanced_options) = signal(false);
+
+    // DEX selection state - all enabled by default
+    let (selected_dexes, set_selected_dexes) = signal(vec![
+        DexId::Rhea,
+        DexId::NearIntents,
+        DexId::Veax,
+        DexId::Aidols,
+        DexId::GraFun,
+        DexId::Jumpdefi,
+        DexId::Wrap,
+        DexId::RheaDcl,
+    ]);
 
     Effect::new(move |_| {
         let tokens_list = tokens.get();
@@ -987,7 +1000,7 @@ pub fn Swap() -> impl IntoView {
             amount,
             max_wait_ms: 0, // will be set by WaitMode
             slippage: config.get().slippage,
-            dexes: None, // will be set by WaitMode
+            dexes: Some(selected_dexes.get()), // Use selected DEXes
             trader_account_id: Some(current_account.account_id),
             signing_public_key: Some(current_account.secret_key.public_key()),
         })
@@ -1750,6 +1763,166 @@ pub fn Swap() -> impl IntoView {
                             }}
                         </button>
 
+                        // Advanced Options Section
+                        <div>
+                            <button
+                                class="w-full flex items-center justify-end gap-1 text-left cursor-pointer transition-colors"
+                                on:click=move |_| {
+                                    set_show_advanced_options.set(!show_advanced_options.get())
+                                }
+                            >
+                                <span class="text-gray-400 text-sm hover:text-gray-300">
+                                    "Advanced Options"
+                                </span>
+                                <Icon
+                                    icon=icondata::LuChevronDown
+                                    width="16"
+                                    height="16"
+                                    attr:class="text-gray-400 transition-transform"
+                                    attr:style=move || {
+                                        format!(
+                                            "transform: rotate({}deg);",
+                                            if show_advanced_options.get() { 180 } else { 0 },
+                                        )
+                                    }
+                                />
+                            </button>
+
+                            <Show when=move || show_advanced_options.get()>
+                                <div class="bg-neutral-800 rounded-lg p-4 space-y-4 mt-2">
+                                    // Minimum received / Maximum spent section
+                                    {move || {
+                                        if let Some(Ok(routes)) = get_routes_action.value().get() {
+                                            if let Some(best_route) = routes.routes.first() {
+                                                let current_mode = swap_mode_memo.get();
+                                                match best_route.worst_case_amount {
+                                                    Amount::AmountIn(amount) => {
+                                                        if let (Some(token_in), SwapMode::ExactOut) = (
+                                                            token_in.get(),
+                                                            current_mode,
+                                                        ) {
+                                                            let formatted_amount = balance_to_decimal(
+                                                                amount,
+                                                                token_in.token.metadata.decimals,
+                                                            );
+                                                            let formatted_amount = round_precision_or_significant(
+                                                                formatted_amount,
+                                                            );
+                                                            view! {
+                                                                <div>
+                                                                    <div class="text-gray-400 text-xs mb-1">
+                                                                        "Maximum Spent"
+                                                                    </div>
+                                                                    <div class="text-white text-sm">
+                                                                        {format!(
+                                                                            "{} {}",
+                                                                            formatted_amount,
+                                                                            token_in.token.metadata.symbol,
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            }
+                                                                .into_any()
+                                                        } else {
+                                                            ().into_any()
+                                                        }
+                                                    }
+                                                    Amount::AmountOut(amount) => {
+                                                        if let (Some(token_out), SwapMode::ExactIn) = (
+                                                            token_out.get(),
+                                                            current_mode,
+                                                        ) {
+                                                            let formatted_amount = balance_to_decimal(
+                                                                amount,
+                                                                token_out.token.metadata.decimals,
+                                                            );
+                                                            let formatted_amount = round_precision_or_significant(
+                                                                formatted_amount,
+                                                            );
+                                                            view! {
+                                                                <div>
+                                                                    <div class="text-gray-400 text-xs mb-1">
+                                                                        "Minimum Received"
+                                                                    </div>
+                                                                    <div class="text-white text-sm">
+                                                                        {format!(
+                                                                            "{} {}",
+                                                                            formatted_amount,
+                                                                            token_out.token.metadata.symbol,
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            }
+                                                                .into_any()
+                                                        } else {
+                                                            ().into_any()
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                ().into_any()
+                                            }
+                                        } else {
+                                            ().into_any()
+                                        }
+                                    }} // DEX Selection
+                                    <div>
+                                        <div class="text-gray-400 text-sm mb-2">"Exchanges"</div>
+                                        <div class="grid grid-cols-2 gap-2">
+                                            {move || {
+                                                let all_dexes = vec![
+                                                    DexId::Rhea,
+                                                    DexId::RheaDcl,
+                                                    DexId::NearIntents,
+                                                    DexId::Veax,
+                                                    DexId::Aidols,
+                                                    DexId::GraFun,
+                                                    DexId::Jumpdefi,
+                                                    DexId::Wrap,
+                                                ];
+                                                all_dexes
+                                                    .into_iter()
+                                                    .map(|dex| {
+                                                        let is_selected = move || {
+                                                            selected_dexes.get().contains(&dex)
+                                                        };
+
+                                                        view! {
+                                                            <button
+                                                                class=move || {
+                                                                    format!(
+                                                                        "px-3 py-2 rounded-lg text-xs transition-colors cursor-pointer {}",
+                                                                        if is_selected() {
+                                                                            "bg-blue-500 text-white"
+                                                                        } else {
+                                                                            "bg-neutral-700 hover:bg-neutral-600 text-gray-300"
+                                                                        },
+                                                                    )
+                                                                }
+                                                                on:click=move |_| {
+                                                                    set_selected_dexes
+                                                                        .update(|dexes| {
+                                                                            if dexes.contains(&dex) {
+                                                                                dexes.retain(|d| *d != dex);
+                                                                            } else {
+                                                                                dexes.push(dex);
+                                                                            }
+                                                                        });
+                                                                    get_routes_action.clear();
+                                                                }
+                                                            >
+                                                                {format!("{}", dex)}
+                                                            </button>
+                                                        }
+                                                    })
+                                                    .collect_view()
+                                            }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </Show>
+                        </div>
+
                         {move || {
                             let input_usd = if let Some(token_in_data) = token_in.get() {
                                 let amount_to_use = match swap_mode_memo.get() {
@@ -2088,29 +2261,25 @@ pub enum WaitMode {
 }
 
 async fn get_routes(swap_request: SwapRequest, wait_mode: WaitMode) -> Result<Routes, String> {
+    let mut filtered_dexes = swap_request.dexes.clone().unwrap_or_default();
+
+    // Filter out NearIntents for fast mode when skip_intents is true
+    if let WaitMode::Fast {
+        skip_intents: true, ..
+    } = wait_mode
+    {
+        filtered_dexes.retain(|dex| *dex != DexId::NearIntents);
+    }
+
     let swap_request = SwapRequest {
         max_wait_ms: match wait_mode {
             WaitMode::Fast { duration, .. } => duration.as_millis() as u64,
             WaitMode::Full { duration } => duration.as_millis() as u64,
         },
-        dexes: match wait_mode {
-            WaitMode::Fast { skip_intents, .. } => {
-                if skip_intents {
-                    Some(vec![
-                        DexId::Rhea,
-                        // Skipping NearIntents as it's slow
-                        DexId::Veax,
-                        DexId::Aidols,
-                        DexId::GraFun,
-                        DexId::Jumpdefi,
-                        DexId::Wrap,
-                        DexId::RheaDcl,
-                    ])
-                } else {
-                    None
-                }
-            }
-            WaitMode::Full { .. } => None,
+        dexes: if filtered_dexes.is_empty() {
+            None
+        } else {
+            Some(filtered_dexes)
         },
         ..swap_request
     };
