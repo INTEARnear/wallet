@@ -12,6 +12,7 @@ use crate::{
 };
 use bigdecimal::{BigDecimal, FromPrimitive};
 use futures_util::join;
+use leptos::prelude::set_timeout_with_handle;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::Icon;
 use leptos_router::components::A;
@@ -25,6 +26,7 @@ use near_min_api::{
 };
 use std::future::Future;
 use std::pin::Pin;
+use std::time::Duration;
 
 #[component]
 pub fn SendToken() -> impl IntoView {
@@ -45,6 +47,8 @@ pub fn SendToken() -> impl IntoView {
     let (has_typed_recipient, set_has_typed_recipient) = signal(false);
     let (has_typed_amount, set_has_typed_amount) = signal(false);
     let (recipient_warning, set_recipient_warning) = signal::<Option<String>>(None);
+    let (balance_error_count, set_balance_error_count) = signal(0);
+    let (balance_error_timeout, set_balance_error_timeout) = signal::<Option<TimeoutHandle>>(None);
 
     let token = move || {
         tokens
@@ -166,23 +170,55 @@ pub fn SendToken() -> impl IntoView {
     let check_amount = move |amount: String| {
         set_has_typed_amount.set(true);
 
+        if let Some(handle) = balance_error_timeout.get_untracked() {
+            handle.clear();
+        }
+
         if let Some(token) = token() {
             if let Ok(amount_decimal) = amount.parse::<BigDecimal>() {
                 if amount_decimal <= BigDecimal::from(0) {
                     set_amount_error.set(Some("Amount must be greater than 0".to_string()));
+                    set_balance_error_count.set(0);
                     return;
                 }
 
                 let max_amount_decimal =
                     balance_to_decimal(token.balance, token.token.metadata.decimals);
                 if amount_decimal > max_amount_decimal {
-                    set_amount_error.set(Some("Amount exceeds balance".to_string()));
+                    let current_count = balance_error_count.get_untracked();
+
+                    if current_count == 0 {
+                        set_amount_error.set(Some("Not enough balance".to_string()));
+                        set_balance_error_count.set(1);
+                    } else if let Ok(handle) = set_timeout_with_handle(
+                        move || {
+                            let error_messages = [
+                                "Not enough balance",
+                                "Still not enough",
+                                "Your persistence won't increase your balance",
+                                "Try again?",
+                                "Minting new tokens...",
+                                "Minting failed. Still not enough balance",
+                                "Please stop trying",
+                                "It won't change anything",
+                            ];
+
+                            let message_index = current_count % error_messages.len();
+                            set_amount_error.set(Some(error_messages[message_index].to_string()));
+                            set_balance_error_count.set(current_count + 1);
+                        },
+                        Duration::from_millis(750),
+                    ) {
+                        set_balance_error_timeout.set(Some(handle));
+                    }
                     return;
                 }
 
                 set_amount_error.set(None);
+                set_balance_error_count.set(0);
             } else {
                 set_amount_error.set(Some("Please enter amount".to_string()));
+                set_balance_error_count.set(0);
             }
         }
     };
