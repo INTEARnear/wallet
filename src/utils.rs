@@ -162,7 +162,7 @@ pub fn format_account_id_no_hide(account_id: &AccountIdRef) -> AnyView {
     let account_id2 = account_id.to_owned();
     let badge = LocalResource::new(move || get_user_badge(account_id2.clone()));
     view! {
-        <span class="items-center gap-1 inline-flex">
+        <span class="items-center gap-1 inline-flex max-w-full">
             {move || {
                 badge
                     .read()

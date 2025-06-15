@@ -32,8 +32,8 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                 .map(|tx| match &tx.stage {
                     TransactionStage::Preparing => 0,
                     TransactionStage::Publishing => 25,
-                    TransactionStage::Included => 50,
-                    TransactionStage::Doomslug => 75,
+                    TransactionStage::Included => 70,
+                    TransactionStage::Doomslug => 90,
                     TransactionStage::Finalized => 100,
                     TransactionStage::Failed(_) => 0,
                 })
