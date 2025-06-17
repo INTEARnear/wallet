@@ -233,7 +233,7 @@ pub fn History() -> impl IntoView {
                                                                             }
                                                                         }}
                                                                     </div>
-                                                                    <div class="text-neutral-400 text-sm max-w-[120px] w-[120px] md:max-w-[160px] md:w-[160px] sm:max-w-xs wrap-anywhere transition-all duration-100 ml-2">
+                                                                    <div class="text-neutral-400 text-sm max-w-[80px] w-[80px] md:max-w-[160px] md:w-[160px] sm:max-w-xs wrap-anywhere transition-all duration-100 ml-2">
                                                                         {account_id}
                                                                     </div>
                                                                 </div>
@@ -965,7 +965,6 @@ fn add_dex_actions(
 
             let token_in_event = negative_events[0].clone();
             let token_out_event = positive_events[0].clone();
-            let ft_event_format = actions_config.ft_event_format;
 
             let token_in_metadata = LocalResource::new({
                 let token_id = token_in_event.token_id.clone();
@@ -997,22 +996,14 @@ fn add_dex_actions(
                                     </div>
                                     <div class="flex items-center gap-2">
                                         // Token IN
-                                        <div class="flex items-center gap-1">
+                                        <div class="flex items-center gap-2">
                                             <img
                                                 src=in_meta.icon.clone()
-                                                width=if ft_event_format == TokenEventFormat::Short {
-                                                    "30"
-                                                } else {
-                                                    "40"
-                                                }
-                                                height=if ft_event_format == TokenEventFormat::Short {
-                                                    "30"
-                                                } else {
-                                                    "40"
-                                                }
+                                                width="30"
+                                                height="30"
                                                 class="rounded-full"
                                             />
-                                            <span class="text-sm font-medium">
+                                            <span class="text-sm sm:text-lg font-medium wrap-anywhere">
                                                 {format_token_amount(
                                                     token_in_event.amount,
                                                     in_meta.decimals,
@@ -1026,26 +1017,18 @@ fn add_dex_actions(
                                             icon=LuArrowRight
                                             width="16"
                                             height="16"
-                                            attr:class="text-neutral-400"
+                                            attr:class="text-neutral-400 min-w-4 min-h-4"
                                         />
 
                                         // Token OUT
-                                        <div class="flex items-center gap-1">
+                                        <div class="flex items-center gap-2 wrap-anywhere">
                                             <img
                                                 src=out_meta.icon.clone()
-                                                width=if ft_event_format == TokenEventFormat::Short {
-                                                    "30"
-                                                } else {
-                                                    "40"
-                                                }
-                                                height=if ft_event_format == TokenEventFormat::Short {
-                                                    "30"
-                                                } else {
-                                                    "40"
-                                                }
+                                                width="30"
+                                                height="30"
                                                 class="rounded-full"
                                             />
-                                            <span class="text-sm font-medium">
+                                            <span class="text-sm sm:text-lg font-medium">
                                                 {format_token_amount(
                                                     token_out_event.amount,
                                                     out_meta.decimals,
