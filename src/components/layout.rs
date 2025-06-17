@@ -10,11 +10,14 @@ use rand::{rngs::OsRng, Rng};
 use std::time::Duration;
 use web_sys::TouchEvent;
 
-use crate::components::{transaction_queue_overlay::TransactionQueueOverlay, PasswordUnlock};
 use crate::contexts::account_selector_swipe_context::AccountSelectorSwipeContext;
 use crate::{
     components::wallet_header::WalletHeader,
     contexts::network_context::{Network, NetworkContext},
+};
+use crate::{
+    components::{transaction_queue_overlay::TransactionQueueOverlay, PasswordUnlock},
+    contexts::accounts_context::AccountsContext,
 };
 
 /// Height of the bottom navbar with buttons
@@ -53,7 +56,7 @@ struct NavItem {
 }
 
 #[component]
-pub fn Layout(children: Children) -> impl IntoView {
+pub fn Layout(children: ChildrenFn) -> impl IntoView {
     let location = use_location();
     let navigate = use_navigate();
     let (slide_direction, set_slide_direction) = signal("");
@@ -72,6 +75,7 @@ pub fn Layout(children: Children) -> impl IntoView {
         set_state: set_account_selector_state,
     } = expect_context::<AccountSelectorSwipeContext>();
     let NetworkContext { network } = expect_context::<NetworkContext>();
+    let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
 
     const HOME_ITEM: &NavItem = &NavItem {
         path: "/",
@@ -304,7 +308,20 @@ pub fn Layout(children: Children) -> impl IntoView {
                                 )
                             }
                         >
-                            {children()}
+                            {move || {
+                                if accounts.get().selected_account_id.is_some() {
+                                    children()
+                                } else {
+                                    view! {
+                                        <div class="flex items-center justify-center h-full">
+                                            <div class="text-white text-2xl font-bold">
+                                                "No account selected"
+                                            </div>
+                                        </div>
+                                    }
+                                        .into_any()
+                                }
+                            }}
                         </div>
                     </div>
                     {move || {

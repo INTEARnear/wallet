@@ -1,27 +1,32 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use bip39::Mnemonic;
-use leptos::prelude::*;
+use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_router::components::A;
+use leptos_use::{use_interval_fn_with_options, UseIntervalFnOptions};
+use near_min_api::types::Finality;
 use near_min_api::types::{
     near_crypto::{ED25519SecretKey, SecretKey},
     AccountId,
 };
+use near_min_api::{Error, QueryFinality};
 use slipped10::BIP32Path;
 
 use crate::components::account_creation_form::AccountCreationForm;
 use crate::components::login_form::LoginForm;
 use crate::contexts::network_context::Network;
+use crate::contexts::security_log_context::add_security_log;
 use crate::contexts::{
     account_selector_swipe_context::AccountSelectorSwipeContext, accounts_context::AccountsContext,
 };
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum ModalState {
     AccountList,
     Creating,
     LoggingIn,
+    LoggedOut(Vec<AccountId>),
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -102,7 +107,12 @@ pub fn AccountSelector(
     is_expanded: ReadSignal<bool>,
     set_is_expanded: WriteSignal<bool>,
 ) -> impl IntoView {
-    let accounts_context = expect_context::<AccountsContext>();
+    let AccountsContext {
+        accounts,
+        set_accounts,
+        is_encrypted,
+        ..
+    } = expect_context::<AccountsContext>();
     let AccountSelectorSwipeContext {
         progress,
         state,
@@ -110,20 +120,78 @@ pub fn AccountSelector(
         ..
     } = expect_context::<AccountSelectorSwipeContext>();
     let (modal_state, set_modal_state) = signal(ModalState::AccountList);
-    let selected_account = move || {
-        accounts_context
-            .accounts
-            .get()
-            .selected_account_id
-            .map(|account_id| account_id.to_string())
-            .unwrap_or_else(|| "No account selected".to_string())
+    let (show_security_alert, set_show_security_alert) = signal(false);
+
+    let check_access_keys = move || {
+        let accounts = accounts.get_untracked();
+
+        spawn_local(async move {
+            let mut logged_out_accounts = Vec::new();
+
+            for account in accounts.accounts.iter() {
+                let rpc_client = account.network.default_rpc_client();
+                let account_id = account.account_id.clone();
+                let public_key = account.secret_key.public_key();
+
+                match rpc_client
+                    .get_access_key(
+                        account_id.clone(),
+                        public_key.clone(),
+                        QueryFinality::Finality(Finality::Final),
+                    )
+                    .await
+                {
+                    Err(Error::OtherQueryError(err))
+                        if err
+                            == format!("access key {public_key} does not exist while viewing") =>
+                    {
+                        logged_out_accounts.push(account);
+                    }
+                    _ => (), // Ignore other errors as network failures
+                }
+            }
+
+            if !logged_out_accounts.is_empty() {
+                let logged_out_account_ids = logged_out_accounts
+                    .iter()
+                    .map(|a| a.account_id.clone())
+                    .collect::<Vec<_>>();
+                set_accounts.update(|accounts| {
+                    accounts
+                        .accounts
+                        .retain(|a| !logged_out_account_ids.contains(&a.account_id));
+                    if let Some(selected_id) = accounts.selected_account_id.as_ref() {
+                        if logged_out_account_ids.contains(selected_id) {
+                            accounts.selected_account_id = None;
+                        }
+                    }
+                });
+
+                for account in logged_out_accounts.iter() {
+                    add_security_log(
+                        format!("Account logged out due to remote access key removal. Old access key: {}", account.secret_key),
+                        account.account_id.clone(),
+                    );
+                }
+
+                set_modal_state.set(ModalState::LoggedOut(logged_out_account_ids));
+                set_is_expanded(true);
+            }
+        });
     };
+
+    let _ = use_interval_fn_with_options(
+        check_access_keys,
+        5000,
+        UseIntervalFnOptions {
+            immediate: true,
+            immediate_callback: true,
+        },
+    );
 
     // Show creation form immediately if there are no accounts
     Effect::new(move |_| {
-        if accounts_context.accounts.get().accounts.is_empty()
-            && !accounts_context.is_encrypted.get()
-        {
+        if accounts.get().accounts.is_empty() && !is_encrypted.get() {
             set_is_expanded(true);
             set_modal_state.set(ModalState::Creating);
         }
@@ -138,14 +206,15 @@ pub fn AccountSelector(
     });
     // Close selector when accounts change
     Effect::new(move |_| {
-        accounts_context.accounts.track();
-        set_is_expanded(false);
+        if accounts.get().selected_account_id.is_some() {
+            set_is_expanded(false);
+        }
     });
 
     let switch_account = move |account_id: AccountId| {
-        let mut accounts = accounts_context.accounts.get();
-        accounts.selected_account_id = Some(account_id);
-        accounts_context.set_accounts.set(accounts);
+        set_accounts.update(|accounts| {
+            accounts.selected_account_id = Some(account_id);
+        });
         set_is_expanded(false);
     };
 
@@ -165,7 +234,7 @@ pub fn AccountSelector(
                     view! {
                         <LoginForm
                             set_modal_state
-                            show_back_button=!accounts_context.accounts.get().accounts.is_empty()
+                            show_back_button=!accounts.get().accounts.is_empty()
                         />
                     }
                         .into_any()
@@ -174,7 +243,7 @@ pub fn AccountSelector(
                     view! {
                         <AccountCreationForm
                             set_modal_state
-                            show_back_button=!accounts_context.accounts.get().accounts.is_empty()
+                            show_back_button=!accounts.get().accounts.is_empty()
                             set_is_expanded=set_is_expanded
                         />
                     }
@@ -201,8 +270,7 @@ pub fn AccountSelector(
                                             </div>
                                         </button>
                                         {move || {
-                                            accounts_context
-                                                .accounts
+                                            accounts
                                                 .get()
                                                 .accounts
                                                 .iter()
@@ -224,7 +292,9 @@ pub fn AccountSelector(
                                                         <button
                                                             class="w-full h-28 aspect-square rounded-lg transition-colors flex flex-col items-center justify-center gap-1 p-1 group"
                                                             style=move || {
-                                                                if selected_account() == account_id_for_class {
+                                                                if accounts.get().selected_account_id
+                                                                    == Some(account_id_for_class.clone())
+                                                                {
                                                                     "background-color: rgb(38 38 38)"
                                                                 } else {
                                                                     ""
@@ -309,6 +379,107 @@ pub fn AccountSelector(
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    }
+                        .into_any()
+                }
+                ModalState::LoggedOut(accounts) => {
+                    view! {
+                        <div>
+                            <div
+                                class="absolute inset-0 bg-neutral-950/40 backdrop-blur-[2px] lg:rounded-3xl"
+                                on:click=move |_| set_is_expanded(false)
+                            />
+                            <div class="absolute inset-0 flex items-center justify-center">
+                                <div class="bg-neutral-950 p-8 rounded-xl w-full max-w-md">
+                                    <div class="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
+                                        <Icon
+                                            icon=icondata::LuShieldOff
+                                            width="32"
+                                            height="32"
+                                            attr:class="text-red-400"
+                                        />
+                                    </div>
+                                    <h2 class="text-white text-2xl font-semibold mb-4 text-center">
+                                        "Logged Out from Different Device"
+                                    </h2>
+                                    <p class="text-neutral-400 mb-6 text-center">
+                                        "Your access to the following accounts was terminated using \"Terminate all other sessions\" button on another device:"
+                                    </p>
+                                    <div class="mb-6 space-y-2">
+                                        {accounts
+                                            .iter()
+                                            .map(|account_id| {
+                                                view! {
+                                                    <div class="text-white text-center font-medium wrap-anywhere">
+                                                        {account_id.to_string()}
+                                                    </div>
+                                                }
+                                            })
+                                            .collect::<Vec<_>>()}
+                                    </div>
+                                    <div class="space-y-3">
+                                        <button
+                                            class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden bg-red-500/20 hover:bg-red-500/30 cursor-pointer"
+                                            on:click=move |_| set_show_security_alert.set(true)
+                                        >
+                                            "I didn't do this"
+                                        </button>
+                                        <button
+                                            class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden cursor-pointer"
+                                            style="background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%);"
+                                            on:click=move |_| set_modal_state.set(ModalState::LoggingIn)
+                                        >
+                                            "Import Account"
+                                        </button>
+                                        <button
+                                            class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden bg-neutral-800 hover:bg-neutral-700 cursor-pointer"
+                                            on:click=move |_| set_is_expanded(false)
+                                        >
+                                            "OK"
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <Show when=move || show_security_alert.get()>
+                                <div class="absolute inset-0 bg-neutral-950/60 backdrop-blur-[2px] lg:rounded-3xl z-10">
+                                    <div class="absolute inset-0 flex items-center justify-center">
+                                        <div class="bg-neutral-950 p-8 rounded-xl w-full max-w-md border border-red-500/20">
+                                            <h3 class="text-xl font-semibold mb-4 text-white">
+                                                "Account Security Alert"
+                                            </h3>
+                                            <p class="text-neutral-400 mb-6">
+                                                "If it wasn't you, your account most likely was compromised. Here's what you can do:"
+                                            </p>
+                                            <ul class="list-disc list-inside text-neutral-400 mb-6 space-y-2">
+                                                <li>
+                                                    "Move on and create a new account with a fresh seed phrase (if your old account didn't have a lot of money)"
+                                                </li>
+                                                <li>
+                                                    "Try to recover it with your Google / Ethereum / Solana wallet if you connected it to your account"
+                                                </li>
+                                                <li>
+                                                    <a
+                                                        href="https://t.me/intearchat"
+                                                        target="_blank"
+                                                        class="text-blue-500 hover:text-blue-600"
+                                                    >
+                                                        "Contact support for assistance"
+                                                    </a>
+                                                    ". We are not able to recover your account, but we can give you the exact time when it happened, so you can try to remember what you did"
+                                                </li>
+                                            </ul>
+                                            <button
+                                                class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden bg-neutral-800 hover:bg-neutral-700"
+                                                on:click=move |_| set_show_security_alert.set(false)
+                                            >
+                                                "Close"
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </Show>
                         </div>
                     }
                         .into_any()

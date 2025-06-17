@@ -254,7 +254,7 @@ impl RpcClient {
     ///     signer_id: account.clone(),
     ///     public_key: key.public_key(),
     ///     nonce: client
-    ///         .get_access_key(account.clone(), key.public_key())
+    ///         .get_access_key(account.clone(), key.public_key(), QueryFinality::Finality(Finality::Final))
     ///         .await
     ///         .unwrap()
     ///         .nonce
