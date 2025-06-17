@@ -1325,6 +1325,24 @@ pub fn AccountSettings() -> impl IntoView {
                                 .selected_account_id
                                 .as_ref()
                             {
+                                add_security_log(
+                                    format!(
+                                        "Logged out of {selected_account_id} with key {} (public key: {})",
+                                        accounts_data
+                                            .accounts
+                                            .iter()
+                                            .find(|acc| acc.account_id == *selected_account_id)
+                                            .map(|acc| acc.secret_key.clone())
+                                            .unwrap(),
+                                        accounts_data
+                                            .accounts
+                                            .iter()
+                                            .find(|acc| acc.account_id == *selected_account_id)
+                                            .map(|acc| acc.secret_key.public_key())
+                                            .unwrap(),
+                                    ),
+                                    selected_account_id.clone(),
+                                );
                                 accounts_data
                                     .accounts
                                     .retain(|acc| acc.account_id != *selected_account_id);

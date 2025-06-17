@@ -427,7 +427,11 @@ pub fn SendTransactions() -> impl IntoView {
     let (remember_contract, set_remember_contract) = signal(false);
     let (remember_non_financial, set_remember_non_financial) = signal(false);
     let ConnectedAppsContext { apps, set_apps, .. } = expect_context::<ConnectedAppsContext>();
-    let AccountsContext { set_accounts, .. } = expect_context::<AccountsContext>();
+    let AccountsContext {
+        accounts,
+        set_accounts,
+        ..
+    } = expect_context::<AccountsContext>();
     let TransactionQueueContext {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
@@ -522,7 +526,11 @@ pub fn SendTransactions() -> impl IntoView {
     });
     Effect::new(move || {
         if let Some(app) = connected_app() {
-            set_accounts.update(|accounts| accounts.selected_account_id = Some(app.account_id));
+            if accounts.get().selected_account_id != Some(app.account_id.clone()) {
+                set_accounts.update(|accounts| {
+                    accounts.selected_account_id = Some(app.account_id);
+                });
+            }
         }
     });
 

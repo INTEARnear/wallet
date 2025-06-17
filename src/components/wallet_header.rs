@@ -106,7 +106,9 @@ pub fn WalletHeader() -> impl IntoView {
                                         </A>
                                     }
                                         .into_any()
-                                } else if location.pathname.get() == "/send-transactions" {
+                                } else if location.pathname.get() == "/send-transactions"
+                                    || location.pathname.get() == "/sign-message"
+                                {
                                     view! {
                                         <button
                                             class="bg-neutral-900/50 rounded-xl p-3 text-neutral-700 cursor-not-allowed"
@@ -167,8 +169,7 @@ pub fn WalletHeader() -> impl IntoView {
                                 on:click=move |_| set_is_search_expanded(true)
                                 style=move || {
                                     let current_path = location.pathname.get();
-                                    if current_path != "/"
-                                    {
+                                    if current_path != "/" {
                                         "opacity: 0; pointer-events: none"
                                     } else {
                                         ""

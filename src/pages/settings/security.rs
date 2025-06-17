@@ -162,7 +162,7 @@ pub fn SecuritySettings() -> impl IntoView {
                     nonce: 0,
                     permission: AccessKeyPermission::FullAccess,
                 },
-                public_key,
+                public_key: public_key.clone(),
             }));
             let account = accounts
                 .get_untracked()
@@ -170,7 +170,7 @@ pub fn SecuritySettings() -> impl IntoView {
                 .into_iter()
                 .find(|acc| acc.account_id == account_id)
                 .expect("Account not found");
-            add_security_log(format!("Terminated all other sessions for account {account_id}: Added key {secret_key} and removed keys {}. Previous key that the wallet was using was {}", serde_json::to_string(&delete_actions).unwrap(), account.secret_key), account_id.clone());
+            add_security_log(format!("Terminated all other sessions for account {account_id}: Added key {secret_key} (public key: {public_key}) and removed keys {}. Previous key that the wallet was using was {}", serde_json::to_string(&delete_actions).unwrap(), account.secret_key), account_id.clone());
 
             let (details_receiver, transaction) = EnqueuedTransaction::create(
                 "Terminate other sessions".to_string(),

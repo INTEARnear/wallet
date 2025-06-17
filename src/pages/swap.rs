@@ -2267,29 +2267,31 @@ async fn execute_route(
 
     let final_wrap_balance = get_ft_balance(&account.account_id, wrap_near_id, &rpc).await;
 
-    if let Some(wrap_near_balance) = initial_wrap_balance {
-        if let Some(new_wrap_near_balance) = final_wrap_balance {
-            if let Some(difference) = new_wrap_near_balance.checked_sub(wrap_near_balance) {
-                if !difference.is_zero() {
-                    set_tx_overlay_mode.set(OverlayMode::Background);
-                    let (rx, enqueued_tx) = EnqueuedTransaction::create(
-                        format!("{description} ({steps}/{steps})"),
-                        account.account_id.clone(),
-                        "wrap.near".parse().unwrap(),
-                        vec![Action::FunctionCall(Box::new(FunctionCallAction {
-                            method_name: "near_withdraw".to_string(),
-                            args: serde_json::to_vec(&serde_json::json!({
-                                "amount": difference.to_string(),
-                            }))
-                            .unwrap(),
-                            gas: NearGas::from_tgas(5).as_gas(),
-                            deposit: NearToken::from_yoctonear(1),
-                        }))],
-                    );
-                    add_transaction.update(|txs| {
-                        txs.push(enqueued_tx);
-                    });
-                    let _ = rx.await;
+    if route.needs_unwrap {
+        if let Some(wrap_near_balance) = initial_wrap_balance {
+            if let Some(new_wrap_near_balance) = final_wrap_balance {
+                if let Some(difference) = new_wrap_near_balance.checked_sub(wrap_near_balance) {
+                    if !difference.is_zero() {
+                        set_tx_overlay_mode.set(OverlayMode::Background);
+                        let (rx, enqueued_tx) = EnqueuedTransaction::create(
+                            format!("{description} ({steps}/{steps})"),
+                            account.account_id.clone(),
+                            "wrap.near".parse().unwrap(),
+                            vec![Action::FunctionCall(Box::new(FunctionCallAction {
+                                method_name: "near_withdraw".to_string(),
+                                args: serde_json::to_vec(&serde_json::json!({
+                                    "amount": difference.to_string(),
+                                }))
+                                .unwrap(),
+                                gas: NearGas::from_tgas(5).as_gas(),
+                                deposit: NearToken::from_yoctonear(1),
+                            }))],
+                        );
+                        add_transaction.update(|txs| {
+                            txs.push(enqueued_tx);
+                        });
+                        let _ = rx.await;
+                    }
                 }
             }
         }

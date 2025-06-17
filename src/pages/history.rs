@@ -15,7 +15,7 @@ use crate::{
 };
 use base64::{self, Engine};
 use chrono::{DateTime as ChronoDateTime, Local, Utc};
-use icondata::{LuCalendar, LuClock, LuPackage, LuPackageOpen};
+use icondata::{LuArrowRight, LuCalendar, LuClock, LuPackage, LuPackageOpen};
 use leptos::prelude::*;
 use leptos_icons::Icon;
 use near_min_api::{
@@ -324,21 +324,31 @@ fn display_transaction(
     let Some(me) = accounts().selected_account_id else {
         return view! { <div>No selected account</div> }.into_any();
     };
-    let actions_config = RwSignal::new(ActionsConfig::default());
+    let mut actions_config = ActionsConfig::default();
     match tx_type {
         TransactionType::TxSigner | TransactionType::TxReceiver => {
             let mut actions = Vec::<AnyView>::new();
-            add_storage_actions(&mut actions, transaction, &me, actions_config);
-            add_lnc_actions(&mut actions, &me, transaction, actions_config);
-            add_harvestmoon_actions(&mut actions, &me, transaction, actions_config);
-            add_wrap_actions(&mut actions, transaction, &me, actions_config);
-            add_dex_actions(&mut actions, transaction, &me, actions_config);
-            add_ft_actions(&mut actions, transaction, &me, actions_config);
-            add_nft_actions(&mut actions, transaction, &me, actions_config);
-            add_staking_actions(&mut actions, transaction, &me, actions_config);
-            add_near_actions(&mut actions, transaction, &me, actions_config);
-            add_key_actions(&mut actions, transaction, &me, actions_config);
-            add_account_actions(&mut actions, transaction, &me, actions_config);
+            let fns = [
+                add_storage_actions,
+                add_lnc_actions,
+                add_harvestmoon_actions,
+                add_wrap_actions,
+                add_ft_actions,
+                add_near_actions,
+                add_dex_actions,
+                add_nft_actions,
+                add_staking_actions,
+                add_key_actions,
+                add_account_actions,
+            ];
+            // First pass: build actions config
+            for f in fns {
+                f(&mut Vec::new(), transaction, &me, &mut actions_config);
+            }
+            // Second pass: build actions
+            for f in fns {
+                f(&mut actions, transaction, &me, &mut actions_config.clone());
+            }
             if actions.is_empty() {
                 if transaction.final_outcome.transaction.actions.is_empty() {
                     view! { <div>Empty Transaction</div> }.into_any()
@@ -353,19 +363,35 @@ fn display_transaction(
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct ActionsConfig {
-    short_ft_events: bool,
-    short_nft_events: bool,
+    ft_event_format: TokenEventFormat,
+    nft_event_format: TokenEventFormat,
     storage_deposit_to: HashSet<AccountId>,
     withdrawing_from_staking: HashMap<AccountId, NearToken>,
+    ft_events: Vec<FtBalanceEvent>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+enum TokenEventFormat {
+    #[default]
+    Full,
+    Short,
+    Hidden,
+}
+
+#[derive(Debug, Clone)]
+struct FtBalanceEvent {
+    token_id: AccountId,
+    amount: Balance,
+    is_positive: bool,
 }
 
 fn add_account_actions(
     actions: &mut Vec<AnyView>,
     transaction: &FinalExecutionOutcomeWithReceiptView,
     _me: &AccountIdRef,
-    _actions_config: RwSignal<ActionsConfig>,
+    _actions_config: &mut ActionsConfig,
 ) {
     for action in transaction.final_outcome.transaction.actions.iter() {
         match action {
@@ -425,7 +451,7 @@ fn add_key_actions(
     actions: &mut Vec<AnyView>,
     transaction: &FinalExecutionOutcomeWithReceiptView,
     me: &AccountIdRef,
-    _actions_config: RwSignal<ActionsConfig>,
+    _actions_config: &mut ActionsConfig,
 ) {
     if transaction.final_outcome.transaction.receiver_id != me {
         return;
@@ -534,7 +560,7 @@ fn add_staking_actions(
     actions: &mut Vec<AnyView>,
     transaction: &FinalExecutionOutcomeWithReceiptView,
     me: &AccountIdRef,
-    actions_config: RwSignal<ActionsConfig>,
+    actions_config: &mut ActionsConfig,
 ) {
     for receipt in transaction.receipts.iter() {
         if !receipt.receiver_id.as_str().ends_with(".pool.near")
@@ -605,8 +631,7 @@ fn add_staking_actions(
                                             </span>
                                         </div>
                                     }.into_any());
-                                    let mut withdrawing = actions_config.write();
-                                    let withdrawing = withdrawing
+                                    let withdrawing = actions_config
                                         .withdrawing_from_staking
                                         .entry(receipt.receiver_id.clone())
                                         .or_default();
@@ -627,7 +652,7 @@ fn add_near_actions(
     actions: &mut Vec<AnyView>,
     transaction: &FinalExecutionOutcomeWithReceiptView,
     me: &AccountIdRef,
-    actions_config: RwSignal<ActionsConfig>,
+    actions_config: &mut ActionsConfig,
 ) {
     for receipt in transaction.receipts.iter() {
         if let ReceiptEnumView::Action {
@@ -663,7 +688,6 @@ fn add_near_actions(
                         }
                         if receipt.receiver_id == me && receipt.predecessor_id != "system" {
                             if let Some(withdraw_amount) = actions_config
-                                .write()
                                 .withdrawing_from_staking
                                 .remove(&receipt.predecessor_id)
                             {
@@ -673,7 +697,6 @@ fn add_near_actions(
                             }
                             actions.push(
                                 if actions_config
-                                    .read()
                                     .storage_deposit_to
                                     .contains(&receipt.predecessor_id)
                                 {
@@ -730,7 +753,7 @@ fn add_storage_actions(
     actions: &mut Vec<AnyView>,
     transaction: &FinalExecutionOutcomeWithReceiptView,
     me: &AccountIdRef,
-    actions_config: RwSignal<ActionsConfig>,
+    actions_config: &mut ActionsConfig,
 ) {
     for receipt in transaction.receipts.iter() {
         if let ReceiptEnumView::Action {
@@ -775,7 +798,6 @@ fn add_storage_actions(
                             .into_any(),
                         );
                         actions_config
-                            .write()
                             .storage_deposit_to
                             .insert(receipt.receiver_id.clone());
                     }
@@ -789,7 +811,7 @@ fn add_wrap_actions(
     actions: &mut Vec<AnyView>,
     transaction: &FinalExecutionOutcomeWithReceiptView,
     me: &AccountIdRef,
-    _actions_config: RwSignal<ActionsConfig>,
+    _actions_config: &mut ActionsConfig,
 ) {
     for receipt in transaction.receipts.iter() {
         if receipt.receiver_id != "wrap.near" && receipt.receiver_id != "wrap.testnet" {
@@ -858,8 +880,10 @@ fn add_dex_actions(
     actions: &mut Vec<AnyView>,
     transaction: &FinalExecutionOutcomeWithReceiptView,
     me: &AccountIdRef,
-    actions_config: RwSignal<ActionsConfig>,
+    actions_config: &mut ActionsConfig,
 ) {
+    let mut swap_exchange_logo = None;
+
     for receipt in transaction.receipts.iter() {
         if receipt.receiver_id == "dclv2.ref-labs.near" {
             for log in transaction
@@ -876,24 +900,8 @@ fn add_dex_actions(
                     if log.validate() {
                         for swap in log.data.iter().cloned() {
                             if swap.swapper == me {
-                                actions_config.write().short_ft_events = true;
-                                actions.push(
-                                    view! {
-                                        <div class="flex items-center gap-2">
-                                            <img
-                                                src=format!(
-                                                    "data:image/svg+xml;base64,{}",
-                                                    base64::prelude::BASE64_STANDARD
-                                                        .encode(include_str!("../data/rhea.svg")),
-                                                )
-                                                width="40"
-                                                height="40"
-                                            />
-                                            <span>"Swap"</span>
-                                        </div>
-                                    }
-                                    .into_any(),
-                                );
+                                actions_config.ft_event_format = TokenEventFormat::Short;
+                                swap_exchange_logo = Some("/history-rhea.svg");
                             }
                         }
                     }
@@ -912,24 +920,8 @@ fn add_dex_actions(
                 .iter()
             {
                 if log.starts_with("Swapped ") {
-                    actions_config.write().short_ft_events = true;
-                    actions.push(
-                        view! {
-                            <div class="flex items-center gap-2">
-                                <img
-                                    src=format!(
-                                        "data:image/svg+xml;base64,{}",
-                                        base64::prelude::BASE64_STANDARD
-                                            .encode(include_str!("../data/rhea.svg")),
-                                    )
-                                    width="40"
-                                    height="40"
-                                />
-                                <span>"Swap"</span>
-                            </div>
-                        }
-                        .into_any(),
-                    );
+                    actions_config.ft_event_format = TokenEventFormat::Short;
+                    swap_exchange_logo = Some("/history-rhea.svg");
                     break;
                 }
             }
@@ -947,24 +939,142 @@ fn add_dex_actions(
             {
                 if let Ok(log) = EventLogData::<VeaxSwapLog>::deserialize(log) {
                     if log.validate() && log.data.user == me {
-                        actions_config.write().short_ft_events = true;
-                        actions.push(
-                            view! {
-                                <div class="flex items-center gap-2">
-                                    <img
-                                        src="/history-veax.svg"
-                                        width="40"
-                                        height="40"
-                                        class="min-w-[40px] min-h-[40px]"
-                                    />
-                                    <span>"Swap"</span>
-                                </div>
-                            }
-                            .into_any(),
-                        );
+                        actions_config.ft_event_format = TokenEventFormat::Short;
+                        swap_exchange_logo = Some("/history-veax.svg");
                     }
                 }
             }
+        }
+    }
+
+    if let Some(swap_exchange_logo) = swap_exchange_logo {
+        // Check if we have exactly 2 FT events (1 positive, 1 negative) for a clean swap display
+        let positive_events: Vec<_> = actions_config
+            .ft_events
+            .iter()
+            .filter(|e| e.is_positive)
+            .collect();
+        let negative_events: Vec<_> = actions_config
+            .ft_events
+            .iter()
+            .filter(|e| !e.is_positive)
+            .collect();
+
+        if positive_events.len() == 1 && negative_events.len() == 1 {
+            actions_config.ft_event_format = TokenEventFormat::Hidden;
+
+            let token_in_event = negative_events[0].clone();
+            let token_out_event = positive_events[0].clone();
+            let ft_event_format = actions_config.ft_event_format;
+
+            let token_in_metadata = LocalResource::new({
+                let token_id = token_in_event.token_id.clone();
+                move || get_ft_metadata(token_id.clone())
+            });
+            let token_out_metadata = LocalResource::new({
+                let token_id = token_out_event.token_id.clone();
+                move || get_ft_metadata(token_id.clone())
+            });
+
+            actions.push(
+                view! {
+                    <div class="flex gap-3 flex-col">
+                        {move || {
+                            if let (Some(Ok(in_meta)), Some(Ok(out_meta))) = (
+                                token_in_metadata.get(),
+                                token_out_metadata.get(),
+                            ) {
+                                view! {
+                                    // Exchange logo
+                                    <div class="flex items-center gap-3">
+                                        <img
+                                            src=swap_exchange_logo
+                                            width="40"
+                                            height="40"
+                                            class="min-w-[40px] min-h-[40px]"
+                                        />
+                                        <span>"Swap"</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        // Token IN
+                                        <div class="flex items-center gap-1">
+                                            <img
+                                                src=in_meta.icon.clone()
+                                                width=if ft_event_format == TokenEventFormat::Short {
+                                                    "30"
+                                                } else {
+                                                    "40"
+                                                }
+                                                height=if ft_event_format == TokenEventFormat::Short {
+                                                    "30"
+                                                } else {
+                                                    "40"
+                                                }
+                                                class="rounded-full"
+                                            />
+                                            <span class="text-sm font-medium">
+                                                {format_token_amount(
+                                                    token_in_event.amount,
+                                                    in_meta.decimals,
+                                                    &in_meta.symbol,
+                                                )}
+                                            </span>
+                                        </div>
+
+                                        // Arrow
+                                        <Icon
+                                            icon=LuArrowRight
+                                            width="16"
+                                            height="16"
+                                            attr:class="text-neutral-400"
+                                        />
+
+                                        // Token OUT
+                                        <div class="flex items-center gap-1">
+                                            <img
+                                                src=out_meta.icon.clone()
+                                                width=if ft_event_format == TokenEventFormat::Short {
+                                                    "30"
+                                                } else {
+                                                    "40"
+                                                }
+                                                height=if ft_event_format == TokenEventFormat::Short {
+                                                    "30"
+                                                } else {
+                                                    "40"
+                                                }
+                                                class="rounded-full"
+                                            />
+                                            <span class="text-sm font-medium">
+                                                {format_token_amount(
+                                                    token_out_event.amount,
+                                                    out_meta.decimals,
+                                                    &out_meta.symbol,
+                                                )}
+                                            </span>
+                                        </div>
+                                    </div>
+                                }
+                                    .into_any()
+                            } else {
+                                ().into_any()
+                            }
+                        }}
+                    </div>
+                }
+                .into_any(),
+            );
+        } else {
+            // Fallback to simple swap display for complex swaps
+            actions.push(
+                view! {
+                    <div class="flex items-center gap-2">
+                        <img src=swap_exchange_logo width="40" height="40" />
+                        <span>"Swap"</span>
+                    </div>
+                }
+                .into_any(),
+            );
         }
     }
 }
@@ -973,7 +1083,7 @@ fn add_ft_actions(
     actions: &mut Vec<AnyView>,
     transaction: &FinalExecutionOutcomeWithReceiptView,
     me: &AccountIdRef,
-    actions_config: RwSignal<ActionsConfig>,
+    actions_config: &mut ActionsConfig,
 ) {
     for receipt in transaction.receipts.iter() {
         for log in transaction
@@ -998,9 +1108,21 @@ fn add_ft_actions(
                 let executor_id = receipt.receiver_id.clone();
                 let metadata = LocalResource::new(move || get_ft_metadata(executor_id.clone()));
                 if log.validate() {
+                    actions_config
+                        .ft_events
+                        .extend(log.data.iter().map(|transfer| FtBalanceEvent {
+                            token_id: receipt.receiver_id.clone(),
+                            amount: transfer.amount,
+                            is_positive: transfer.new_owner_id == me,
+                        }));
+
                     for transfer in log.data.iter().cloned() {
                         if transfer.old_owner_id == me {
                             let transfer = transfer.clone();
+                            let ft_event_format = actions_config.ft_event_format;
+                            if ft_event_format == TokenEventFormat::Hidden {
+                                continue;
+                            }
                             actions.push(
                                 view! {
                                     <div class="flex items-center gap-2">
@@ -1011,12 +1133,12 @@ fn add_ft_actions(
                                                 view! {
                                                     <img
                                                         src=metadata.icon.clone()
-                                                        width=if actions_config.read().short_ft_events {
+                                                        width=if ft_event_format == TokenEventFormat::Short {
                                                             "30"
                                                         } else {
                                                             "40"
                                                         }
-                                                        height=if actions_config.read().short_ft_events {
+                                                        height=if ft_event_format == TokenEventFormat::Short {
                                                             "30"
                                                         } else {
                                                             "40"
@@ -1024,7 +1146,7 @@ fn add_ft_actions(
                                                         class="rounded-full"
                                                     />
                                                     <span>
-                                                        {if actions_config.read().short_ft_events {
+                                                        {if ft_event_format == TokenEventFormat::Short {
                                                             view! {
                                                                 <span class="text-red-300 text-lg">
                                                                     "-"
@@ -1067,6 +1189,10 @@ fn add_ft_actions(
                         }
                         if transfer.new_owner_id == me {
                             let transfer = transfer.clone();
+                            let ft_event_format = actions_config.ft_event_format;
+                            if ft_event_format == TokenEventFormat::Hidden {
+                                continue;
+                            }
                             actions.push(view! {
                                 <div class="flex items-center gap-2">
                                     {move || {
@@ -1074,12 +1200,12 @@ fn add_ft_actions(
                                             view! {
                                                 <img
                                                     src=metadata.icon.clone()
-                                                    width=if actions_config.read().short_ft_events {
+                                                    width=if ft_event_format == TokenEventFormat::Short {
                                                         "30"
                                                     } else {
                                                         "40"
                                                     }
-                                                    height=if actions_config.read().short_ft_events {
+                                                    height=if ft_event_format == TokenEventFormat::Short {
                                                         "30"
                                                     } else {
                                                         "40"
@@ -1087,7 +1213,7 @@ fn add_ft_actions(
                                                     class="rounded-full"
                                                 />
                                                 <span>
-                                                    {if actions_config.read().short_ft_events {
+                                                    {if ft_event_format == TokenEventFormat::Short {
                                                         view! {
                                                             <span class="text-green-300 text-lg">
                                                                 "+"
@@ -1133,8 +1259,19 @@ fn add_ft_actions(
                 let executor_id = receipt.receiver_id.clone();
                 let metadata = LocalResource::new(move || get_ft_metadata(executor_id.clone()));
                 if log.validate() {
+                    actions_config
+                        .ft_events
+                        .extend(log.data.iter().map(|transfer| FtBalanceEvent {
+                            token_id: receipt.receiver_id.clone(),
+                            amount: transfer.amount,
+                            is_positive: true,
+                        }));
                     for mint in log.data.iter().cloned() {
                         if mint.owner_id == me {
+                            let ft_event_format = actions_config.ft_event_format;
+                            if ft_event_format == TokenEventFormat::Hidden {
+                                continue;
+                            }
                             actions.push(
                                 view! {
                                     <div class="flex items-center gap-2">
@@ -1143,12 +1280,12 @@ fn add_ft_actions(
                                                 view! {
                                                     <img
                                                         src=metadata.icon.clone()
-                                                        width=if actions_config.read().short_ft_events {
+                                                        width=if ft_event_format == TokenEventFormat::Short {
                                                             "30"
                                                         } else {
                                                             "40"
                                                         }
-                                                        height=if actions_config.read().short_ft_events {
+                                                        height=if ft_event_format == TokenEventFormat::Short {
                                                             "30"
                                                         } else {
                                                             "40"
@@ -1156,7 +1293,7 @@ fn add_ft_actions(
                                                         class="rounded-full"
                                                     />
                                                     <span>
-                                                        {if actions_config.read().short_ft_events {
+                                                        {if ft_event_format == TokenEventFormat::Short {
                                                             view! {
                                                                 <span class="text-green-300 text-lg">
                                                                     "+"
@@ -1204,8 +1341,19 @@ fn add_ft_actions(
                 let executor_id = receipt.receiver_id.clone();
                 let metadata = LocalResource::new(move || get_ft_metadata(executor_id.clone()));
                 if log.validate() {
+                    actions_config
+                        .ft_events
+                        .extend(log.data.iter().map(|transfer| FtBalanceEvent {
+                            token_id: receipt.receiver_id.clone(),
+                            amount: transfer.amount,
+                            is_positive: false,
+                        }));
                     for burn in log.data.iter().cloned() {
                         if burn.owner_id == me {
+                            let ft_event_format = actions_config.ft_event_format;
+                            if ft_event_format == TokenEventFormat::Hidden {
+                                continue;
+                            }
                             actions.push(
                                 view! {
                                     <div class="flex items-center gap-2">
@@ -1214,12 +1362,12 @@ fn add_ft_actions(
                                                 view! {
                                                     <img
                                                         src=metadata.icon.clone()
-                                                        width=if actions_config.read().short_ft_events {
+                                                        width=if ft_event_format == TokenEventFormat::Short {
                                                             "30"
                                                         } else {
                                                             "40"
                                                         }
-                                                        height=if actions_config.read().short_ft_events {
+                                                        height=if ft_event_format == TokenEventFormat::Short {
                                                             "30"
                                                         } else {
                                                             "40"
@@ -1227,7 +1375,7 @@ fn add_ft_actions(
                                                         class="rounded-full"
                                                     />
                                                     <span>
-                                                        {if actions_config.read().short_ft_events {
+                                                        {if ft_event_format == TokenEventFormat::Short {
                                                             view! {
                                                                 <span class="text-red-300 text-lg">
                                                                     "-"
@@ -1279,7 +1427,7 @@ fn add_nft_actions(
     actions: &mut Vec<AnyView>,
     transaction: &FinalExecutionOutcomeWithReceiptView,
     me: &AccountIdRef,
-    actions_config: RwSignal<ActionsConfig>,
+    actions_config: &mut ActionsConfig,
 ) {
     for receipt in transaction.receipts.iter() {
         for log in transaction
@@ -1300,6 +1448,10 @@ fn add_nft_actions(
                     for transfer in log.data.iter().cloned() {
                         if transfer.old_owner_id == me {
                             let transfer = transfer.clone();
+                            let nft_event_format = actions_config.nft_event_format;
+                            if nft_event_format == TokenEventFormat::Hidden {
+                                continue;
+                            }
                             actions.push(
                                 view! {
                                     <div class="flex items-center gap-2">
@@ -1310,12 +1462,12 @@ fn add_nft_actions(
                                                 view! {
                                                     <img
                                                         src=metadata.icon.clone()
-                                                        width=if actions_config.read().short_nft_events {
+                                                        width=if nft_event_format == TokenEventFormat::Short {
                                                             "30"
                                                         } else {
                                                             "40"
                                                         }
-                                                        height=if actions_config.read().short_nft_events {
+                                                        height=if nft_event_format == TokenEventFormat::Short {
                                                             "30"
                                                         } else {
                                                             "40"
@@ -1323,7 +1475,7 @@ fn add_nft_actions(
                                                         class="rounded-full"
                                                     />
                                                     <span>
-                                                        {if actions_config.read().short_nft_events {
+                                                        {if nft_event_format == TokenEventFormat::Short {
                                                             view! {
                                                                 <span class="text-red-300 text-lg">
                                                                     "-" {transfer.token_ids.len().to_string()} " "
@@ -1359,6 +1511,10 @@ fn add_nft_actions(
                         }
                         if transfer.new_owner_id == me {
                             let transfer = transfer.clone();
+                            let nft_event_format = actions_config.nft_event_format;
+                            if nft_event_format == TokenEventFormat::Hidden {
+                                continue;
+                            }
                             actions.push(view! {
                                 <div class="flex items-center gap-2">
                                     {move || {
@@ -1366,12 +1522,12 @@ fn add_nft_actions(
                                             view! {
                                                 <img
                                                     src=metadata.icon.clone()
-                                                    width=if actions_config.read().short_nft_events {
+                                                    width=if nft_event_format == TokenEventFormat::Short {
                                                         "30"
                                                     } else {
                                                         "40"
                                                     }
-                                                    height=if actions_config.read().short_nft_events {
+                                                    height=if nft_event_format == TokenEventFormat::Short {
                                                         "30"
                                                     } else {
                                                         "40"
@@ -1379,7 +1535,7 @@ fn add_nft_actions(
                                                     class="rounded-full"
                                                 />
                                                 <span>
-                                                    {if actions_config.read().short_nft_events {
+                                                    {if nft_event_format == TokenEventFormat::Short {
                                                         view! {
                                                             <span class="text-green-300 text-lg">
                                                                 "+" {transfer.token_ids.len().to_string()} " "
@@ -1421,6 +1577,10 @@ fn add_nft_actions(
                 if log.validate() {
                     for mint in log.data.iter().cloned() {
                         if mint.owner_id == me {
+                            let nft_event_format = actions_config.nft_event_format;
+                            if nft_event_format == TokenEventFormat::Hidden {
+                                continue;
+                            }
                             actions.push(
                                 view! {
                                     <div class="flex items-center gap-2">
@@ -1429,12 +1589,12 @@ fn add_nft_actions(
                                                 view! {
                                                     <img
                                                         src=metadata.icon.clone()
-                                                        width=if actions_config.read().short_nft_events {
+                                                        width=if nft_event_format == TokenEventFormat::Short {
                                                             "30"
                                                         } else {
                                                             "40"
                                                         }
-                                                        height=if actions_config.read().short_nft_events {
+                                                        height=if nft_event_format == TokenEventFormat::Short {
                                                             "30"
                                                         } else {
                                                             "40"
@@ -1442,7 +1602,7 @@ fn add_nft_actions(
                                                         class="rounded-full"
                                                     />
                                                     <span>
-                                                        {if actions_config.read().short_nft_events {
+                                                        {if nft_event_format == TokenEventFormat::Short {
                                                             view! {
                                                                 <span class="text-green-300 text-lg">
                                                                     "+" {mint.token_ids.len().to_string()} " "
@@ -1485,6 +1645,10 @@ fn add_nft_actions(
                 if log.validate() {
                     for burn in log.data.iter().cloned() {
                         if burn.owner_id == me {
+                            let nft_event_format = actions_config.nft_event_format;
+                            if nft_event_format == TokenEventFormat::Hidden {
+                                continue;
+                            }
                             actions.push(
                                 view! {
                                     <div class="flex items-center gap-2">
@@ -1493,12 +1657,12 @@ fn add_nft_actions(
                                                 view! {
                                                     <img
                                                         src=metadata.icon.clone()
-                                                        width=if actions_config.read().short_nft_events {
+                                                        width=if nft_event_format == TokenEventFormat::Short {
                                                             "30"
                                                         } else {
                                                             "40"
                                                         }
-                                                        height=if actions_config.read().short_nft_events {
+                                                        height=if nft_event_format == TokenEventFormat::Short {
                                                             "30"
                                                         } else {
                                                             "40"
@@ -1506,7 +1670,7 @@ fn add_nft_actions(
                                                         class="rounded-full"
                                                     />
                                                     <span>
-                                                        {if actions_config.read().short_nft_events {
+                                                        {if nft_event_format == TokenEventFormat::Short {
                                                             view! {
                                                                 <span class="text-red-300 text-lg">
                                                                     "-" {burn.token_ids.len().to_string()} " "
@@ -1548,9 +1712,9 @@ fn add_nft_actions(
 
 fn add_harvestmoon_actions(
     actions: &mut Vec<AnyView>,
-    me: &AccountIdRef,
     transaction: &FinalExecutionOutcomeWithReceiptView,
-    actions_config: RwSignal<ActionsConfig>,
+    me: &AccountIdRef,
+    actions_config: &mut ActionsConfig,
 ) {
     for receipt in transaction.receipts.iter() {
         if receipt.receiver_id == "aa-harvest-moon.near" && receipt.predecessor_id == me {
@@ -1676,7 +1840,7 @@ fn add_harvestmoon_actions(
                                 }
                                 .into_any(),
                             );
-                            actions_config.update(|c| c.short_ft_events = true);
+                            actions_config.ft_event_format = TokenEventFormat::Short;
                         }
                     }
                 }
@@ -1687,9 +1851,9 @@ fn add_harvestmoon_actions(
 
 fn add_lnc_actions(
     actions: &mut Vec<AnyView>,
-    _me: &AccountIdRef,
     transaction: &FinalExecutionOutcomeWithReceiptView,
-    _actions_config: RwSignal<ActionsConfig>,
+    _me: &AccountIdRef,
+    _actions_config: &mut ActionsConfig,
 ) {
     for receipt in transaction.receipts.iter() {
         if receipt.receiver_id != "login.learnclub.near" {

@@ -142,7 +142,11 @@ pub fn SignMessage() -> impl IntoView {
     });
     Effect::new(move || {
         if let Some(app) = connected_app() {
-            set_accounts.update(|accounts| accounts.selected_account_id = Some(app.account_id));
+            if accounts.get().selected_account_id != Some(app.account_id.clone()) {
+                set_accounts.update(|accounts| {
+                    accounts.selected_account_id = Some(app.account_id);
+                });
+            }
         }
     });
 

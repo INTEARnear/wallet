@@ -128,12 +128,18 @@ pub fn AccountSelector(
             set_modal_state.set(ModalState::Creating);
         }
     });
+    // Open selector when swipe is complete
     Effect::new(move |_| {
         if state() {
             set_state(false);
             set_is_expanded(true);
             set_modal_state.set(ModalState::AccountList);
         }
+    });
+    // Close selector when accounts change
+    Effect::new(move |_| {
+        accounts_context.accounts.track();
+        set_is_expanded(false);
     });
 
     let switch_account = move |account_id: AccountId| {
@@ -216,7 +222,7 @@ pub fn AccountSelector(
                                                     let account_id_str = account_id.to_string();
                                                     view! {
                                                         <button
-                                                            class="w-full h-24 aspect-square rounded-lg transition-colors flex flex-col items-center justify-center gap-1 p-1 group"
+                                                            class="w-full h-28 aspect-square rounded-lg transition-colors flex flex-col items-center justify-center gap-1 p-1 group"
                                                             style=move || {
                                                                 if selected_account() == account_id_for_class {
                                                                     "background-color: rgb(38 38 38)"
