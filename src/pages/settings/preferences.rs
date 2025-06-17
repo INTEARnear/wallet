@@ -66,10 +66,12 @@ pub fn PreferencesSettings() -> impl IntoView {
     let realtime_updates = Memo::new(move |_| config_context.config.get().realtime_balance_updates);
     let realtime_prices = Memo::new(move |_| config_context.config.get().realtime_price_updates);
     let play_sound = Memo::new(move |_| config_context.config.get().play_transfer_sound);
+    let analytics_disabled = Memo::new(move |_| config_context.config.get().analytics_disabled);
 
     let updates_disabled = Signal::derive(|| false);
     let prices_disabled = Signal::derive(|| false);
     let sound_disabled = Signal::derive(move || !realtime_updates.get());
+    let analytics_switch_disabled = Signal::derive(move || false);
 
     let (custom_slippage_input, set_custom_slippage_input) = signal("".to_string());
 
@@ -116,6 +118,18 @@ pub fn PreferencesSettings() -> impl IntoView {
                             .set_config
                             .update(|config| {
                                 config.realtime_price_updates = !config.realtime_price_updates;
+                            });
+                    }
+                />
+                <ToggleSwitch
+                    label="Disable analytics"
+                    value=analytics_disabled
+                    disabled=analytics_switch_disabled
+                    on_toggle=move || {
+                        config_context
+                            .set_config
+                            .update(|config| {
+                                config.analytics_disabled = !config.analytics_disabled;
                             });
                     }
                 />

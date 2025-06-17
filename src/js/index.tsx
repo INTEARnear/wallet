@@ -2,6 +2,21 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import Overlays from "./Overlays";
 
+const posthog_api_key = "{{{POSTHOG_API_KEY}}}";
+// It's public, but we don't want self-hosted environments to send analytics
+if (!posthog_api_key.startsWith("{{{")) {
+    const config = localStorage.getItem("wallet_config");
+    if (config && !JSON.parse(config).analytics_disabled) {
+        const { posthog } = await import("posthog-js");
+        posthog.init(posthog_api_key,
+            {
+                api_host: "https://eu.i.posthog.com",
+                person_profiles: "identified_only",
+            }
+        );
+    }
+}
+
 const test = document.createElement("div");
 document.body.appendChild(test);
 

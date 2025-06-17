@@ -84,6 +84,8 @@ pub struct WalletConfig {
     pub password_remember_duration: PasswordRememberDuration,
     #[serde(default)]
     pub slippage: Slippage,
+    #[serde(default)]
+    pub analytics_disabled: bool,
 }
 
 impl Default for WalletConfig {
@@ -98,6 +100,7 @@ impl Default for WalletConfig {
             realtime_price_updates: true,
             password_remember_duration: PasswordRememberDuration::default(),
             slippage: Slippage::default(),
+            analytics_disabled: false,
         }
     }
 }

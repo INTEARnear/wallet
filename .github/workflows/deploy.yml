@@ -74,6 +74,11 @@ jobs:
           COMMIT_HASH=$(git rev-parse --short HEAD)
           sed -i "s/{{{VERSION}}}/$COMMIT_HASH/g" dist/service_worker.js
 
+      - name: Set Posthog API key
+        # it's public
+        run: |
+          sed -i "s/{{{POSTHOG_API_KEY}}}/phc_GqwXPBXc21Vg3guG1pqkm51HGIVERCmloAI7PcxCRaC/g" dist/js/index.tsx
+
       - name: Create _redirects file
         run: echo "/*   /index.html   200" > dist/_redirects
 

@@ -182,12 +182,19 @@ pub fn AccountSelector(
 
     let _ = use_interval_fn_with_options(
         check_access_keys,
-        5000,
+        60000,
         UseIntervalFnOptions {
             immediate: true,
             immediate_callback: true,
         },
     );
+
+    // Check acccess key when accounts change
+    Effect::new(move |_| {
+        if accounts.get().selected_account_id.is_some() {
+            check_access_keys();
+        }
+    });
 
     // Show creation form immediately if there are no accounts
     Effect::new(move |_| {
