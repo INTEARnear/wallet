@@ -77,7 +77,7 @@ jobs:
       - name: Set Posthog API key
         # it's public
         run: |
-          sed -i "s/{{{POSTHOG_API_KEY}}}/phc_GqwXPBXc21Vg3guG1pqkm51HGIVERCmloAI7PcxCRaC/g" dist/js/index.tsx
+          sed -i "s/{{{POSTHOG_API_KEY}}}/phc_GqwXPBXc21Vg3guG1pqkm51HGIVERCmloAI7PcxCRaC/g" dist/js/index.js
 
       - name: Create _redirects file
         run: echo "/*   /index.html   200" > dist/_redirects
