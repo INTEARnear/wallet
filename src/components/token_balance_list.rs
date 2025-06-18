@@ -61,6 +61,10 @@ pub fn TokenBalanceList() -> impl IntoView {
                             if matches!(token.token.reputation, TokenScore::Spam) {
                                 return false;
                             }
+                            if token.token.liquidity_usd >= 1_000_000_000_000.0 {
+                                // Probably a bug in price indexer
+                                return false;
+                            }
                             if query.get().is_empty() && !config.get().show_low_balance_tokens
                                 && token.token.account_id != Token::Near
                             {
