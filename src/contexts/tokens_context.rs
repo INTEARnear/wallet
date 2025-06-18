@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{collections::HashSet, str::FromStr};
 
 use base64::{prelude::BASE64_STANDARD, Engine};
 use bigdecimal::{BigDecimal, FromPrimitive};
@@ -308,6 +308,7 @@ pub fn provide_token_context() {
         }
     });
 
+    let mut transfer_events_processed = HashSet::new();
     // Handle incoming transfer events
     Effect::new(move |_| {
         let Some(ws) = transfer_ws() else {
@@ -316,6 +317,9 @@ pub fn provide_token_context() {
         if let Some(msg) = ws.message.get() {
             if let Ok(events) = serde_json::from_str::<Vec<FtTransferEvent>>(&msg) {
                 for event in events {
+                    if !transfer_events_processed.insert(event.receipt_id) {
+                        continue;
+                    }
                     let current_account = accounts_context.accounts.get().selected_account_id;
                     log::info!("Received transfer: {event:?}");
 
@@ -368,6 +372,7 @@ pub fn provide_token_context() {
         }
     });
 
+    let mut mint_events_processed = HashSet::new();
     // Handle incoming mint events
     Effect::new(move |_| {
         let Some(ws) = mint_ws() else {
@@ -376,6 +381,9 @@ pub fn provide_token_context() {
         if let Some(msg) = ws.message.get() {
             if let Ok(events) = serde_json::from_str::<Vec<FtMintEvent>>(&msg) {
                 for event in events {
+                    if !mint_events_processed.insert(event.receipt_id) {
+                        continue;
+                    }
                     let current_account =
                         accounts_context.accounts.get().selected_account_id.clone();
                     log::info!("Received mint: {event:?}");
@@ -401,6 +409,7 @@ pub fn provide_token_context() {
         }
     });
 
+    let mut burn_events_processed = HashSet::new();
     // Handle incoming burn events
     Effect::new(move |_| {
         let Some(ws) = mint_ws() else {
@@ -409,6 +418,9 @@ pub fn provide_token_context() {
         if let Some(msg) = ws.message.get() {
             if let Ok(events) = serde_json::from_str::<Vec<FtBurnEvent>>(&msg) {
                 for event in events {
+                    if !burn_events_processed.insert(event.receipt_id) {
+                        continue;
+                    }
                     let current_account =
                         accounts_context.accounts.get().selected_account_id.clone();
                     log::info!("Received burn: {event:?}");
