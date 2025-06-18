@@ -4,7 +4,9 @@ use crate::{
         search_context::SearchContext,
         tokens_context::{Token, TokenContext, TokenScore},
     },
-    utils::{balance_to_decimal, format_token_amount, format_usd_value},
+    utils::{
+        balance_to_decimal, format_token_amount, format_usd_value, power_of_10, USDT_DECIMALS,
+    },
 };
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use leptos::prelude::*;
@@ -61,8 +63,15 @@ pub fn TokenBalanceList() -> impl IntoView {
                             if matches!(token.token.reputation, TokenScore::Spam) {
                                 return false;
                             }
-                            if token.token.liquidity_usd >= 1_000_000_000_000.0 {
-                                // Probably a bug in price indexer
+                            if &token.token.price_usd_raw
+                                * &BigDecimal::from(token.token.circulating_supply)
+                                / power_of_10(USDT_DECIMALS)
+                                >= BigDecimal::from(100_000_000_000_000u128)
+                            {
+                                log::warn!(
+                                    "Hiding token {:?} as it has abnormal market cap",
+                                    token.token.account_id
+                                );
                                 return false;
                             }
                             if query.get().is_empty() && !config.get().show_low_balance_tokens
@@ -78,6 +87,7 @@ pub fn TokenBalanceList() -> impl IntoView {
                             true
                         })
                         .collect::<Vec<_>>();
+                    // Probably a bug in price indexer
 
                     view! {
                         <>
