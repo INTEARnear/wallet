@@ -21,7 +21,7 @@ pub use explore::Explore;
 pub use history::History;
 pub use home::Home;
 pub use login::Login;
-pub use nfts::{NftCollection, NftTokenDetails, Nfts};
+pub use nfts::{NftCollection, NftTokenDetails, Nfts, SendNft};
 pub use send::SendToken;
 pub use send_transactions::SendTransactions;
 pub use settings::Settings;

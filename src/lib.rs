@@ -29,8 +29,8 @@ use crate::pages::{
         AccountSettings, ConnectedAppsSettings, DeveloperSettings, PreferencesSettings,
         SecurityLogPage, SecuritySettings,
     },
-    AutoImportSecretKey, Connect, Explore, History, Home, Login, NftTokenDetails, Nfts, SendToken,
-    SendTransactions, Settings, SignMessage, Swap, TokenDetails, UnwrapToken, WrapToken,
+    AutoImportSecretKey, Connect, Explore, History, Home, Login, NftTokenDetails, Nfts, SendNft,
+    SendToken, SendTransactions, Settings, SignMessage, Swap, TokenDetails, UnwrapToken, WrapToken,
 };
 
 #[component]
@@ -81,6 +81,7 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/nfts") view=Nfts />
                         <Route path=path!("/nfts/:collection_id") view=NftCollection />
                         <Route path=path!("/nfts/:collection_id/*token_id") view=NftTokenDetails />
+                        <Route path=path!("/send-nft/:collection_id/*token_id") view=SendNft />
                         <Route path=path!("/swap") view=Swap />
                         <Route path=path!("/history") view=History />
                         <Route path=path!("/explore") view=Explore />

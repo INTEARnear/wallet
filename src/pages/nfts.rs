@@ -1,26 +1,34 @@
 use futures_util::future::join_all;
+use futures_util::join;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_icons::*;
+use leptos_router::components::A;
 use leptos_router::hooks::use_navigate;
 use leptos_router::{hooks::use_params_map, NavigateOptions};
+use near_min_api::types::{Action, FunctionCallAction, NearGas, NearToken};
 use near_min_api::{
     types::{AccountId, Finality},
     QueryFinality, RpcClient,
 };
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 use std::time::Duration;
 use web_sys::{window, MouseEvent};
 
+use crate::components::ProgressiveImage;
 use crate::contexts::nft_cache_context::NftCacheContext;
 use crate::contexts::nft_cache_context::{NftContractMetadata, NftToken, OwnedCollection};
 use crate::contexts::search_context::SearchContext;
+use crate::contexts::tokens_context::TokenMetadata;
 use crate::contexts::{
     accounts_context::AccountsContext,
     config_context::{ConfigContext, HiddenNft, NftsViewState},
     network_context::Network,
     rpc_context::RpcContext,
+    transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
 };
+use crate::utils::{format_account_id_no_hide, format_token_amount_no_hide};
 
 async fn fetch_spam_list() -> Vec<HiddenNft> {
     let proxy_base = dotenvy_macro::dotenv!("SHARED_NFT_PROXY_SERVICE_ADDR");
@@ -33,14 +41,28 @@ async fn fetch_spam_list() -> Vec<HiddenNft> {
     vec![]
 }
 
-fn proxify_url(url: &str) -> String {
+enum Resolution {
+    Low,
+    High,
+}
+
+impl Display for Resolution {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Resolution::Low => write!(f, "low"),
+            Resolution::High => write!(f, "high"),
+        }
+    }
+}
+
+fn proxify_url(url: &str, resolution: Resolution) -> String {
     if url.starts_with("data:") {
         return url.to_string();
     }
     let proxy_base = dotenvy_macro::dotenv!("SHARED_NFT_PROXY_SERVICE_ADDR");
     let encoded_url =
         percent_encoding::utf8_percent_encode(url, percent_encoding::NON_ALPHANUMERIC).to_string();
-    format!("{proxy_base}/media/{encoded_url}")
+    format!("{proxy_base}/media/{resolution}/{encoded_url}")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -323,7 +345,7 @@ pub fn NftCollection() -> impl IntoView {
                                 .into_any()
                         } else {
                             view! {
-                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
                                     {nft_tokens
                                         .into_iter()
                                         .filter(|nft| {
@@ -375,6 +397,23 @@ pub fn NftCollection() -> impl IntoView {
                                                     NavigateOptions::default(),
                                                 );
                                             };
+                                            let token_id_for_clipboard = nft.token_id.clone();
+                                            let (is_copied, set_is_copied) = signal(false);
+                                            let copy_token_id = move |ev: MouseEvent| {
+                                                ev.stop_propagation();
+                                                if let Some(window) = window() {
+                                                    let _ = window
+                                                        .navigator()
+                                                        .clipboard()
+                                                        .write_text(&token_id_for_clipboard);
+                                                    set_is_copied(true);
+                                                    set_timeout(
+                                                        move || set_is_copied(false),
+                                                        Duration::from_millis(2000),
+                                                    );
+                                                }
+                                            };
+
                                             view! {
                                                 <div
                                                     class="bg-neutral-800 rounded-lg overflow-hidden hover:bg-neutral-700 transition-colors cursor-pointer"
@@ -389,10 +428,11 @@ pub fn NftCollection() -> impl IntoView {
                                                             };
                                                             view! {
                                                                 <div class="aspect-square overflow-hidden">
-                                                                    <img
-                                                                        src=proxify_url(&media_url)
+                                                                    <ProgressiveImage
+                                                                        low_res_src=proxify_url(&media_url, Resolution::Low)
+                                                                        high_res_src=proxify_url(&media_url, Resolution::High)
                                                                         alt=title_for_alt.clone()
-                                                                        class="w-full h-full object-cover"
+                                                                        attr:class="object-cover h-full w-full"
                                                                     />
                                                                 </div>
                                                             }
@@ -410,9 +450,23 @@ pub fn NftCollection() -> impl IntoView {
                                                         <h3 class="text-white font-medium text-lg mb-2 line-clamp-2">
                                                             {title}
                                                         </h3>
-                                                        <div class="text-neutral-500 text-xs mt-2">
-                                                            {nft.token_id}
-                                                        </div>
+                                                        <button
+                                                            class="text-neutral-400 hover:text-white transition-colors flex items-center gap-1 cursor-pointer text-xs mt-2"
+                                                            on:click=copy_token_id
+                                                        >
+                                                            <span class="select-none text-neutral-600">"#"</span>
+                                                            <span class="truncate">{nft.token_id.clone()}</span>
+                                                            {move || {
+                                                                if is_copied.get() {
+                                                                    view! {
+                                                                        <Icon icon=icondata::LuCheck width="12" height="12" />
+                                                                    }
+                                                                        .into_any()
+                                                                } else {
+                                                                    ().into_any()
+                                                                }
+                                                            }}
+                                                        </button>
                                                     </div>
                                                 </div>
                                             }
@@ -683,10 +737,11 @@ pub fn Nfts() -> impl IntoView {
                                                                             };
                                                                             view! {
                                                                                 <div class="aspect-square overflow-hidden">
-                                                                                    <img
-                                                                                        src=proxify_url(&media_url)
+                                                                                    <ProgressiveImage
+                                                                                        low_res_src=proxify_url(&media_url, Resolution::Low)
+                                                                                        high_res_src=proxify_url(&media_url, Resolution::High)
                                                                                         alt=title_for_alt.clone()
-                                                                                        class="w-full h-full object-cover"
+                                                                                        attr:class="object-cover h-full w-full"
                                                                                     />
                                                                                 </div>
                                                                             }
@@ -856,6 +911,7 @@ pub fn Nfts() -> impl IntoView {
                                                                 let contract_id_for_click = contract_id_display.clone();
                                                                 let metadata_for_icon = collection.metadata.clone();
                                                                 let metadata_for_name = collection.metadata.clone();
+                                                                let num_tokens = collection.tokens.len();
                                                                 let copy_to_clipboard = move |event: MouseEvent| {
                                                                     event.stop_propagation();
                                                                     if let Some(window) = window() {
@@ -882,20 +938,29 @@ pub fn Nfts() -> impl IntoView {
                                                                         class="bg-neutral-800 rounded-lg hover:bg-neutral-700 transition-colors cursor-pointer"
                                                                         on:click=on_collection_click
                                                                     >
-                                                                        {move || {
-                                                                            if let Some(metadata) = &metadata_for_icon {
-                                                                                if let Some(icon) = &metadata.icon {
-                                                                                    if icon.starts_with("data:image/") {
-                                                                                        view! {
-                                                                                            <div class="aspect-square rounded-t-lg overflow-hidden">
-                                                                                                <img
-                                                                                                    src=icon.clone()
-                                                                                                    alt=metadata.name.clone()
-                                                                                                    class="w-full h-full object-cover"
-                                                                                                />
-                                                                                            </div>
+                                                                        <div class="relative">
+                                                                            {move || {
+                                                                                if let Some(metadata) = &metadata_for_icon {
+                                                                                    if let Some(icon) = &metadata.icon {
+                                                                                        if icon.starts_with("data:image/") {
+                                                                                            view! {
+                                                                                                <div class="aspect-square rounded-t-lg overflow-hidden">
+                                                                                                    <img
+                                                                                                        src=icon.clone()
+                                                                                                        alt=metadata.name.clone()
+                                                                                                        class="w-full h-full object-cover"
+                                                                                                    />
+                                                                                                </div>
+                                                                                            }
+                                                                                                .into_any()
+                                                                                        } else {
+                                                                                            view! {
+                                                                                                <div class="aspect-square bg-neutral-700 rounded-t-lg flex items-center justify-center">
+                                                                                                    <Icon icon=icondata::LuImage width="32" height="32" />
+                                                                                                </div>
+                                                                                            }
+                                                                                                .into_any()
                                                                                         }
-                                                                                            .into_any()
                                                                                     } else {
                                                                                         view! {
                                                                                             <div class="aspect-square bg-neutral-700 rounded-t-lg flex items-center justify-center">
@@ -912,15 +977,11 @@ pub fn Nfts() -> impl IntoView {
                                                                                     }
                                                                                         .into_any()
                                                                                 }
-                                                                            } else {
-                                                                                view! {
-                                                                                    <div class="aspect-square bg-neutral-700 rounded-t-lg flex items-center justify-center">
-                                                                                        <Icon icon=icondata::LuImage width="32" height="32" />
-                                                                                    </div>
-                                                                                }
-                                                                                    .into_any()
-                                                                            }
-                                                                        }}
+                                                                            }}
+                                                                            <div class="absolute bottom-3 right-3 opacity-85 bg-black text-white text-xs font-medium min-w-7 h-7 rounded-md pointer-events-none flex items-center justify-center">
+                                                                                {num_tokens}
+                                                                            </div>
+                                                                        </div>
                                                                         <div class="p-3 pt-2">
                                                                             <div class="text-white font-medium text-base truncate">
                                                                                 {move || {
@@ -1176,10 +1237,11 @@ pub fn Nfts() -> impl IntoView {
                                                                         };
                                                                         view! {
                                                                             <div class="aspect-square overflow-hidden">
-                                                                                <img
-                                                                                    src=proxify_url(&media_url)
+                                                                                <ProgressiveImage
+                                                                                    low_res_src=proxify_url(&media_url, Resolution::Low)
+                                                                                    high_res_src=proxify_url(&media_url, Resolution::High)
                                                                                     alt=title_for_alt.clone()
-                                                                                    class="w-full h-full object-cover"
+                                                                                    attr:class="object-cover h-full w-full"
                                                                                 />
                                                                             </div>
                                                                         }
@@ -1259,6 +1321,400 @@ pub fn Nfts() -> impl IntoView {
                 }
             }
         }
+    }
+}
+
+#[component]
+pub fn SendNft() -> impl IntoView {
+    let params = use_params_map();
+    let contract_id = move || params.get().get("collection_id").unwrap_or_default();
+    let token_id = move || params.get().get("token_id").unwrap_or_default();
+    let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+    let RpcContext { client, .. } = expect_context::<RpcContext>();
+    let (recipient, set_recipient) = signal("".to_string());
+    let (is_loading_recipient, set_is_loading_recipient) = signal(false);
+    let (recipient_balance, set_recipient_balance) = signal(None);
+    let (has_typed_recipient, set_has_typed_recipient) = signal(false);
+    let (recipient_warning, set_recipient_warning) = signal::<Option<String>>(None);
+
+    let collection_metadata = LocalResource::new(move || {
+        let rpc_client = client.get().clone();
+        async move {
+            let Ok(cid) = contract_id().parse() else {
+                return None;
+            };
+            fetch_nft_metadata(cid, rpc_client).await
+        }
+    });
+
+    let nft_token = LocalResource::new(move || {
+        log::info!("Refreshing nft_token");
+        let rpc_client = client.get().clone();
+        async move {
+            let selected_account_id = accounts().selected_account_id?;
+            let Ok(cid) = contract_id().parse() else {
+                return None;
+            };
+            let tokens = fetch_nfts_for_owner(cid, selected_account_id, rpc_client).await;
+            let tid = token_id();
+            tokens.into_iter().find(|t| t.token_id == tid)
+        }
+    });
+
+    let check_recipient = move |recipient_to_check: String| {
+        set_has_typed_recipient.set(true);
+
+        let Ok(recipient_to_check) = recipient_to_check.parse::<AccountId>() else {
+            set_recipient_balance.set(None);
+            set_is_loading_recipient.set(false);
+            set_recipient_warning.set(None);
+            return;
+        };
+        set_is_loading_recipient.set(true);
+        let rpc_client = client.get().clone();
+        spawn_local(async move {
+            let recipient_is_implicit = recipient_to_check
+                .as_str()
+                .chars()
+                .all(|c| c.is_ascii_hexdigit())
+                && recipient_to_check.as_str().len() == 64;
+            let recipient_is_evm_implicit = recipient_to_check.as_str().starts_with("0x")
+                && recipient_to_check
+                    .as_str()
+                    .chars()
+                    .skip(2)
+                    .all(|c| c.is_ascii_hexdigit())
+                && recipient_to_check.as_str().len() == 42;
+            let account_exists = recipient_is_implicit
+                || recipient_is_evm_implicit
+                || rpc_client
+                    .view_account(
+                        recipient_to_check.clone(),
+                        QueryFinality::Finality(Finality::DoomSlug),
+                    )
+                    .await
+                    .is_ok();
+
+            if recipient_to_check == recipient.get_untracked() {
+                if account_exists {
+                    let ft_metadata_future = rpc_client.call::<TokenMetadata>(
+                        recipient_to_check.clone(),
+                        "ft_metadata",
+                        serde_json::json!({}),
+                        QueryFinality::Finality(Finality::None),
+                    );
+
+                    let nft_metadata_future = rpc_client.call::<serde_json::Value>(
+                        recipient_to_check.clone(),
+                        "nft_metadata",
+                        serde_json::json!({}),
+                        QueryFinality::Finality(Finality::None),
+                    );
+
+                    let balance_future = rpc_client.view_account(
+                        recipient_to_check.clone(),
+                        QueryFinality::Finality(Finality::DoomSlug),
+                    );
+                    let (ft_metadata_result, nft_metadata_result, balance_result) =
+                        join!(ft_metadata_future, nft_metadata_future, balance_future);
+
+                    if ft_metadata_result.is_ok() || nft_metadata_result.is_ok() {
+                        set_recipient_warning.set(Some("This is a token contract address, not someone's wallet address, sending tokens to it would likely result in asset loss".to_string()));
+                    } else {
+                        set_recipient_warning.set(None);
+                    }
+
+                    let balance = balance_result
+                        .map(|b| b.amount)
+                        .unwrap_or(NearToken::default());
+                    set_recipient_balance.set(Some(balance));
+                } else {
+                    set_recipient_balance.set(None);
+                    set_recipient_warning.set(None);
+                }
+                set_is_loading_recipient.set(false);
+            }
+        });
+    };
+
+    let TransactionQueueContext {
+        add_transaction, ..
+    } = expect_context::<TransactionQueueContext>();
+    let handle_send = move |_| {
+        if recipient_balance.get().is_none() {
+            return;
+        }
+
+        let transaction_description = format!(
+            "Sending {} to {}",
+            nft_token
+                .get()
+                .and_then(|m| m?.metadata.title.clone())
+                .unwrap_or_default(),
+            recipient.get()
+        );
+        let Ok(recipient) = recipient.get().parse::<AccountId>() else {
+            panic!(
+                "Recipient '{}' cannot be parsed as AccountId, yet recipient_balance is Some",
+                recipient()
+            );
+        };
+        let Ok(contract_id) = contract_id().parse::<AccountId>() else {
+            panic!(
+                "Contract ID '{}' cannot be parsed as AccountId",
+                contract_id()
+            );
+        };
+        let token_id = token_id();
+        let signer_id = accounts
+            .get_untracked()
+            .selected_account_id
+            .expect("No account selected yet tried to send NFT");
+        spawn_local(async move {
+            let actions = vec![Action::FunctionCall(Box::new(FunctionCallAction {
+                method_name: "nft_transfer".to_string(),
+                args: serde_json::to_vec(&serde_json::json!({
+                    "receiver_id": recipient,
+                    "token_id": token_id,
+                }))
+                .unwrap(),
+                gas: NearGas::from_tgas(5).as_gas(),
+                deposit: NearToken::from_yoctonear(1),
+            }))];
+            add_transaction.update(|txs| {
+                txs.push(
+                    EnqueuedTransaction::create(
+                        transaction_description,
+                        signer_id,
+                        contract_id,
+                        actions,
+                    )
+                    .1,
+                )
+            });
+        });
+
+        // Clear form fields
+        set_recipient.set("".to_string());
+        set_has_typed_recipient.set(false);
+        set_recipient_balance.set(None);
+    };
+
+    let navigate = use_navigate();
+
+    view! {
+        <div class="flex flex-col gap-4 p-2 md:p-4 transition-all duration-100">
+            <button
+                class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-2 cursor-pointer"
+                on:click=move |_| {
+                    navigate(
+                        &format!("/nfts/{}/{}", contract_id(), token_id()),
+                        NavigateOptions::default(),
+                    );
+                }
+            >
+                <Icon icon=icondata::LuArrowLeft width="20" height="20" />
+                <span>Back</span>
+            </button>
+
+            {move || {
+                match nft_token.get() {
+                    Some(Some(token)) => {
+                        let title = token
+                            .metadata
+                            .title
+                            .clone()
+                            .unwrap_or_else(|| "Untitled".to_string());
+                        let title_clone = title.clone();
+                        let media_opt = token.metadata.media.clone();
+                        let base_uri = collection_metadata
+                            .get()
+                            .and_then(|m| m)
+                            .and_then(|m| m.base_uri.clone())
+                            .unwrap_or_default();
+                        view! {
+                            <div class="flex flex-col gap-4">
+                                <div class="bg-neutral-900 rounded-xl p-4">
+                                    <div class="flex items-center gap-3">
+                                        {move || {
+                                            if let Some(media_url) = &media_opt {
+                                                let url = if media_url.contains(&base_uri)
+                                                    || base_uri.is_empty()
+                                                {
+                                                    media_url.clone()
+                                                } else {
+                                                    format!("{}/{}", base_uri, media_url)
+                                                };
+                                                let low_res_url = proxify_url(&url, Resolution::Low);
+                                                let high_res_url = proxify_url(&url, Resolution::High);
+                                                view! {
+                                                    <div class="w-12 h-12 rounded-full overflow-hidden">
+                                                        <ProgressiveImage
+                                                            low_res_src=low_res_url
+                                                            high_res_src=high_res_url
+                                                            alt=title_clone.clone()
+                                                            attr:class="object-cover h-full w-full"
+                                                        />
+                                                    </div>
+                                                }
+                                                    .into_any()
+                                            } else {
+                                                view! {
+                                                    <div class="w-12 h-12 rounded-full bg-neutral-700 flex items-center justify-center">
+                                                        <Icon icon=icondata::LuImage width="24" height="24" />
+                                                    </div>
+                                                }
+                                                    .into_any()
+                                            }
+                                        }} <div>
+                                            <h2 class="text-white text-xl font-bold">{title}</h2>
+                                            <p class="text-gray-400">{token.token_id}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="flex flex-col gap-4">
+                                    <div class="flex flex-col gap-2">
+                                        <label class="text-gray-400">Recipient</label>
+                                        <input
+                                            type="text"
+                                            class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200"
+                                            style=move || {
+                                                if has_typed_recipient.get() {
+                                                    if recipient_balance.get().is_none()
+                                                        && !is_loading_recipient.get()
+                                                    {
+                                                        "border: 2px solid rgb(239 68 68)"
+                                                    } else if !is_loading_recipient.get()
+                                                        && recipient_warning.get().is_none()
+                                                    {
+                                                        "border: 2px solid rgb(34 197 94)"
+                                                    } else if !is_loading_recipient.get()
+                                                        && recipient_warning.get().is_some()
+                                                    {
+                                                        "border: 2px solid rgb(234 179 8)"
+                                                    } else {
+                                                        "border: 2px solid rgb(55 65 81)"
+                                                    }
+                                                } else {
+                                                    "border: 2px solid transparent"
+                                                }
+                                            }
+                                            placeholder="account.near"
+                                            prop:value=recipient
+                                            on:input=move |ev| {
+                                                let value = event_target_value(&ev).to_lowercase();
+                                                set_recipient.set(value.clone());
+                                                set_is_loading_recipient.set(true);
+                                                set_recipient_balance.set(None);
+                                                check_recipient(value);
+                                            }
+                                        />
+                                        {move || {
+                                            if let Some(warning) = recipient_warning.get() {
+                                                view! {
+                                                    <p class="text-yellow-500 text-sm mt-2 font-medium flex items-center gap-2">
+                                                        <Icon
+                                                            icon=icondata::LuAlertTriangle
+                                                            width="16"
+                                                            height="16"
+                                                            attr:class="min-w-4 min-h-4"
+                                                        />
+                                                        {warning}
+                                                    </p>
+                                                }
+                                                    .into_any()
+                                            } else {
+                                                ().into_any()
+                                            }
+                                        }}
+                                        {move || {
+                                            if let Some(recipient_balance) = recipient_balance.get() {
+                                                view! {
+                                                    <p class="text-green-500 text-sm mt-2 font-medium">
+                                                        {format_account_id_no_hide(
+                                                            &recipient.read().parse::<AccountId>().unwrap(),
+                                                        )}" has "
+                                                        {format_token_amount_no_hide(
+                                                            recipient_balance.as_yoctonear(),
+                                                            24,
+                                                            "NEAR",
+                                                        )}
+                                                    </p>
+                                                }
+                                                    .into_any()
+                                            } else if is_loading_recipient.get() {
+                                                view! {
+                                                    <p class="text-gray-400 text-sm mt-2 font-medium">
+                                                        Checking...
+                                                    </p>
+                                                }
+                                                    .into_any()
+                                            } else if has_typed_recipient.get() {
+                                                view! {
+                                                    <p class="text-red-500 text-sm mt-2 font-medium">
+                                                        "Account does not exist"
+                                                    </p>
+                                                }
+                                                    .into_any()
+                                            } else {
+                                                ().into_any()
+                                            }
+                                        }}
+                                    </div>
+
+                                    <button
+                                        class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden hover:bg-neutral-900/70 enabled:bg-gradient-to-r enabled:from-blue-500 enabled:to-purple-500 enabled:hover:from-blue-600 enabled:hover:to-purple-600"
+                                        disabled=move || {
+                                            recipient_balance.get().is_none()
+                                                || is_loading_recipient.get()
+                                        }
+                                        on:click=handle_send
+                                    >
+                                        <div class="flex items-center justify-center gap-2">
+                                            {move || {
+                                                if is_loading_recipient.get() {
+                                                    view! {
+                                                        <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                                                    }
+                                                        .into_any()
+                                                } else {
+                                                    view! {
+                                                        <Icon icon=icondata::LuSend width="20" height="20" />
+                                                        <span>Send</span>
+                                                    }
+                                                        .into_any()
+                                                }
+                                            }}
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                            .into_any()
+                    }
+                    Some(None) => {
+                        view! {
+                            <div class="flex flex-col items-center justify-center h-64 text-center">
+                                <div class="text-neutral-400 text-lg mb-2">"NFT not found"</div>
+                                <div class="text-neutral-500 text-sm">
+                                    "Unable to locate the requested NFT token"
+                                </div>
+                            </div>
+                        }
+                            .into_any()
+                    }
+                    None => {
+                        view! {
+                            <div class="flex items-center justify-center h-32">
+                                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                            </div>
+                        }
+                            .into_any()
+                    }
+                }
+            }}
+        </div>
     }
 }
 
@@ -1421,12 +1877,15 @@ pub fn NftTokenDetails() -> impl IntoView {
                                         } else {
                                             format!("{}/{}", base_uri, media_url)
                                         };
+                                        let low_res_url = proxify_url(&url, Resolution::Low);
+                                        let high_res_url = proxify_url(&url, Resolution::High);
                                         view! {
-                                            <div class="w-full h-[calc(min(60vh,480px))] rounded-lg overflow-hidden bg-neutral-700">
-                                                <img
-                                                    src=proxify_url(&url)
+                                            <div class="w-full h-[calc(min(60vh-100px,480px))] rounded-lg overflow-hidden bg-neutral-700">
+                                                <ProgressiveImage
+                                                    low_res_src=low_res_url
+                                                    high_res_src=high_res_url
                                                     alt=title_clone.clone()
-                                                    class="object-cover h-full w-full"
+                                                    attr:class="object-cover h-full w-full"
                                                 />
                                             </div>
                                         }
@@ -1439,23 +1898,26 @@ pub fn NftTokenDetails() -> impl IntoView {
                                         }
                                             .into_any()
                                     }
-                                }} <div class="space-y-4 px-2">
+                                }}
+                                <A
+                                    href=move || {
+                                        format!("/send-nft/{}/{}", contract_id(), token_id())
+                                    }
+                                    attr:class="bg-neutral-900 rounded-xl p-2 py-4 text-white hover:bg-neutral-800 transition-colors flex items-center gap-2 cursor-pointer w-full justify-center mb-4"
+                                >
+                                    <Icon icon=icondata::LuSend width="20" height="20" />
+                                    <span>"Send"</span>
+                                </A> <div class="space-y-4 px-2">
                                     <h2 class="text-2xl font-semibold text-white break-words">
                                         {title}
                                     </h2>
-                                    <p class="text-neutral-400 whitespace-pre-wrap break-words">
+                                    <p class="text-neutral-400 whitespace-pre-wrap break-words mb-4">
                                         {if description.is_empty() {
-                                            "No description provided".to_string()
+                                            "No description".to_string()
                                         } else {
                                             description
                                         }}
                                     </p>
-                                    <button
-                                        class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg cursor-pointer w-full md:w-auto"
-                                        disabled
-                                    >
-                                        "Send"
-                                    </button>
                                 </div>
                             </div>
                         }

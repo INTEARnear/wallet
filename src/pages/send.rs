@@ -390,7 +390,9 @@ pub fn SendToken() -> impl IntoView {
                                         class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200"
                                         style=move || {
                                             if has_typed_recipient.get() {
-                                                if recipient_balance.get().is_none() {
+                                                if recipient_balance.get().is_none()
+                                                    && !is_loading_recipient.get()
+                                                {
                                                     "border: 2px solid rgb(239 68 68)"
                                                 } else if !is_loading_recipient.get()
                                                     && recipient_warning.get().is_none()
@@ -412,6 +414,8 @@ pub fn SendToken() -> impl IntoView {
                                         on:input=move |ev| {
                                             let value = event_target_value(&ev).to_lowercase();
                                             set_recipient.set(value.clone());
+                                            set_is_loading_recipient.set(true);
+                                            set_recipient_balance.set(None);
                                             check_recipient(value);
                                         }
                                     />
