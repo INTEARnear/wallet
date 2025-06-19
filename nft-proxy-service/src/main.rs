@@ -2,7 +2,6 @@
 
 use anyhow::anyhow;
 use axum::{
-    body::Body,
     extract::{Path, State},
     http::{header, HeaderMap, StatusCode},
     response::IntoResponse,
@@ -10,14 +9,14 @@ use axum::{
     Json, Router,
 };
 use bytes::Bytes;
-use image::codecs::webp;
+use image::{imageops::FilterType, DynamicImage};
 use moka::future::Cache;
 use near_min_api::types::AccountId;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use reqwest::Client;
 use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};
-use std::{env, net::SocketAddr, sync::Arc, time::Duration};
+use std::{env, io::Cursor, net::SocketAddr, sync::Arc, time::Duration};
 use teloxide::{
     dispatching::UpdateHandler,
     prelude::*,
@@ -28,6 +27,9 @@ use teloxide::{
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::EnvFilter;
 use url::{Host, Url};
+
+const LOW_RES_SIZE: u32 = 64;
+const HIGH_RES_SIZE: u32 = 576;
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub enum HiddenNft {
@@ -89,7 +91,10 @@ async fn main() {
     let telegram_chat_id = env::var("TELEGRAM_CHAT_ID").expect("TELEGRAM_CHAT_ID must be set");
 
     let state = AppState {
-        client: Client::new(),
+        client: Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .unwrap(),
         cache,
         max_size,
         spam_db: Arc::new(spam_db),
@@ -108,7 +113,8 @@ async fn main() {
     });
 
     let app = Router::new()
-        .route("/media/{*url}", get(proxy_handler))
+        .route("/media/low/{*url}", get(proxy_handler_low_res))
+        .route("/media/high/{*url}", get(proxy_handler_high_res))
         .route("/report-spam", post(report_spam_handler))
         .route("/spam-list", get(spam_list_handler))
         .layer(CorsLayer::permissive())
@@ -368,70 +374,83 @@ async fn spam_list_handler(
     Ok(Json(spam_list))
 }
 
+async fn proxy_handler_low_res(
+    state: State<AppState>,
+    url: Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    proxy_handler(state, url, LOW_RES_SIZE).await
+}
+
+async fn proxy_handler_high_res(
+    state: State<AppState>,
+    url: Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    proxy_handler(state, url, HIGH_RES_SIZE).await
+}
+
 async fn proxy_handler(
     State(state): State<AppState>,
     Path(url): Path<String>,
+    size: u32,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let decoded_url = match percent_encoding::percent_decode_str(&url).decode_utf8() {
-        Ok(u) => u.to_string(),
-        Err(_) => return Err((StatusCode::BAD_REQUEST, "Invalid URL encoding".to_string())),
-    };
+    let decoded_url = percent_encoding::percent_decode_str(&url)
+        .decode_utf8_lossy()
+        .to_string();
 
-    if let Some(cached_result) = state.cache.get(&decoded_url).await {
-        tracing::info!("Cache hit for {}", decoded_url);
-        return match cached_result {
-            Ok((bytes, content_type)) => {
-                let mut headers = HeaderMap::new();
-                headers.insert(header::CONTENT_TYPE, content_type.parse().unwrap());
-                Ok((headers, Body::from(bytes)).into_response())
-            }
-            Err(status_code) => Err((
-                StatusCode::from_u16(status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-                "Cached error".to_string(),
-            )),
-        };
-    }
-
-    tracing::info!("Cache miss for {}, fetching from origin", decoded_url);
-
-    let parsed_url = match Url::parse(&decoded_url) {
-        Ok(u) => u,
-        Err(_) => return Err((StatusCode::BAD_REQUEST, "Invalid URL".to_string())),
-    };
-
-    if parsed_url.scheme() != "https" {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "URL scheme must be https".to_string(),
-        ));
-    }
+    let parsed_url = Url::parse(&decoded_url)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid URL format: {e}")))?;
 
     if is_local(parsed_url.host()) {
         return Err((
             StatusCode::FORBIDDEN,
-            "Access to this resource is denied".to_string(),
+            "Access to local IPs is forbidden".into(),
         ));
     }
 
-    let response = match state.client.get(decoded_url.clone()).send().await {
-        Ok(res) => res,
+    let cache_key_low = format!("low:{}", decoded_url);
+    let cache_key_high = format!("high:{}", decoded_url);
+    let cache_key_current = if size == LOW_RES_SIZE {
+        cache_key_low.clone()
+    } else {
+        cache_key_high.clone()
+    };
+
+    if let Some(cached) = state.cache.get(&cache_key_current).await {
+        return match cached {
+            Ok((bytes, content_type)) => {
+                let mut headers = HeaderMap::new();
+                headers.insert(header::CONTENT_TYPE, content_type.parse().unwrap());
+                Ok((headers, bytes))
+            }
+            Err(status_code) => Err((
+                StatusCode::from_u16(status_code).unwrap(),
+                format!("Failed to fetch from origin with status {status_code}"),
+            )),
+        };
+    }
+
+    let res = state.client.get(&decoded_url).send().await;
+
+    let response = match res {
+        Ok(response) => response,
         Err(e) => {
-            tracing::error!("Failed to fetch from origin: {}", e);
             let status = e.status().map(|s| s.as_u16()).unwrap_or(500);
-            state.cache.insert(decoded_url, Err(status)).await;
+            state.cache.insert(cache_key_low, Err(status)).await;
+            state.cache.insert(cache_key_high, Err(status)).await;
             return Err((
-                StatusCode::BAD_GATEWAY,
-                "Failed to fetch from origin".to_string(),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to fetch image: {e}"),
             ));
         }
     };
 
-    if !response.status().is_success() {
+    if response.status() != StatusCode::OK {
         let status = response.status().as_u16();
-        state.cache.insert(decoded_url, Err(status)).await;
+        state.cache.insert(cache_key_low, Err(status)).await;
+        state.cache.insert(cache_key_high, Err(status)).await;
         return Err((
-            StatusCode::from_u16(status).unwrap(),
-            "Upstream error".to_string(),
+            response.status(),
+            format!("Upstream returned status: {}", response.status()),
         ));
     }
 
@@ -442,77 +461,76 @@ async fn proxy_handler(
         .unwrap_or("application/octet-stream")
         .to_string();
 
-    if let Some(content_length) = response.content_length() {
-        if content_length > state.max_size {
-            state
-                .cache
-                .insert(decoded_url, Err(StatusCode::PAYLOAD_TOO_LARGE.as_u16()))
-                .await;
-            return Err((
-                StatusCode::PAYLOAD_TOO_LARGE,
-                "Content too large".to_string(),
-            ));
-        }
-    }
-
     let bytes = match response.bytes().await {
-        Ok(b) => b,
+        Ok(bytes) => bytes,
         Err(e) => {
-            tracing::error!("Failed to read bytes from origin: {}", e);
-            let status = e.status().map(|s| s.as_u16()).unwrap_or(500);
-            state.cache.insert(decoded_url, Err(status)).await;
             return Err((
-                StatusCode::BAD_GATEWAY,
-                "Failed to read content".to_string(),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to read image bytes: {e}"),
             ));
         }
     };
 
     if bytes.len() as u64 > state.max_size {
-        state
-            .cache
-            .insert(decoded_url, Err(StatusCode::PAYLOAD_TOO_LARGE.as_u16()))
-            .await;
         return Err((
             StatusCode::PAYLOAD_TOO_LARGE,
-            "Content too large".to_string(),
+            "Image size exceeds the maximum allowed limit".into(),
         ));
     }
 
-    let (processed_bytes, final_content_type) = if content_type.starts_with("image/") {
-        match image::load_from_memory(&bytes) {
-            Ok(img) => {
-                let resized = img.resize_to_fill(512, 512, image::imageops::FilterType::Lanczos3);
-                let mut webp_bytes = Vec::new();
-                let encoder = webp::WebPEncoder::new_lossless(&mut webp_bytes);
-                match resized.write_with_encoder(encoder) {
-                    Ok(_) => (Bytes::from(webp_bytes), "image/webp".to_string()),
-                    Err(e) => {
-                        tracing::error!("Failed to encode to webp: {}", e);
-                        (bytes, content_type)
-                    }
-                }
-            }
-            Err(e) => {
-                tracing::warn!("Failed to decode image, serving as is: {}", e);
-                (bytes, content_type)
-            }
+    let img = match image::load_from_memory(&bytes) {
+        Ok(img) => img,
+        Err(e) => {
+            tracing::warn!("Failed to decode image, proxying as is. Error: {e}");
+            state
+                .cache
+                .insert(cache_key_low, Ok((bytes.clone(), content_type.clone())))
+                .await;
+            state
+                .cache
+                .insert(cache_key_high, Ok((bytes.clone(), content_type.clone())))
+                .await;
+            let mut headers = HeaderMap::new();
+            headers.insert(header::CONTENT_TYPE, content_type.parse().unwrap());
+            return Ok((headers, bytes));
         }
-    } else {
-        (bytes, content_type)
     };
 
-    state
-        .cache
-        .insert(
-            decoded_url.clone(),
-            Ok((processed_bytes.clone(), final_content_type.clone())),
-        )
-        .await;
+    let process_and_cache = |size: u32, img: DynamicImage, cache_key: String| {
+        let state = state.clone();
+        async move {
+            let resized_img = img.resize(size, size, FilterType::Lanczos3);
+            let mut buffer = Cursor::new(Vec::new());
+            if let Err(e) = resized_img.write_to(&mut buffer, image::ImageFormat::WebP) {
+                tracing::error!("Failed to encode resized image to WebP: {e}");
+                return;
+            }
+            let webp_bytes = Bytes::from(buffer.into_inner());
+            state
+                .cache
+                .insert(cache_key, Ok((webp_bytes, "image/webp".to_string())))
+                .await;
+        }
+    };
 
+    tokio::join!(
+        process_and_cache(LOW_RES_SIZE, img.clone(), cache_key_low),
+        process_and_cache(HIGH_RES_SIZE, img.clone(), cache_key_high)
+    );
+
+    let resized_img = img.resize(size, size, FilterType::Lanczos3);
+    let mut buffer = Cursor::new(Vec::new());
+    if let Err(e) = resized_img.write_to(&mut buffer, image::ImageFormat::WebP) {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to encode resized image to WebP: {e}"),
+        ));
+    };
+
+    let webp_bytes = Bytes::from(buffer.into_inner());
     let mut headers = HeaderMap::new();
-    headers.insert(header::CONTENT_TYPE, final_content_type.parse().unwrap());
-    Ok((headers, Body::from(processed_bytes)).into_response())
+    headers.insert(header::CONTENT_TYPE, "image/webp".parse().unwrap());
+    Ok((headers, webp_bytes))
 }
 
 fn is_local(host: Option<Host<&str>>) -> bool {
