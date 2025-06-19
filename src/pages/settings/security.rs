@@ -109,6 +109,7 @@ pub fn SecuritySettings() -> impl IntoView {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
     let (terminating_sessions, set_terminating_sessions) = signal(false);
+    let (show_terminate_dialog, set_show_terminate_dialog) = signal(false);
     let (benchmarking_password, set_benchmarking_password) = signal(false);
     let (password_input, set_password_input) = signal(String::new());
     let (benchmark_result, set_benchmark_result) = signal::<Option<(u32, f64)>>(None);
@@ -566,18 +567,12 @@ pub fn SecuritySettings() -> impl IntoView {
                 <div class="flex flex-col gap-2">
                     <div class="text-lg font-medium">Terminate All Other Sessions</div>
                     <div class="text-sm text-neutral-400">
-                        "This will log you out of all wallets other than this one. This can be useful if you feel like you might have compromised your seed phrase and want to change it. Note that if you have saved your seed phrase, "
-                        <span class="text-yellow-400 font-bold">"IT WILL STOP WORKING"</span>
-                        ", and a " <span class="text-yellow-400 font-bold">"NEW"</span>
-                        " phrase will appear in the Account page, make sure to save it after pressing this button. "
-                        <span class="text-yellow-400 font-bold">
-                            "DO NOT CLOSE THE WALLET BEFORE THIS IS DONE."
-                        </span>
+                        "This will log you out of all devices other than this one."
                     </div>
                     <button
                         class="flex items-center justify-center gap-2 p-4 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         disabled=move || terminating_sessions.get()
-                        on:click=terminate_sessions
+                        on:click=move |_| set_show_terminate_dialog.set(true)
                     >
                         <Show when=move || !terminating_sessions.get()>
                             <Icon icon=icondata::LuLogOut width="20" height="20" />
@@ -588,6 +583,50 @@ pub fn SecuritySettings() -> impl IntoView {
                             <span>"Terminating..."</span>
                         </Show>
                     </button>
+
+                    <Show when=move || show_terminate_dialog.get()>
+                        <div class="fixed inset-0 bg-neutral-950/60 backdrop-blur-[2px] lg:rounded-3xl z-10">
+                            <div class="absolute inset-0 flex items-center justify-center">
+                                <div class="bg-neutral-950 p-8 rounded-xl w-full max-w-md border border-red-500/20">
+                                    <h3 class="text-xl font-semibold mb-4 text-white">
+                                        "Terminate All Other Sessions"
+                                    </h3>
+                                    <div class="text-neutral-400 mb-6 space-y-4">
+                                        <p>
+                                            "This will log you out of all wallets other than this one. This can be useful if you feel like you might have compromised your seed phrase and want to change it."
+                                        </p>
+                                        <p>
+                                            "Note that if you have saved your seed phrase, "
+                                            <span class="text-yellow-400 font-bold">
+                                                "IT WILL STOP WORKING"
+                                            </span> ", and a "
+                                            <span class="text-yellow-400 font-bold">"NEW"</span>
+                                            " phrase will appear in the Account page."
+                                        </p>
+                                    </div>
+
+                                    <div class="flex gap-3">
+                                        <button
+                                            class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden bg-neutral-800 hover:bg-neutral-700 cursor-pointer"
+                                            on:click=move |_| set_show_terminate_dialog.set(false)
+                                        >
+                                            "Cancel"
+                                        </button>
+                                        <button
+                                            class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden bg-red-500 hover:bg-red-600 disabled:bg-red-500/50 disabled:cursor-not-allowed cursor-pointer"
+                                            disabled=move || terminating_sessions.get()
+                                            on:click=move |_| {
+                                                terminate_sessions(());
+                                                set_show_terminate_dialog.set(false);
+                                            }
+                                        >
+                                            "Confirm"
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </Show>
                 </div>
             </div>
         </div>
