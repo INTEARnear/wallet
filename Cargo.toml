@@ -80,6 +80,7 @@ alloy-signer = "1.0.8"
 alloy-signer-local = "1.0.8"
 bigdecimal = { version = "0.4.8", features = ["serde-json"] }
 thaw = { version = "0.5.0-beta", features = ["csr", "nightly"] }
+percent-encoding = "2.3.1"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.50"
@@ -106,6 +107,7 @@ members = [
     "account-creation-service",
     "logout-bridge-service",
     "password-storage-service",
+    "nft-proxy-service",
 ]
 
 [package.metadata.patch]

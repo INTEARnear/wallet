@@ -6,3 +6,5 @@ dist
 .env
 node_modules
 /js-out
+/nft-proxy-service/spam
+/nft-proxy-service/reported

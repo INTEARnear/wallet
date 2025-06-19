@@ -53,7 +53,7 @@ pub fn provide_nft_cache_context() {
     let cache = RwSignal::new(HashMap::new());
 
     Effect::new(move || {
-        selected_account_memo.track();
+        let _ = selected_account_memo.get(); // .track() doesn't work here for some reason
         cache.update(|map| map.clear());
     });
 

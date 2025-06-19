@@ -1,5 +1,6 @@
 use futures_util::future::join_all;
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use leptos_icons::*;
 use leptos_router::hooks::use_navigate;
 use leptos_router::{hooks::use_params_map, NavigateOptions};
@@ -20,6 +21,27 @@ use crate::contexts::{
     network_context::Network,
     rpc_context::RpcContext,
 };
+
+async fn fetch_spam_list() -> Vec<HiddenNft> {
+    let proxy_base = dotenvy_macro::dotenv!("SHARED_NFT_PROXY_SERVICE_ADDR");
+    let url = format!("{}/spam-list", proxy_base);
+    if let Ok(res) = reqwest::get(&url).await {
+        if let Ok(list) = res.json::<Vec<HiddenNft>>().await {
+            return list;
+        }
+    }
+    vec![]
+}
+
+fn proxify_url(url: &str) -> String {
+    if url.starts_with("data:") {
+        return url.to_string();
+    }
+    let proxy_base = dotenvy_macro::dotenv!("SHARED_NFT_PROXY_SERVICE_ADDR");
+    let encoded_url =
+        percent_encoding::utf8_percent_encode(url, percent_encoding::NON_ALPHANUMERIC).to_string();
+    format!("{proxy_base}/media/{encoded_url}")
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct FastnearNftResponse {
@@ -74,35 +96,20 @@ async fn fetch_nfts_for_owner(
         .unwrap_or_default()
 }
 
-async fn fetch_nfts() -> Vec<OwnedCollection> {
-    let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+async fn fetch_nfts(account_id: AccountId, network: Network) -> Vec<OwnedCollection> {
     let NftCacheContext { cache } = expect_context::<NftCacheContext>();
 
-    let Some(selected_account_id) = accounts().selected_account_id else {
-        return vec![];
-    };
-
-    if !cache.read().is_empty() {
-        return cache.read().values().cloned().collect();
+    if !cache.read_untracked().is_empty() {
+        return cache.read_untracked().values().cloned().collect();
     }
 
-    let Some(selected_account) = accounts()
-        .accounts
-        .into_iter()
-        .find(|account| account.account_id == selected_account_id)
-    else {
-        return vec![];
-    };
-
-    let api_host = match selected_account.network {
+    let api_host = match network {
         Network::Mainnet => "api.fastnear.com",
         Network::Testnet => "test.api.fastnear.com",
     };
 
-    let Ok(response) = reqwest::get(format!(
-        "https://{api_host}/v1/account/{selected_account_id}/nft"
-    ))
-    .await
+    let Ok(response) =
+        reqwest::get(format!("https://{api_host}/v1/account/{account_id}/nft")).await
     else {
         return vec![];
     };
@@ -116,11 +123,11 @@ async fn fetch_nfts() -> Vec<OwnedCollection> {
     let fetches = nft_data.tokens.into_iter().map(|token| {
         let contract_id = token.contract_id.clone();
         let rpc_client = rpc_client.clone();
-        let selected_account_id = selected_account_id.clone();
+        let account_id = account_id.clone();
         async move {
             let metadata_fut = fetch_nft_metadata(contract_id.clone(), rpc_client.clone());
             let tokens_fut =
-                fetch_nfts_for_owner(contract_id.clone(), selected_account_id.clone(), rpc_client);
+                fetch_nfts_for_owner(contract_id.clone(), account_id.clone(), rpc_client);
             let (metadata_opt, owned_tokens) =
                 futures_util::future::join(metadata_fut, tokens_fut).await;
             OwnedCollection {
@@ -175,6 +182,9 @@ pub fn NftCollection() -> impl IntoView {
         }
     });
 
+    let spam_list = LocalResource::new(fetch_spam_list);
+    let (is_reported, set_is_reported) = signal(false);
+
     let base_uri = move || {
         let Some(Some(metadata)) = collection_metadata.get() else {
             return String::new();
@@ -222,8 +232,25 @@ pub fn NftCollection() -> impl IntoView {
         }
     };
 
-    // TODO
-    let report_collection = |_e: MouseEvent| {};
+    let report_collection = move |_e: MouseEvent| {
+        if is_reported.get_untracked() {
+            return;
+        }
+        if let Ok(cid) = contract_id().parse::<AccountId>() {
+            set_is_reported.set(true);
+            spawn_local(async move {
+                let item = HiddenNft::Collection(cid);
+                let proxy_base = dotenvy_macro::dotenv!("SHARED_NFT_PROXY_SERVICE_ADDR");
+                let url = format!("{}/report-spam", proxy_base);
+                let client = reqwest::Client::new();
+                if let Err(e) = client.post(&url).json(&item).send().await {
+                    leptos::logging::error!("Failed to report spam: {e:?}");
+                } else {
+                    spam_list.refetch();
+                }
+            });
+        }
+    };
 
     view! {
         <div class="md:p-4 transition-all duration-100">
@@ -246,17 +273,33 @@ pub fn NftCollection() -> impl IntoView {
                 </button>
                 <div class="flex items-center gap-3">
                     <button
+                        title="Hide"
                         class="text-neutral-400 hover:text-white transition-colors cursor-pointer"
                         on:click=hide_collection
                     >
                         <Icon icon=icondata::LuEyeOff width="20" height="20" />
                     </button>
-                    <button
-                        class="text-neutral-400 hover:text-white transition-colors cursor-pointer"
-                        on:click=report_collection
-                    >
-                        <Icon icon=icondata::LuFlag width="20" height="20" />
-                    </button>
+                    {move || {
+                        if is_reported.get() {
+                            view! {
+                                <span class="text-neutral-400 text-sm select-none">
+                                    "Reported!"
+                                </span>
+                            }
+                                .into_any()
+                        } else {
+                            view! {
+                                <button
+                                    title="Report"
+                                    class="text-neutral-400 hover:text-white transition-colors cursor-pointer"
+                                    on:click=report_collection
+                                >
+                                    <Icon icon=icondata::LuFlag width="20" height="20" />
+                                </button>
+                            }
+                                .into_any()
+                        }
+                    }}
                 </div>
             </div>
             <Suspense fallback=move || {
@@ -285,15 +328,35 @@ pub fn NftCollection() -> impl IntoView {
                                         .into_iter()
                                         .filter(|nft| {
                                             let cfg = expect_context::<ConfigContext>().config.get();
-                                            !cfg
+                                            let is_hidden_user = cfg
                                                 .hidden_nfts
                                                 .iter()
-                                                .any(|h| match h {
-                                                    HiddenNft::Token(cid, tid) => {
-                                                        *cid == contract_id() && tid == &nft.token_id
-                                                    }
-                                                    _ => false,
-                                                })
+                                                .any(|h| {
+                                                    matches!(
+                                                        h,
+                                                        HiddenNft::Token(cid, tid)
+                                                        if *cid == contract_id() && tid == &nft.token_id
+                                                    )
+                                                });
+                                            if is_hidden_user {
+                                                return false;
+                                            }
+                                            if let Some(spam) = spam_list.get() {
+                                                let is_spam = spam
+                                                    .iter()
+                                                    .any(|h| {
+                                                        match h {
+                                                            HiddenNft::Token(cid, tid) => {
+                                                                *cid == contract_id() && tid == &nft.token_id
+                                                            }
+                                                            HiddenNft::Collection(cid) => *cid == contract_id(),
+                                                        }
+                                                    });
+                                                if is_spam {
+                                                    return false;
+                                                }
+                                            }
+                                            true
                                         })
                                         .map(|nft| {
                                             let title = nft
@@ -327,7 +390,7 @@ pub fn NftCollection() -> impl IntoView {
                                                             view! {
                                                                 <div class="aspect-square overflow-hidden">
                                                                     <img
-                                                                        src=media_url.clone()
+                                                                        src=proxify_url(&media_url)
                                                                         alt=title_for_alt.clone()
                                                                         class="w-full h-full object-cover"
                                                                     />
@@ -371,19 +434,32 @@ pub fn NftCollection() -> impl IntoView {
 #[component]
 pub fn Nfts() -> impl IntoView {
     let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
-    let nfts = LocalResource::new(fetch_nfts);
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+    let nfts = LocalResource::new(move || {
+        let selected_account = if let Some(selected_account_id) = accounts().selected_account_id {
+            accounts()
+                .accounts
+                .into_iter()
+                .find(|a| a.account_id == selected_account_id)
+        } else {
+            None
+        };
+        async move {
+            let Some(selected_account) = selected_account else {
+                return vec![];
+            };
+            fetch_nfts(selected_account.account_id, selected_account.network).await
+        }
+    });
     let SearchContext {
         query: search_query,
         ..
     } = expect_context::<SearchContext>();
-
-    Effect::new(move || {
-        accounts.track();
-        nfts.refetch();
-    });
+    let navigate = use_navigate();
+    let spam_list = LocalResource::new(fetch_spam_list);
 
     move || {
+        let navigate = navigate.clone();
         let q = search_query.get();
         if !q.trim().is_empty() {
             view! {
@@ -401,6 +477,7 @@ pub fn Nfts() -> impl IntoView {
                         {move || {
                             let query = q.clone();
                             if let Some(collections) = nfts.get() {
+                                let global_spam_list = spam_list.get().unwrap_or_default();
                                 type Score = i32;
                                 type TokenWithScore = (NftToken, Score);
                                 type CollectionWithScore = (
@@ -409,7 +486,20 @@ pub fn Nfts() -> impl IntoView {
                                     Vec<TokenWithScore>,
                                 );
                                 let mut scored: Vec<CollectionWithScore> = Vec::new();
-                                for collection in collections.into_iter() {
+                                for collection in collections
+                                    .into_iter()
+                                    .filter(|c| {
+                                        !global_spam_list
+                                            .iter()
+                                            .any(|h| {
+                                                matches!(
+                                                    h,
+                                                    HiddenNft::Collection(cid)
+                                                    if cid == &c.contract_id
+                                                )
+                                            })
+                                    })
+                                {
                                     let collection_name = collection
                                         .metadata
                                         .as_ref()
@@ -424,7 +514,22 @@ pub fn Nfts() -> impl IntoView {
                                         collection.contract_id.as_ref(),
                                     );
                                     let mut token_scores: Vec<(NftToken, i32)> = Vec::new();
-                                    for token in collection.tokens.clone().into_iter() {
+                                    for token in collection
+                                        .tokens
+                                        .clone()
+                                        .into_iter()
+                                        .filter(|t| {
+                                            !global_spam_list
+                                                .iter()
+                                                .any(|h| {
+                                                    matches!(
+                                                        h,
+                                                        HiddenNft::Token(cid, tid)
+                                                        if cid == &collection.contract_id && tid == &t.token_id
+                                                    )
+                                                })
+                                        })
+                                    {
                                         let mut score = 0;
                                         if let Some(title) = &token.metadata.title {
                                             score = score.max(compute_match_score(&query, title));
@@ -579,7 +684,7 @@ pub fn Nfts() -> impl IntoView {
                                                                             view! {
                                                                                 <div class="aspect-square overflow-hidden">
                                                                                     <img
-                                                                                        src=media_url.clone()
+                                                                                        src=proxify_url(&media_url)
                                                                                         alt=title_for_alt.clone()
                                                                                         class="w-full h-full object-cover"
                                                                                     />
@@ -693,18 +798,34 @@ pub fn Nfts() -> impl IntoView {
                                 }
                             }>
                                 {move || {
+                                    let navigate = navigate.clone();
                                     if let Some(collections) = nfts.get() {
                                         let cfg = config.get();
                                         let mut visible_collections: Vec<_> = collections
                                             .into_iter()
                                             .filter(|c| {
-                                                !cfg
+                                                let is_hidden_user = cfg
                                                     .hidden_nfts
                                                     .iter()
-                                                    .any(|h| match h {
-                                                        HiddenNft::Collection(cid) => cid == &c.contract_id,
-                                                        _ => false,
-                                                    })
+                                                    .any(|h| {
+                                                        matches!(
+                                                            h,
+                                                            HiddenNft::Collection(cid)
+                                                            if cid == &c.contract_id
+                                                        )
+                                                    });
+                                                let is_spam = spam_list
+                                                    .get()
+                                                    .unwrap_or_default()
+                                                    .iter()
+                                                    .any(|h| {
+                                                        matches!(
+                                                            h,
+                                                            HiddenNft::Collection(cid)
+                                                            if cid == &c.contract_id
+                                                        )
+                                                    });
+                                                !is_hidden_user && !is_spam
                                             })
                                             .collect();
                                         if visible_collections.is_empty() {
@@ -714,7 +835,7 @@ pub fn Nfts() -> impl IntoView {
                                                         "No NFTs found"
                                                     </div>
                                                     <div class="text-neutral-500 text-sm">
-                                                        "Your NFT collection will appear here"
+                                                        "Your NFT collections will appear here"
                                                     </div>
                                                 </div>
                                             }
@@ -749,7 +870,7 @@ pub fn Nfts() -> impl IntoView {
                                                                         );
                                                                     }
                                                                 };
-                                                                let navigate = use_navigate();
+                                                                let navigate = navigate.clone();
                                                                 let on_collection_click = move |_| {
                                                                     navigate(
                                                                         &format!("/nfts/{contract_id_for_click}"),
@@ -872,7 +993,63 @@ pub fn Nfts() -> impl IntoView {
                                 }
                             }>
                                 {move || {
+                                    let navigate = navigate.clone();
                                     if let Some(collections) = nfts.get() {
+                                        let cfg = config.get();
+                                        let has_visible_nfts = collections
+                                            .iter()
+                                            .any(|collection| {
+                                                collection
+                                                    .tokens
+                                                    .iter()
+                                                    .any(|token| {
+                                                        let is_hidden_user = cfg
+                                                            .hidden_nfts
+                                                            .iter()
+                                                            .any(|h| {
+                                                                matches!(
+                                                                    h,
+                                                                    HiddenNft::Token(cid, tid)
+                                                                    if cid == &collection.contract_id && tid == &token.token_id
+                                                                )
+                                                                    || matches!(
+                                                                        h,
+                                                                        HiddenNft::Collection(cid)
+                                                                        if cid == &collection.contract_id
+                                                                    )
+                                                            });
+                                                        let is_spam = spam_list
+                                                            .get()
+                                                            .unwrap_or_default()
+                                                            .iter()
+                                                            .any(|h| {
+                                                                matches!(
+                                                                    h,
+                                                                    HiddenNft::Token(cid, tid)
+                                                                    if cid == &collection.contract_id && tid == &token.token_id
+                                                                )
+                                                                    || matches!(
+                                                                        h,
+                                                                        HiddenNft::Collection(cid)
+                                                                        if cid == &collection.contract_id
+                                                                    )
+                                                            });
+                                                        !is_hidden_user && !is_spam
+                                                    })
+                                            });
+                                        if !has_visible_nfts {
+                                            return view! {
+                                                <div class="flex flex-col items-center justify-center h-64 text-center">
+                                                    <div class="text-neutral-400 text-lg mb-2">
+                                                        "No NFTs found"
+                                                    </div>
+                                                    <div class="text-neutral-500 text-sm">
+                                                        "Your NFTs will appear here"
+                                                    </div>
+                                                </div>
+                                            }
+                                                .into_any();
+                                        }
                                         let mut sorted_collections = collections;
                                         sorted_collections
                                             .sort_by_key(|c| c.contract_id.to_string().to_lowercase());
@@ -891,22 +1068,45 @@ pub fn Nfts() -> impl IntoView {
                                                     .unwrap_or_else(|| "Unknown Collection".to_string());
                                                 let contract_id_display = collection.contract_id.clone();
                                                 let cfg = config.get();
+                                                let global_spam_list = spam_list.get().unwrap_or_default();
                                                 let mut sorted_tokens: Vec<_> = collection
                                                     .tokens
                                                     .into_iter()
                                                     .filter(|t| {
-                                                        !cfg
+                                                        let is_hidden_user = cfg
                                                             .hidden_nfts
                                                             .iter()
-                                                            .any(|h| match h {
-                                                                HiddenNft::Token(cid, tid) => {
-                                                                    cid == &collection.contract_id && tid == &t.token_id
-                                                                }
-                                                                HiddenNft::Collection(cid) => cid == &collection.contract_id,
-                                                            })
+                                                            .any(|h| {
+                                                                matches!(
+                                                                    h,
+                                                                    HiddenNft::Token(cid, tid)
+                                                                    if cid == &collection.contract_id && tid == &t.token_id
+                                                                )
+                                                                    || matches!(
+                                                                        h,
+                                                                        HiddenNft::Collection(cid)
+                                                                        if cid == &collection.contract_id
+                                                                    )
+                                                            });
+                                                        let is_spam = global_spam_list
+                                                            .iter()
+                                                            .any(|h| {
+                                                                matches!(
+                                                                    h,
+                                                                    HiddenNft::Token(cid, tid)
+                                                                    if cid == &collection.contract_id && tid == &t.token_id
+                                                                )
+                                                                    || matches!(
+                                                                        h,
+                                                                        HiddenNft::Collection(cid)
+                                                                        if cid == &collection.contract_id
+                                                                    )
+                                                            });
+                                                        !is_hidden_user && !is_spam
                                                     })
                                                     .collect();
                                                 sorted_tokens.sort_by_key(|t| t.token_id.clone());
+                                                let navigate = navigate.clone();
                                                 sorted_tokens
                                                     .into_iter()
                                                     .map(move |nft| {
@@ -953,9 +1153,9 @@ pub fn Nfts() -> impl IntoView {
                                                         let title_for_alt = title.clone();
                                                         let media = nft.metadata.media.clone();
                                                         let token_id = nft.token_id.clone();
-                                                        let navigate = use_navigate();
                                                         let contract_id_nav = contract_id_display.clone();
                                                         let token_id_nav = token_id.clone();
+                                                        let navigate = navigate.clone();
                                                         let on_card_click = move |_| {
                                                             navigate(
                                                                 &format!("/nfts/{}/{}", contract_id_nav, token_id_nav),
@@ -977,7 +1177,7 @@ pub fn Nfts() -> impl IntoView {
                                                                         view! {
                                                                             <div class="aspect-square overflow-hidden">
                                                                                 <img
-                                                                                    src=media_url.clone()
+                                                                                    src=proxify_url(&media_url)
                                                                                     alt=title_for_alt.clone()
                                                                                     class="w-full h-full object-cover"
                                                                                 />
@@ -1085,6 +1285,9 @@ pub fn NftTokenDetails() -> impl IntoView {
         }
     });
 
+    let spam_list = LocalResource::new(fetch_spam_list);
+    let (is_reported, set_is_reported) = signal(false);
+
     let nft_token = LocalResource::new(move || {
         let rpc_client = client.get().clone();
         async move {
@@ -1096,12 +1299,6 @@ pub fn NftTokenDetails() -> impl IntoView {
             let tid = token_id();
             tokens.into_iter().find(|t| t.token_id == tid)
         }
-    });
-
-    // Refetch when account changes
-    Effect::new(move || {
-        accounts.track();
-        nft_token.refetch();
     });
 
     let navigate = use_navigate();
@@ -1119,12 +1316,34 @@ pub fn NftTokenDetails() -> impl IntoView {
                                 .push(HiddenNft::Token(cid.clone(), tid.clone()));
                         }
                     });
-                    navigate("/nfts", NavigateOptions::default());
+                    let collection_id = contract_id();
+                    navigate(
+                        &format!("/nfts/{collection_id}"),
+                        NavigateOptions::default(),
+                    );
                 }
             }
         };
 
-    let report_token = |_e: MouseEvent| {};
+    let report_token = move |_e: MouseEvent| {
+        if is_reported.get_untracked() {
+            return;
+        }
+        if let (Ok(cid), tid) = (contract_id().parse::<AccountId>(), token_id()) {
+            set_is_reported.set(true);
+            spawn_local(async move {
+                let item = HiddenNft::Token(cid, tid);
+                let proxy_base = dotenvy_macro::dotenv!("SHARED_NFT_PROXY_SERVICE_ADDR");
+                let url = format!("{}/report-spam", proxy_base);
+                let client = reqwest::Client::new();
+                if let Err(e) = client.post(&url).json(&item).send().await {
+                    leptos::logging::error!("Failed to report spam: {e:?}");
+                } else {
+                    spam_list.refetch();
+                }
+            });
+        }
+    };
 
     view! {
         <div class="md:p-4 transition-all duration-100">
@@ -1140,17 +1359,33 @@ pub fn NftTokenDetails() -> impl IntoView {
                 </button>
                 <div class="flex items-center gap-3">
                     <button
+                        title="Hide"
                         class="text-neutral-400 hover:text-white transition-colors cursor-pointer"
                         on:click=hide_token
                     >
                         <Icon icon=icondata::LuEyeOff width="20" height="20" />
                     </button>
-                    <button
-                        class="text-neutral-400 hover:text-white transition-colors cursor-pointer"
-                        on:click=report_token
-                    >
-                        <Icon icon=icondata::LuFlag width="20" height="20" />
-                    </button>
+                    {move || {
+                        if is_reported.get() {
+                            view! {
+                                <span class="text-neutral-400 text-sm select-none">
+                                    "Reported!"
+                                </span>
+                            }
+                                .into_any()
+                        } else {
+                            view! {
+                                <button
+                                    title="Report"
+                                    class="text-neutral-400 hover:text-white transition-colors cursor-pointer"
+                                    on:click=report_token
+                                >
+                                    <Icon icon=icondata::LuFlag width="20" height="20" />
+                                </button>
+                            }
+                                .into_any()
+                        }
+                    }}
                 </div>
             </div>
             <Suspense fallback=move || {
@@ -1189,7 +1424,7 @@ pub fn NftTokenDetails() -> impl IntoView {
                                         view! {
                                             <div class="w-full h-[calc(min(60vh,480px))] rounded-lg overflow-hidden bg-neutral-700">
                                                 <img
-                                                    src=url.clone()
+                                                    src=proxify_url(&url)
                                                     alt=title_clone.clone()
                                                     class="object-cover h-full w-full"
                                                 />
