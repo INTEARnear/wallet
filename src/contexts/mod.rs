@@ -3,6 +3,7 @@ pub mod accounts_context;
 pub mod config_context;
 pub mod connected_apps_context;
 pub mod network_context;
+pub mod nft_cache_context;
 pub mod rpc_context;
 pub mod search_context;
 pub mod security_log_context;

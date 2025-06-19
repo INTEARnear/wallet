@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+use near_min_api::types::AccountId;
 use serde::{Deserialize, Serialize};
 use web_sys::window;
 
@@ -68,6 +69,13 @@ impl PasswordRememberDuration {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+pub enum NftsViewState {
+    Collections,
+    #[default]
+    AllNfts,
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct WalletConfig {
     pub show_low_balance_tokens: bool,
@@ -86,6 +94,16 @@ pub struct WalletConfig {
     pub slippage: Slippage,
     #[serde(default)]
     pub analytics_disabled: bool,
+    #[serde(default)]
+    pub nfts_view_state: NftsViewState,
+    #[serde(default)]
+    pub hidden_nfts: Vec<HiddenNft>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+pub enum HiddenNft {
+    Collection(AccountId),
+    Token(AccountId, String),
 }
 
 impl Default for WalletConfig {
@@ -101,6 +119,8 @@ impl Default for WalletConfig {
             password_remember_duration: PasswordRememberDuration::default(),
             slippage: Slippage::default(),
             analytics_disabled: false,
+            nfts_view_state: NftsViewState::default(),
+            hidden_nfts: vec![],
         }
     }
 }

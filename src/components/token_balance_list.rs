@@ -162,7 +162,7 @@ pub fn TokenBalanceList() -> impl IntoView {
                                                             .into_any()
                                                     }
                                                 }} <div>
-                                                    <h3
+                                                    <span
                                                         class="text-white text-lg font-medium"
                                                         style=move || {
                                                             if symbol.len() > 14 {
@@ -175,7 +175,7 @@ pub fn TokenBalanceList() -> impl IntoView {
                                                         }
                                                     >
                                                         {token.token.metadata.symbol.clone()}
-                                                    </h3>
+                                                    </span>
                                                     <p
                                                         class="text-gray-400 text-sm"
                                                         style=move || {

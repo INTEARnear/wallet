@@ -169,7 +169,7 @@ pub fn WalletHeader() -> impl IntoView {
                                 on:click=move |_| set_is_search_expanded(true)
                                 style=move || {
                                     let current_path = location.pathname.get();
-                                    if current_path != "/" {
+                                    if current_path != "/" && current_path != "/nfts" {
                                         "opacity: 0; pointer-events: none"
                                     } else {
                                         ""

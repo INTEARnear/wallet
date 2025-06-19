@@ -1,6 +1,7 @@
-use crate::contexts::config_context::ConfigContext;
+use crate::contexts::config_context::{ConfigContext, HiddenNft};
 use bigdecimal::{BigDecimal, FromPrimitive};
 use leptos::prelude::*;
+use leptos_icons::*;
 
 pub const SLIPPAGE_PRESETS: [f64; 4] = [0.5, 1.0, 2.0, 5.0];
 
@@ -156,7 +157,9 @@ pub fn PreferencesSettings() -> impl IntoView {
                                         .get()
                                         .slippage
                                     {
-                                        slippage == BigDecimal::from_f64(percentage).unwrap() / BigDecimal::from(100)
+                                        slippage
+                                            == BigDecimal::from_f64(percentage).unwrap()
+                                                / BigDecimal::from(100)
                                     } else {
                                         false
                                     }
@@ -176,7 +179,8 @@ pub fn PreferencesSettings() -> impl IntoView {
                                                 .set_config
                                                 .update(|config| {
                                                     config.slippage = crate::pages::swap::Slippage::Fixed {
-                                                        slippage: BigDecimal::from_f64(percentage).unwrap() / BigDecimal::from(100),
+                                                        slippage: BigDecimal::from_f64(percentage).unwrap()
+                                                            / BigDecimal::from(100),
                                                     };
                                                 });
                                             set_custom_slippage_input.set("".to_string());
@@ -201,7 +205,11 @@ pub fn PreferencesSettings() -> impl IntoView {
                                     let value = event_target_value(&ev);
                                     set_custom_slippage_input.set(value.clone());
                                     if let Ok(percentage) = value.parse::<BigDecimal>() {
-                                        let percentage = percentage.clamp(BigDecimal::from_f64(0.01).unwrap(), BigDecimal::from_f64(100.0).unwrap());
+                                        let percentage = percentage
+                                            .clamp(
+                                                BigDecimal::from_f64(0.01).unwrap(),
+                                                BigDecimal::from_f64(100.0).unwrap(),
+                                            );
                                         config_context
                                             .set_config
                                             .update(|config| {
@@ -244,6 +252,60 @@ pub fn PreferencesSettings() -> impl IntoView {
                     <div class="text-xs text-gray-400">
                         "If the price moves unfavorably by more than this percentage while you're clicking the button, the transaction will be cancelled."
                     </div>
+                </div>
+            </div>
+
+            // Hidden NFTs management
+            <div class="mt-6">
+                <div class="text-lg font-medium text-gray-300 mb-4">"Hidden NFTs"</div>
+                <div class="bg-neutral-800 rounded-xl p-4 space-y-4">
+                    {move || {
+                        let hidden_list = config_context.config.get().hidden_nfts.clone();
+                        if hidden_list.is_empty() {
+                            view! {
+                                <div class="text-sm text-gray-400">
+                                    "You have no hidden collections or tokens."
+                                </div>
+                            }
+                                .into_any()
+                        } else {
+                            view! {
+                                <div class="space-y-3">
+                                    {hidden_list
+                                        .into_iter()
+                                        .map(|item| {
+                                            let display_text = match &item {
+                                                HiddenNft::Collection(acc) => acc.to_string(),
+                                                HiddenNft::Token(acc, tid) => format!("{acc} / #{tid}"),
+                                            };
+                                            let set_config = config_context.set_config;
+                                            let item_clone = item.clone();
+                                            let remove_item = move |_| {
+                                                set_config
+                                                    .update(|cfg| {
+                                                        cfg.hidden_nfts.retain(|h| h != &item_clone);
+                                                    });
+                                            };
+                                            view! {
+                                                <div class="flex justify-between items-center bg-neutral-700 rounded-lg p-3">
+                                                    <span class="text-sm text-white break-all">
+                                                        {display_text}
+                                                    </span>
+                                                    <button
+                                                        class="text-neutral-400 hover:text-white transition-colors cursor-pointer"
+                                                        on:click=remove_item
+                                                    >
+                                                        <Icon icon=icondata::LuTrash width="16" height="16" />
+                                                    </button>
+                                                </div>
+                                            }
+                                        })
+                                        .collect_view()}
+                                </div>
+                            }
+                                .into_any()
+                        }
+                    }}
                 </div>
             </div>
         </div>

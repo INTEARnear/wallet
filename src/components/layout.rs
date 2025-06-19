@@ -81,6 +81,10 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
         path: "/",
         icon: icondata::LuWallet,
     };
+    const NFTS_ITEM: &NavItem = &NavItem {
+        path: "/nfts",
+        icon: icondata::LuImage,
+    };
     const SWAP_ITEM: &NavItem = &NavItem {
         path: "/swap",
         icon: icondata::LuRefreshCw,
@@ -95,10 +99,10 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
     };
     let nav_items = move || match network.get() {
         Network::Mainnet => {
-            vec![HOME_ITEM, SWAP_ITEM, HISTORY_ITEM, EXPLORE_ITEM]
+            vec![HOME_ITEM, NFTS_ITEM, SWAP_ITEM, HISTORY_ITEM, EXPLORE_ITEM]
         }
         Network::Testnet => {
-            vec![HOME_ITEM, HISTORY_ITEM, EXPLORE_ITEM]
+            vec![HOME_ITEM, NFTS_ITEM, HISTORY_ITEM, EXPLORE_ITEM]
         }
     };
 
@@ -155,8 +159,7 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
             if initial_movement_direction.get() == Some(MovementDirection::Horizontal) {
                 let current_index = nav_items()
                     .iter()
-                    .position(|item| item.path == location.pathname.get().as_str())
-                    .unwrap_or(0);
+                    .position(|item| item.path == location.pathname.get().as_str());
 
                 // Calculate swipe progress
                 let progress = match delta_x {
@@ -167,10 +170,12 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                 };
 
                 // Only allow swiping if we're not at the edge
-                if (delta_x < 0.0 && current_index < nav_items().len() - 1)
-                    || (delta_x > 0.0 && current_index > 0)
-                {
-                    set_swipe_progress(progress);
+                if let Some(current_index) = current_index {
+                    if (delta_x < 0.0 && current_index < nav_items().len() - 1)
+                        || (delta_x > 0.0 && current_index > 0)
+                    {
+                        set_swipe_progress(progress);
+                    }
                 }
             }
         }
@@ -204,17 +209,18 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
             {
                 let current_index = nav_items()
                     .iter()
-                    .position(|item| item.path == location.pathname.get().as_str())
-                    .unwrap_or(0);
+                    .position(|item| item.path == location.pathname.get().as_str());
 
-                if delta_x < 0.0 && current_index < nav_items().len() - 1 {
-                    // Swipe left - go to next page
-                    let next_path = nav_items()[current_index + 1].path;
-                    navigate(next_path, Default::default());
-                } else if delta_x > 0.0 && current_index > 0 {
-                    // Swipe right - go to previous page
-                    let prev_path = nav_items()[current_index - 1].path;
-                    navigate(prev_path, Default::default());
+                if let Some(current_index) = current_index {
+                    if delta_x < 0.0 && current_index < nav_items().len() - 1 {
+                        // Swipe left - go to next page
+                        let next_path = nav_items()[current_index + 1].path;
+                        navigate(next_path, Default::default());
+                    } else if delta_x > 0.0 && current_index > 0 {
+                        // Swipe right - go to previous page
+                        let prev_path = nav_items()[current_index - 1].path;
+                        navigate(prev_path, Default::default());
+                    }
                 }
             }
             set_swipe_progress(0.0);
@@ -236,12 +242,10 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
         if !prev.is_empty() {
             let current_index = nav_items()
                 .iter()
-                .position(|item| item.path == current_path.as_str())
-                .unwrap_or(0);
+                .position(|item| item.path == current_path.as_str());
             let prev_index = nav_items()
                 .iter()
-                .position(|item| item.path == prev.as_str())
-                .unwrap_or(0);
+                .position(|item| item.path == prev.as_str());
 
             if current_index > prev_index {
                 set_slide_direction("slide-in-enter");
@@ -342,32 +346,33 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                                                 .iter()
                                                 .position(|item| {
                                                     item.path == location.pathname.get().as_str()
-                                                })
-                                                .unwrap_or(0);
-                                            current_index == 0
+                                                });
+                                            current_index == Some(0)
                                         }
                                         class:nav-indicator-last=move || {
                                             let current_index = nav_items()
                                                 .iter()
                                                 .position(|item| {
                                                     item.path == location.pathname.get().as_str()
-                                                })
-                                                .unwrap_or(0);
-                                            current_index == nav_items().len() - 1
+                                                });
+                                            current_index == Some(nav_items().len() - 1)
                                         }
                                         style=move || {
                                             let current_index = nav_items()
                                                 .iter()
                                                 .position(|item| {
                                                     item.path == location.pathname.get().as_str()
-                                                })
-                                                .unwrap_or(0);
-                                            format!(
-                                                "left: calc({}% - {}px); height: {BOTTOM_NAV_HEIGHT_PX}px; width: calc(100% / {})",
-                                                current_index as f64 * 100.0 / nav_items().len() as f64,
-                                                swipe_progress.get() / 4.0,
-                                                nav_items().len(),
-                                            )
+                                                });
+                                            if let Some(current_index) = current_index {
+                                                format!(
+                                                    "left: calc({}% - {}px); height: {BOTTOM_NAV_HEIGHT_PX}px; width: calc(100% / {})",
+                                                    current_index as f64 * 100.0 / nav_items().len() as f64,
+                                                    swipe_progress.get() / 4.0,
+                                                    nav_items().len(),
+                                                )
+                                            } else {
+                                                "opacity: 0".to_string()
+                                            }
                                         }
                                     />
                                     {move || {

@@ -8,7 +8,14 @@ inject_scripts = true
 minify = "on_release"
 
 [watch]
-watch = []
+watch = [
+    "src",
+    "js-out",
+    "style",
+    "near-min-api/src",
+    "public",
+    "Cargo.toml"
+]
 ignore = []
 
 [serve]
