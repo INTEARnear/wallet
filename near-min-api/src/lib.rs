@@ -7,7 +7,10 @@ use near_account_id::AccountId;
 use near_crypto::PublicKey;
 use reqwest::IntoUrl;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use std::time::Duration;
+use std::{
+    collections::{HashMap, VecDeque},
+    time::Duration,
+};
 use types::{
     AccessKeyList, AccessKeyView, AccountView, BlockId, BlockReference, BlockView, CryptoHash,
     FinalExecutionOutcomeView, FinalExecutionOutcomeWithReceiptView, Finality, HandlerError,
@@ -25,6 +28,7 @@ pub struct RpcClient {
     backoff_multiplier: f64,
 }
 
+#[allow(non_snake_case)]
 impl RpcClient {
     /// Create a new RPC client with the given RPC URLs. If provided more than one,
     /// they'll all be tried in case of any error
@@ -184,7 +188,6 @@ impl RpcClient {
         self.request(rpc_method, rpc_params).await
     }
 
-    #[allow(non_snake_case)]
     pub async fn EXPERIMENTAL_tx_status(
         &self,
         tx_hash: CryptoHash,
@@ -336,6 +339,89 @@ impl RpcClient {
             _ => unreachable!("Unexpected query response kind: {:?}", response.kind),
         }
     }
+
+    pub fn supports_intear_methods(&self) -> bool {
+        self.urls
+            .iter()
+            .any(|url| url.host_str().unwrap_or_default().ends_with("intear.tech"))
+    }
+
+    pub async fn INTEAR_batch_query(
+        &self,
+        requests: Vec<Query>,
+    ) -> Result<Vec<ResultOrError<QueryResponse, RpcError>>, Error> {
+        let rpc_method = "INTEAR_batch_query";
+        self.request(rpc_method, requests).await
+    }
+
+    pub async fn batch_call<R: DeserializeOwned>(
+        &self,
+        requests: Vec<(AccountId, &str, impl Serialize, QueryFinality)>,
+    ) -> Result<Vec<Result<R, CallError>>, Error> {
+        if self.supports_intear_methods() {
+            let mut queries = Vec::new();
+            let mut errors = HashMap::new();
+            let num_requests = requests.len();
+            for (i, (account_id, method, args, finality)) in requests.into_iter().enumerate() {
+                match serde_json::to_vec(&args) {
+                    Ok(args) => {
+                        queries.push(Query {
+                            request: QueryRequest::CallFunction {
+                                account_id,
+                                method_name: method.to_string(),
+                                args: args.into(),
+                            },
+                            finality,
+                        });
+                    }
+                    Err(error) => {
+                        // Skip, but mark as CallError::ArgsSerialization
+                        errors.insert(i, CallError::ArgsSerialization(error));
+                    }
+                }
+            }
+            let mut results = self.INTEAR_batch_query(queries).await.map(|r| {
+                r.into_iter()
+                    .map(|r| match r {
+                        ResultOrError::Result(result) => match result.kind {
+                            QueryResponseKind::CallResult(result) => match result.result_or_error {
+                                ResultOrError::Result(result) => {
+                                    serde_json::from_slice::<R>(&result)
+                                        .map_err(CallError::ResultDeserialization)
+                                }
+                                ResultOrError::Error(error) => {
+                                    Err(CallError::ExecutionError(error))
+                                }
+                            },
+                            _ => unreachable!("Unexpected query response kind: {:?}", result.kind),
+                        },
+                        ResultOrError::Error(error) => Err(CallError::Rpc(Error::JsonRpc(error))),
+                    })
+                    .collect::<VecDeque<_>>()
+            })?;
+            let mut final_results = Vec::new();
+            for i in 0..num_requests {
+                if let Some(error) = errors.remove(&i) {
+                    final_results.push(Err(error));
+                } else if let Some(result) = results.pop_front() {
+                    final_results.push(result);
+                } else {
+                    panic!(
+                        "Unexpected number of results: {:?}. This is a bug.",
+                        results.len()
+                    );
+                }
+            }
+            Ok(final_results)
+        } else {
+            let futures = requests
+                .into_iter()
+                .map(|(account_id, method, args, finality)| {
+                    self.call::<R>(account_id, method, args, finality)
+                });
+            Ok(futures_util::future::join_all(futures).await)
+        }
+    }
 }
 
 pub struct PendingTransaction<'a>(&'a RpcClient, CryptoHash);
@@ -396,7 +482,7 @@ pub enum CallError {
 }
 
 #[derive(Debug, Serialize, Clone)]
-struct Query {
+pub struct Query {
     #[serde(flatten)]
     request: QueryRequest,
     #[serde(flatten)]

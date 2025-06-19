@@ -4078,6 +4078,24 @@ pub enum ResultOrError<A, B> {
     Error(B),
 }
 
+impl<A, B> From<ResultOrError<A, B>> for Result<A, B> {
+    fn from(result_or_error: ResultOrError<A, B>) -> Self {
+        match result_or_error {
+            ResultOrError::Result(result) => Ok(result),
+            ResultOrError::Error(error) => Err(error),
+        }
+    }
+}
+
+impl<A, B> From<Result<A, B>> for ResultOrError<A, B> {
+    fn from(result: Result<A, B>) -> Self {
+        match result {
+            Ok(result) => ResultOrError::Result(result),
+            Err(error) => ResultOrError::Error(error),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct QueryError {
     pub error: String,

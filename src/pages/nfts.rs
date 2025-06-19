@@ -1,4 +1,3 @@
-use futures_util::future::join_all;
 use futures_util::join;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -142,26 +141,71 @@ async fn fetch_nfts(account_id: AccountId, network: Network) -> Vec<OwnedCollect
 
     let rpc_client = expect_context::<RpcContext>().client.get().clone();
 
-    let fetches = nft_data.tokens.into_iter().map(|token| {
-        let contract_id = token.contract_id.clone();
-        let rpc_client = rpc_client.clone();
-        let account_id = account_id.clone();
-        async move {
-            let metadata_fut = fetch_nft_metadata(contract_id.clone(), rpc_client.clone());
-            let tokens_fut =
-                fetch_nfts_for_owner(contract_id.clone(), account_id.clone(), rpc_client);
-            let (metadata_opt, owned_tokens) =
-                futures_util::future::join(metadata_fut, tokens_fut).await;
-            OwnedCollection {
-                contract_id,
-                metadata: metadata_opt,
-                tokens: owned_tokens,
-            }
-        }
-    });
+    let metadata_requests: Vec<_> = nft_data
+        .tokens
+        .iter()
+        .map(|token| {
+            (
+                token.contract_id.clone(),
+                "nft_metadata",
+                serde_json::json!({}),
+                QueryFinality::Finality(Finality::DoomSlug),
+            )
+        })
+        .collect();
 
-    let mut collections: Vec<OwnedCollection> = join_all(fetches).await;
-    collections.retain(|c| !c.tokens.is_empty());
+    let tokens_requests: Vec<_> = nft_data
+        .tokens
+        .iter()
+        .map(|token| {
+            (
+                token.contract_id.clone(),
+                "nft_tokens_for_owner",
+                serde_json::json!({
+                    "account_id": account_id.to_string()
+                }),
+                QueryFinality::Finality(Finality::DoomSlug),
+            )
+        })
+        .collect();
+
+    let (metadata_results, tokens_results) = futures_util::future::join(
+        rpc_client.batch_call::<NftContractMetadata>(metadata_requests),
+        rpc_client.batch_call::<Vec<NftToken>>(tokens_requests),
+    )
+    .await;
+
+    let Ok(metadata_results) = metadata_results else {
+        return vec![];
+    };
+
+    let Ok(tokens_results) = tokens_results else {
+        return vec![];
+    };
+
+    let mut collections = Vec::new();
+    for (i, token_data) in nft_data.tokens.into_iter().enumerate() {
+        let metadata = metadata_results
+            .get(i)
+            .and_then(|r| r.as_ref().ok())
+            .cloned();
+        let tokens = tokens_results
+            .get(i)
+            .and_then(|r| r.as_ref().ok())
+            .cloned()
+            .unwrap_or_default();
+
+        let collection = OwnedCollection {
+            contract_id: token_data.contract_id,
+            metadata,
+            tokens,
+        };
+
+        if !collection.tokens.is_empty() {
+            collections.push(collection);
+        }
+    }
+
     cache.update(|map| {
         for collection in collections.iter() {
             map.insert(collection.contract_id.clone(), collection.clone());

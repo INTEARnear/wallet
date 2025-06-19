@@ -14,7 +14,8 @@ watch = [
     "style",
     "near-min-api/src",
     "public",
-    "Cargo.toml"
+    "Cargo.toml",
+    ".env"
 ]
 ignore = []
 
