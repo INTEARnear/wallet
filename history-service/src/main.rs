@@ -215,7 +215,7 @@ async fn get_transactions(
                 })?;
             tracing::debug!("Successfully fetched signer transactions");
             response
-                .json::<Vec<HistoricalSignerTransaction>>()
+                .json::<Option<Vec<HistoricalSignerTransaction>>>()
                 .await
                 .map_err(|e| {
                     tracing::error!("Failed to parse signer transactions: {}", e);
@@ -224,6 +224,7 @@ async fn get_transactions(
                         format!("Failed to parse signer transactions: {e}"),
                     )
                 })
+                .map(|r| r.unwrap_or_default())
         },
         async {
             tracing::debug!("Fetching receiver transactions...");
@@ -243,7 +244,7 @@ async fn get_transactions(
                 })?;
             tracing::debug!("Successfully fetched receiver transactions");
             response
-                .json::<Vec<HistoricalReceiverTransaction>>()
+                .json::<Option<Vec<HistoricalReceiverTransaction>>>()
                 .await
                 .map_err(|e| {
                     tracing::error!("Failed to parse receiver transactions: {}", e);
@@ -252,6 +253,7 @@ async fn get_transactions(
                         format!("Failed to parse receiver transactions: {e}"),
                     )
                 })
+                .map(|r| r.unwrap_or_default())
         }
     );
 
