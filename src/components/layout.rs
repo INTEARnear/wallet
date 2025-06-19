@@ -38,6 +38,9 @@ fn left_edge_threshold() -> f64 {
 }
 
 fn get_random_background() -> String {
+    if window().inner_width().unwrap().as_f64().unwrap() < 960.0 {
+        return "".to_string();
+    }
     let mut rng = OsRng;
     let random_num = rng.gen_range(1..=12);
     format!("/bg{}.webp", random_num)
