@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use bip39::Mnemonic;
@@ -15,11 +16,13 @@ use slipped10::BIP32Path;
 
 use crate::components::account_creation_form::AccountCreationForm;
 use crate::components::login_form::LoginForm;
+use crate::contexts::accounts_context::Account;
 use crate::contexts::network_context::Network;
 use crate::contexts::security_log_context::add_security_log;
 use crate::contexts::{
     account_selector_swipe_context::AccountSelectorSwipeContext, accounts_context::AccountsContext,
 };
+use crate::utils::is_debug_enabled;
 
 #[derive(Clone, PartialEq)]
 pub enum ModalState {
@@ -123,31 +126,45 @@ pub fn AccountSelector(
     let (show_security_alert, set_show_security_alert) = signal(false);
 
     let check_access_keys = move || {
+        if is_debug_enabled() {
+            return;
+        }
         let accounts = accounts.get_untracked();
 
         spawn_local(async move {
             let mut logged_out_accounts = Vec::new();
 
-            for account in accounts.accounts.iter() {
-                let rpc_client = account.network.default_rpc_client();
-                let account_id = account.account_id.clone();
-                let public_key = account.secret_key.public_key();
+            // Group accounts by network to leverage Intear RPC batching
+            let mut grouped: HashMap<Network, Vec<&Account>> = HashMap::new();
 
-                match rpc_client
-                    .get_access_key(
-                        account_id.clone(),
-                        public_key.clone(),
-                        QueryFinality::Finality(Finality::Final),
-                    )
-                    .await
-                {
-                    Err(Error::OtherQueryError(err))
-                        if err
-                            == format!("access key {public_key} does not exist while viewing") =>
-                    {
-                        logged_out_accounts.push(account);
+            for account in accounts.accounts.iter() {
+                grouped.entry(account.network).or_default().push(account);
+            }
+
+            for (network, accs) in grouped {
+                let rpc_client = network.default_rpc_client();
+                let requests: Vec<_> = accs
+                    .iter()
+                    .map(|account| {
+                        (
+                            account.account_id.clone(),
+                            account.secret_key.public_key(),
+                            QueryFinality::Finality(Finality::Final),
+                        )
+                    })
+                    .collect();
+
+                let Ok(results) = rpc_client.batch_get_access_key(requests).await else {
+                    continue;
+                };
+
+                for (account, result) in accs.into_iter().zip(results.into_iter()) {
+                    let public_key = account.secret_key.public_key();
+                    if let Err(Error::OtherQueryError(err)) = result {
+                        if err == format!("access key {public_key} does not exist while viewing") {
+                            logged_out_accounts.push(account.clone());
+                        }
                     }
-                    _ => (), // Ignore other errors as network failures
                 }
             }
 
@@ -169,7 +186,10 @@ pub fn AccountSelector(
 
                 for account in logged_out_accounts.iter() {
                     add_security_log(
-                        format!("Account logged out due to remote access key removal. Old access key: {}", account.secret_key),
+                        format!(
+                            "Account logged out due to remote access key removal. Old access key: {}",
+                            account.secret_key
+                        ),
                         account.account_id.clone(),
                     );
                 }

@@ -11,6 +11,7 @@ use near_min_api::{
     QueryFinality, RpcClient,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::time::Duration;
 use web_sys::{window, MouseEvent};
@@ -95,31 +96,86 @@ async fn fetch_nft_metadata(
         .ok()
 }
 
+/// Fetch up to 12 000 NFT tokens for the given `contract_id` that belong to `account_id`.
+/// The function fetches tokens in chunks of 100 using `from_index`/`limit` parameters.
+/// It requests 10 pages (1 000 tokens) in a single batched RPC call. If the last page of the
+/// previous batch still contained 100 items, it will fetch the next 10 pages, repeating until
+/// either less than 100 tokens are returned on the last page or the hard cap of 12 000 items
+/// is reached.
 async fn fetch_nfts_for_owner(
     contract_id: AccountId,
     account_id: AccountId,
     rpc_client: RpcClient,
+    cache: RwSignal<HashMap<AccountId, OwnedCollection>>,
 ) -> Vec<NftToken> {
-    let nfts_context = expect_context::<NftCacheContext>();
-    if let Some(cached) = nfts_context.cache.read().get(&contract_id) {
+    if let Some(cached) = cache.read().get(&contract_id) {
         return cached.tokens.clone();
     }
-    rpc_client
-        .call::<Vec<NftToken>>(
-            contract_id,
-            "nft_tokens_for_owner",
-            serde_json::json!({
-                "account_id": account_id.to_string()
-            }),
-            QueryFinality::Finality(Finality::DoomSlug),
-        )
-        .await
-        .unwrap_or_default()
+
+    const PAGE_LIMIT: u32 = 100;
+    const PAGES_PER_BATCH: u32 = 10;
+    const MAX_TOKENS: u32 = 12_000;
+
+    let mut all_tokens: Vec<NftToken> = Vec::new();
+    let mut from_index: u32 = 0;
+
+    loop {
+        let batch_requests: Vec<_> = (0..PAGES_PER_BATCH)
+            .map(|i| {
+                let idx = from_index + i * PAGE_LIMIT;
+                (
+                    contract_id.clone(),
+                    "nft_tokens_for_owner",
+                    serde_json::json!({
+                        "account_id": account_id.to_string(),
+                        "from_index": idx.to_string(),
+                        "limit": PAGE_LIMIT,
+                    }),
+                    QueryFinality::Finality(Finality::DoomSlug),
+                )
+            })
+            .collect();
+
+        let Ok(batch_results) = rpc_client.batch_call::<Vec<NftToken>>(batch_requests).await else {
+            break;
+        };
+
+        let mut fetched_any_full_page = false;
+
+        for tokens in batch_results.into_iter().flatten() {
+            let count = tokens.len() as u32;
+            if count == PAGE_LIMIT {
+                fetched_any_full_page = true;
+            }
+            all_tokens.extend(tokens);
+        }
+
+        if !fetched_any_full_page {
+            break;
+        }
+
+        from_index += PAGES_PER_BATCH * PAGE_LIMIT;
+        if from_index >= MAX_TOKENS {
+            break;
+        }
+    }
+
+    all_tokens
 }
 
-async fn fetch_nfts(account_id: AccountId, network: Network) -> Vec<OwnedCollection> {
-    let NftCacheContext { cache } = expect_context::<NftCacheContext>();
-
+/// Retrieve all NFT collections for `account_id` on the specified `network`.
+///
+/// The function proceeds in two phases:
+/// 1. It batches a metadata request and a first-page (`from_index = "0", limit = 100`) token
+///    request for every collection. This minimises the number of initial RPC calls.
+/// 2. If the first page for a collection is exactly 100 tokens, `fetch_nfts_for_owner` is invoked
+///    to load the remaining pages (up to the 12 000-token hard cap).  Collections whose first page
+///    is smaller than 100 tokens are kept as-is.
+async fn fetch_nfts(
+    account_id: AccountId,
+    network: Network,
+    cache: RwSignal<HashMap<AccountId, OwnedCollection>>,
+) -> Vec<OwnedCollection> {
     if !cache.read_untracked().is_empty() {
         return cache.read_untracked().values().cloned().collect();
     }
@@ -154,7 +210,9 @@ async fn fetch_nfts(account_id: AccountId, network: Network) -> Vec<OwnedCollect
         })
         .collect();
 
-    let tokens_requests: Vec<_> = nft_data
+    let metadata_future = rpc_client.batch_call::<NftContractMetadata>(metadata_requests);
+
+    let first_page_requests: Vec<_> = nft_data
         .tokens
         .iter()
         .map(|token| {
@@ -162,26 +220,58 @@ async fn fetch_nfts(account_id: AccountId, network: Network) -> Vec<OwnedCollect
                 token.contract_id.clone(),
                 "nft_tokens_for_owner",
                 serde_json::json!({
-                    "account_id": account_id.to_string()
+                    "account_id": account_id.to_string(),
+                    "from_index": "0",
+                    "limit": 100,
                 }),
                 QueryFinality::Finality(Finality::DoomSlug),
             )
         })
         .collect();
 
-    let (metadata_results, tokens_results) = futures_util::future::join(
-        rpc_client.batch_call::<NftContractMetadata>(metadata_requests),
-        rpc_client.batch_call::<Vec<NftToken>>(tokens_requests),
-    )
-    .await;
+    let first_page_future = rpc_client.batch_call::<Vec<NftToken>>(first_page_requests);
+
+    let (metadata_results, first_page_results) =
+        futures_util::future::join(metadata_future, first_page_future).await;
 
     let Ok(metadata_results) = metadata_results else {
         return vec![];
     };
 
-    let Ok(tokens_results) = tokens_results else {
+    let Ok(first_page_results) = first_page_results else {
         return vec![];
     };
+
+    let mut tokens_results: Vec<Vec<NftToken>> = Vec::with_capacity(nft_data.tokens.len());
+    let mut extra_indices: Vec<usize> = Vec::new();
+    let mut extra_futures = Vec::new();
+
+    for (idx, token_data) in nft_data.tokens.iter().enumerate() {
+        let first_page_tokens = first_page_results
+            .get(idx)
+            .and_then(|r| r.as_ref().ok())
+            .cloned()
+            .unwrap_or_default();
+
+        if first_page_tokens.len() == 100 {
+            extra_indices.push(idx);
+            extra_futures.push(fetch_nfts_for_owner(
+                token_data.contract_id.clone(),
+                account_id.clone(),
+                rpc_client.clone(),
+                cache,
+            ));
+        }
+
+        tokens_results.push(first_page_tokens);
+    }
+
+    if !extra_futures.is_empty() {
+        let extra_tokens_vec = futures_util::future::join_all(extra_futures).await;
+        for (idx, extra_tokens) in extra_indices.into_iter().zip(extra_tokens_vec) {
+            tokens_results[idx] = extra_tokens;
+        }
+    }
 
     let mut collections = Vec::new();
     for (i, token_data) in nft_data.tokens.into_iter().enumerate() {
@@ -189,11 +279,8 @@ async fn fetch_nfts(account_id: AccountId, network: Network) -> Vec<OwnedCollect
             .get(i)
             .and_then(|r| r.as_ref().ok())
             .cloned();
-        let tokens = tokens_results
-            .get(i)
-            .and_then(|r| r.as_ref().ok())
-            .cloned()
-            .unwrap_or_default();
+
+        let tokens = tokens_results.get(i).cloned().unwrap_or_default();
 
         let collection = OwnedCollection {
             contract_id: token_data.contract_id,
@@ -237,6 +324,7 @@ pub fn NftCollection() -> impl IntoView {
     let contract_id = move || params.get().get("collection_id").unwrap_or_default();
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let RpcContext { client, .. } = expect_context::<RpcContext>();
+    let NftCacheContext { cache } = expect_context::<NftCacheContext>();
 
     let collection_metadata = LocalResource::new(move || {
         let rpc_client = client.get().clone();
@@ -267,7 +355,7 @@ pub fn NftCollection() -> impl IntoView {
             let Ok(contract_id) = contract_id().parse() else {
                 return vec![];
             };
-            fetch_nfts_for_owner(contract_id, selected_account_id, rpc_client).await
+            fetch_nfts_for_owner(contract_id, selected_account_id, rpc_client, cache).await
         }
     });
 
@@ -533,6 +621,7 @@ pub fn NftCollection() -> impl IntoView {
 pub fn Nfts() -> impl IntoView {
     let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+    let NftCacheContext { cache } = expect_context::<NftCacheContext>();
     let nfts = LocalResource::new(move || {
         let selected_account = if let Some(selected_account_id) = accounts().selected_account_id {
             accounts()
@@ -546,7 +635,7 @@ pub fn Nfts() -> impl IntoView {
             let Some(selected_account) = selected_account else {
                 return vec![];
             };
-            fetch_nfts(selected_account.account_id, selected_account.network).await
+            fetch_nfts(selected_account.account_id, selected_account.network, cache).await
         }
     });
     let SearchContext {
@@ -1375,6 +1464,7 @@ pub fn SendNft() -> impl IntoView {
     let token_id = move || params.get().get("token_id").unwrap_or_default();
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let RpcContext { client, .. } = expect_context::<RpcContext>();
+    let NftCacheContext { cache } = expect_context::<NftCacheContext>();
     let (recipient, set_recipient) = signal("".to_string());
     let (is_loading_recipient, set_is_loading_recipient) = signal(false);
     let (recipient_balance, set_recipient_balance) = signal(None);
@@ -1399,7 +1489,7 @@ pub fn SendNft() -> impl IntoView {
             let Ok(cid) = contract_id().parse() else {
                 return None;
             };
-            let tokens = fetch_nfts_for_owner(cid, selected_account_id, rpc_client).await;
+            let tokens = fetch_nfts_for_owner(cid, selected_account_id, rpc_client, cache).await;
             let tid = token_id();
             tokens.into_iter().find(|t| t.token_id == tid)
         }
@@ -1772,7 +1862,7 @@ pub fn NftTokenDetails() -> impl IntoView {
 
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let RpcContext { client, .. } = expect_context::<RpcContext>();
-
+    let NftCacheContext { cache } = expect_context::<NftCacheContext>();
     let ConfigContext { set_config, .. } = expect_context::<ConfigContext>();
 
     let collection_metadata = LocalResource::new(move || {
@@ -1795,7 +1885,7 @@ pub fn NftTokenDetails() -> impl IntoView {
             let Ok(cid) = contract_id().parse() else {
                 return None;
             };
-            let tokens = fetch_nfts_for_owner(cid, selected_account_id, rpc_client).await;
+            let tokens = fetch_nfts_for_owner(cid, selected_account_id, rpc_client, cache).await;
             let tid = token_id();
             tokens.into_iter().find(|t| t.token_id == tid)
         }

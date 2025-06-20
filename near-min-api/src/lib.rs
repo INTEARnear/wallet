@@ -422,6 +422,52 @@ impl RpcClient {
             Ok(futures_util::future::join_all(futures).await)
         }
     }
+
+    pub async fn batch_get_access_key(
+        &self,
+        requests: Vec<(AccountId, PublicKey, QueryFinality)>,
+    ) -> Result<Vec<Result<AccessKeyView, Error>>, Error> {
+        if self.supports_intear_methods() {
+            let queries: Vec<Query> = requests
+                .iter()
+                .map(|(account_id, public_key, finality)| Query {
+                    request: QueryRequest::ViewAccessKey {
+                        account_id: account_id.clone(),
+                        public_key: public_key.clone(),
+                    },
+                    finality: finality.clone(),
+                })
+                .collect();
+
+            let raw_results = self.INTEAR_batch_query(queries).await?;
+
+            let parsed_results = raw_results
+                .into_iter()
+                .map(|res| match res {
+                    ResultOrError::Result(query_response) => match query_response.kind {
+                        QueryResponseKind::AccessKey(access_key) => Ok(access_key),
+                        QueryResponseKind::CallResult(result) => match result.result_or_error {
+                            ResultOrError::Result(result) => unreachable!(
+                                "Unexpected successful call result for view_access_key: {result:#X?}"
+                            ),
+                            ResultOrError::Error(err) => Err(Error::OtherQueryError(err)),
+                        },
+                        _ => unreachable!("Unexpected query response kind: {:?}", query_response.kind),
+                    },
+                    ResultOrError::Error(err) => Err(Error::JsonRpc(err)),
+                })
+                .collect();
+
+            Ok(parsed_results)
+        } else {
+            let futures = requests
+                .into_iter()
+                .map(|(account_id, public_key, finality)| {
+                    self.get_access_key(account_id, public_key, finality)
+                });
+            Ok(futures_util::future::join_all(futures).await)
+        }
+    }
 }
 
 pub struct PendingTransaction<'a>(&'a RpcClient, CryptoHash);

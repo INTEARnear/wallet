@@ -9,10 +9,17 @@ use chrono::{DateTime, Utc};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_use::{use_document, use_event_listener};
-use near_min_api::types::{near_crypto::SecretKey, AccountId};
+use near_min_api::types::{
+    near_crypto::{ED25519SecretKey, SecretKey},
+    AccountId,
+};
 use serde::{Deserialize, Serialize};
+use wasm_bindgen::JsValue;
 use wasm_bindgen::{closure::Closure, JsCast};
+use web_sys::js_sys::Reflect;
 use web_sys::window;
+
+use crate::utils::is_debug_enabled;
 
 use super::{
     config_context::ConfigContext, network_context::Network, security_log_context::add_security_log,
@@ -646,6 +653,52 @@ pub fn provide_accounts_context() {
             }),
         }
     });
+
+    if is_debug_enabled() {
+        if let Some(win) = window() {
+            let view_as_closure = Closure::wrap(Box::new(move |id_val: JsValue| {
+                let Some(id_str) = id_val.as_string() else {
+                    web_sys::console::error_1(&"view_as expects a string".into());
+                    return;
+                };
+
+                let Ok(account_id) = id_str.parse::<AccountId>() else {
+                    web_sys::console::error_1(&"Invalid account id".into());
+                    return;
+                };
+
+                let current_state = accounts.get_untracked();
+                if current_state
+                    .accounts
+                    .iter()
+                    .any(|acc| acc.account_id == account_id)
+                {
+                    return;
+                }
+
+                let zero_secret_key = SecretKey::ED25519(ED25519SecretKey([0u8; 64]));
+
+                let mut new_state = current_state.clone();
+                new_state.accounts.push(Account {
+                    account_id: account_id.clone(),
+                    secret_key: zero_secret_key,
+                    seed_phrase: None,
+                    network: Network::Mainnet,
+                });
+                new_state.selected_account_id = Some(account_id);
+
+                set_accounts(new_state);
+            }) as Box<dyn FnMut(JsValue)>);
+
+            let _ = Reflect::set(
+                win.as_ref(),
+                &wasm_bindgen::JsValue::from_str("view_as"),
+                view_as_closure.as_ref().unchecked_ref(),
+            );
+
+            view_as_closure.forget();
+        }
+    }
 
     provide_context(AccountsContext {
         accounts,
