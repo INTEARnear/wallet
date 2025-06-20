@@ -123,7 +123,7 @@ pub fn PreferencesSettings() -> impl IntoView {
                     }
                 />
                 <ToggleSwitch
-                    label="Disable analytics"
+                    label="Disable telemetry"
                     value=analytics_disabled
                     disabled=analytics_switch_disabled
                     on_toggle=move || {
