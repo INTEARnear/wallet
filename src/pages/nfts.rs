@@ -347,7 +347,7 @@ pub fn NftCollection() -> impl IntoView {
     };
 
     let nfts = LocalResource::new(move || {
-        let rpc_client = expect_context::<RpcContext>().client.get().clone();
+        let rpc_client = expect_context::<RpcContext>().client.get();
         async move {
             let Some(selected_account_id) = accounts().selected_account_id else {
                 return vec![];
@@ -1461,7 +1461,8 @@ pub fn Nfts() -> impl IntoView {
 pub fn SendNft() -> impl IntoView {
     let params = use_params_map();
     let contract_id = move || params.get().get("collection_id").unwrap_or_default();
-    let token_id = move || params.get().get("token_id").unwrap_or_default();
+    let token_id = #[track_caller]
+    move || params.get().get("token_id").unwrap_or_default();
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let RpcContext { client, .. } = expect_context::<RpcContext>();
     let NftCacheContext { cache } = expect_context::<NftCacheContext>();
@@ -1482,7 +1483,6 @@ pub fn SendNft() -> impl IntoView {
     });
 
     let nft_token = LocalResource::new(move || {
-        log::info!("Refreshing nft_token");
         let rpc_client = client.get().clone();
         async move {
             let selected_account_id = accounts().selected_account_id?;
@@ -1574,6 +1574,7 @@ pub fn SendNft() -> impl IntoView {
     let TransactionQueueContext {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
+    let (navigate, _) = signal(use_navigate());
     let handle_send = move |_| {
         if recipient_balance.get().is_none() {
             return;
@@ -1615,17 +1616,21 @@ pub fn SendNft() -> impl IntoView {
                 gas: NearGas::from_tgas(5).as_gas(),
                 deposit: NearToken::from_yoctonear(1),
             }))];
-            add_transaction.update(|txs| {
-                txs.push(
-                    EnqueuedTransaction::create(
-                        transaction_description,
-                        signer_id,
-                        contract_id,
-                        actions,
-                    )
-                    .1,
-                )
-            });
+            let (rx, transaction) = EnqueuedTransaction::create(
+                transaction_description,
+                signer_id,
+                contract_id.clone(),
+                actions,
+            );
+            add_transaction.update(|txs| txs.push(transaction));
+            if rx.await.is_ok() {
+                cache.update(|cache| {
+                    cache
+                        .entry(contract_id.clone())
+                        .and_modify(|c| c.tokens.retain(|t| t.token_id != token_id));
+                });
+                (navigate.get_untracked())("/nfts", NavigateOptions::default());
+            }
         });
 
         // Clear form fields

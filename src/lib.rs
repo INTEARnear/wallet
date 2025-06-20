@@ -1,3 +1,4 @@
+#![feature(closure_track_caller, stmt_expr_attributes)]
 #![deny(clippy::float_arithmetic)]
 
 use contexts::account_selector_swipe_context::provide_account_selector_swipe_context;
@@ -66,7 +67,7 @@ pub fn App() -> impl IntoView {
     provide_transaction_queue_context(); // depends on accounts
 
     view! {
-        <Html attr:lang="en" attr:dir="ltr" attr:data-theme="light" />
+        <Html attr:lang="en" attr:dir="ltr" attr:data-theme="dark" />
 
         <Title text="Intear Wallet Beta" />
 

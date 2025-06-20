@@ -28,12 +28,6 @@
     --slide-opacity: 0;
 }
 
-html,
-body {
-    /* prevent flickering when refreshing */
-    background-color: #000000;
-}
-
 @media (hover: none) {
     .hover-capable-only {
         display: none;
