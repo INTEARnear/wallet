@@ -5,7 +5,7 @@ use wasm_bindgen::{closure::Closure, JsCast};
 pub fn ProgressiveImage(
     #[prop(into)] low_res_src: String,
     #[prop(into)] high_res_src: String,
-    #[prop(into)] alt: String,
+    #[prop(into, default = String::new())] alt: String,
 ) -> impl IntoView {
     let (current_src, set_current_src) = signal(low_res_src.clone());
 

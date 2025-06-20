@@ -366,23 +366,21 @@ pub fn NftCollection() -> impl IntoView {
 
     let navigate = use_navigate();
 
-    let ConfigContext { set_config, .. } = expect_context::<ConfigContext>();
+    let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
 
-    let hide_collection = {
-        let navigate = use_navigate();
-        move |_| {
-            if let Ok(cid) = contract_id().parse::<AccountId>() {
-                set_config.update(move |cfg| {
-                    if !cfg
-                        .hidden_nfts
-                        .iter()
-                        .any(|h| matches!(h, HiddenNft::Collection(id) if id == &cid))
-                    {
-                        cfg.hidden_nfts.push(HiddenNft::Collection(cid.clone()));
-                    }
-                });
-                navigate("/nfts", NavigateOptions::default());
-            }
+    let toggle_hide_collection = move |_| {
+        if let Ok(cid) = contract_id().parse::<AccountId>() {
+            set_config.update(move |cfg| {
+                if let Some(idx) = cfg
+                    .hidden_nfts
+                    .iter()
+                    .position(|h| matches!(h, HiddenNft::Collection(id) if id == &cid))
+                {
+                    cfg.hidden_nfts.remove(idx);
+                } else {
+                    cfg.hidden_nfts.push(HiddenNft::Collection(cid.clone()));
+                }
+            });
         }
     };
 
@@ -427,9 +425,30 @@ pub fn NftCollection() -> impl IntoView {
                 </button>
                 <div class="flex items-center gap-3">
                     <button
-                        title="Hide"
+                        title=move || {
+                            let cfg = config.get();
+                            let hidden = if let Ok(cid) = contract_id().parse::<AccountId>() {
+                                cfg.hidden_nfts
+                                    .iter()
+                                    .any(|h| matches!(h, HiddenNft::Collection(id) if id == &cid))
+                            } else {
+                                false
+                            };
+                            if hidden { "Unhide" } else { "Hide" }
+                        }
                         class="text-neutral-400 hover:text-white transition-colors cursor-pointer"
-                        on:click=hide_collection
+                        style=move || {
+                            let cfg = config.get();
+                            let hidden = if let Ok(cid) = contract_id().parse::<AccountId>() {
+                                cfg.hidden_nfts
+                                    .iter()
+                                    .any(|h| matches!(h, HiddenNft::Collection(id) if id == &cid))
+                            } else {
+                                false
+                            };
+                            if hidden { "color: #facc15".to_string() } else { "".to_string() }
+                        }
+                        on:click=toggle_hide_collection
                     >
                         <Icon icon=icondata::LuEyeOff width="20" height="20" />
                     </button>
@@ -517,7 +536,6 @@ pub fn NftCollection() -> impl IntoView {
                                                 .metadata
                                                 .title
                                                 .unwrap_or_else(|| "Untitled".to_string());
-                                            let title_for_alt = title.clone();
                                             let media = nft.metadata.media.clone();
                                             let base_uri = base_uri();
                                             let navigate = use_navigate();
@@ -563,7 +581,6 @@ pub fn NftCollection() -> impl IntoView {
                                                                     <ProgressiveImage
                                                                         low_res_src=proxify_url(&media_url, Resolution::Low)
                                                                         high_res_src=proxify_url(&media_url, Resolution::High)
-                                                                        alt=title_for_alt.clone()
                                                                         attr:class="object-cover h-full w-full"
                                                                     />
                                                                 </div>
@@ -664,7 +681,6 @@ pub fn Nfts() -> impl IntoView {
                         {move || {
                             let query = q.clone();
                             if let Some(collections) = nfts.get() {
-                                let global_spam_list = spam_list.get().unwrap_or_default();
                                 type Score = i32;
                                 type TokenWithScore = (NftToken, Score);
                                 type CollectionWithScore = (
@@ -673,20 +689,7 @@ pub fn Nfts() -> impl IntoView {
                                     Vec<TokenWithScore>,
                                 );
                                 let mut scored: Vec<CollectionWithScore> = Vec::new();
-                                for collection in collections
-                                    .into_iter()
-                                    .filter(|c| {
-                                        !global_spam_list
-                                            .iter()
-                                            .any(|h| {
-                                                matches!(
-                                                    h,
-                                                    HiddenNft::Collection(cid)
-                                                    if cid == &c.contract_id
-                                                )
-                                            })
-                                    })
-                                {
+                                for collection in collections {
                                     let collection_name = collection
                                         .metadata
                                         .as_ref()
@@ -701,22 +704,7 @@ pub fn Nfts() -> impl IntoView {
                                         collection.contract_id.as_ref(),
                                     );
                                     let mut token_scores: Vec<(NftToken, i32)> = Vec::new();
-                                    for token in collection
-                                        .tokens
-                                        .clone()
-                                        .into_iter()
-                                        .filter(|t| {
-                                            !global_spam_list
-                                                .iter()
-                                                .any(|h| {
-                                                    matches!(
-                                                        h,
-                                                        HiddenNft::Token(cid, tid)
-                                                        if cid == &collection.contract_id && tid == &t.token_id
-                                                    )
-                                                })
-                                        })
-                                    {
+                                    for token in collection.tokens.clone().into_iter() {
                                         let mut score = 0;
                                         if let Some(title) = &token.metadata.title {
                                             score = score.max(compute_match_score(&query, title));
@@ -844,7 +832,6 @@ pub fn Nfts() -> impl IntoView {
                                                                 .title
                                                                 .clone()
                                                                 .unwrap_or_else(|| "Untitled".to_string());
-                                                            let title_for_alt = title.clone();
                                                             let media = nft.metadata.media.clone();
                                                             let token_id = nft.token_id.clone();
                                                             let navigate = use_navigate();
@@ -873,7 +860,6 @@ pub fn Nfts() -> impl IntoView {
                                                                                     <ProgressiveImage
                                                                                         low_res_src=proxify_url(&media_url, Resolution::Low)
                                                                                         high_res_src=proxify_url(&media_url, Resolution::High)
-                                                                                        alt=title_for_alt.clone()
                                                                                         attr:class="object-cover h-full w-full"
                                                                                     />
                                                                                 </div>
@@ -1344,7 +1330,6 @@ pub fn Nfts() -> impl IntoView {
                                                             .title
                                                             .clone()
                                                             .unwrap_or_else(|| "Untitled".to_string());
-                                                        let title_for_alt = title.clone();
                                                         let media = nft.metadata.media.clone();
                                                         let token_id = nft.token_id.clone();
                                                         let contract_id_nav = contract_id_display.clone();
@@ -1373,7 +1358,6 @@ pub fn Nfts() -> impl IntoView {
                                                                                 <ProgressiveImage
                                                                                     low_res_src=proxify_url(&media_url, Resolution::Low)
                                                                                     high_res_src=proxify_url(&media_url, Resolution::High)
-                                                                                    alt=title_for_alt.clone()
                                                                                     attr:class="object-cover h-full w-full"
                                                                                 />
                                                                             </div>
@@ -1664,7 +1648,6 @@ pub fn SendNft() -> impl IntoView {
                             .title
                             .clone()
                             .unwrap_or_else(|| "Untitled".to_string());
-                        let title_clone = title.clone();
                         let media_opt = token.metadata.media.clone();
                         let base_uri = collection_metadata
                             .get()
@@ -1677,21 +1660,23 @@ pub fn SendNft() -> impl IntoView {
                                     <div class="flex items-center gap-3">
                                         {move || {
                                             if let Some(media_url) = &media_opt {
-                                                let url = if media_url.contains(&base_uri)
+                                                let media_url = if media_url.contains(&base_uri)
                                                     || base_uri.is_empty()
                                                 {
                                                     media_url.clone()
                                                 } else {
                                                     format!("{}/{}", base_uri, media_url)
                                                 };
-                                                let low_res_url = proxify_url(&url, Resolution::Low);
-                                                let high_res_url = proxify_url(&url, Resolution::High);
+                                                let low_res_url = proxify_url(&media_url, Resolution::Low);
+                                                let high_res_url = proxify_url(
+                                                    &media_url,
+                                                    Resolution::High,
+                                                );
                                                 view! {
                                                     <div class="w-12 h-12 rounded-full overflow-hidden">
                                                         <ProgressiveImage
                                                             low_res_src=low_res_url
                                                             high_res_src=high_res_url
-                                                            alt=title_clone.clone()
                                                             attr:class="object-cover h-full w-full"
                                                         />
                                                     </div>
@@ -1868,7 +1853,7 @@ pub fn NftTokenDetails() -> impl IntoView {
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let RpcContext { client, .. } = expect_context::<RpcContext>();
     let NftCacheContext { cache } = expect_context::<NftCacheContext>();
-    let ConfigContext { set_config, .. } = expect_context::<ConfigContext>();
+    let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
 
     let collection_metadata = LocalResource::new(move || {
         let rpc_client = client.get().clone();
@@ -1898,25 +1883,19 @@ pub fn NftTokenDetails() -> impl IntoView {
 
     let navigate = use_navigate();
 
-    let hide_token =
-        {
-            let navigate = navigate.clone();
-            move |_| {
-                if let (Ok(cid), tid) = (contract_id().parse::<AccountId>(), token_id()) {
-                    set_config.update(move |cfg| {
-                        if !cfg.hidden_nfts.iter().any(
-                            |h| matches!(h, HiddenNft::Token(id, t) if id == &cid && t == &tid),
-                        ) {
-                            cfg.hidden_nfts
-                                .push(HiddenNft::Token(cid.clone(), tid.clone()));
-                        }
-                    });
-                    let collection_id = contract_id();
-                    navigate(
-                        &format!("/nfts/{collection_id}"),
-                        NavigateOptions::default(),
-                    );
-                }
+    let toggle_hide_token =
+        move |_| {
+            if let (Ok(cid), tid) = (contract_id().parse::<AccountId>(), token_id()) {
+                set_config.update(move |cfg| {
+                    if let Some(idx) = cfg.hidden_nfts.iter().position(
+                        |h| matches!(h, HiddenNft::Token(id, t) if id == &cid && t == &tid),
+                    ) {
+                        cfg.hidden_nfts.remove(idx);
+                    } else {
+                        cfg.hidden_nfts
+                            .push(HiddenNft::Token(cid.clone(), tid.clone()));
+                    }
+                });
             }
         };
 
@@ -1954,9 +1933,48 @@ pub fn NftTokenDetails() -> impl IntoView {
                 </button>
                 <div class="flex items-center gap-3">
                     <button
-                        title="Hide"
+                        title=move || {
+                            let cfg = config.get();
+                            let hidden = if let (Ok(cid), tid) = (
+                                contract_id().parse::<AccountId>(),
+                                token_id(),
+                            ) {
+                                cfg.hidden_nfts
+                                    .iter()
+                                    .any(|h| {
+                                        matches!(
+                                            h,
+                                            HiddenNft::Token(id, t)
+                                            if id == &cid && t == &tid
+                                        )
+                                    })
+                            } else {
+                                false
+                            };
+                            if hidden { "Unhide" } else { "Hide" }
+                        }
                         class="text-neutral-400 hover:text-white transition-colors cursor-pointer"
-                        on:click=hide_token
+                        style=move || {
+                            let cfg = config.get();
+                            let hidden = if let (Ok(cid), tid) = (
+                                contract_id().parse::<AccountId>(),
+                                token_id(),
+                            ) {
+                                cfg.hidden_nfts
+                                    .iter()
+                                    .any(|h| {
+                                        matches!(
+                                            h,
+                                            HiddenNft::Token(id, t)
+                                            if id == &cid && t == &tid
+                                        )
+                                    })
+                            } else {
+                                false
+                            };
+                            if hidden { "color: #facc15".to_string() } else { "".to_string() }
+                        }
+                        on:click=toggle_hide_token
                     >
                         <Icon icon=icondata::LuEyeOff width="20" height="20" />
                     </button>
@@ -1997,7 +2015,6 @@ pub fn NftTokenDetails() -> impl IntoView {
                             .title
                             .clone()
                             .unwrap_or_else(|| "Untitled".to_string());
-                        let title_clone = title.clone();
                         let description = token.metadata.description.clone().unwrap_or_default();
                         let media_opt = token.metadata.media.clone();
                         let base_uri = collection_metadata
@@ -2023,7 +2040,6 @@ pub fn NftTokenDetails() -> impl IntoView {
                                                 <ProgressiveImage
                                                     low_res_src=low_res_url
                                                     high_res_src=high_res_url
-                                                    alt=title_clone.clone()
                                                     attr:class="object-cover h-full w-full"
                                                 />
                                             </div>
