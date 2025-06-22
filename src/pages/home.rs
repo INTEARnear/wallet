@@ -4,8 +4,10 @@ use leptos::prelude::*;
 #[component]
 pub fn Home() -> impl IntoView {
     view! {
-        <TotalPortfolioValue />
-        <WalletQuickActions />
-        <TokenBalanceList />
+        <div>
+            <TotalPortfolioValue />
+            <WalletQuickActions />
+            <TokenBalanceList />
+        </div>
     }
 }

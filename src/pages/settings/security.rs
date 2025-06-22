@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::{
-    components::account_selector::mnemonic_to_key,
+    components::{account_selector::mnemonic_to_key, DangerConfirmInput},
     contexts::{
         accounts_context::{AccountsContext, PasswordAction, ENCRYPTION_MEMORY_COST_KB},
         config_context::{ConfigContext, PasswordRememberDuration},
@@ -120,6 +120,7 @@ pub fn SecuritySettings() -> impl IntoView {
     let (remove_password_result, set_remove_password_result) =
         signal::<Option<Result<(), String>>>(None);
     let rpc_context = expect_context::<RpcContext>();
+    let (is_confirmed, set_is_confirmed) = signal(false);
 
     let terminate_sessions = move |_| {
         let Some(account_id) = accounts.get().selected_account_id else {
@@ -572,7 +573,10 @@ pub fn SecuritySettings() -> impl IntoView {
                     <button
                         class="flex items-center justify-center gap-2 p-4 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         disabled=move || terminating_sessions.get()
-                        on:click=move |_| set_show_terminate_dialog.set(true)
+                        on:click=move |_| {
+                            set_is_confirmed(false);
+                            set_show_terminate_dialog.set(true);
+                        }
                     >
                         <Show when=move || !terminating_sessions.get()>
                             <Icon icon=icondata::LuLogOut width="20" height="20" />
@@ -605,19 +609,32 @@ pub fn SecuritySettings() -> impl IntoView {
                                         </p>
                                     </div>
 
+                                    <DangerConfirmInput
+                                        set_is_confirmed=set_is_confirmed
+                                        warning_title="Please read the above"
+                                        warning_message="This action cannot be undone. This device will be the ONLY one that can access this account."
+                                        attr:class="mb-4"
+                                    />
+
                                     <div class="flex gap-3">
                                         <button
                                             class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden bg-neutral-800 hover:bg-neutral-700 cursor-pointer"
-                                            on:click=move |_| set_show_terminate_dialog.set(false)
+                                            on:click=move |_| {
+                                                set_show_terminate_dialog.set(false);
+                                                set_is_confirmed(false);
+                                            }
                                         >
                                             "Cancel"
                                         </button>
                                         <button
                                             class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden bg-red-500 hover:bg-red-600 disabled:bg-red-500/50 disabled:cursor-not-allowed cursor-pointer"
-                                            disabled=move || terminating_sessions.get()
+                                            disabled=move || {
+                                                terminating_sessions.get() || !is_confirmed.get()
+                                            }
                                             on:click=move |_| {
                                                 terminate_sessions(());
                                                 set_show_terminate_dialog.set(false);
+                                                set_is_confirmed(false);
                                             }
                                         >
                                             "Confirm"
