@@ -304,12 +304,12 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                     <div class="p-2 sm:p-4">
                         <WalletHeader />
                     </div>
-                    <div class="flex-1 overflow-y-auto overflow-x-hidden px-4 transition-all duration-100 pb-4 h-full *:h-full">
+                    <div class="flex-1 overflow-y-auto overflow-x-hidden px-4 transition-all duration-100 *:min-h-full *:pb-4">
                         <div
-                            class=slide_direction
+                            class=move || format!("{} *:min-h-full *:flex-1 flex flex-col", slide_direction())
                             style=move || {
                                 format!(
-                                    "transform: translateX(calc({}px + var(--slide-transform))); opacity: min({}, var(--slide-opacity))",
+                                    "transform: translateX(calc({}px + var(--slide-transform))); opacity: min({}, var(--slide-opacity));",
                                     swipe_progress.get(),
                                     1.0 - swipe_progress.get().abs() / 250.0,
                                 )
