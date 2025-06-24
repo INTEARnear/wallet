@@ -7,10 +7,11 @@ An open source wallet that can be accessed at [wallet.intear.tech](https://walle
 
 You need both the Rust toolchain and Node installed.
 
-1. Install Rust targets + Trunk if you haven't already:
+1. Install Rust targets + Trunk + patch-crate if you haven't already:
 
 ```bash
 cargo install trunk
+cargo install patch-crate
 rustup target add wasm32-unknown-unknown
 ```
 
@@ -20,13 +21,18 @@ rustup target add wasm32-unknown-unknown
 npm install -D
 ```
 
-3. Start the development servers (auto-rebuilds Rust, Tailwind and TS):
+3. Patch Rust dependencies:
+```bash
+cargo patch-crate
+```
+
+4. Start the development servers (auto-rebuilds Rust, Tailwind and TS):
 
 ```bash
 npm run dev
 ```
 
-4. For a release build:
+For a release build:
 
 ```bash
 npm run build
@@ -34,9 +40,9 @@ npm run build
 
 The output will be in `dist/`
 
-You need to set up some env variables in `.env` to external services, and if you don't use `.env.prod`, you'd need to set up history-service and account-creation-service in their respective directories in this repo.
+You need to set up some env variables in `.env` to external services, and if you don't use `.env.prod`, you'd need to set up history-service, account-creation-service, and other services in their respective directories in this repo.
 
-Built with Leptos, TailwindCSS, Trunk, ESBuild, and `near-min-api` (a wasm-ready crate built for this crate).
+Built with Leptos, TailwindCSS, Trunk, ESBuild, and `near-min-api` (a wasm-ready crate built for this wallet).
 
 
 ## Contributing
