@@ -27,7 +27,7 @@ pub fn DangerConfirmInput(
                     <input
                         id="confirm"
                         type="text"
-                        class="bg-neutral-900/50 border border-red-700/50 rounded-lg px-4 py-2 text-white"
+                        class="bg-neutral-900/50 border border-red-700/50 rounded-lg px-4 py-2 text-white text-base"
                         placeholder=placeholder_text
                         prop:value=confirmation_text
                         on:input=move |ev| {

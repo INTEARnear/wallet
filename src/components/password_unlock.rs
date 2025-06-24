@@ -164,7 +164,7 @@ pub fn PasswordUnlock() -> impl IntoView {
                                 <input
                                     node_ref=input_ref
                                     type="password"
-                                    class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 border-2 border-neutral-700 focus:border-blue-500"
+                                    class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 border-2 border-neutral-700 focus:border-blue-500 text-base"
                                     placeholder="Enter your password"
                                     prop:value=password_input
                                     on:input=handle_input

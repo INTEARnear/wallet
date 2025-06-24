@@ -245,7 +245,7 @@ fn TokenSelector(
                                 />
                                 <input
                                     type="text"
-                                    class="w-full bg-neutral-800 text-white rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    class="w-full bg-neutral-800 text-white rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
                                     placeholder="Search tokens..."
                                     prop:value=search_query
                                     on:input=move |ev| {
@@ -1257,7 +1257,7 @@ pub fn Swap() -> impl IntoView {
                                             <div class="flex gap-2">
                                                 <input
                                                     type="text"
-                                                    class="flex-1 bg-neutral-700 text-white rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-36"
+                                                    class="flex-1 bg-neutral-700 text-white rounded-lg px-2 py-1 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 w-36"
                                                     placeholder="0-100"
                                                     prop:value=custom_slippage_input
                                                     on:input=move |ev| {
@@ -1327,7 +1327,7 @@ pub fn Swap() -> impl IntoView {
                                     <div class="relative">
                                         <input
                                             type="text"
-                                            class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 transition-all duration-200"
+                                            class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 transition-all duration-200 text-base"
                                             style=move || get_input_style(true)
                                             prop:placeholder=move || {
                                                 let no_input = validated_amount_entered.get().is_none();
@@ -1464,7 +1464,7 @@ pub fn Swap() -> impl IntoView {
                                 <div class="flex-1 relative">
                                     <input
                                         type="text"
-                                        class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 transition-all duration-200"
+                                        class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 transition-all duration-200 text-base"
                                         style=move || get_input_style(false)
                                         prop:placeholder=move || {
                                             let no_input = validated_amount_entered.get().is_none();
@@ -2358,7 +2358,7 @@ async fn get_ft_balance(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum WaitMode {
     /// Fast fetch, don't use intents
     Fast {

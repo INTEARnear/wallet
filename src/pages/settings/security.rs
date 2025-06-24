@@ -317,7 +317,7 @@ pub fn SecuritySettings() -> impl IntoView {
                                     });
                                 }
                             }
-                            class="w-full p-3 rounded-lg bg-neutral-800 border border-neutral-700 focus:border-blue-500 focus:outline-none"
+                            class="w-full p-3 rounded-lg bg-neutral-800 border border-neutral-700 focus:border-blue-500 focus:outline-none text-base"
                         />
 
                         <Show when=move || {

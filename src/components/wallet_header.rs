@@ -58,7 +58,7 @@ pub fn WalletHeader() -> impl IntoView {
                                 />
                                 <input
                                     type="text"
-                                    class="bg-transparent text-white w-full focus:outline-none text-lg"
+                                    class="bg-transparent text-white w-full focus:outline-none text-base"
                                     placeholder="Search tokens..."
                                     prop:value=query
                                     on:input=move |ev| set_query(event_target_value(&ev))

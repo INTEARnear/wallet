@@ -170,7 +170,7 @@ pub fn WrapToken() -> impl IntoView {
                                     <div class="relative">
                                         <input
                                             type="text"
-                                            class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 transition-all duration-200"
+                                            class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 transition-all duration-200 text-base"
                                             style=move || {
                                                 if has_typed_amount.get() {
                                                     if amount_error.get().is_some() {

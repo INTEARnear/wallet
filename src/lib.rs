@@ -72,7 +72,7 @@ pub fn App() -> impl IntoView {
         <Title text="Intear Wallet Beta" />
 
         <Meta charset="UTF-8" />
-        <Meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <Meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 
         <ConfigProvider theme=RwSignal::new(Theme::dark())>
             <Router>

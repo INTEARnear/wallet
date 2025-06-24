@@ -198,7 +198,7 @@ pub fn PreferencesSettings() -> impl IntoView {
                         <div class="flex gap-2">
                             <input
                                 type="text"
-                                class="bg-neutral-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-[calc(100%-1em)]"
+                                class="bg-neutral-700 text-white rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 w-[calc(100%-1em)]"
                                 placeholder="1.0"
                                 prop:value=custom_slippage_input
                                 on:input=move |ev| {

@@ -342,7 +342,7 @@ pub fn AccountCreationForm(
                                 <input
                                     node_ref=input_ref
                                     type="text"
-                                    class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200"
+                                    class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 text-base"
                                     style=move || {
                                         if is_valid.get().is_some() {
                                             "border: 2px solid rgb(34 197 94)"
