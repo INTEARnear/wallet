@@ -817,22 +817,6 @@ pub fn LoginForm(
                                             Select a login method above to continue
                                         </p>
                                     </div>
-
-                                    <div class="relative">
-                                        <div class="absolute inset-0 flex items-center">
-                                            <div class="w-full border-t border-neutral-800"></div>
-                                        </div>
-                                        <div class="relative flex justify-center text-sm">
-                                            <span class="px-2 bg-neutral-950 text-neutral-400">or</span>
-                                        </div>
-                                    </div>
-
-                                    <button
-                                        class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden border border-neutral-800 hover:border-neutral-700 cursor-pointer"
-                                        on:click=move |_| set_modal_state.set(ModalState::Creating)
-                                    >
-                                        <span class="relative">Create New Account</span>
-                                    </button>
                                 </div>
                             }
                                 .into_any()
@@ -1466,6 +1450,22 @@ pub fn LoginForm(
                                 .into_any()
                         }
                     }}
+
+                    <div class="relative mt-6">
+                        <div class="absolute inset-0 flex items-center">
+                            <div class="w-full border-t border-neutral-800"></div>
+                        </div>
+                        <div class="relative flex justify-center text-sm">
+                            <span class="px-2 bg-neutral-950 text-neutral-400">or</span>
+                        </div>
+                    </div>
+
+                    <button
+                        class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden border border-neutral-800 hover:border-neutral-700 cursor-pointer mt-6"
+                        on:click=move |_| set_modal_state.set(ModalState::Creating)
+                    >
+                        <span class="relative">Create New Account</span>
+                    </button>
                 </div>
             </div>
         </div>
