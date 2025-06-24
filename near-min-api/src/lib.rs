@@ -544,7 +544,7 @@ pub enum QueryFinality {
 
 impl Default for QueryFinality {
     fn default() -> Self {
-        Self::Finality(Finality::Final)
+        Self::Finality(Finality::DoomSlug)
     }
 }
 

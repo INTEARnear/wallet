@@ -149,7 +149,7 @@ pub fn AccountSelector(
                         (
                             account.account_id.clone(),
                             account.secret_key.public_key(),
-                            QueryFinality::Finality(Finality::Final),
+                            QueryFinality::Finality(Finality::None),
                         )
                     })
                     .collect();
