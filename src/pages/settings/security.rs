@@ -121,6 +121,14 @@ pub fn SecuritySettings() -> impl IntoView {
         signal::<Option<Result<(), String>>>(None);
     let rpc_context = expect_context::<RpcContext>();
     let (is_confirmed, set_is_confirmed) = signal(false);
+    let (new_mnemonic, set_new_mnemonic) = signal::<Option<bip39::Mnemonic>>(None);
+    let (copied_to_clipboard, set_copied_to_clipboard) = signal(false);
+
+    let generate_new_mnemonic = move || {
+        let mnemonic = bip39::Mnemonic::generate(12).unwrap();
+        set_new_mnemonic(Some(mnemonic));
+        set_copied_to_clipboard(false);
+    };
 
     let terminate_sessions = move |_| {
         let Some(account_id) = accounts.get().selected_account_id else {
@@ -129,6 +137,10 @@ pub fn SecuritySettings() -> impl IntoView {
         };
 
         set_terminating_sessions(true);
+        let Some(mnemonic) = new_mnemonic.get_untracked() else {
+            set_terminating_sessions(false);
+            return;
+        };
 
         let rpc_client = rpc_context.client.get();
         spawn_local(async move {
@@ -155,7 +167,6 @@ pub fn SecuritySettings() -> impl IntoView {
                 }
             }
 
-            let mnemonic = bip39::Mnemonic::generate(12).unwrap();
             let secret_key = mnemonic_to_key(mnemonic.clone()).unwrap();
             let public_key = secret_key.public_key();
 
@@ -575,6 +586,7 @@ pub fn SecuritySettings() -> impl IntoView {
                         disabled=move || terminating_sessions.get()
                         on:click=move |_| {
                             set_is_confirmed(false);
+                            generate_new_mnemonic();
                             set_show_terminate_dialog.set(true);
                         }
                     >
@@ -609,6 +621,89 @@ pub fn SecuritySettings() -> impl IntoView {
                                         </p>
                                     </div>
 
+                                    <Show when=move || new_mnemonic.get().is_some()>
+                                        <div class="bg-neutral-900 rounded-lg p-4 mb-6 border border-neutral-700">
+                                            <div class="flex items-center justify-between mb-3">
+                                                <h4 class="text-lg font-medium text-white">
+                                                    "New Seed Phrase"
+                                                </h4>
+                                                <div class="flex gap-2">
+                                                    <button
+                                                        class="p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors cursor-pointer"
+                                                        style:color=move || {
+                                                            if copied_to_clipboard.get() { "#22c55e" } else { "" }
+                                                        }
+                                                        on:click=move |_| {
+                                                            if let Some(mnemonic) = new_mnemonic.get() {
+                                                                let _ = window()
+                                                                    .navigator()
+                                                                    .clipboard()
+                                                                    .write_text(&mnemonic.to_string());
+                                                                set_copied_to_clipboard(true);
+                                                                set_timeout(
+                                                                    move || set_copied_to_clipboard(false),
+                                                                    Duration::from_secs(2),
+                                                                );
+                                                            }
+                                                        }
+                                                        title=move || {
+                                                            if copied_to_clipboard.get() {
+                                                                "Copied!"
+                                                            } else {
+                                                                "Copy seed phrase"
+                                                            }
+                                                        }
+                                                    >
+                                                        <Show when=move || !copied_to_clipboard.get()>
+                                                            <Icon icon=icondata::LuCopy width="16" height="16" />
+                                                        </Show>
+                                                        <Show when=move || copied_to_clipboard.get()>
+                                                            <Icon icon=icondata::LuCheck width="16" height="16" />
+                                                        </Show>
+                                                    </button>
+                                                    <button
+                                                        class="p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors cursor-pointer"
+                                                        on:click=move |_| generate_new_mnemonic()
+                                                        title="Generate new seed phrase"
+                                                    >
+                                                        <Icon icon=icondata::LuRefreshCw width="16" height="16" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="grid grid-cols-3 gap-2 text-sm">
+                                                {move || {
+                                                    if let Some(mnemonic) = new_mnemonic.get() {
+                                                        mnemonic
+                                                            .words()
+                                                            .enumerate()
+                                                            .map(|(i, word)| {
+                                                                view! {
+                                                                    <div class="flex items-center gap-2 p-2 bg-neutral-800 rounded">
+                                                                        <span class="text-neutral-500 text-xs w-4">
+                                                                            {format!("{}.", i + 1)}
+                                                                        </span>
+                                                                        <span class="text-white font-mono">{word}</span>
+                                                                    </div>
+                                                                }
+                                                            })
+                                                            .collect::<Vec<_>>()
+                                                    } else {
+                                                        vec![]
+                                                    }
+                                                }}
+                                            </div>
+                                            <div class="mt-3 text-xs text-yellow-400">
+                                                <Icon
+                                                    icon=icondata::LuAlertTriangle
+                                                    width="14"
+                                                    height="14"
+                                                    attr:class="inline mr-1"
+                                                />
+                                                "Save this new seed phrase - it will replace your current one!"
+                                            </div>
+                                        </div>
+                                    </Show>
+
                                     <DangerConfirmInput
                                         set_is_confirmed=set_is_confirmed
                                         warning_title="Please read the above"
@@ -622,6 +717,8 @@ pub fn SecuritySettings() -> impl IntoView {
                                             on:click=move |_| {
                                                 set_show_terminate_dialog.set(false);
                                                 set_is_confirmed(false);
+                                                set_new_mnemonic(None);
+                                                set_copied_to_clipboard(false);
                                             }
                                         >
                                             "Cancel"
@@ -635,6 +732,8 @@ pub fn SecuritySettings() -> impl IntoView {
                                                 terminate_sessions(());
                                                 set_show_terminate_dialog.set(false);
                                                 set_is_confirmed(false);
+                                                set_new_mnemonic(None);
+                                                set_copied_to_clipboard(false);
                                             }
                                         >
                                             "Confirm"
