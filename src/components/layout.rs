@@ -10,7 +10,9 @@ use rand::{rngs::OsRng, Rng};
 use std::time::Duration;
 use web_sys::TouchEvent;
 
-use crate::contexts::account_selector_swipe_context::AccountSelectorSwipeContext;
+use crate::contexts::{
+    account_selector_swipe_context::AccountSelectorSwipeContext, config_context::BackgroundGroup,
+};
 use crate::{
     components::wallet_header::WalletHeader,
     contexts::network_context::{Network, NetworkContext},
@@ -18,6 +20,7 @@ use crate::{
 use crate::{
     components::{transaction_queue_overlay::TransactionQueueOverlay, PasswordUnlock},
     contexts::accounts_context::AccountsContext,
+    contexts::config_context::ConfigContext,
 };
 
 /// Height of the bottom navbar with buttons
@@ -37,13 +40,13 @@ fn left_edge_threshold() -> f64 {
     (viewport_width * 0.25).min(120.0)
 }
 
-fn get_random_background() -> String {
+fn get_random_background(background_group: BackgroundGroup) -> String {
     if window().inner_width().unwrap().as_f64().unwrap() < 960.0 {
         return "".to_string();
     }
     let mut rng = OsRng;
-    let random_num = rng.gen_range(1..=12);
-    format!("/bg{}.webp", random_num)
+    let random_num = rng.gen_range(1..=background_group.get_count());
+    format!("/{}-{}.webp", background_group.get_prefix(), random_num)
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -70,7 +73,6 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
     let (initial_movement_direction, set_initial_movement_direction) =
         signal(Option::<MovementDirection>::None);
     let (is_left_edge_swipe, set_is_left_edge_swipe) = signal(false);
-    let random_background = get_random_background();
     let AccountSelectorSwipeContext {
         progress: _,
         set_progress: set_account_selector_progress,
@@ -79,6 +81,11 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
     } = expect_context::<AccountSelectorSwipeContext>();
     let NetworkContext { network } = expect_context::<NetworkContext>();
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+    let config_context = expect_context::<ConfigContext>();
+
+    let background_group = Memo::new(move |_| config_context.config.get().background_group);
+
+    let random_background = Memo::new(move |_| get_random_background(background_group.get()));
 
     const HOME_ITEM: &NavItem = &NavItem {
         path: "/",
@@ -291,7 +298,7 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
         }>
             <div
                 class="flex justify-center items-center h-screen overflow-hidden bg-black lg:bg-[linear-gradient(rgba(0,0,0,0.75),rgba(0,0,0,0.75)),var(--bg-image)] lg:bg-cover lg:bg-center lg:bg-no-repeat"
-                style=format!("--bg-image: url('{}')", random_background)
+                style=move || format!("--bg-image: url('{}')", random_background.get())
             >
                 <div
                     class="h-[100dvh] absolute top-0 lg:top-[30px] bottom-0 w-full lg:h-[calc(100%-60px)] lg:w-[600px] bg-neutral-950 lg:rounded-3xl transition-all duration-150 flex flex-col"
@@ -306,7 +313,9 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                     </div>
                     <div class="flex-1 overflow-y-auto overflow-x-hidden px-4 transition-all duration-100 *:min-h-full *:pb-4">
                         <div
-                            class=move || format!("{} *:min-h-full *:flex-1 flex flex-col", slide_direction())
+                            class=move || {
+                                format!("{} *:min-h-full *:flex-1 flex flex-col", slide_direction())
+                            }
                             style=move || {
                                 format!(
                                     "transform: translateX(calc({}px + var(--slide-transform))); opacity: min({}, var(--slide-opacity));",

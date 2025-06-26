@@ -1,4 +1,4 @@
-use crate::contexts::config_context::{ConfigContext, HiddenNft};
+use crate::contexts::config_context::{BackgroundGroup, ConfigContext, HiddenNft};
 use bigdecimal::{BigDecimal, FromPrimitive};
 use leptos::prelude::*;
 use leptos_icons::*;
@@ -251,6 +251,52 @@ pub fn PreferencesSettings() -> impl IntoView {
 
                     <div class="text-xs text-gray-400">
                         "If the price moves unfavorably by more than this percentage while you're clicking the button, the transaction will be cancelled."
+                    </div>
+                </div>
+            </div>
+
+            // Background selection section
+            <div class="mt-6">
+                <div class="text-lg font-medium text-gray-300 mb-4">"Background Theme"</div>
+                <div class="bg-neutral-800 rounded-xl p-4 space-y-4">
+                    <div class="text-sm text-gray-400 mb-3">
+                        "Choose your preferred background style"
+                    </div>
+
+                    <div class="space-y-2">
+                        {BackgroundGroup::all_variants()
+                            .iter()
+                            .copied()
+                            .map(|group| {
+                                let is_selected = move || {
+                                    config_context.config.get().background_group == group
+                                };
+                                view! {
+                                    <button
+                                        class="w-full flex items-center justify-between p-3 rounded-lg text-sm transition-colors cursor-pointer"
+                                        style=move || {
+                                            if is_selected() {
+                                                "background-color: rgb(59 130 246); color: white;"
+                                            } else {
+                                                "background-color: rgb(64 64 64); color: rgb(209 213 219);"
+                                            }
+                                        }
+                                        on:click=move |_| {
+                                            config_context
+                                                .set_config
+                                                .update(|config| {
+                                                    config.background_group = group;
+                                                });
+                                        }
+                                    >
+                                        <span>{group.display_name()}</span>
+                                        <span class="text-xs opacity-75">
+                                            {format!("{} backgrounds", group.get_count())}
+                                        </span>
+                                    </button>
+                                }
+                            })
+                            .collect_view()}
                     </div>
                 </div>
             </div>

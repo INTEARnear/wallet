@@ -76,6 +76,44 @@ pub enum NftsViewState {
     AllNfts,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+pub enum BackgroundGroup {
+    #[default]
+    Group0,
+    Group1,
+    Group2,
+}
+
+impl BackgroundGroup {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Group0 => "Teardrops",
+            Self::Group1 => "Betty",
+            Self::Group2 => "Triangles",
+        }
+    }
+
+    pub fn get_count(&self) -> u32 {
+        match self {
+            Self::Group0 => 5,
+            Self::Group1 => 12,
+            Self::Group2 => 5,
+        }
+    }
+
+    pub fn get_prefix(&self) -> &'static str {
+        match self {
+            Self::Group0 => "bg0",
+            Self::Group1 => "bg1",
+            Self::Group2 => "bg2",
+        }
+    }
+
+    pub fn all_variants() -> &'static [Self] {
+        &[Self::Group0, Self::Group1, Self::Group2]
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct WalletConfig {
     pub show_low_balance_tokens: bool,
@@ -98,6 +136,8 @@ pub struct WalletConfig {
     pub nfts_view_state: NftsViewState,
     #[serde(default)]
     pub hidden_nfts: Vec<HiddenNft>,
+    #[serde(default)]
+    pub background_group: BackgroundGroup,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -121,6 +161,7 @@ impl Default for WalletConfig {
             analytics_disabled: false,
             nfts_view_state: NftsViewState::default(),
             hidden_nfts: vec![],
+            background_group: BackgroundGroup::default(),
         }
     }
 }
