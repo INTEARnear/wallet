@@ -6,6 +6,7 @@ use leptos_router::{
     components::*,
     hooks::{use_location, use_navigate},
 };
+use leptos_use::use_window_size;
 use rand::{rngs::OsRng, Rng};
 use std::time::Duration;
 use web_sys::TouchEvent;
@@ -40,8 +41,8 @@ fn left_edge_threshold() -> f64 {
     (viewport_width * 0.25).min(120.0)
 }
 
-fn get_random_background(background_group: BackgroundGroup) -> String {
-    if window().inner_width().unwrap().as_f64().unwrap() < 960.0 {
+fn get_random_background(background_group: BackgroundGroup, width: f64) -> String {
+    if width < 960.0 {
         return "".to_string();
     }
     let mut rng = OsRng;
@@ -85,7 +86,12 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
 
     let background_group = Memo::new(move |_| config_context.config.get().background_group);
 
-    let random_background = Memo::new(move |_| get_random_background(background_group.get()));
+    let window_width = use_window_size().width;
+    let is_greater_than_960 = Memo::new(move |_| window_width() > 960.0);
+    let random_background = Memo::new(move |_| {
+        let _ = is_greater_than_960.get();
+        get_random_background(background_group.get(), window_width.get_untracked())
+    });
 
     const HOME_ITEM: &NavItem = &NavItem {
         path: "/",

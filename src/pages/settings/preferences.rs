@@ -2,6 +2,7 @@ use crate::contexts::config_context::{BackgroundGroup, ConfigContext, HiddenNft}
 use bigdecimal::{BigDecimal, FromPrimitive};
 use leptos::prelude::*;
 use leptos_icons::*;
+use leptos_use::use_window_size;
 
 pub const SLIPPAGE_PRESETS: [f64; 4] = [0.5, 1.0, 2.0, 5.0];
 
@@ -76,6 +77,7 @@ pub fn PreferencesSettings() -> impl IntoView {
 
     let (custom_slippage_input, set_custom_slippage_input) = signal("".to_string());
 
+    let window_width = use_window_size().width;
     view! {
         <div class="flex flex-col gap-4 p-4">
             <div class="text-xl font-semibold">Preferences</div>
@@ -256,50 +258,62 @@ pub fn PreferencesSettings() -> impl IntoView {
             </div>
 
             // Background selection section
-            <div class="mt-6">
-                <div class="text-lg font-medium text-gray-300 mb-4">"Background Theme"</div>
-                <div class="bg-neutral-800 rounded-xl p-4 space-y-4">
-                    <div class="text-sm text-gray-400 mb-3">
-                        "Choose your preferred background style"
-                    </div>
+            {move || {
+                #[allow(clippy::float_arithmetic)]
+                if window_width() < 960.0 {
+                    ().into_any()
+                } else {
+                    view! {
+                        <div class="mt-6">
+                            <div class="text-lg font-medium text-gray-300 mb-4">
+                                "Background Theme"
+                            </div>
+                            <div class="bg-neutral-800 rounded-xl p-4 space-y-4">
+                                <div class="text-sm text-gray-400 mb-3">
+                                    "Choose your preferred background style"
+                                </div>
 
-                    <div class="space-y-2">
-                        {BackgroundGroup::all_variants()
-                            .iter()
-                            .copied()
-                            .map(|group| {
-                                let is_selected = move || {
-                                    config_context.config.get().background_group == group
-                                };
-                                view! {
-                                    <button
-                                        class="w-full flex items-center justify-between p-3 rounded-lg text-sm transition-colors cursor-pointer"
-                                        style=move || {
-                                            if is_selected() {
-                                                "background-color: rgb(59 130 246); color: white;"
-                                            } else {
-                                                "background-color: rgb(64 64 64); color: rgb(209 213 219);"
+                                <div class="space-y-2">
+                                    {BackgroundGroup::all_variants()
+                                        .iter()
+                                        .copied()
+                                        .map(|group| {
+                                            let is_selected = move || {
+                                                config_context.config.get().background_group == group
+                                            };
+                                            view! {
+                                                <button
+                                                    class="w-full flex items-center justify-between p-3 rounded-lg text-sm transition-colors cursor-pointer"
+                                                    style=move || {
+                                                        if is_selected() {
+                                                            "background-color: rgb(59 130 246); color: white;"
+                                                        } else {
+                                                            "background-color: rgb(64 64 64); color: rgb(209 213 219);"
+                                                        }
+                                                    }
+                                                    on:click=move |_| {
+                                                        config_context
+                                                            .set_config
+                                                            .update(|config| {
+                                                                config.background_group = group;
+                                                            });
+                                                    }
+                                                >
+                                                    <span>{group.display_name()}</span>
+                                                    <span class="text-xs opacity-75">
+                                                        {format!("{} backgrounds", group.get_count())}
+                                                    </span>
+                                                </button>
                                             }
-                                        }
-                                        on:click=move |_| {
-                                            config_context
-                                                .set_config
-                                                .update(|config| {
-                                                    config.background_group = group;
-                                                });
-                                        }
-                                    >
-                                        <span>{group.display_name()}</span>
-                                        <span class="text-xs opacity-75">
-                                            {format!("{} backgrounds", group.get_count())}
-                                        </span>
-                                    </button>
-                                }
-                            })
-                            .collect_view()}
-                    </div>
-                </div>
-            </div>
+                                        })
+                                        .collect_view()}
+                                </div>
+                            </div>
+                        </div>
+                    }
+                        .into_any()
+                }
+            }}
 
             // Hidden NFTs management
             <div class="mt-6">
