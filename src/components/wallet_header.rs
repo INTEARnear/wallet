@@ -48,7 +48,7 @@ pub fn WalletHeader() -> impl IntoView {
             {move || {
                 if is_search_expanded.get() {
                     view! {
-                        <div class="flex items-center gap-2 bg-neutral-900 rounded-xl p-2">
+                        <div class="flex items-center gap-2 bg-neutral-900 rounded-xl p-2 py-2.5">
                             <div class="flex-1 flex items-center gap-2">
                                 <Icon
                                     icon=icondata::LuSearch
