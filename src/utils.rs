@@ -792,13 +792,16 @@ pub enum WalletSelectorAction {
         args: serde_json::Value,
         #[serde(with = "dec_format")]
         gas: u64,
-        deposit: NearToken,
+        #[serde(with = "dec_format")]
+        deposit: Balance,
     },
     Transfer {
-        deposit: NearToken,
+        #[serde(with = "dec_format")]
+        deposit: Balance,
     },
     Stake {
-        stake: NearToken,
+        #[serde(with = "dec_format")]
+        stake: Balance,
         #[serde(rename = "publicKey")]
         public_key: PublicKey,
     },
@@ -853,13 +856,16 @@ impl From<WalletSelectorAction> for NearAction {
                 method_name,
                 args: serde_json::to_vec(&args).unwrap_or_default(),
                 gas,
-                deposit,
+                deposit: NearToken::from_yoctonear(deposit),
             })),
-            WalletSelectorAction::Transfer { deposit } => {
-                NearAction::Transfer(TransferAction { deposit })
-            }
+            WalletSelectorAction::Transfer { deposit } => NearAction::Transfer(TransferAction {
+                deposit: NearToken::from_yoctonear(deposit),
+            }),
             WalletSelectorAction::Stake { stake, public_key } => {
-                NearAction::Stake(Box::new(StakeAction { stake, public_key }))
+                NearAction::Stake(Box::new(StakeAction {
+                    stake: NearToken::from_yoctonear(stake),
+                    public_key,
+                }))
             }
             WalletSelectorAction::AddKey {
                 public_key,

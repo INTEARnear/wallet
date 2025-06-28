@@ -142,7 +142,7 @@ fn TransactionAction(
                 deposit,
                 ..
             } => {
-                let deposit_str = if deposit.is_zero() {
+                let deposit_str = if *deposit == 0 {
                     String::new()
                 } else {
                     format!(" and deposit {deposit}")
@@ -251,7 +251,7 @@ fn TransactionAction(
                                             &method_name_clone,
                                             &args_clone,
                                             NearGas::from_gas(gas_clone),
-                                            deposit_clone,
+                                            NearToken::from_yoctonear(deposit_clone),
                                             accounts
                                                 .get()
                                                 .accounts
