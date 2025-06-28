@@ -10,7 +10,7 @@ pub fn DeveloperSettings() -> impl IntoView {
                 <Icon icon=icondata::LuInfo attr:class="min-w-5 min-h-5 text-sky-300" />
                 <span>
                     "To create an account on testnet, tap \".near\"
-                    5 times in the account creation input field."
+                    and select \".testnet\" in the dropdown."
                 </span>
             </div>
         </div>

@@ -21,6 +21,56 @@ use crate::contexts::network_context::Network;
 use crate::contexts::security_log_context::add_security_log;
 use crate::contexts::transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext};
 
+#[derive(Clone, Debug)]
+enum Parent {
+    Mainnet,
+    Testnet,
+    SubAccount(AccountId),
+}
+
+struct AccountCreationDetails {
+    subaccount_of: AccountId,
+    account_to_sign_with: Option<Account>,
+    network: Network,
+}
+
+impl Parent {
+    fn into_details(
+        self,
+        accounts_context: &AccountsContext,
+    ) -> Result<AccountCreationDetails, String> {
+        match self {
+            Parent::Mainnet => Ok(AccountCreationDetails {
+                subaccount_of: "near".parse().unwrap(),
+                account_to_sign_with: None,
+                network: Network::Mainnet,
+            }),
+            Parent::Testnet => Ok(AccountCreationDetails {
+                subaccount_of: "testnet".parse().unwrap(),
+                account_to_sign_with: None,
+                network: Network::Testnet,
+            }),
+            Parent::SubAccount(subaccount_of) => {
+                if let Some(account) = accounts_context
+                    .accounts
+                    .get()
+                    .accounts
+                    .into_iter()
+                    .find(|account| account.account_id == subaccount_of)
+                {
+                    Ok(AccountCreationDetails {
+                        subaccount_of,
+                        network: account.network,
+                        account_to_sign_with: Some(account),
+                    })
+                } else {
+                    Err(format!("Subaccount of {subaccount_of} not found"))
+                }
+            }
+        }
+    }
+}
+
 #[component]
 pub fn AccountCreationForm(
     set_modal_state: WriteSignal<ModalState>,
@@ -34,9 +84,7 @@ pub fn AccountCreationForm(
     let (is_creating, set_is_creating) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
     let (is_hovered, set_is_hovered) = signal(false);
-    let (network, set_network) = signal(Network::Mainnet);
-    let (suffix_clicks, set_suffix_clicks) = signal(0);
-    let (account_to_sign_with, set_account_to_sign_with) = signal(None);
+    let (parent, set_parent) = signal(Parent::Mainnet);
     let TransactionQueueContext {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
@@ -49,38 +97,19 @@ pub fn AccountCreationForm(
         }
         set_is_loading.set(true);
 
-        let network_suffix = match network.get() {
-            Network::Mainnet => "near",
-            Network::Testnet => "testnet",
+        let AccountCreationDetails {
+            subaccount_of,
+            network,
+            ..
+        } = match parent.get_untracked().into_details(&accounts_context) {
+            Ok(details) => details,
+            Err(e) => {
+                set_error.set(Some(e));
+                set_is_valid.set(None);
+                set_is_loading.set(false);
+                return;
+            }
         };
-        let (name, subaccount_of) = if let Some((name, subaccount_of)) = name.split_once('.') {
-            (
-                name.to_string(),
-                format!("{subaccount_of}.{network_suffix}"),
-            )
-        } else {
-            (name, network_suffix.to_string())
-        };
-
-        let account_to_sign_with = if subaccount_of == network_suffix {
-            None
-        } else if let Some(account) = accounts_context
-            .accounts
-            .get()
-            .accounts
-            .into_iter()
-            .find(|account| account.account_id == subaccount_of)
-        {
-            Some(account)
-        } else {
-            set_error.set(Some(format!(
-                "You can't create a subaccount of {subaccount_of} as it's not your account"
-            )));
-            set_is_valid.set(None);
-            set_is_loading.set(false);
-            return;
-        };
-        set_account_to_sign_with.set(account_to_sign_with);
 
         let full_name = format!("{name}.{subaccount_of}");
         let Some(account_id) = full_name.parse::<AccountId>().ok() else {
@@ -90,7 +119,7 @@ pub fn AccountCreationForm(
             return;
         };
 
-        let rpc_client = network.get().default_rpc_client();
+        let rpc_client = network.default_rpc_client();
         spawn_local(async move {
             let account_exists = rpc_client
                 .view_account(
@@ -100,7 +129,7 @@ pub fn AccountCreationForm(
                 .await
                 .is_ok();
 
-            if account_id == format!("{}.{network_suffix}", account_name.get_untracked()) {
+            if account_id == format!("{}.{subaccount_of}", account_name.get_untracked()) {
                 if account_exists {
                     set_error.set(Some("Account already exists".to_string()));
                     set_is_valid.set(None);
@@ -112,22 +141,6 @@ pub fn AccountCreationForm(
         });
     };
 
-    let handle_suffix_click = move |_| {
-        let new_clicks = suffix_clicks.get() + 1;
-        set_suffix_clicks.set(new_clicks);
-
-        const CLICKS_TO_SWITCH_NETWORK: usize = 5;
-        if new_clicks == CLICKS_TO_SWITCH_NETWORK {
-            set_network.set(match network.get() {
-                Network::Mainnet => Network::Testnet,
-                Network::Testnet => Network::Mainnet,
-            });
-            set_suffix_clicks.set(0);
-            // Reset validation since we're switching networks
-            check_account(account_name.get_untracked());
-        }
-    };
-
     let do_create_account = move || {
         let Some(account_id) = is_valid.get() else {
             return;
@@ -137,15 +150,25 @@ pub fn AccountCreationForm(
         let secret_key = mnemonic_to_key(mnemonic.clone()).unwrap();
         let public_key = secret_key.public_key();
 
-        let rpc_client = network.get_untracked().default_rpc_client();
-        let current_network = network.get_untracked();
+        let AccountCreationDetails {
+            account_to_sign_with,
+            network,
+            ..
+        } = match parent.get_untracked().into_details(&accounts_context) {
+            Ok(details) => details,
+            Err(e) => {
+                log::error!("Couldn't extract data from parent: {e}");
+                return;
+            }
+        };
+        let rpc_client = network.default_rpc_client();
 
         spawn_local(async move {
             set_is_creating.set(true);
             set_error.set(None);
 
             let creation_future: Pin<Box<dyn Future<Output = Result<(), String>>>> =
-                if let Some(account_to_sign_with) = account_to_sign_with.get_untracked() {
+                if let Some(account_to_sign_with) = account_to_sign_with {
                     let actions = vec![
                         Action::CreateAccount(CreateAccountAction {}),
                         Action::AddKey(Box::new(AddKeyAction {
@@ -195,7 +218,7 @@ pub fn AccountCreationForm(
                     });
                     Box::pin(async move {
                         let client = reqwest::Client::new();
-                        let account_creation_service_addr = match current_network {
+                        let account_creation_service_addr = match network {
                             Network::Mainnet => {
                                 dotenvy_macro::dotenv!("MAINNET_ACCOUNT_CREATION_SERVICE_ADDR")
                             }
@@ -267,7 +290,7 @@ pub fn AccountCreationForm(
                                     account_id: account_id.clone(),
                                     seed_phrase: Some(mnemonic.to_string()),
                                     secret_key: secret_key.clone(),
-                                    network: current_network,
+                                    network,
                                 });
                                 accounts.selected_account_id = Some(account_id);
                                 accounts_context.set_accounts.set(accounts);
@@ -357,42 +380,65 @@ pub fn AccountCreationForm(
                                             .chars()
                                             .filter(|c| {
                                                 c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_'
-                                                    || *c == '-' || *c == '.'
+                                                    || *c == '-'
                                             })
                                             .collect::<String>();
-                                        if value.ends_with(".near") {
-                                            set_network.set(Network::Mainnet);
-                                            let trimmed = value
-                                                .strip_suffix(".near")
-                                                .unwrap()
-                                                .to_string();
-                                            set_account_name.set(trimmed.clone());
-                                            check_account(trimmed);
-                                        } else if value.ends_with(".testnet") {
-                                            set_network.set(Network::Testnet);
-                                            let trimmed = value
-                                                .strip_suffix(".testnet")
-                                                .unwrap()
-                                                .to_string();
-                                            set_account_name.set(trimmed.clone());
-                                            check_account(trimmed);
-                                        } else {
-                                            set_account_name.set(value.clone());
-                                            check_account(value);
-                                        }
+                                        set_account_name.set(value.clone());
+                                        check_account(value);
                                     }
                                     on:keydown=handle_keydown
                                     disabled=move || is_creating.get()
                                 />
-                                <button
-                                    class="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 font-medium cursor-pointer no-mobile-ripple"
-                                    on:click=handle_suffix_click
+                                <select
+                                    class="absolute top-1/2 right-0 -translate-y-1/2 bg-transparent text-neutral-500 font-medium cursor-pointer focus:outline-none text-base max-w-40 text-right truncate border-r-8 border-transparent"
+                                    on:change=move |ev| {
+                                        let value = event_target_value(&ev);
+                                        let parent_val = match value.as_str() {
+                                            "near" => Parent::Mainnet,
+                                            "testnet" => Parent::Testnet,
+                                            other => Parent::SubAccount(other.parse().unwrap()),
+                                        };
+                                        set_parent.set(parent_val);
+                                        check_account(account_name.get_untracked().clone());
+                                    }
                                 >
-                                    {move || match network.get() {
-                                        Network::Mainnet => ".near",
-                                        Network::Testnet => ".testnet",
-                                    }}
-                                </button>
+                                    <option
+                                        value="near"
+                                        selected=move || matches!(parent.get(), Parent::Mainnet)
+                                    >
+                                        ".near"
+                                    </option>
+                                    <option
+                                        value="testnet"
+                                        selected=move || matches!(parent.get(), Parent::Testnet)
+                                    >
+                                        ".testnet"
+                                    </option>
+                                    {accounts_context
+                                        .accounts
+                                        .get()
+                                        .accounts
+                                        .iter()
+                                        .map(|account| {
+                                            let id = account.account_id.to_string();
+                                            view! {
+                                                <option
+                                                    value=id.clone()
+                                                    selected=move || {
+                                                        matches!(
+                                                            parent.get(),
+                                                            Parent::SubAccount(ref x)
+                                                            if x == &id
+                                                        )
+                                                    }
+                                                    class="truncate"
+                                                >
+                                                    {format!(".{id}")}
+                                                </option>
+                                            }
+                                        })
+                                        .collect::<Vec<_>>()}
+                                </select>
                             </div>
                             {move || {
                                 if let Some(err) = error.get() {
@@ -424,7 +470,15 @@ pub fn AccountCreationForm(
                                 }
                             }}
                             {move || {
-                                if network.get() == Network::Testnet {
+                                let is_testnet = if let Ok(
+                                    AccountCreationDetails { network, .. },
+                                ) = parent.get().into_details(&accounts_context)
+                                {
+                                    network == Network::Testnet
+                                } else {
+                                    false
+                                };
+                                if is_testnet {
                                     view! {
                                         <p class="text-yellow-500 text-sm mt-2 font-medium">
                                             This is a <b>testnet</b>

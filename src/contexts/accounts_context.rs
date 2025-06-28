@@ -99,7 +99,7 @@ pub enum PasswordAction {
     ClearCipher,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct AccountsContext {
     pub accounts: ReadSignal<AccountsState>,
     pub set_accounts: WriteSignal<AccountsState>,
