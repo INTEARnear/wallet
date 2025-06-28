@@ -228,7 +228,7 @@ fn TokenSelector(
                     <div class="bg-neutral-900 rounded-2xl w-full max-h-[60vh] overflow-hidden flex flex-col">
                         <div class="p-4 border-b border-neutral-800 flex-shrink-0">
                             <div class="flex items-center justify-between mb-4">
-                                <h3 class="text-white font-medium">"Select Token"</h3>
+                                <h3 class="text-white font-bold text-lg">"Select Token"</h3>
                                 <button
                                     class="text-gray-400 hover:text-white transition-colors cursor-pointer"
                                     on:click=move |_| set_show.set(false)
@@ -404,7 +404,16 @@ fn TokenSelector(
                                             .into_any()
                                     } else {
                                         match search_resource.get() {
-                                            Some(Ok(search_results)) => {
+                                            Some(Ok(mut search_results)) => {
+                                                let query_lower = search_query.to_lowercase();
+                                                if "near".contains(&query_lower) {
+                                                    if let Some(near_token_data) = user_tokens
+                                                        .iter()
+                                                        .find(|t| t.token.account_id == Token::Near)
+                                                    {
+                                                        search_results.insert(0, near_token_data.token.clone());
+                                                    }
+                                                }
                                                 if search_results.is_empty() {
                                                     view! {
                                                         <div class="flex items-center justify-center h-32 text-gray-400">
