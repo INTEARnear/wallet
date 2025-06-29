@@ -156,7 +156,10 @@ fn TransactionAction(
                 format!("Transfer {}", NearToken::from_yoctonear(*deposit))
             }
             WalletSelectorAction::Stake { stake, public_key } => {
-                format!("Stake {} with key {public_key}", NearToken::from_yoctonear(*stake))
+                format!(
+                    "Stake {} with key {public_key}",
+                    NearToken::from_yoctonear(*stake)
+                )
             }
             WalletSelectorAction::AddKey {
                 public_key,
