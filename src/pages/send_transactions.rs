@@ -145,7 +145,7 @@ fn TransactionAction(
                 let deposit_str = if *deposit == 0 {
                     String::new()
                 } else {
-                    format!(" and deposit {deposit}")
+                    format!(" and deposit {}", NearToken::from_yoctonear(*deposit))
                 };
                 format!(
                     "Call '{method_name}' with {gas}{deposit_str}",
@@ -153,10 +153,10 @@ fn TransactionAction(
                 )
             }
             WalletSelectorAction::Transfer { deposit } => {
-                format!("Transfer {deposit}")
+                format!("Transfer {}", NearToken::from_yoctonear(*deposit))
             }
             WalletSelectorAction::Stake { stake, public_key } => {
-                format!("Stake {stake} with key {public_key}")
+                format!("Stake {} with key {public_key}", NearToken::from_yoctonear(*stake))
             }
             WalletSelectorAction::AddKey {
                 public_key,
