@@ -7,7 +7,7 @@ use crate::components::danger_confirm_input::DangerConfirmInput;
 use crate::contexts::accounts_context::{AccountsContext, AccountsState, PasswordAction};
 
 #[component]
-pub fn PasswordUnlock() -> impl IntoView {
+pub fn PasswordUnlockOverlay() -> impl IntoView {
     let accounts_context = expect_context::<AccountsContext>();
     let (password_input, set_password_input) = signal(String::new());
     let (is_unlocking, set_is_unlocking) = signal(false);

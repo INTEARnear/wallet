@@ -1,3 +1,4 @@
+use crate::contexts::accounts_context::{AccountsContext, LedgerSigningState};
 use crate::contexts::transaction_queue_context::{
     OverlayMode, TransactionQueueContext, TransactionStage,
 };
@@ -10,8 +11,13 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
         queue,
         current_index,
         overlay_mode,
+        signing_tx_id,
         ..
     } = expect_context::<TransactionQueueContext>();
+    let AccountsContext {
+        ledger_signing_state,
+        ..
+    } = expect_context::<AccountsContext>();
 
     Effect::new(move |_| {
         let queue_len = queue.read().len();
@@ -91,7 +97,9 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
 
     view! {
         <Show
-            when=move || { overlay_mode.get() == OverlayMode::Background && !queue.read().is_empty() }
+            when=move || {
+                overlay_mode.get() == OverlayMode::Background && !queue.read().is_empty()
+            }
             attr:class="relative top-0 pt-2 w-full lg:rounded-t-3xl bg-neutral-900/90 text-white text-sm font-medium transition-all duration-200 cursor-pointer"
             on:click=move |_| overlay_mode.set(OverlayMode::Modal)
         >
@@ -157,6 +165,7 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                                 .read()
                                 .iter()
                                 .map(|tx| {
+                                    let tx_id = tx.id;
                                     view! {
                                         <div class="flex flex-col p-2 bg-neutral-800/50 rounded-lg">
                                             <div class="flex items-center justify-between">
@@ -174,6 +183,63 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                                                 }
                                                 _ => ().into_any(),
                                             }}
+                                            <Show when=move || {
+                                                signing_tx_id.get() == Some(tx_id)
+                                            }>
+                                                {move || {
+                                                    match ledger_signing_state.get() {
+                                                        LedgerSigningState::Idle => ().into_any(),
+                                                        LedgerSigningState::WaitingForSignature { .. } => {
+                                                            view! {
+                                                                <div class="text-white text-center flex flex-col items-center gap-2 mt-2 border-t border-neutral-700 pt-2">
+                                                                    <Icon icon=icondata::LuUsb width="24" height="24" />
+                                                                    <p class="text-sm font-bold">"Waiting for Ledger"</p>
+                                                                    <p class="text-xs">
+                                                                        "Please confirm the transaction on your Ledger device."
+                                                                    </p>
+                                                                </div>
+                                                            }
+                                                                .into_any()
+                                                        }
+                                                        LedgerSigningState::Error { id, error } => {
+                                                            view! {
+                                                                <div class="text-white text-center flex flex-col items-center gap-2 mt-2 border-t border-neutral-700 pt-2">
+                                                                    <Icon
+                                                                        icon=icondata::LuAlertTriangle
+                                                                        width="24"
+                                                                        height="24"
+                                                                        attr:class="text-red-500"
+                                                                    />
+                                                                    <p class="text-sm font-bold">"Ledger Error"</p>
+                                                                    <p class="text-xs max-w-xs break-words">{error.clone()}</p>
+                                                                    <div class="flex gap-4 mt-2">
+                                                                        <button
+                                                                            class="px-3 py-1 text-xs bg-neutral-700 rounded-md hover:bg-neutral-600 transition-colors cursor-pointer"
+                                                                            on:click=move |_| {
+                                                                                ledger_signing_state
+                                                                                    .set(LedgerSigningState::WaitingForSignature {
+                                                                                        id,
+                                                                                    })
+                                                                            }
+                                                                        >
+                                                                            "Retry"
+                                                                        </button>
+                                                                        <button
+                                                                            class="px-3 py-1 text-xs bg-red-800 rounded-md hover:bg-red-700 transition-colors cursor-pointer"
+                                                                            on:click=move |_| {
+                                                                                ledger_signing_state.set(LedgerSigningState::Idle)
+                                                                            }
+                                                                        >
+                                                                            "Cancel"
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            }
+                                                                .into_any()
+                                                        }
+                                                    }
+                                                }}
+                                            </Show>
                                         </div>
                                     }
                                 })

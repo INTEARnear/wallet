@@ -1,6 +1,10 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import Overlays from "./Overlays";
+import { createClient as createLedgerClient, getSupportedTransport as getSupportedLedgerTransport } from "./near-ledger-js";
+import { toObject } from "./utils";
+
+// Analytics
 
 const posthog_api_key = "{{{POSTHOG_API_KEY}}}";
 // It's public, but we don't want self-hosted environments to send analytics
@@ -17,11 +21,15 @@ if (!posthog_api_key.startsWith("{{{")) {
     }
 }
 
-const test = document.createElement("div");
-document.body.appendChild(test);
+// Non-near wallet modals
 
-const root = createRoot(test);
+const rootElement = document.createElement("div");
+document.body.appendChild(rootElement);
+
+const root = createRoot(rootElement);
 root.render(<Overlays />);
+
+// Ripple effect
 
 let currentRipple: HTMLSpanElement | null = null;
 
@@ -48,7 +56,7 @@ function createRipple(event: TouchEvent, element: HTMLElement) {
 }
 
 function handleTouchStart(event) {
-    const element = event.target?.closest('a:not(.no-mobile-ripple), button:not(.no-mobile-ripple), .mobile-ripple');
+    const element = event.target?.closest('a:not(.no-mobile-ripple), button:not(.no-mobile-ripple):not(:disabled), .mobile-ripple');
     if (!element) return;
     if (currentRipple) {
         currentRipple.remove();
@@ -58,7 +66,7 @@ function handleTouchStart(event) {
 }
 
 function handleContextMenu(event) {
-    const element = event.target.closest('a:not(.no-mobile-ripple), button:not(.no-mobile-ripple), .mobile-ripple');
+    const element = event.target.closest('a:not(.no-mobile-ripple), button:not(.no-mobile-ripple):not(:disabled), .mobile-ripple');
     if (!element) return;
 
     const activeRipple = element.querySelector('.ripple-circle');
@@ -82,3 +90,113 @@ function handleTouchEnd() {
 document.addEventListener('touchstart', handleTouchStart, { passive: true });
 document.addEventListener('contextmenu', handleContextMenu, { passive: false });
 document.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+// Ledger bindings
+
+async function connectLedger() {
+    const transport = await getSupportedLedgerTransport()
+        .catch(error => {
+            console.error('Error getting supported ledger transport: ', JSON.stringify(error))
+            throw error.name;
+        });
+    if (transport === null) {
+        return;
+    }
+    transport.setScrambleKey("NEAR")
+    const ledgerClient = await createLedgerClient(transport)
+        .catch(error => {
+            console.error('Error connecting to Ledger device: ', JSON.stringify(error))
+            throw error.statusCode;
+        });
+    if (ledgerClient === null) {
+        return;
+    }
+    (globalThis as any).ledgerClient = ledgerClient;
+    return ledgerClient;
+}
+
+window.addEventListener('message', async (event) => {
+    if (event.origin !== window.location.origin) {
+        return;
+    }
+    let data = event.data;
+    try {
+        data = toObject(data);
+    } catch {
+    }
+    if (data.type === 'ledger-connect') {
+        const localLedgerClient = await connectLedger()
+            .catch(error => {
+                window.postMessage({ type: 'ledger-connect-error', error }, window.location.origin);
+                return null;
+            });
+        if (!localLedgerClient) {
+            (globalThis as any).ledgerClient = null;
+            return;
+        }
+        window.postMessage({ type: 'ledger-connected' }, window.location.origin)
+    } else if (data.type === 'ledger-get-public-key') {
+        let localLedgerClient = (globalThis as any).ledgerClient;
+        if (!localLedgerClient) {
+            localLedgerClient = await connectLedger()
+                .catch(error => {
+                    window.postMessage({ type: 'ledger-get-public-key-error', error: error }, window.location.origin);
+                    return null;
+                });
+        }
+        if (!localLedgerClient) {
+            console.error('Ledger client not found')
+            return;
+        }
+
+        const { path } = data;
+        const key = await localLedgerClient.getPublicKey(path)
+            .catch(error => {
+                console.error('Error getting public key: ', JSON.stringify(error))
+                window.postMessage({ type: 'ledger-get-public-key-error', error: error.statusCode }, window.location.origin);
+                localLedgerClient.transport.close();
+                (globalThis as any).ledgerClient = null;
+                return null;
+            });
+        if (key === null) {
+            return;
+        }
+        window.postMessage({
+            type: 'ledger-public-key',
+            path,
+            key: [...key],
+        }, window.location.origin)
+    } else if (data.type === 'ledger-sign') {
+        let localLedgerClient = (globalThis as any).ledgerClient;
+        if (!localLedgerClient) {
+            localLedgerClient = await connectLedger()
+                .catch(error => {
+                    window.postMessage({ type: 'ledger-sign-error', error: error }, window.location.origin);
+                    return null;
+                });
+        }
+        if (!localLedgerClient) {
+            console.error('Ledger client not found')
+            return;
+        }
+
+        const { path, messageToSign, id } = data;
+        const signature = await localLedgerClient.sign(messageToSign, path)
+            .catch(error => {
+                console.error('Error signing message: ', JSON.stringify(error))
+                window.postMessage({ type: 'ledger-sign-error', error: error.statusCode }, window.location.origin);
+                localLedgerClient.transport.close();
+                (globalThis as any).ledgerClient = null;
+                return null;
+            });
+        if (signature === null) {
+            return;
+        }
+        window.postMessage({
+            type: 'ledger-signature',
+            path,
+            signature: [...signature],
+            id,
+        }, window.location.origin)
+    }
+});

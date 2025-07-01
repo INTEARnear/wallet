@@ -1,24 +1,32 @@
+use core::fmt;
+use std::fmt::Display;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::mpmc;
+use std::time::Duration;
 
 use aes_gcm::aead::{rand_core::RngCore, Aead, OsRng};
 use aes_gcm::{Aes256Gcm, Key, KeyInit, Nonce};
 use argon2::{Argon2, ParamsBuilder};
 use base64::{engine::general_purpose, Engine as _};
 use chrono::{DateTime, Utc};
+use futures_timer::Delay;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_use::{use_document, use_event_listener};
+use leptos_use::{use_document, use_event_listener, use_window};
+use near_min_api::types::near_crypto::{KeyType, PublicKey, Signature};
+use near_min_api::types::CryptoHash;
 use near_min_api::types::{
     near_crypto::{ED25519SecretKey, SecretKey},
     AccountId,
 };
 use serde::{Deserialize, Serialize};
+use serde_wasm_bindgen;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::{closure::Closure, JsCast};
 use web_sys::js_sys::Reflect;
-use web_sys::window;
 
+use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
 use crate::utils::is_debug_enabled;
 
 use super::{
@@ -55,13 +63,151 @@ struct RetrieveResponse {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Account {
     pub account_id: AccountId,
-    pub secret_key: SecretKey,
+    pub secret_key: SecretKeyHolder,
     pub seed_phrase: Option<String>,
-    #[serde(
-        skip_serializing_if = "is_mainnet",
-        default = "default_account_network"
-    )]
+    #[serde(default = "default_account_network")]
     pub network: Network,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum LedgerSigningState {
+    Idle,
+    WaitingForSignature { id: u32 },
+    Error { id: u32, error: String },
+}
+
+pub fn format_ledger_error(error: &serde_json::Value) -> String {
+    match error {
+        serde_json::Value::String(s) if s == "TransportOpenUserCancelled" => {
+            "You cancelled the connection".to_string()
+        }
+        serde_json::Value::Number(n) if n.as_u64() == Some(0x6e01) => {
+            "Are you in the NEAR app on your Ledger?".to_string()
+        }
+        serde_json::Value::Number(n) if n.as_u64() == Some(0x6985) => {
+            "You denied the action in your Ledger".to_string()
+        }
+        serde_json::Value::Number(n) if n.as_u64() == Some(0x5515) => {
+            "Your Ledger is locked".to_string()
+        }
+        serde_json::Value::String(s) if s == "DisconnectedDeviceDuringOperation" => {
+            "Your Ledger was disconnected during the operation".to_string()
+        }
+        _ => format!("Error: {}", error),
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+#[serde(untagged)]
+pub enum SecretKeyHolder {
+    SecretKey(SecretKey),
+    Ledger { path: String, public_key: PublicKey },
+}
+
+pub struct UserCancelledSigning;
+
+impl SecretKeyHolder {
+    pub fn public_key(&self) -> PublicKey {
+        match self {
+            SecretKeyHolder::SecretKey(secret_key) => secret_key.public_key(),
+            SecretKeyHolder::Ledger { public_key, .. } => public_key.clone(),
+        }
+    }
+
+    pub async fn hash_and_sign(
+        &self,
+        message: &[u8],
+        context: AccountsContext,
+    ) -> Result<Signature, UserCancelledSigning> {
+        match self {
+            SecretKeyHolder::SecretKey(secret_key) => {
+                Ok(secret_key.sign(CryptoHash::hash_bytes(message).as_bytes()))
+            }
+            SecretKeyHolder::Ledger {
+                path,
+                public_key: _,
+            } => {
+                let id = OsRng.next_u32();
+                let request = JsWalletRequest::LedgerSign {
+                    path: path.clone(),
+                    message_to_sign: message.to_vec(),
+                    id,
+                };
+                let js_value = serde_wasm_bindgen::to_value(&request).unwrap();
+                let origin = window()
+                    .location()
+                    .origin()
+                    .unwrap_or_else(|_| "*".to_string());
+
+                'retry_loop: loop {
+                    let _ = window().post_message(&js_value, &origin);
+                    context
+                        .ledger_signing_state
+                        .set(LedgerSigningState::WaitingForSignature { id });
+                    let rx = context.ledger_sign_rx.get_untracked();
+                    'receive_loop: loop {
+                        match rx.try_recv() {
+                            Ok(response) => match response {
+                                JsWalletResponse::LedgerSignature {
+                                    id: resp_id,
+                                    signature,
+                                    ..
+                                } if resp_id == id => {
+                                    context.ledger_signing_state.set(LedgerSigningState::Idle);
+                                    let sig = Signature::from_parts(KeyType::ED25519, &signature)
+                                        .map_err(|_| UserCancelledSigning)?;
+                                    return Ok(sig);
+                                }
+                                JsWalletResponse::LedgerSignError { error } => {
+                                    context.ledger_signing_state.set(LedgerSigningState::Error {
+                                        id,
+                                        error: format_ledger_error(&error),
+                                    });
+                                    break 'receive_loop;
+                                }
+                                _ => {}
+                            },
+                            Err(mpmc::TryRecvError::Disconnected) => {
+                                context.ledger_signing_state.set(LedgerSigningState::Idle);
+                                return Err(UserCancelledSigning);
+                            }
+                            Err(mpmc::TryRecvError::Empty) => {
+                                Delay::new(Duration::from_millis(100)).await;
+                            }
+                        }
+                    }
+
+                    // After an error, wait for user action (retry or cancel)
+                    loop {
+                        match context.ledger_signing_state.get_untracked() {
+                            LedgerSigningState::Idle => {
+                                return Err(UserCancelledSigning);
+                            }
+                            LedgerSigningState::WaitingForSignature { id: state_id }
+                                if state_id == id =>
+                            {
+                                continue 'retry_loop;
+                            }
+                            _ => {
+                                Delay::new(Duration::from_millis(100)).await;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl Display for SecretKeyHolder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SecretKeyHolder::SecretKey(secret_key) => write!(f, "SecretKey({secret_key})"),
+            SecretKeyHolder::Ledger { path, public_key } => {
+                write!(f, "Ledger(path: {path}, public_key: {public_key})")
+            }
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -80,10 +226,6 @@ pub struct EncryptedAccountsData {
     pub rounds: u32,
     /// Base64 encoded AES-GCM nonce
     pub nonce: String,
-}
-
-fn is_mainnet(network: &Network) -> bool {
-    matches!(network, Network::Mainnet)
 }
 
 fn default_account_network() -> Network {
@@ -106,10 +248,12 @@ pub struct AccountsContext {
     pub set_password: Action<PasswordAction, Result<(), String>>,
     pub decrypt_accounts: Action<String, Result<(), String>>,
     pub is_encrypted: ReadSignal<bool>,
+    pub ledger_sign_rx: RwSignal<mpmc::Receiver<JsWalletResponse>>,
+    pub ledger_signing_state: RwSignal<LedgerSigningState>,
 }
 
 fn get_local_storage() -> Option<web_sys::Storage> {
-    window().and_then(|w| w.local_storage().ok()).flatten()
+    window().local_storage().ok().flatten()
 }
 
 fn load_accounts() -> AccountsState {
@@ -409,7 +553,6 @@ async fn retrieve_cipher_from_service() -> Result<Option<Cipher>, String> {
         .decrypt(nonce, encrypted_data)
         .map_err(|e| format!("Failed to decrypt cipher: {}", e))?;
 
-    // Get correct derivation details to store them
     let encrypted_accounts =
         get_encrypted_accounts().map_err(|e| format!("Failed to get encrypted accounts: {}", e))?;
     let salt_for_derivation = general_purpose::STANDARD
@@ -487,9 +630,7 @@ pub fn provide_accounts_context() {
 
     let reset_password_timeout = move || {
         if let Some(handle) = password_timeout_handle.get_untracked() {
-            if let Some(window) = window() {
-                window.clear_timeout_with_handle(handle);
-            }
+            window().clear_timeout_with_handle(handle);
         }
 
         // Only set timeout if we have encrypted data and a cipher (wallet is unlocked)
@@ -499,20 +640,18 @@ pub fn provide_accounts_context() {
                 .get_untracked()
                 .password_remember_duration;
             if let Some(seconds) = duration.to_seconds() {
-                if let Some(window) = window() {
-                    let callback = Closure::wrap(Box::new(clear_password) as Box<dyn FnMut()>);
+                let callback = Closure::wrap(Box::new(clear_password) as Box<dyn FnMut()>);
 
-                    let handle = window
-                        .set_timeout_with_callback_and_timeout_and_arguments_0(
-                            callback.as_ref().unchecked_ref(),
-                            (seconds * 1000) as i32,
-                        )
-                        .unwrap_or(-1);
+                let handle = window()
+                    .set_timeout_with_callback_and_timeout_and_arguments_0(
+                        callback.as_ref().unchecked_ref(),
+                        (seconds * 1000) as i32,
+                    )
+                    .unwrap_or(-1);
 
-                    // Prevent drop until timeout fires
-                    callback.forget();
-                    set_password_timeout_handle(Some(handle));
-                }
+                // Prevent drop until timeout fires
+                callback.forget();
+                set_password_timeout_handle(Some(handle));
             }
         }
     };
@@ -523,9 +662,7 @@ pub fn provide_accounts_context() {
 
             on_cleanup(move || {
                 if let Some(handle) = password_timeout_handle.get_untracked() {
-                    if let Some(window) = window() {
-                        window.clear_timeout_with_handle(handle);
-                    }
+                    window().clear_timeout_with_handle(handle);
                 }
             });
         }
@@ -655,49 +792,69 @@ pub fn provide_accounts_context() {
     });
 
     if is_debug_enabled() {
-        if let Some(win) = window() {
-            let view_as_closure = Closure::wrap(Box::new(move |id_val: JsValue| {
-                let Some(id_str) = id_val.as_string() else {
-                    web_sys::console::error_1(&"view_as expects a string".into());
-                    return;
-                };
+        let view_as_closure = Closure::wrap(Box::new(move |id_val: JsValue| {
+            let Some(id_str) = id_val.as_string() else {
+                web_sys::console::error_1(&"view_as expects a string".into());
+                return;
+            };
 
-                let Ok(account_id) = id_str.parse::<AccountId>() else {
-                    web_sys::console::error_1(&"Invalid account id".into());
-                    return;
-                };
+            let Ok(account_id) = id_str.parse::<AccountId>() else {
+                web_sys::console::error_1(&"Invalid account id".into());
+                return;
+            };
 
-                let current_state = accounts.get_untracked();
-                if current_state
-                    .accounts
-                    .iter()
-                    .any(|acc| acc.account_id == account_id)
-                {
+            let current_state = accounts.get_untracked();
+            if current_state
+                .accounts
+                .iter()
+                .any(|acc| acc.account_id == account_id)
+            {
+                return;
+            }
+
+            let zero_secret_key = SecretKey::ED25519(ED25519SecretKey([0u8; 64]));
+
+            let mut new_state = current_state.clone();
+            new_state.accounts.push(Account {
+                account_id: account_id.clone(),
+                secret_key: SecretKeyHolder::SecretKey(zero_secret_key),
+                seed_phrase: None,
+                network: Network::Mainnet,
+            });
+            new_state.selected_account_id = Some(account_id);
+
+            set_accounts(new_state);
+        }) as Box<dyn FnMut(JsValue)>);
+
+        let _ = Reflect::set(
+            window().as_ref(),
+            &wasm_bindgen::JsValue::from_str("view_as"),
+            view_as_closure.as_ref().unchecked_ref(),
+        );
+
+        view_as_closure.forget();
+    }
+
+    let (ledger_sign_tx, ledger_sign_rx) = mpmc::channel();
+
+    {
+        let tx = ledger_sign_tx.clone();
+        let origin = window().location().origin().unwrap_or_default();
+
+        let _ = use_event_listener(
+            use_window(),
+            leptos::ev::message,
+            move |msg_event: web_sys::MessageEvent| {
+                if msg_event.origin() != origin {
                     return;
                 }
 
-                let zero_secret_key = SecretKey::ED25519(ED25519SecretKey([0u8; 64]));
-
-                let mut new_state = current_state.clone();
-                new_state.accounts.push(Account {
-                    account_id: account_id.clone(),
-                    secret_key: zero_secret_key,
-                    seed_phrase: None,
-                    network: Network::Mainnet,
-                });
-                new_state.selected_account_id = Some(account_id);
-
-                set_accounts(new_state);
-            }) as Box<dyn FnMut(JsValue)>);
-
-            let _ = Reflect::set(
-                win.as_ref(),
-                &wasm_bindgen::JsValue::from_str("view_as"),
-                view_as_closure.as_ref().unchecked_ref(),
-            );
-
-            view_as_closure.forget();
-        }
+                let data = msg_event.data();
+                if let Ok(resp) = serde_wasm_bindgen::from_value::<JsWalletResponse>(data) {
+                    tx.send(resp).expect("Expected to have at least one receiver not dropped, stored in AccountsContext");
+                }
+            },
+        );
     }
 
     provide_context(AccountsContext {
@@ -706,5 +863,7 @@ pub fn provide_accounts_context() {
         set_password,
         decrypt_accounts,
         is_encrypted,
+        ledger_sign_rx: RwSignal::new(ledger_sign_rx),
+        ledger_signing_state: RwSignal::new(LedgerSigningState::Idle),
     });
 }

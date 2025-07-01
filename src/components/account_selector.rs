@@ -38,6 +38,7 @@ pub enum LoginMethod {
     SeedPhrase,
     EthereumWallet,
     SolanaWallet,
+    Ledger,
 }
 
 pub const HD_PATH: &str = "m/44'/397'/0'";

@@ -1,6 +1,7 @@
 use crate::{
     contexts::{
         config_context::ConfigContext,
+        network_context::{Network, NetworkContext},
         search_context::SearchContext,
         tokens_context::{Token, TokenContext, TokenScore},
     },
@@ -22,6 +23,7 @@ pub fn TokenBalanceList() -> impl IntoView {
     } = expect_context::<TokenContext>();
     let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
     let SearchContext { query, .. } = expect_context::<SearchContext>();
+    let NetworkContext { network } = expect_context::<NetworkContext>();
 
     let toggle_low_balance = move |_| {
         set_config.update(|config| {
@@ -63,11 +65,11 @@ pub fn TokenBalanceList() -> impl IntoView {
                             if matches!(token.token.reputation, TokenScore::Spam) {
                                 return false;
                             }
-                            if &token.token.price_usd_raw
-                                * &BigDecimal::from(token.token.circulating_supply)
-                                / power_of_10(USDT_DECIMALS)
-                                >= BigDecimal::from(100_000_000_000_000u128)
-                            {
+                            let market_cap_is_abnormal = &token.token.price_usd_raw
+                            * &BigDecimal::from(token.token.circulating_supply)
+                            / power_of_10(USDT_DECIMALS)
+                            >= BigDecimal::from(100_000_000_000_000u128);
+                            if market_cap_is_abnormal && network.get() != Network::Testnet {
                                 log::warn!(
                                     "Hiding token {:?} as it has abnormal market cap",
                                     token.token.account_id

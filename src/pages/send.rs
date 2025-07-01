@@ -441,9 +441,13 @@ pub fn SendToken() -> impl IntoView {
                                         if let Some(recipient_balance) = recipient_balance.get() {
                                             view! {
                                                 <p class="text-green-500 text-sm mt-2 font-medium">
-                                                    {format_account_id_no_hide(
-                                                        &recipient.read().parse::<AccountId>().unwrap(),
-                                                    )}" has "
+                                                    {move || {
+                                                        if let Ok(recipient) = recipient.get().parse::<AccountId>() {
+                                                            format_account_id_no_hide(&recipient)
+                                                        } else {
+                                                            ().into_any()
+                                                        }
+                                                    }}" has "
                                                     {format_token_amount_no_hide(
                                                         recipient_balance,
                                                         token.token.metadata.decimals,

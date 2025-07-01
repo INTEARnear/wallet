@@ -4,7 +4,7 @@ use leptos_router::hooks::{use_location, use_navigate};
 use near_min_api::types::{near_crypto::SecretKey, AccountId};
 
 use crate::contexts::{
-    accounts_context::{Account, AccountsContext},
+    accounts_context::{Account, AccountsContext, SecretKeyHolder},
     network_context::Network,
     security_log_context::add_security_log,
 };
@@ -132,7 +132,7 @@ pub fn AutoImportSecretKey() -> impl IntoView {
 
                                                 accounts.accounts.push(Account {
                                                     account_id: account_id.clone(),
-                                                    secret_key: secret_key.clone(),
+                                                    secret_key: SecretKeyHolder::SecretKey(secret_key.clone()),
                                                     seed_phrase: None,
                                                     // Need to do some changes in CLI to pass network in location.hash
                                                     network: if account_id.as_str().ends_with(".testnet") {

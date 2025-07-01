@@ -1799,7 +1799,7 @@ pub fn Swap() -> impl IntoView {
                         // Advanced Options Section
                         <div>
                             <button
-                                class="w-full flex items-center justify-end gap-1 text-left cursor-pointer transition-colors"
+                                class="w-full flex items-center justify-end gap-1 text-left cursor-pointer transition-colors no-mobile-ripple"
                                 on:click=move |_| {
                                     set_show_advanced_options.set(!show_advanced_options.get())
                                 }

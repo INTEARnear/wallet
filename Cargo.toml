@@ -95,7 +95,9 @@ codegen-units = 1
 panic = "abort"
 
 [workspace.metadata.dylint]
-libraries = [{ git = "https://github.com/leptos-rs/leptos-lints", tag = "v0.1.0" }]
+libraries = [
+    { git = "https://github.com/leptos-rs/leptos-lints", tag = "v0.1.0" },
+]
 
 [profile.dev.package.argon2]
 opt-level = 3

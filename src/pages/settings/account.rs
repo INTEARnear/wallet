@@ -148,7 +148,7 @@ struct UserRecoveryMethods {
 
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "kebab-case")]
-pub enum JsWalletMessage {
+pub enum JsWalletResponse {
     EthereumWalletSignature {
         signature: Option<String>,
         message: String,
@@ -166,6 +166,25 @@ pub enum JsWalletMessage {
         #[serde(deserialize_with = "solana_pubkey_from_string", default)]
         address: Option<solana_pubkey::Pubkey>,
     },
+    LedgerConnected,
+    LedgerPublicKey {
+        path: String,
+        key: Vec<u8>,
+    },
+    LedgerConnectError {
+        error: serde_json::Value,
+    },
+    LedgerGetPublicKeyError {
+        error: serde_json::Value,
+    },
+    LedgerSignature {
+        path: String,
+        signature: Vec<u8>,
+        id: u32,
+    },
+    LedgerSignError {
+        error: serde_json::Value,
+    },
 }
 
 #[derive(Serialize, Debug)]
@@ -180,6 +199,16 @@ pub enum JsWalletRequest {
     #[serde(rename_all = "camelCase")]
     RequestSolanaWalletSignature {
         message_to_sign: String,
+    },
+    LedgerConnect,
+    LedgerGetPublicKey {
+        path: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    LedgerSign {
+        path: String,
+        message_to_sign: Vec<u8>,
+        id: u32,
     },
 }
 
@@ -377,12 +406,12 @@ pub fn AccountSettings() -> impl IntoView {
             );
             log::info!(
                 "Deserialization: {:?}",
-                serde_wasm_bindgen::from_value::<JsWalletMessage>(event.data())
+                serde_wasm_bindgen::from_value::<JsWalletResponse>(event.data())
             );
 
-            if let Ok(data) = serde_wasm_bindgen::from_value::<JsWalletMessage>(event.data()) {
+            if let Ok(data) = serde_wasm_bindgen::from_value::<JsWalletResponse>(event.data()) {
                 match data {
-                    JsWalletMessage::EthereumWalletSignature { signature, message } => {
+                    JsWalletResponse::EthereumWalletSignature { signature, message } => {
                         let Some(signature) = signature else {
                             set_recovery_change_in_progress(false);
                             return;
@@ -461,7 +490,7 @@ pub fn AccountSettings() -> impl IntoView {
                             }
                         });
                     }
-                    JsWalletMessage::SolanaWalletSignature {
+                    JsWalletResponse::SolanaWalletSignature {
                         signature,
                         message,
                         address,

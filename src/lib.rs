@@ -1,4 +1,4 @@
-#![feature(closure_track_caller, stmt_expr_attributes)]
+#![feature(closure_track_caller, stmt_expr_attributes, mpmc_channel)]
 #![deny(clippy::float_arithmetic)]
 
 use contexts::account_selector_swipe_context::provide_account_selector_swipe_context;

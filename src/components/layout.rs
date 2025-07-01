@@ -19,7 +19,7 @@ use crate::{
     contexts::network_context::{Network, NetworkContext},
 };
 use crate::{
-    components::{transaction_queue_overlay::TransactionQueueOverlay, PasswordUnlock},
+    components::{transaction_queue_overlay::TransactionQueueOverlay, PasswordUnlockOverlay},
     contexts::accounts_context::AccountsContext,
     contexts::config_context::ConfigContext,
 };
@@ -312,7 +312,7 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                     on:touchmove=handle_touch_move
                     on:touchend=handle_touch_end
                 >
-                    <PasswordUnlock />
+                    <PasswordUnlockOverlay />
                     <TransactionQueueOverlay />
                     <div class="p-2 sm:p-4">
                         <WalletHeader />

@@ -324,7 +324,7 @@ pub fn PreferencesSettings() -> impl IntoView {
                         if hidden_list.is_empty() {
                             view! {
                                 <div class="text-sm text-gray-400">
-                                    "You have no hidden collections or tokens."
+                                    "You have no hidden NFTs. You can hide NFTs by clicking the eye icon in the NFT view."
                                 </div>
                             }
                                 .into_any()

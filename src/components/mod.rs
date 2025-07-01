@@ -17,7 +17,7 @@ pub use account_creation_form::AccountCreationForm;
 pub use danger_confirm_input::DangerConfirmInput;
 pub use layout::Layout;
 pub use login_form::LoginForm;
-pub use password_unlock::PasswordUnlock;
+pub use password_unlock::PasswordUnlockOverlay;
 pub use progressive_image::ProgressiveImage;
 pub use token_balance_list::TokenBalanceList;
 pub use total_portfolio_value::TotalPortfolioValue;

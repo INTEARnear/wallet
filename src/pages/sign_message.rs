@@ -1,18 +1,21 @@
 use borsh::BorshSerialize;
-use leptos::prelude::*;
+use leptos::{prelude::*, task::spawn_local};
 use near_min_api::types::{
     near_crypto::{PublicKey, Signature},
-    AccountId, CryptoHash, NEP_413_SIGN_MESSAGE,
+    AccountId, CryptoHash,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsCast;
 use web_sys::{js_sys::Date, Window};
 
-use crate::contexts::{
-    accounts_context::AccountsContext, connected_apps_context::ConnectedAppsContext,
-    security_log_context::add_security_log,
-};
 use crate::utils::is_debug_enabled;
+use crate::{
+    contexts::{
+        accounts_context::AccountsContext, connected_apps_context::ConnectedAppsContext,
+        security_log_context::add_security_log,
+    },
+    utils::{sign_nep413, NEP413Payload},
+};
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -43,7 +46,7 @@ enum SendMessage {
 struct MessageToSign {
     message: String,
     nonce: [u8; 32],
-    recipient: AccountId,
+    recipient: String,
     callback_url: Option<String>,
     #[borsh(skip)]
     state: Option<String>,
@@ -65,11 +68,7 @@ pub fn SignMessage() -> impl IntoView {
     let (request_data, set_request_data) = signal::<Option<SignMessageRequest>>(None);
     let (origin, set_origin) = signal::<String>("*".to_string());
     let ConnectedAppsContext { apps, .. } = expect_context::<ConnectedAppsContext>();
-    let AccountsContext {
-        set_accounts,
-        accounts,
-        ..
-    } = expect_context::<AccountsContext>();
+    let accounts_context = expect_context::<AccountsContext>();
 
     let opener = || {
         if let Ok(opener) = window().opener() {
@@ -142,8 +141,8 @@ pub fn SignMessage() -> impl IntoView {
     });
     Effect::new(move || {
         if let Some(app) = connected_app() {
-            if accounts.get().selected_account_id != Some(app.account_id.clone()) {
-                set_accounts.update(|accounts| {
+            if accounts_context.accounts.get().selected_account_id != Some(app.account_id.clone()) {
+                accounts_context.set_accounts.update(|accounts| {
                     accounts.selected_account_id = Some(app.account_id);
                 });
             }
@@ -166,12 +165,8 @@ pub fn SignMessage() -> impl IntoView {
             log::error!("Failed to deserialize signature request");
             return;
         };
-        let mut bytes = ((1u32 << 31u32) + NEP_413_SIGN_MESSAGE)
-            .to_le_bytes()
-            .to_vec();
-        borsh::to_writer(&mut bytes, &deserialized_message).unwrap();
-        let hash = CryptoHash::hash_bytes(&bytes);
-        let Some(account) = accounts
+        let Some(account) = accounts_context
+            .accounts
             .read()
             .accounts
             .iter()
@@ -193,20 +188,33 @@ pub fn SignMessage() -> impl IntoView {
             ),
             account.account_id.clone(),
         );
-        let signature = account.secret_key.sign(hash.as_bytes());
-
-        let message = SendMessage::Signed {
-            signature: SignedMessage {
-                account_id: account.account_id.clone(),
-                public_key: account.secret_key.public_key(),
-                signature,
-                state: deserialized_message.state,
-            },
+        let nep413_message = NEP413Payload {
+            message: deserialized_message.message.clone(),
+            nonce: deserialized_message.nonce,
+            recipient: deserialized_message.recipient.clone(),
+            callback_url: deserialized_message.callback_url.clone(),
         };
-        let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
-        opener()
-            .post_message(&js_value, &origin())
-            .expect("Failed to send message");
+        spawn_local(async move {
+            let Ok(signature) =
+                sign_nep413(account.secret_key.clone(), nep413_message, accounts_context).await
+            else {
+                // button is still active
+                return;
+            };
+
+            let message = SendMessage::Signed {
+                signature: SignedMessage {
+                    account_id: account.account_id.clone(),
+                    public_key: account.secret_key.public_key(),
+                    signature,
+                    state: deserialized_message.state,
+                },
+            };
+            let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
+            opener()
+                .post_message(&js_value, &origin())
+                .expect("Failed to send message");
+        });
     };
 
     let handle_cancel = move |_| {

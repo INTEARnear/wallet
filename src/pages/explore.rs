@@ -69,7 +69,7 @@ pub fn Explore() -> impl IntoView {
                             }
                                 .into_any()
                         } else {
-                            view! { <div class="hidden"></div> }.into_any()
+                            ().into_any()
                         }}
                     </div>
                 </div>

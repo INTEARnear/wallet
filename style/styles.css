@@ -44,6 +44,7 @@
     .nav-indicator-first {
         border-bottom-left-radius: 1.5rem;
     }
+
     .nav-indicator-last {
         border-bottom-right-radius: 1.5rem;
     }
@@ -57,11 +58,14 @@
     scrollbar-width: none;
 }
 
-a:not(.no-mobile-ripple), button:not(.no-mobile-ripple), .mobile-ripple {
+a:not(.no-mobile-ripple),
+button:not(.no-mobile-ripple):not(:disabled),
+.mobile-ripple {
     position: relative;
     overflow: hidden;
     -webkit-tap-highlight-color: transparent;
-    transform: translateZ(0); /* Hardware acceleration */
+    transform: translateZ(0);
+    /* Hardware acceleration */
 }
 
 .ripple-circle {
@@ -80,6 +84,7 @@ a:not(.no-mobile-ripple), button:not(.no-mobile-ripple), .mobile-ripple {
         transform: translate(-50%, -50%) scale(0);
         background: rgba(255, 255, 255, 0.1);
     }
+
     100% {
         transform: translate(-50%, -50%) scale(4);
         background: rgba(255, 255, 255, 0.03);
@@ -90,7 +95,20 @@ a:not(.no-mobile-ripple), button:not(.no-mobile-ripple), .mobile-ripple {
     .ripple-circle {
         display: none;
     }
-    a:not(.no-mobile-ripple), button:not(.no-mobile-ripple), .mobile-ripple:active {
+
+    a:not(.no-mobile-ripple),
+    button:not(.no-mobile-ripple):not(:disabled),
+    .mobile-ripple:active {
         transform: none;
     }
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+input[type="number"] {
+    -moz-appearance: textfield;
 }

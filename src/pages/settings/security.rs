@@ -3,7 +3,9 @@ use std::time::Duration;
 use crate::{
     components::{account_selector::mnemonic_to_key, DangerConfirmInput},
     contexts::{
-        accounts_context::{AccountsContext, PasswordAction, ENCRYPTION_MEMORY_COST_KB},
+        accounts_context::{
+            AccountsContext, PasswordAction, SecretKeyHolder, ENCRYPTION_MEMORY_COST_KB,
+        },
         config_context::{ConfigContext, PasswordRememberDuration},
         rpc_context::RpcContext,
         security_log_context::add_security_log,
@@ -124,6 +126,16 @@ pub fn SecuritySettings() -> impl IntoView {
     let (new_mnemonic, set_new_mnemonic) = signal::<Option<bip39::Mnemonic>>(None);
     let (copied_to_clipboard, set_copied_to_clipboard) = signal(false);
 
+    let is_ledger_account = move || {
+        let accs = accounts.get();
+        if let Some(selected_id) = &accs.selected_account_id {
+            if let Some(account) = accs.accounts.iter().find(|a| &a.account_id == selected_id) {
+                return matches!(account.secret_key, SecretKeyHolder::Ledger { .. });
+            }
+        }
+        false
+    };
+
     let generate_new_mnemonic = move || {
         let mnemonic = bip39::Mnemonic::generate(12).unwrap();
         set_new_mnemonic(Some(mnemonic));
@@ -200,7 +212,7 @@ pub fn SecuritySettings() -> impl IntoView {
                 set_accounts.update(|accounts| {
                     for acc in accounts.accounts.iter_mut() {
                         if acc.account_id == account_id {
-                            acc.secret_key = secret_key.clone();
+                            acc.secret_key = SecretKeyHolder::SecretKey(secret_key.clone());
                             acc.seed_phrase = Some(mnemonic.to_string());
                         }
                     }
@@ -579,7 +591,13 @@ pub fn SecuritySettings() -> impl IntoView {
                 <div class="flex flex-col gap-2">
                     <div class="text-lg font-medium">Terminate All Other Sessions</div>
                     <div class="text-sm text-neutral-400">
-                        "This will log you out of all devices other than this one."
+                        {move || {
+                            if is_ledger_account() {
+                                "This will unlink your Ledger, delete all existing keys, and create a new private key, which will be stored in this browser"
+                            } else {
+                                "This will log you out of all devices other than this one."
+                            }
+                        }}
                     </div>
                     <button
                         class="flex items-center justify-center gap-2 p-4 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"

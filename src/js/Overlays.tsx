@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { useState } from "react";
 import { useEffect } from "react";
 import { useCallback } from "react";
+import { toObject } from "./utils";
 
 type EthereumSignatureRequest = {
     type: "request-ethereum-wallet-signature";
@@ -87,9 +88,12 @@ export default function Overlays() {
 
     useEffect(() => {
         window.addEventListener("message", (event) => {
+            if (event.origin !== window.location.origin) {
+                return;
+            }
             let data = event.data;
             try {
-                data = Object.fromEntries(data);
+                data = toObject(data);
             } catch {
             }
             switch (data.type) {

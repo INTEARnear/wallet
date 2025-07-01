@@ -12,7 +12,7 @@ mod preferences;
 mod security;
 mod security_log;
 
-pub use account::{AccountSettings, JsWalletMessage, JsWalletRequest};
+pub use account::{AccountSettings, JsWalletRequest, JsWalletResponse};
 pub use connected_apps::ConnectedAppsSettings;
 pub use developer::DeveloperSettings;
 pub use preferences::{PreferencesSettings, SLIPPAGE_PRESETS};

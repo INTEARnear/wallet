@@ -1,13 +1,11 @@
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
-use borsh::BorshSerialize;
 use futures_channel::oneshot;
 use futures_timer::Delay;
 use futures_util::future::Either;
 use futures_util::TryFutureExt;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use near_min_api::types::near_crypto::{SecretKey, Signature};
 use near_min_api::types::{
     AccountId, Action, ActionErrorKind, CryptoHash, Finality, HandlerError, InvalidTxError,
     NearToken, RpcErrorKind, RpcRequestValidationErrorKind, RpcStatusError, RpcTransactionError,
@@ -16,12 +14,13 @@ use near_min_api::types::{
 };
 use near_min_api::{ExperimentalTxDetails, PendingTransaction, QueryFinality, RpcClient};
 use rand::rngs::OsRng;
-use rand::RngCore;
+use rand::{Rng, RngCore};
 use std::cell::OnceCell;
 use std::collections::VecDeque;
 use std::time::Duration;
 
 use crate::contexts::accounts_context::Account;
+use crate::utils::{sign_nep413, NEP413Payload};
 
 use super::accounts_context::AccountsContext;
 use super::rpc_context::RpcContext;
@@ -164,6 +163,7 @@ impl TransactionType {
         &self,
         signer: Account,
         rpc_client: &'a RpcClient,
+        accounts_context: AccountsContext,
     ) -> Result<TransactionResult<'a>, String> {
         match self {
             TransactionType::NearTransaction {
@@ -202,7 +202,14 @@ impl TransactionType {
                     block_hash,
                     actions: actions.clone(),
                 });
-                let signature = signer.secret_key.sign(tx.get_hash_and_size().0.as_ref());
+                let bytes = borsh::to_vec(&tx).expect("Failed to serialize");
+                let Ok(signature) = signer
+                    .secret_key
+                    .hash_and_sign(&bytes, accounts_context)
+                    .await
+                else {
+                    return Err("User cancelled signing".to_string());
+                };
                 let signed_tx = SignedTransaction::new(signature, tx);
 
                 match rpc_client.send_tx(signed_tx).await {
@@ -357,6 +364,20 @@ impl TransactionType {
                 let mut nonce = [0u8; 32];
                 OsRng.fill_bytes(&mut nonce);
 
+                let Ok(signature) = sign_nep413(
+                    signer.secret_key.clone(),
+                    NEP413Payload {
+                        message: message_to_sign.clone(),
+                        nonce,
+                        recipient: "intents.near".parse().unwrap(),
+                        callback_url: None,
+                    },
+                    accounts_context,
+                )
+                .await
+                else {
+                    return Err("User cancelled signing".to_string());
+                };
                 let params = serde_json::json!([{
                     "quote_hashes": [quote_hash],
                     "signed_data": {
@@ -366,15 +387,7 @@ impl TransactionType {
                             "nonce": BASE64_STANDARD.encode(nonce),
                             "recipient": "intents.near",
                         },
-                        "signature": sign_nep413(
-                            signer.secret_key.clone(),
-                            NEP413Payload {
-                                message: message_to_sign.clone(),
-                                nonce,
-                                recipient: "intents.near".parse().unwrap(),
-                                callback_url: None,
-                            },
-                        ),
+                        "signature": signature,
                         "public_key": signer.secret_key.public_key(),
                     }
                 }]);
@@ -417,25 +430,9 @@ impl TransactionType {
     }
 }
 
-#[derive(Debug, BorshSerialize)]
-struct NEP413Payload {
-    message: String,
-    nonce: [u8; 32],
-    recipient: String,
-    callback_url: Option<String>,
-}
-
-fn sign_nep413(secret_key: SecretKey, payload: NEP413Payload) -> Signature {
-    const NEP413_413_SIGN_MESSAGE_PREFIX: u32 = (1u32 << 31u32) + 413u32;
-    let mut bytes = NEP413_413_SIGN_MESSAGE_PREFIX.to_le_bytes().to_vec();
-    borsh::to_writer(&mut bytes, &payload).unwrap();
-    let hash = CryptoHash::hash_bytes(&bytes);
-    let signature = secret_key.sign(hash.as_ref());
-    signature
-}
-
 #[derive(Debug)]
 pub struct EnqueuedTransaction {
+    pub id: u128,
     pub description: String,
     pub stage: TransactionStage,
     pub signer_id: AccountId,
@@ -461,6 +458,7 @@ impl EnqueuedTransaction {
         (
             details_rx,
             Self {
+                id: OsRng.gen(),
                 description,
                 stage: TransactionStage::Preparing,
                 signer_id,
@@ -468,7 +466,7 @@ impl EnqueuedTransaction {
                     actions,
                     receiver_id,
                 },
-                queue_id: rand::random(),
+                queue_id: OsRng.gen(),
                 details_tx: Some(details_tx),
             },
         )
@@ -486,11 +484,12 @@ impl EnqueuedTransaction {
         (
             details_rx,
             Self {
+                id: OsRng.gen(),
                 description,
                 stage: TransactionStage::Preparing,
                 signer_id,
                 transaction_type,
-                queue_id: rand::random(),
+                queue_id: OsRng.gen(),
                 details_tx: Some(details_tx),
             },
         )
@@ -510,6 +509,7 @@ impl EnqueuedTransaction {
             panic!("Transaction has already been taken");
         };
         Self {
+            id: self.id,
             description: self.description.clone(),
             stage: self.stage.clone(),
             signer_id: self.signer_id.clone(),
@@ -526,6 +526,7 @@ pub struct TransactionQueueContext {
     pub add_transaction: WriteSignal<Vec<EnqueuedTransaction>>,
     pub current_index: ReadSignal<usize>,
     pub overlay_mode: RwSignal<OverlayMode>,
+    pub signing_tx_id: RwSignal<Option<u128>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -540,7 +541,8 @@ pub fn provide_transaction_queue_context() {
     let (is_processing, set_is_processing) = signal(false);
     let (current_index, set_current_index) = signal(0);
     let rpc_client = expect_context::<RpcContext>();
-    let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+    let accounts_context = expect_context::<AccountsContext>();
+    let signing_tx_id = RwSignal::new(None);
 
     // Worker effect that processes the queue
     Effect::new(move |_| {
@@ -562,7 +564,8 @@ pub fn provide_transaction_queue_context() {
                 let tx_current_index = current_index.get();
                 let current_queue_id = transaction.queue_id;
                 let rpc_client = rpc_client.client.get();
-                let Some(account) = accounts
+                let Some(account) = accounts_context
+                    .accounts
                     .get_untracked()
                     .accounts
                     .iter()
@@ -581,14 +584,15 @@ pub fn provide_transaction_queue_context() {
                 spawn_local(async move {
                     log::info!("Transaction started: {}", transaction.description);
                     set_queue.update(|q| q[tx_current_index].stage = TransactionStage::Publishing);
-
+                    signing_tx_id.set(Some(transaction.id));
                     let pending_tx = match transaction
                         .transaction_type
-                        .execute(account, &rpc_client)
+                        .execute(account, &rpc_client, accounts_context)
                         .await
                     {
                         Ok(tx) => tx,
                         Err(error) => {
+                            signing_tx_id.set(None);
                             set_queue.update(|q| {
                                 q[tx_current_index].stage = TransactionStage::Failed(error.clone());
                                 for tx in q.iter_mut() {
@@ -612,6 +616,7 @@ pub fn provide_transaction_queue_context() {
                         }
                     };
 
+                    signing_tx_id.set(None);
                     set_queue.update(|q| q[tx_current_index].stage = TransactionStage::Included);
 
                     match pending_tx
@@ -747,5 +752,6 @@ pub fn provide_transaction_queue_context() {
         add_transaction: set_transactions,
         current_index,
         overlay_mode: RwSignal::new(OverlayMode::Modal),
+        signing_tx_id,
     });
 }

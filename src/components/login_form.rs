@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use chrono;
+use bs58;
 use futures_timer::Delay;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
@@ -10,12 +10,15 @@ use near_min_api::types::{near_crypto::SecretKey, AccountId};
 use near_min_api::QueryFinality;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen;
+use wasm_bindgen::JsCast;
 
 use crate::components::account_selector::{seed_phrase_to_key, LoginMethod, ModalState};
-use crate::contexts::accounts_context::{Account, AccountsContext};
+use crate::contexts::accounts_context::{
+    format_ledger_error, Account, AccountsContext, SecretKeyHolder,
+};
 use crate::contexts::network_context::Network;
 use crate::contexts::security_log_context::add_security_log;
-use crate::pages::settings::{JsWalletMessage, JsWalletRequest};
+use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct RecoverAccountResponse {
@@ -39,6 +42,45 @@ enum RecoverRequest {
     },
 }
 
+async fn find_accounts_by_public_key(
+    public_key: near_min_api::types::near_crypto::PublicKey,
+    accounts_context: &AccountsContext,
+) -> Vec<(AccountId, Network)> {
+    let mut all_accounts = vec![];
+
+    for (network, api_url) in [
+        (Network::Mainnet, "https://api.fastnear.com"),
+        (Network::Testnet, "https://test.api.fastnear.com"),
+    ] {
+        let url = format!("{api_url}/v0/public_key/{public_key}");
+        if let Ok(response) = reqwest::get(url).await {
+            if let Ok(data) = response.json::<serde_json::Value>().await {
+                if let Some(account_ids) = data.get("account_ids").and_then(|ids| ids.as_array()) {
+                    let accounts: Vec<(AccountId, Network)> = account_ids
+                        .iter()
+                        .filter_map(|id| {
+                            id.as_str()
+                                .and_then(|s| s.parse::<AccountId>().ok())
+                                .map(|id| (id, network))
+                        })
+                        .filter(|(id, _)| {
+                            !accounts_context
+                                .accounts
+                                .get_untracked()
+                                .accounts
+                                .iter()
+                                .any(|a| a.account_id == *id)
+                        })
+                        .collect();
+                    all_accounts.extend(accounts);
+                }
+            }
+        }
+    }
+
+    all_accounts
+}
+
 #[component]
 pub fn LoginForm(
     set_modal_state: WriteSignal<ModalState>,
@@ -60,15 +102,36 @@ pub fn LoginForm(
         signal::<Option<solana_pubkey::Pubkey>>(None);
     let (generated_mnemonic, set_generated_mnemonic) = signal::<Option<bip39::Mnemonic>>(None);
     let (import_in_progress, set_import_in_progress) = signal(false);
+    let (ledger_connection_in_progress, set_ledger_connection_in_progress) = signal(false);
+    let (ledger_connected, set_ledger_connected) = signal(false);
+    let (ledger_input_hd_path_input, set_ledger_hd_path_input) =
+        signal("44'/397'/0'/0'/1'".to_string());
+    let (ledger_getting_public_key, set_ledger_getting_public_key) = signal(false);
+    let (ledger_current_key_data, set_ledger_current_key_data) =
+        signal::<Option<(String, near_min_api::types::near_crypto::PublicKey)>>(None);
+
+    let (ledger_account_number, set_ledger_account_number) = signal(0u32);
+    let (ledger_change_number, set_ledger_change_number) = signal(0u32);
+    let (ledger_address_number, set_ledger_address_number) = signal(1u32);
+
+    Effect::new(move || {
+        let path = format!(
+            "44'/397'/{}'/{}'/{}'",
+            ledger_account_number.get(),
+            ledger_change_number.get(),
+            ledger_address_number.get()
+        );
+        set_ledger_hd_path_input.set(path);
+    });
 
     // Message listener for wallet communication (from JS)
     let _ = use_event_listener(
         use_window(),
         leptos::ev::message,
         move |event: web_sys::MessageEvent| {
-            if let Ok(data) = serde_wasm_bindgen::from_value::<JsWalletMessage>(event.data()) {
+            if let Ok(data) = serde_wasm_bindgen::from_value::<JsWalletResponse>(event.data()) {
                 match data {
-                    JsWalletMessage::EthereumWalletConnection { address } => {
+                    JsWalletResponse::EthereumWalletConnection { address } => {
                         set_ethereum_connection_in_progress(false);
                         if let Some(address) = address {
                             set_connected_ethereum_address(Some(address));
@@ -125,7 +188,7 @@ pub fn LoginForm(
                             set_error.set(Some("Ethereum wallet connection cancelled".to_string()));
                         }
                     }
-                    JsWalletMessage::EthereumWalletSignature { signature, message } => {
+                    JsWalletResponse::EthereumWalletSignature { signature, message } => {
                         let Some(signature) = signature else {
                             set_error.set(Some("Signature request cancelled".to_string()));
                             return;
@@ -246,7 +309,7 @@ pub fn LoginForm(
                                                             accounts.accounts.push(Account {
                                                                 account_id: account_id.clone(),
                                                                 seed_phrase: Some(mnemonic.to_string()),
-                                                                secret_key,
+                                                                secret_key: SecretKeyHolder::SecretKey(secret_key),
                                                                 network,
                                                             });
                                                             accounts.selected_account_id = Some(account_id);
@@ -291,7 +354,7 @@ pub fn LoginForm(
                             set_import_in_progress(false);
                         }
                     }
-                    JsWalletMessage::SolanaWalletConnection { address } => {
+                    JsWalletResponse::SolanaWalletConnection { address } => {
                         set_solana_connection_in_progress(false);
                         if let Some(address) = address {
                             set_connected_solana_address(Some(address));
@@ -348,7 +411,7 @@ pub fn LoginForm(
                             set_error.set(Some("Solana wallet connection cancelled".to_string()));
                         }
                     }
-                    JsWalletMessage::SolanaWalletSignature {
+                    JsWalletResponse::SolanaWalletSignature {
                         signature,
                         message,
                         address,
@@ -472,7 +535,7 @@ pub fn LoginForm(
                                                             accounts.accounts.push(Account {
                                                                 account_id: account_id.clone(),
                                                                 seed_phrase: Some(mnemonic.to_string()),
-                                                                secret_key,
+                                                                secret_key: SecretKeyHolder::SecretKey(secret_key),
                                                                 network,
                                                             });
                                                             accounts.selected_account_id = Some(account_id);
@@ -521,6 +584,64 @@ pub fn LoginForm(
                             set_import_in_progress(false);
                         }
                     }
+                    JsWalletResponse::LedgerConnected => {
+                        set_ledger_connection_in_progress(false);
+                        set_ledger_connected(true);
+                    }
+                    JsWalletResponse::LedgerPublicKey { path, key } => {
+                        set_ledger_getting_public_key(false);
+                        set_error.set(None);
+
+                        if path != ledger_input_hd_path_input.get_untracked() {
+                            // User changed the path during the request, ignore the result
+                            return;
+                        }
+
+                        if key.len() == 32 {
+                            let bs58_key = bs58::encode(&key).into_string();
+                            let public_key_str = format!("ed25519:{}", bs58_key);
+                            if let Ok(public_key) = public_key_str
+                                .parse::<near_min_api::types::near_crypto::PublicKey>(
+                            ) {
+                                set_ledger_current_key_data(Some((
+                                    path.clone(),
+                                    public_key.clone(),
+                                )));
+
+                                spawn_local(async move {
+                                    let all_accounts =
+                                        find_accounts_by_public_key(public_key, &accounts_context)
+                                            .await;
+
+                                    if all_accounts.is_empty() {
+                                        set_available_accounts.set(all_accounts);
+                                        set_error.set(Some(
+                                            "No accounts found for this Ledger key".to_string(),
+                                        ));
+                                    } else {
+                                        set_available_accounts.set(all_accounts);
+                                    }
+                                });
+                            } else {
+                                set_error.set(Some("Failed to parse public key".to_string()));
+                            }
+                        } else {
+                            set_error
+                                .set(Some("Invalid public key length from Ledger".to_string()));
+                        }
+                    }
+                    JsWalletResponse::LedgerConnectError { error } => {
+                        set_ledger_connection_in_progress(false);
+                        set_ledger_connected(false);
+                        let error_message = format_ledger_error(&error);
+                        set_error.set(Some(error_message));
+                    }
+                    JsWalletResponse::LedgerGetPublicKeyError { error } => {
+                        set_ledger_getting_public_key(false);
+                        let error_message = format_ledger_error(&error);
+                        set_error.set(Some(error_message));
+                    }
+                    _ => {}
                 }
             }
         },
@@ -545,40 +666,7 @@ pub fn LoginForm(
         let public_key = secret_key.public_key();
 
         spawn_local(async move {
-            let mut all_accounts = vec![];
-
-            for (network, api_url) in [
-                (Network::Mainnet, "https://api.fastnear.com"),
-                (Network::Testnet, "https://test.api.fastnear.com"),
-            ] {
-                if let Ok(response) =
-                    reqwest::get(format!("{api_url}/v0/public_key/{public_key}")).await
-                {
-                    if let Ok(data) = response.json::<serde_json::Value>().await {
-                        if let Some(account_ids) =
-                            data.get("account_ids").and_then(|ids| ids.as_array())
-                        {
-                            let accounts: Vec<(AccountId, Network)> = account_ids
-                                .iter()
-                                .filter_map(|id| {
-                                    id.as_str()
-                                        .and_then(|s| s.parse::<AccountId>().ok())
-                                        .map(|id| (id, network))
-                                })
-                                .filter(|(id, _)| {
-                                    !accounts_context
-                                        .accounts
-                                        .get_untracked()
-                                        .accounts
-                                        .iter()
-                                        .any(|a| a.account_id == *id)
-                                })
-                                .collect();
-                            all_accounts.extend(accounts);
-                        }
-                    }
-                }
-            }
+            let all_accounts = find_accounts_by_public_key(public_key, &accounts_context).await;
 
             if all_accounts.is_empty() {
                 set_available_accounts.set(all_accounts);
@@ -615,7 +703,7 @@ pub fn LoginForm(
             );
             accounts.accounts.push(Account {
                 account_id: account_id.clone(),
-                secret_key,
+                secret_key: SecretKeyHolder::SecretKey(secret_key),
                 seed_phrase,
                 network,
             });
@@ -635,16 +723,11 @@ pub fn LoginForm(
         let request = JsWalletRequest::RequestEthereumWalletConnection;
 
         if let Ok(js_value) = serde_wasm_bindgen::to_value(&request) {
-            let origin = web_sys::window()
-                .unwrap()
+            let origin = window()
                 .location()
                 .origin()
                 .unwrap_or_else(|_| "*".to_string());
-            if web_sys::window()
-                .unwrap()
-                .post_message(&js_value, &origin)
-                .is_err()
-            {
+            if window().post_message(&js_value, &origin).is_err() {
                 log::error!("Failed to send Ethereum connection request");
                 set_ethereum_connection_in_progress(false);
             }
@@ -663,16 +746,11 @@ pub fn LoginForm(
         let request = JsWalletRequest::RequestSolanaWalletConnection;
 
         if let Ok(js_value) = serde_wasm_bindgen::to_value(&request) {
-            let origin = web_sys::window()
-                .unwrap()
+            let origin = window()
                 .location()
                 .origin()
                 .unwrap_or_else(|_| "*".to_string());
-            if web_sys::window()
-                .unwrap()
-                .post_message(&js_value, &origin)
-                .is_err()
-            {
+            if window().post_message(&js_value, &origin).is_err() {
                 log::error!("Failed to send Solana connection request");
                 set_solana_connection_in_progress(false);
             }
@@ -682,8 +760,33 @@ pub fn LoginForm(
         }
     };
 
+    let request_ledger_connection = move || {
+        if ledger_connection_in_progress.get_untracked() {
+            return;
+        }
+
+        set_ledger_connection_in_progress(true);
+
+        let request = JsWalletRequest::LedgerConnect;
+
+        if let Ok(js_value) = serde_wasm_bindgen::to_value(&request) {
+            let origin = window()
+                .location()
+                .origin()
+                .unwrap_or_else(|_| "*".to_string());
+
+            if window().post_message(&js_value, &origin).is_err() {
+                log::error!("Failed to send Ledger connection request");
+                set_ledger_connection_in_progress(false);
+            }
+        } else {
+            log::error!("Failed to serialize Ledger connection request");
+            set_ledger_connection_in_progress(false);
+        }
+    };
+
     view! {
-        <div class="absolute inset-0 bg-neutral-950 lg:rounded-3xl">
+        <div class="absolute inset-0 bg-neutral-950 lg:rounded-3xl overflow-y-auto">
             {move || {
                 if show_back_button {
                     view! {
@@ -698,9 +801,9 @@ pub fn LoginForm(
                     }
                         .into_any()
                 } else {
-                    view! { <div class="hidden"></div> }.into_any()
+                    ().into_any()
                 }
-            }} <div class="absolute inset-0 flex items-center justify-center">
+            }} <div class="flex items-center justify-center min-h-[calc(100%-40px)]">
                 <div class="bg-neutral-950 p-8 rounded-xl w-full max-w-md">
                     <h2 class="text-white text-2xl font-semibold mb-6">
                         Log in with Existing Account
@@ -804,6 +907,39 @@ pub fn LoginForm(
                                     />
                                 </div>
                                 <div class="text-white text-sm font-medium">Solana</div>
+                            </div>
+                        </button>
+
+                        <button
+                            class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
+                            style=move || {
+                                if login_method.get() == LoginMethod::Ledger {
+                                    "border-color: rgb(196 181 253); background-color: rgb(147 51 234 / 0.1);"
+                                } else {
+                                    "border-color: rgb(55 65 81); background-color: transparent;"
+                                }
+                            }
+                            on:click=move |_| {
+                                set_login_method.set(LoginMethod::Ledger);
+                                set_error.set(None);
+                                set_is_valid.set(None);
+                                set_available_accounts.set(vec![]);
+                                set_selected_account.set(None);
+                                set_private_key.set("".to_string());
+                                set_generated_mnemonic.set(None);
+                                request_ledger_connection();
+                            }
+                        >
+                            <div class="flex flex-col items-center gap-2">
+                                <div class="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                                    <Icon
+                                        icon=icondata::LuWallet
+                                        width="16"
+                                        height="16"
+                                        attr:class="text-purple-400"
+                                    />
+                                </div>
+                                <div class="text-white text-sm font-medium">Ledger</div>
                             </div>
                         </button>
                     </div>
@@ -1146,16 +1282,11 @@ pub fn LoginForm(
                                                                                 if let Ok(js_value) = serde_wasm_bindgen::to_value(
                                                                                     &request,
                                                                                 ) {
-                                                                                    let origin = web_sys::window()
-                                                                                        .unwrap()
+                                                                                    let origin = window()
                                                                                         .location()
                                                                                         .origin()
                                                                                         .unwrap_or_else(|_| "*".to_string());
-                                                                                    if web_sys::window()
-                                                                                        .unwrap()
-                                                                                        .post_message(&js_value, &origin)
-                                                                                        .is_err()
-                                                                                    {
+                                                                                    if window().post_message(&js_value, &origin).is_err() {
                                                                                         log::error!("Failed to send signature request");
                                                                                         set_error
                                                                                             .set(Some("Failed to request signature".to_string()));
@@ -1382,16 +1513,11 @@ pub fn LoginForm(
                                                                                 if let Ok(js_value) = serde_wasm_bindgen::to_value(
                                                                                     &request,
                                                                                 ) {
-                                                                                    let origin = web_sys::window()
-                                                                                        .unwrap()
+                                                                                    let origin = window()
                                                                                         .location()
                                                                                         .origin()
                                                                                         .unwrap_or_else(|_| "*".to_string());
-                                                                                    if web_sys::window()
-                                                                                        .unwrap()
-                                                                                        .post_message(&js_value, &origin)
-                                                                                        .is_err()
-                                                                                    {
+                                                                                    if window().post_message(&js_value, &origin).is_err() {
                                                                                         log::error!("Failed to send signature request");
                                                                                         set_error
                                                                                             .set(Some("Failed to request signature".to_string()));
@@ -1414,6 +1540,360 @@ pub fn LoginForm(
                                                                         set_error
                                                                             .set(Some("No connected Solana address found".to_string()));
                                                                     }
+                                                                }
+                                                            }
+                                                        >
+                                                            <span class="relative flex items-center justify-center gap-2">
+                                                                {move || {
+                                                                    if import_in_progress.get() {
+                                                                        view! {
+                                                                            <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                                        }
+                                                                            .into_any()
+                                                                    } else {
+                                                                        ().into_any()
+                                                                    }
+                                                                }}
+                                                                {move || {
+                                                                    if import_in_progress.get() {
+                                                                        "Importing...".to_string()
+                                                                    } else {
+                                                                        "Import Account".to_string()
+                                                                    }
+                                                                }}
+                                                            </span>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            }
+                                                .into_any()
+                                        } else {
+                                            ().into_any()
+                                        }
+                                    }}
+                                </div>
+                            }
+                                .into_any()
+                        }
+                        LoginMethod::Ledger => {
+                            view! {
+                                <div class="space-y-6">
+                                    <div class="text-center py-2">
+                                        <Show when=move || !ledger_connected()>
+                                            <div class="w-16 h-16 rounded-full bg-purple-500/20 flex items-center justify-center mx-auto mb-4">
+                                                <Icon
+                                                    icon=icondata::LuWallet
+                                                    width="32"
+                                                    height="32"
+                                                    attr:class="text-purple-400"
+                                                />
+                                            </div>
+                                            <h3 class="text-white text-lg font-medium mb-2">
+                                                "Ledger"
+                                            </h3>
+                                            <p class="text-neutral-400 mb-4">
+                                                "Connect your Ledger to continue"
+                                            </p>
+                                        </Show>
+
+                                        {move || {
+                                            if ledger_connected.get() {
+                                                view! {
+                                                    <div class="space-y-4 w-full">
+                                                        <div class="space-y-4">
+                                                            <label class="block text-neutral-400 text-sm font-medium">
+                                                                "Derivation Path Parameters"
+                                                            </label>
+                                                            <div class="flex items-center gap-0 text-base text-neutral-400 select-none justify-center">
+                                                                <span>"m/44'/397'/"</span>
+                                                                <input
+                                                                    name="ledger_account_number"
+                                                                    type="number"
+                                                                    min="0"
+                                                                    max="2147483647"
+                                                                    step="1"
+                                                                    class="w-8 bg-neutral-900/50 text-white rounded-none border-x-0 border-t-0 border-b border-neutral-700 px-0.5 py-1 focus:outline-none text-base text-center"
+                                                                    style="border-radius: 0.375rem 0 0 0.375rem;"
+                                                                    prop:value=move || ledger_account_number.get().to_string()
+                                                                    on:focus=move |ev| {
+                                                                        if let Some(target) = ev.target() {
+                                                                            if let Ok(input) = target
+                                                                                .dyn_into::<web_sys::HtmlInputElement>()
+                                                                            {
+                                                                                input.select();
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                    on:input=move |ev| {
+                                                                        let val = event_target_value(&ev);
+                                                                        if let Ok(mut v) = val.parse::<i64>() {
+                                                                            if v < 0 {
+                                                                                v = 0;
+                                                                            }
+                                                                            if v > i32::MAX as i64 {
+                                                                                v = i32::MAX as i64;
+                                                                            }
+                                                                            set_ledger_account_number.set(v as u32);
+                                                                        } else {
+                                                                            set_ledger_account_number.set(0);
+                                                                        }
+                                                                        set_ledger_current_key_data.set(None);
+                                                                    }
+                                                                />
+                                                                <span>"'/"</span>
+                                                                <input
+                                                                    name="ledger_change_number"
+                                                                    type="number"
+                                                                    min="0"
+                                                                    max="1"
+                                                                    step="1"
+                                                                    class="w-6 bg-neutral-900/50 text-white rounded-none border-x-0 border-t-0 border-b border-neutral-700 px-0.5 py-1 focus:outline-none text-base text-center"
+                                                                    prop:value=move || ledger_change_number.get().to_string()
+                                                                    on:focus=move |ev| {
+                                                                        if let Some(target) = ev.target() {
+                                                                            if let Ok(input) = target
+                                                                                .dyn_into::<web_sys::HtmlInputElement>()
+                                                                            {
+                                                                                input.select();
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                    on:input=move |ev| {
+                                                                        let val = event_target_value(&ev);
+                                                                        let v = val.parse::<i64>().unwrap_or(0).clamp(0, 1);
+                                                                        set_ledger_change_number.set(v as u32);
+                                                                        set_ledger_current_key_data.set(None);
+                                                                    }
+                                                                />
+                                                                <span>"'/"</span>
+                                                                <input
+                                                                    name="ledger_address_number"
+                                                                    type="number"
+                                                                    min="0"
+                                                                    max="2147483647"
+                                                                    step="1"
+                                                                    class="w-8 bg-neutral-900/50 text-white rounded-none border-x-0 border-t-0 border-b border-neutral-700 px-0.5 py-1 focus:outline-none text-base text-center"
+                                                                    style="border-radius: 0 0.375rem 0.375rem 0;"
+                                                                    prop:value=move || ledger_address_number.get().to_string()
+                                                                    on:focus=move |ev| {
+                                                                        if let Some(target) = ev.target() {
+                                                                            if let Ok(input) = target
+                                                                                .dyn_into::<web_sys::HtmlInputElement>()
+                                                                            {
+                                                                                input.select();
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                    on:input=move |ev| {
+                                                                        let val = event_target_value(&ev);
+                                                                        if let Ok(mut v) = val.parse::<i64>() {
+                                                                            if v < 0 {
+                                                                                v = 0;
+                                                                            }
+                                                                            if v > i32::MAX as i64 {
+                                                                                v = i32::MAX as i64;
+                                                                            }
+                                                                            set_ledger_address_number.set(v as u32);
+                                                                        } else {
+                                                                            set_ledger_address_number.set(0);
+                                                                        }
+                                                                        set_ledger_current_key_data.set(None);
+                                                                    }
+                                                                />
+                                                                <span>"'"</span>
+                                                            </div>
+
+                                                            <button
+                                                                class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden cursor-pointer"
+                                                                style=move || {
+                                                                    if ledger_getting_public_key.get() {
+                                                                        "background: rgb(55 65 81); cursor: not-allowed;"
+                                                                    } else {
+                                                                        "background: linear-gradient(90deg, #8b5cf6 0%, #a855f7 100%);"
+                                                                    }
+                                                                }
+                                                                disabled=move || ledger_getting_public_key.get()
+                                                                on:click=move |_| {
+                                                                    set_ledger_getting_public_key(true);
+                                                                    set_available_accounts.set(vec![]);
+                                                                    set_selected_account.set(None);
+                                                                    set_ledger_current_key_data.set(None);
+                                                                    let path = ledger_input_hd_path_input.get_untracked();
+                                                                    let request = JsWalletRequest::LedgerGetPublicKey {
+                                                                        path,
+                                                                    };
+                                                                    if let Ok(js_value) = serde_wasm_bindgen::to_value(
+                                                                        &request,
+                                                                    ) {
+                                                                        let origin = window()
+                                                                            .location()
+                                                                            .origin()
+                                                                            .unwrap_or_else(|_| "*".to_string());
+                                                                        if window().post_message(&js_value, &origin).is_err() {
+                                                                            log::error!("Failed to send Ledger public key request");
+                                                                            set_ledger_getting_public_key(false);
+                                                                        }
+                                                                    } else {
+                                                                        log::error!(
+                                                                            "Failed to serialize Ledger public key request"
+                                                                        );
+                                                                        set_ledger_getting_public_key(false);
+                                                                    }
+                                                                }
+                                                            >
+                                                                <span class="relative flex items-center justify-center gap-2">
+                                                                    {move || {
+                                                                        if ledger_getting_public_key.get() {
+                                                                            view! {
+                                                                                <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                                            }
+                                                                                .into_any()
+                                                                        } else {
+                                                                            ().into_any()
+                                                                        }
+                                                                    }}
+                                                                    {move || {
+                                                                        if ledger_getting_public_key.get() {
+                                                                            "Confirm in your Ledger".to_string()
+                                                                        } else {
+                                                                            "Find Accounts".to_string()
+                                                                        }
+                                                                    }}
+                                                                </span>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                }
+                                                    .into_any()
+                                            } else {
+                                                ().into_any()
+                                            }
+                                        }}
+                                    </div>
+
+                                    {move || {
+                                        if let Some(err) = error.get() {
+                                            view! {
+                                                <p class="text-red-500 text-sm mt-2 font-medium">{err}</p>
+                                            }
+                                                .into_any()
+                                        } else {
+                                            ().into_any()
+                                        }
+                                    }}
+
+                                    {move || {
+                                        if !available_accounts.get().is_empty() {
+                                            view! {
+                                                <div class="space-y-2">
+                                                    <label class="block text-neutral-400 text-sm font-medium">
+                                                        "Select Account to Import"
+                                                    </label>
+                                                    <div class="space-y-2 max-h-48 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                                                        {available_accounts
+                                                            .get()
+                                                            .into_iter()
+                                                            .map(|(account_id, network)| {
+                                                                let account_id_str = account_id.to_string();
+                                                                let account_id2 = account_id.clone();
+                                                                view! {
+                                                                    <button
+                                                                        class="w-full p-3 rounded-lg transition-all duration-200 text-left border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900/50 cursor-pointer group"
+                                                                        style=move || {
+                                                                            if selected_account.get()
+                                                                                == Some((account_id.clone(), network))
+                                                                            {
+                                                                                "background-color: rgb(38 38 38); border-color: rgb(59 130 246);"
+                                                                            } else {
+                                                                                "background-color: rgb(23 23 23 / 0.5);"
+                                                                            }
+                                                                        }
+                                                                        on:click=move |_| {
+                                                                            set_selected_account
+                                                                                .set(Some((account_id2.clone(), network)))
+                                                                        }
+                                                                    >
+                                                                        <div class="text-white font-medium transition-colors duration-200">
+                                                                            {account_id_str}
+                                                                        </div>
+                                                                        <div class="text-purple-400 text-sm mt-1 font-medium">
+                                                                            "Connected via Ledger"
+                                                                        </div>
+                                                                        {move || {
+                                                                            if network == Network::Testnet {
+                                                                                view! {
+                                                                                    <p class="text-yellow-500 text-sm mt-1 font-medium">
+                                                                                        "This is a " <b>"testnet"</b>
+                                                                                        " account. Tokens sent to this account are not real and hold no value"
+                                                                                    </p>
+                                                                                }
+                                                                                    .into_any()
+                                                                            } else {
+                                                                                ().into_any()
+                                                                            }
+                                                                        }}
+                                                                    </button>
+                                                                }
+                                                            })
+                                                            .collect::<Vec<_>>()}
+                                                    </div>
+
+                                                    <div class="flex gap-2">
+                                                        <button
+                                                            class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden"
+                                                            style=move || {
+                                                                if selected_account.get().is_some()
+                                                                    && !import_in_progress.get()
+                                                                {
+                                                                    "background: linear-gradient(90deg, #8b5cf6 0%, #a855f7 100%); cursor: pointer;"
+                                                                } else {
+                                                                    "background: rgb(55 65 81); cursor: not-allowed;"
+                                                                }
+                                                            }
+                                                            disabled=move || {
+                                                                selected_account.get().is_none() || import_in_progress.get()
+                                                            }
+                                                            on:click=move |_| {
+                                                                if let (
+                                                                    Some((account_id, network)),
+                                                                    Some((path, public_key)),
+                                                                ) = (
+                                                                    selected_account.get(),
+                                                                    ledger_current_key_data.get(),
+                                                                ) {
+                                                                    set_import_in_progress(true);
+                                                                    set_error.set(None);
+                                                                    let mut accounts = accounts_context
+                                                                        .accounts
+                                                                        .get_untracked();
+                                                                    add_security_log(
+                                                                        format!(
+                                                                            "Account imported with Ledger path {path} and public key {public_key}",
+                                                                        ),
+                                                                        account_id.clone(),
+                                                                    );
+                                                                    accounts
+                                                                        .accounts
+                                                                        .push(Account {
+                                                                            account_id: account_id.clone(),
+                                                                            secret_key: SecretKeyHolder::Ledger {
+                                                                                path,
+                                                                                public_key,
+                                                                            },
+                                                                            seed_phrase: None,
+                                                                            network,
+                                                                        });
+                                                                    accounts.selected_account_id = Some(account_id);
+                                                                    accounts_context.set_accounts.set(accounts);
+                                                                    set_modal_state.set(ModalState::AccountList);
+                                                                    set_import_in_progress(false);
+                                                                } else {
+                                                                    set_error
+                                                                        .set(
+                                                                            Some(
+                                                                                "Please find accounts first before importing".to_string(),
+                                                                            ),
+                                                                        );
                                                                 }
                                                             }
                                                         >

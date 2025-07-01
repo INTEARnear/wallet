@@ -1,14 +1,16 @@
 use base64::{prelude::BASE64_STANDARD, Engine};
 use bigdecimal::{num_bigint::BigInt, BigDecimal, FromPrimitive, One, ToPrimitive, Zero};
+use borsh::BorshSerialize;
 use cached::proc_macro::cached;
 use chrono::{DateTime, Utc};
 use leptos::prelude::*;
 use near_min_api::{
     types::{
-        near_crypto::PublicKey, AccessKey as NearAccessKey, AccessKeyPermission, AccountId,
-        AccountIdRef, Action as NearAction, AddKeyAction, Balance, CreateAccountAction,
-        DeleteAccountAction, DeleteKeyAction, DeployContractAction, FunctionCallAction,
-        FunctionCallPermission, NearToken, StakeAction, TransferAction,
+        near_crypto::{PublicKey, Signature},
+        AccessKey as NearAccessKey, AccessKeyPermission, AccountId, AccountIdRef,
+        Action as NearAction, AddKeyAction, Balance, CreateAccountAction, DeleteAccountAction,
+        DeleteKeyAction, DeployContractAction, FunctionCallAction, FunctionCallPermission,
+        NearToken, StakeAction, TransferAction,
     },
     utils::dec_format,
 };
@@ -17,8 +19,11 @@ use std::{fmt::Display, ops::Deref, time::Duration};
 use web_sys::{js_sys::Reflect, MouseEvent};
 
 use crate::contexts::{
-    accounts_context::AccountsContext, config_context::ConfigContext, network_context::Network,
-    rpc_context::RpcContext, tokens_context::TokenInfo,
+    accounts_context::{AccountsContext, SecretKeyHolder, UserCancelledSigning},
+    config_context::ConfigContext,
+    network_context::Network,
+    rpc_context::RpcContext,
+    tokens_context::TokenInfo,
 };
 
 pub const USDT_DECIMALS: u32 = 6;
@@ -947,4 +952,24 @@ pub async fn fetch_token_info(token_id: AccountId, network: Network) -> Option<T
         .ok()?;
     let token_data: TokenInfo = response.json().await.ok()?;
     Some(token_data)
+}
+
+#[derive(Debug, BorshSerialize)]
+pub struct NEP413Payload {
+    pub message: String,
+    pub nonce: [u8; 32],
+    pub recipient: String,
+    pub callback_url: Option<String>,
+}
+
+pub async fn sign_nep413(
+    secret_key: SecretKeyHolder,
+    payload: NEP413Payload,
+    context: AccountsContext,
+) -> Result<Signature, UserCancelledSigning> {
+    const NEP413_413_SIGN_MESSAGE_PREFIX: u32 = (1u32 << 31u32) + 413u32;
+    let mut bytes = NEP413_413_SIGN_MESSAGE_PREFIX.to_le_bytes().to_vec();
+    borsh::to_writer(&mut bytes, &payload).unwrap();
+    log::info!("Signing NEP-413 payload: {:?}", bytes);
+    secret_key.hash_and_sign(&bytes, context).await
 }

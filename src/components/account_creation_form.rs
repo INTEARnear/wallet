@@ -16,7 +16,7 @@ use near_min_api::{
 use web_sys::KeyboardEvent;
 
 use crate::components::account_selector::{mnemonic_to_key, ModalState};
-use crate::contexts::accounts_context::{Account, AccountsContext};
+use crate::contexts::accounts_context::{Account, AccountsContext, SecretKeyHolder};
 use crate::contexts::network_context::Network;
 use crate::contexts::security_log_context::add_security_log;
 use crate::contexts::transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext};
@@ -289,7 +289,7 @@ pub fn AccountCreationForm(
                                 accounts.accounts.push(Account {
                                     account_id: account_id.clone(),
                                     seed_phrase: Some(mnemonic.to_string()),
-                                    secret_key: secret_key.clone(),
+                                    secret_key: SecretKeyHolder::SecretKey(secret_key.clone()),
                                     network,
                                 });
                                 accounts.selected_account_id = Some(account_id);
@@ -351,7 +351,7 @@ pub fn AccountCreationForm(
                     }
                         .into_any()
                 } else {
-                    view! { <div class="hidden"></div> }.into_any()
+                    ().into_any()
                 }
             }} <div class="absolute inset-0 flex items-center justify-center">
                 <div class="bg-neutral-950 p-8 rounded-xl w-full max-w-md">
@@ -414,7 +414,7 @@ pub fn AccountCreationForm(
                                     >
                                         ".testnet"
                                     </option>
-                                    {accounts_context
+                                    {move || accounts_context
                                         .accounts
                                         .get()
                                         .accounts

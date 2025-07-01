@@ -12,7 +12,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{js_sys::Date, Window};
 
 use crate::contexts::{
-    accounts_context::AccountsContext,
+    accounts_context::{AccountsContext, SecretKeyHolder},
     connected_apps_context::{ConnectedApp, ConnectedAppsContext},
     network_context::Network,
     security_log_context::add_security_log,
@@ -102,11 +102,21 @@ pub fn Connect() -> impl IntoView {
     let (request_data, set_request_data) = signal::<Option<SignInRequest>>(None);
     let (origin, set_origin) = signal::<String>("*".to_string());
     let (add_function_call_key, set_add_function_call_key) = signal(false);
-    let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+    let accounts_context = expect_context::<AccountsContext>();
     let ConnectedAppsContext { apps, set_apps } = expect_context::<ConnectedAppsContext>();
     let TransactionQueueContext {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
+
+    let is_ledger_account = Memo::new(move |_| {
+        let accs = accounts_context.accounts.get();
+        if let Some(selected_id) = &accs.selected_account_id {
+            if let Some(account) = accs.accounts.iter().find(|a| &a.account_id == selected_id) {
+                return matches!(account.secret_key, SecretKeyHolder::Ledger { .. });
+            }
+        }
+        false
+    });
 
     let opener = || {
         if let Ok(opener) = window().opener() {
@@ -189,11 +199,13 @@ pub fn Connect() -> impl IntoView {
 
     let handle_connect = move |_| {
         let request_data = request_data().expect("No request data");
-        let Some(selected_account_id) = accounts().selected_account_id else {
+        let Some(selected_account_id) = accounts_context.accounts.get().selected_account_id else {
             log::error!("No account selected");
             return;
         };
-        let selected_account = accounts()
+        let selected_account = accounts_context
+            .accounts
+            .get()
             .accounts
             .into_iter()
             .find(|a| a.account_id == selected_account_id)
@@ -237,24 +249,32 @@ pub fn Connect() -> impl IntoView {
             "login|{nonce}|{selected_account_id}|{}",
             request_data.public_key,
         );
-        let signature = selected_account.secret_key.sign(message.as_bytes());
-
-        let login_request = LoginBridgeRequest {
-            account_id: selected_account_id.clone(),
-            app_public_key: request_data.public_key.clone(),
-            user_logout_public_key: logout_key.public_key(),
-            nonce,
-            signature,
-            user_on_chain_public_key: selected_account.secret_key.public_key(),
-        };
 
         spawn_local({
+            let selected_account_secret_key = selected_account.secret_key.clone();
             let selected_account = selected_account_id.clone();
             let request_data = request_data.clone();
             let origin = origin();
             let logout_key = logout_key.clone();
             let add_function_call_key = add_function_call_key();
             async move {
+                // TODO Ledger
+                let Ok(signature) = selected_account_secret_key
+                    .hash_and_sign(message.as_bytes(), accounts_context)
+                    .await
+                else {
+                    return;
+                };
+
+                let login_request = LoginBridgeRequest {
+                    account_id: selected_account_id.clone(),
+                    app_public_key: request_data.public_key.clone(),
+                    user_logout_public_key: logout_key.public_key(),
+                    nonce,
+                    signature,
+                    user_on_chain_public_key: selected_account_secret_key.public_key(),
+                };
+
                 let url = dotenvy_macro::dotenv!("SHARED_LOGOUT_BRIDGE_SERVICE_ADDR");
                 let network = match request_data.network_id {
                     NetworkLowercase::Mainnet => "mainnet",
@@ -422,8 +442,28 @@ pub fn Connect() -> impl IntoView {
                         </div>
                     }
                         .into_any()
-                } else if let Some(selected_account_id) = accounts().selected_account_id {
-                    let selected_account_network = accounts()
+                } else if is_ledger_account.get() {
+                    view! {
+                        <div class="p-4 bg-yellow-500/10 backdrop-blur-sm rounded-xl border border-yellow-500/50 shadow-lg max-w-md w-full">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-full flex items-center justify-center">
+                                    <span class="text-yellow-500 text-lg">{"⚠️"}</span>
+                                </div>
+                                <p class="text-yellow-500 text-sm">
+                                    "Ledger wallets are temporarily not able to connect to dapps, please check back in a few days."
+                                </p>
+                            </div>
+                        </div>
+                    }
+                        .into_any()
+                } else if let Some(selected_account_id) = accounts_context
+                    .accounts
+                    .get()
+                    .selected_account_id
+                {
+                    let selected_account_network = accounts_context
+                        .accounts
+                        .get()
                         .accounts
                         .iter()
                         .find(|a| a.account_id == selected_account_id)
