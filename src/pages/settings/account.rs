@@ -1,7 +1,7 @@
 use std::{str::FromStr, time::Duration};
 
 use crate::contexts::{
-    accounts_context::AccountsContext,
+    accounts_context::{AccountsContext, SecretKeyHolder},
     network_context::{Network, NetworkContext},
     rpc_context::RpcContext,
     security_log_context::add_security_log,
@@ -708,7 +708,18 @@ pub fn AccountSettings() -> impl IntoView {
             </div>
 
             // Smart Wallet Version section
-            <Show when=move || network.get() == Network::Testnet>
+            <Show when=move || {
+                let is_ledger = accounts
+                    .get()
+                    .selected_account_id
+                    .as_ref()
+                    .and_then(|id| {
+                        accounts.get().accounts.into_iter().find(|acc| &acc.account_id == id)
+                    })
+                    .map(|acc| matches!(acc.secret_key, SecretKeyHolder::Ledger { .. }))
+                    .unwrap_or(false);
+                network.get() == Network::Testnet && !is_ledger
+            }>
                 <Suspense fallback=move || {
                     view! { <div class="text-sm text-neutral-400">"Loading..."</div> }
                 }>
@@ -902,6 +913,22 @@ pub fn AccountSettings() -> impl IntoView {
                             .unwrap_or_else(|| ().into_any())
                     }}
                 </Suspense>
+            </Show>
+
+            <Show when=move || {
+                accounts
+                    .get()
+                    .selected_account_id
+                    .as_ref()
+                    .and_then(|id| {
+                        accounts.get().accounts.into_iter().find(|acc| &acc.account_id == id)
+                    })
+                    .map(|acc| matches!(acc.secret_key, SecretKeyHolder::Ledger { .. }))
+                    .unwrap_or(false)
+            }>
+                <div class="text-sm text-neutral-400 p-4 bg-neutral-900 rounded-lg">
+                    "Smart Wallet feature is not available for Ledger accounts yet."
+                </div>
             </Show>
 
             // Recovery section
