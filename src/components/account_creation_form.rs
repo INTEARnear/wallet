@@ -915,67 +915,69 @@ pub fn AccountCreationForm(
                                                                     />
                                                                     <span>"'"</span>
                                                                 </div>
-                                                                <button
-                                                                    class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden cursor-pointer"
-                                                                    style=move || {
-                                                                        if ledger_getting_public_key.get() {
-                                                                            "background: rgb(55 65 81); cursor: not-allowed;"
-                                                                        } else {
-                                                                            "background: linear-gradient(90deg, #8b5cf6 0%, #a855f7 100%);"
+                                                                <Show when=move || ledger_current_key_data.get().is_none()>
+                                                                    <button
+                                                                        class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden cursor-pointer"
+                                                                        style=move || {
+                                                                            if ledger_getting_public_key.get() {
+                                                                                "background: rgb(55 65 81); cursor: not-allowed;"
+                                                                            } else {
+                                                                                "background: linear-gradient(90deg, #8b5cf6 0%, #a855f7 100%);"
+                                                                            }
                                                                         }
-                                                                    }
-                                                                    disabled=move || ledger_getting_public_key.get()
-                                                                    on:click=move |_| {
-                                                                        set_ledger_getting_public_key(true);
-                                                                        set_ledger_current_key_data.set(None);
-                                                                        let path = ledger_input_hd_path_input.get_untracked();
-                                                                        let request = JsWalletRequest::LedgerGetPublicKey {
-                                                                            path,
-                                                                        };
-                                                                        if let Ok(js_value) = serde_wasm_bindgen::to_value(
-                                                                            &request,
-                                                                        ) {
-                                                                            let origin = web_sys::window()
-                                                                                .unwrap()
-                                                                                .location()
-                                                                                .origin()
-                                                                                .unwrap_or_else(|_| "*".to_string());
-                                                                            if web_sys::window()
-                                                                                .unwrap()
-                                                                                .post_message(&js_value, &origin)
-                                                                                .is_err()
-                                                                            {
-                                                                                log::error!("Failed to send Ledger public key request");
+                                                                        disabled=move || ledger_getting_public_key.get()
+                                                                        on:click=move |_| {
+                                                                            set_ledger_getting_public_key(true);
+                                                                            set_ledger_current_key_data.set(None);
+                                                                            let path = ledger_input_hd_path_input.get_untracked();
+                                                                            let request = JsWalletRequest::LedgerGetPublicKey {
+                                                                                path,
+                                                                            };
+                                                                            if let Ok(js_value) = serde_wasm_bindgen::to_value(
+                                                                                &request,
+                                                                            ) {
+                                                                                let origin = web_sys::window()
+                                                                                    .unwrap()
+                                                                                    .location()
+                                                                                    .origin()
+                                                                                    .unwrap_or_else(|_| "*".to_string());
+                                                                                if web_sys::window()
+                                                                                    .unwrap()
+                                                                                    .post_message(&js_value, &origin)
+                                                                                    .is_err()
+                                                                                {
+                                                                                    log::error!("Failed to send Ledger public key request");
+                                                                                    set_ledger_getting_public_key(false);
+                                                                                }
+                                                                            } else {
+                                                                                log::error!(
+                                                                                    "Failed to serialize Ledger public key request"
+                                                                                );
                                                                                 set_ledger_getting_public_key(false);
                                                                             }
-                                                                        } else {
-                                                                            log::error!(
-                                                                                "Failed to serialize Ledger public key request"
-                                                                            );
-                                                                            set_ledger_getting_public_key(false);
                                                                         }
-                                                                    }
-                                                                >
-                                                                    <span class="relative flex items-center justify-center gap-2">
-                                                                        {move || {
-                                                                            if ledger_getting_public_key.get() {
-                                                                                view! {
-                                                                                    <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                                    >
+                                                                        <span class="relative flex items-center justify-center gap-2">
+                                                                            {move || {
+                                                                                if ledger_getting_public_key.get() {
+                                                                                    view! {
+                                                                                        <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                                                    }
+                                                                                        .into_any()
+                                                                                } else {
+                                                                                    ().into_any()
                                                                                 }
-                                                                                    .into_any()
-                                                                            } else {
-                                                                                ().into_any()
-                                                                            }
-                                                                        }}
-                                                                        {move || {
-                                                                            if ledger_getting_public_key.get() {
-                                                                                "Confirm in your Ledger".to_string()
-                                                                            } else {
-                                                                                "Find Public Key".to_string()
-                                                                            }
-                                                                        }}
-                                                                    </span>
-                                                                </button>
+                                                                            }}
+                                                                            {move || {
+                                                                                if ledger_getting_public_key.get() {
+                                                                                    "Confirm in your Ledger...".to_string()
+                                                                                } else {
+                                                                                    "Verify in Ledger".to_string()
+                                                                                }
+                                                                            }}
+                                                                        </span>
+                                                                    </button>
+                                                                </Show>
                                                             </div>
                                                         </div>
                                                     }

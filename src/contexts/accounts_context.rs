@@ -93,6 +93,9 @@ pub fn format_ledger_error(error: &serde_json::Value) -> String {
         serde_json::Value::String(s) if s == "DisconnectedDeviceDuringOperation" => {
             "Your Ledger was disconnected during the operation".to_string()
         }
+        serde_json::Value::String(s) if s == "InvalidStateError" => {
+            "Please refresh the or reconnect the Ledger device.".to_string()
+        }
         _ => format!("Error: {}", error),
     }
 }

@@ -11,11 +11,13 @@ use web_sys::{js_sys::Date, Window};
 use crate::utils::is_debug_enabled;
 use crate::{
     contexts::{
-        accounts_context::AccountsContext, connected_apps_context::ConnectedAppsContext,
+        accounts_context::{AccountsContext, LedgerSigningState},
+        connected_apps_context::ConnectedAppsContext,
         security_log_context::add_security_log,
     },
     utils::{sign_nep413, NEP413Payload},
 };
+use leptos_icons::*;
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -69,6 +71,7 @@ pub fn SignMessage() -> impl IntoView {
     let (origin, set_origin) = signal::<String>("*".to_string());
     let ConnectedAppsContext { apps, .. } = expect_context::<ConnectedAppsContext>();
     let accounts_context = expect_context::<AccountsContext>();
+    let ledger_signing_state = accounts_context.ledger_signing_state;
 
     let opener = || {
         if let Ok(opener) = window().opener() {
@@ -291,6 +294,65 @@ pub fn SignMessage() -> impl IntoView {
                                         </p>
                                     </div>
                                 </div>
+
+                                <Show when=move || {
+                                    !matches!(ledger_signing_state.get(), LedgerSigningState::Idle)
+                                }>
+                                    {move || {
+                                        match ledger_signing_state.get() {
+                                            LedgerSigningState::Idle => ().into_any(),
+                                            LedgerSigningState::WaitingForSignature { .. } => {
+                                                view! {
+                                                    <div class="text-white text-center flex flex-col items-center gap-2 mt-2 border-t border-neutral-700 pt-2">
+                                                        <Icon icon=icondata::LuUsb width="24" height="24" />
+                                                        <p class="text-sm font-bold">"Waiting for Ledger"</p>
+                                                        <p class="text-xs">
+                                                            "Please confirm the signature on your Ledger device."
+                                                        </p>
+                                                    </div>
+                                                }
+                                                    .into_any()
+                                            }
+                                            LedgerSigningState::Error { id, error } => {
+                                                view! {
+                                                    <div class="text-white text-center flex flex-col items-center gap-2 mt-2 border-t border-neutral-700 pt-2">
+                                                        <Icon
+                                                            icon=icondata::LuAlertTriangle
+                                                            width="24"
+                                                            height="24"
+                                                            attr:class="text-red-500"
+                                                        />
+                                                        <p class="text-sm font-bold">"Ledger Error"</p>
+                                                        <p class="text-xs max-w-xs break-words">{error.clone()}</p>
+                                                        <div class="flex gap-4 mt-2">
+                                                            <button
+                                                                class="px-3 py-1 text-xs bg-neutral-700 rounded-md hover:bg-neutral-600 transition-colors cursor-pointer"
+                                                                on:click=move |_| {
+                                                                    ledger_signing_state
+                                                                        .set(LedgerSigningState::WaitingForSignature {
+                                                                            id,
+                                                                        })
+                                                                }
+                                                            >
+                                                                "Retry"
+                                                            </button>
+                                                            <button
+                                                                class="px-3 py-1 text-xs bg-red-800 rounded-md hover:bg-red-700 transition-colors cursor-pointer"
+                                                                on:click=move |_| {
+                                                                    ledger_signing_state.set(LedgerSigningState::Idle)
+                                                                }
+                                                            >
+                                                                "Cancel"
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                }
+                                                    .into_any()
+                                            }
+                                        }
+                                    }}
+                                </Show>
+
                             </div>
                             <div class="flex flex-col gap-3 w-full mt-2">
                                 <button

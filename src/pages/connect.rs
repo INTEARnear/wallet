@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use chrono::Utc;
-use ed25519_dalek::KEYPAIR_LENGTH;
+use ed25519_dalek::SECRET_KEY_LENGTH;
 use leptos::{prelude::*, task::spawn_local};
 use near_min_api::types::{
     near_crypto::{ED25519SecretKey, KeyType, PublicKey, SecretKey, Signature},
@@ -253,7 +253,10 @@ pub fn Connect() -> impl IntoView {
                     SecretKeyHolder::SecretKey(secret_key) => secret_key,
                     SecretKeyHolder::Ledger { .. } => {
                         // Don't ask for Ledger signing, it's too bad UX
-                        SecretKey::ED25519(ED25519SecretKey([0; KEYPAIR_LENGTH]))
+                        SecretKey::ED25519(ED25519SecretKey(
+                            ed25519_dalek::SigningKey::from_bytes(&[0; SECRET_KEY_LENGTH])
+                                .to_keypair_bytes(),
+                        ))
                     }
                 };
                 let signature = secret_key.sign(message.as_bytes());

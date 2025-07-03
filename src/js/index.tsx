@@ -93,6 +93,14 @@ document.addEventListener('touchend', handleTouchEnd, { passive: true });
 
 // Ledger bindings
 
+function getLedgerClient() {
+    return (globalThis as any).ledgerClient;
+}
+
+function setLedgerClient(ledgerClient: any) {
+    (globalThis as any).ledgerClient = ledgerClient;
+}
+
 async function connectLedger() {
     const transport = await getSupportedLedgerTransport()
         .catch(error => {
@@ -106,12 +114,12 @@ async function connectLedger() {
     const ledgerClient = await createLedgerClient(transport)
         .catch(error => {
             console.error('Error connecting to Ledger device: ', JSON.stringify(error))
-            throw error.statusCode;
+            throw error.statusCode ?? error.name;
         });
     if (ledgerClient === null) {
         return;
     }
-    (globalThis as any).ledgerClient = ledgerClient;
+    setLedgerClient(ledgerClient);
     return ledgerClient;
 }
 
@@ -131,12 +139,12 @@ window.addEventListener('message', async (event) => {
                 return null;
             });
         if (!localLedgerClient) {
-            (globalThis as any).ledgerClient = null;
+            setLedgerClient(null);
             return;
         }
         window.postMessage({ type: 'ledger-connected' }, window.location.origin)
     } else if (data.type === 'ledger-get-public-key') {
-        let localLedgerClient = (globalThis as any).ledgerClient;
+        let localLedgerClient = getLedgerClient();
         if (!localLedgerClient) {
             localLedgerClient = await connectLedger()
                 .catch(error => {
@@ -153,9 +161,9 @@ window.addEventListener('message', async (event) => {
         const key = await localLedgerClient.getPublicKey(path)
             .catch(error => {
                 console.error('Error getting public key: ', JSON.stringify(error))
-                window.postMessage({ type: 'ledger-get-public-key-error', error: error.statusCode }, window.location.origin);
+                window.postMessage({ type: 'ledger-get-public-key-error', error: error.statusCode ?? error.name }, window.location.origin);
                 localLedgerClient.transport.close();
-                (globalThis as any).ledgerClient = null;
+                setLedgerClient(null);
                 return null;
             });
         if (key === null) {
@@ -167,7 +175,7 @@ window.addEventListener('message', async (event) => {
             key: [...key],
         }, window.location.origin)
     } else if (data.type === 'ledger-sign') {
-        let localLedgerClient = (globalThis as any).ledgerClient;
+        let localLedgerClient = getLedgerClient();
         if (!localLedgerClient) {
             localLedgerClient = await connectLedger()
                 .catch(error => {
@@ -184,9 +192,9 @@ window.addEventListener('message', async (event) => {
         const signature = await localLedgerClient.sign(messageToSign, path)
             .catch(error => {
                 console.error('Error signing message: ', JSON.stringify(error))
-                window.postMessage({ type: 'ledger-sign-error', error: error.statusCode }, window.location.origin);
+                window.postMessage({ type: 'ledger-sign-error', error: error.statusCode ?? error.name }, window.location.origin);
                 localLedgerClient.transport.close();
-                (globalThis as any).ledgerClient = null;
+                setLedgerClient(null);
                 return null;
             });
         if (signature === null) {

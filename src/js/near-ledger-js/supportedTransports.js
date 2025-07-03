@@ -90,8 +90,7 @@ async function createSupportedTransport() {
         try {
             transport = await createTransport();
         } catch (err) {
-            // If the user clicked the `cancel` button, stop attempting fallbacks
-            if (err.name === 'TransportOpenUserCancelled') {
+            if (err.name === 'InvalidStateError') {
                 throw err;
             }
 
