@@ -1,9 +1,10 @@
 use std::collections::HashSet;
 
 use chrono::Utc;
+use ed25519_dalek::KEYPAIR_LENGTH;
 use leptos::{prelude::*, task::spawn_local};
 use near_min_api::types::{
-    near_crypto::{KeyType, PublicKey, SecretKey, Signature},
+    near_crypto::{ED25519SecretKey, KeyType, PublicKey, SecretKey, Signature},
     AccessKey, AccessKeyPermission, AccountId, Action, AddKeyAction, CryptoHash,
     FunctionCallPermission, NearToken,
 };
@@ -107,16 +108,6 @@ pub fn Connect() -> impl IntoView {
     let TransactionQueueContext {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
-
-    let is_ledger_account = Memo::new(move |_| {
-        let accs = accounts_context.accounts.get();
-        if let Some(selected_id) = &accs.selected_account_id {
-            if let Some(account) = accs.accounts.iter().find(|a| &a.account_id == selected_id) {
-                return matches!(account.secret_key, SecretKeyHolder::Ledger { .. });
-            }
-        }
-        false
-    });
 
     let opener = || {
         if let Ok(opener) = window().opener() {
@@ -258,13 +249,14 @@ pub fn Connect() -> impl IntoView {
             let logout_key = logout_key.clone();
             let add_function_call_key = add_function_call_key();
             async move {
-                // TODO Ledger
-                let Ok(signature) = selected_account_secret_key
-                    .hash_and_sign(message.as_bytes(), accounts_context)
-                    .await
-                else {
-                    return;
+                let secret_key = match selected_account_secret_key {
+                    SecretKeyHolder::SecretKey(secret_key) => secret_key,
+                    SecretKeyHolder::Ledger { .. } => {
+                        // Don't ask for Ledger signing, it's too bad UX
+                        SecretKey::ED25519(ED25519SecretKey([0; KEYPAIR_LENGTH]))
+                    }
                 };
+                let signature = secret_key.sign(message.as_bytes());
 
                 let login_request = LoginBridgeRequest {
                     account_id: selected_account_id.clone(),
@@ -272,7 +264,7 @@ pub fn Connect() -> impl IntoView {
                     user_logout_public_key: logout_key.public_key(),
                     nonce,
                     signature,
-                    user_on_chain_public_key: selected_account_secret_key.public_key(),
+                    user_on_chain_public_key: secret_key.public_key(),
                 };
 
                 let url = dotenvy_macro::dotenv!("SHARED_LOGOUT_BRIDGE_SERVICE_ADDR");
@@ -439,20 +431,6 @@ pub fn Connect() -> impl IntoView {
                         <div class="flex flex-col items-center gap-4">
                             <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-white"></div>
                             <p class="text-white text-lg">"Receiving connection details..."</p>
-                        </div>
-                    }
-                        .into_any()
-                } else if is_ledger_account.get() {
-                    view! {
-                        <div class="p-4 bg-yellow-500/10 backdrop-blur-sm rounded-xl border border-yellow-500/50 shadow-lg max-w-md w-full">
-                            <div class="flex items-center gap-3">
-                                <div class="w-10 h-10 rounded-full flex items-center justify-center">
-                                    <span class="text-yellow-500 text-lg">{"⚠️"}</span>
-                                </div>
-                                <p class="text-yellow-500 text-sm">
-                                    "Ledger wallets are temporarily not able to connect to dapps, please check back in a few days."
-                                </p>
-                            </div>
                         </div>
                     }
                         .into_any()

@@ -88,6 +88,8 @@ struct SessionInfo {
     status: SessionStatus,
     app_public_key: PublicKey,
     user_logout_public_key: PublicKey,
+    #[serde(default)]
+    verification_result: AccountVerificationResult,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -147,12 +149,27 @@ fn get_db_key(network: &Network, account_id: &AccountId, app_public_key: &Public
     )
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+enum AccountVerificationResult {
+    #[default]
+    Verified,
+    NotVerified,
+    Invalid,
+}
+
 async fn verify_account(
     network: &Network,
     account_id: &AccountId,
     public_key: &PublicKey,
     app_state: &AppState,
-) -> bool {
+) -> AccountVerificationResult {
+    if public_key.to_string() == "ed25519:4zvwRjXUKGfvwnParsHAS3HuSVzV5cA4McphgmoCtajS" {
+        // Zero key - used for Ledger. Not secure, but better than making people
+        // sign a message every time they log in. The security is not important
+        // here, actually, since app public key is known only to the wallet and
+        // the app, and there's no way to enumerate them.
+        return AccountVerificationResult::NotVerified;
+    }
     let client = match network {
         Network::Mainnet => &app_state.mainnet_rpc_client,
         Network::Testnet => &app_state.testnet_rpc_client,
@@ -165,9 +182,13 @@ async fn verify_account(
         )
         .await
     {
-        matches!(key.permission, AccessKeyPermissionView::FullAccess)
+        if matches!(key.permission, AccessKeyPermissionView::FullAccess) {
+            AccountVerificationResult::Verified
+        } else {
+            AccountVerificationResult::Invalid
+        }
     } else {
-        false
+        AccountVerificationResult::Invalid
     }
 }
 
@@ -176,14 +197,14 @@ async fn handle_login(
     Path(network): Path<Network>,
     Json(request): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    if !verify_account(
+    let verification_result = verify_account(
         &network,
         &request.account_id,
         &request.user_on_chain_public_key,
         &state,
     )
-    .await
-    {
+    .await;
+    if matches!(verification_result, AccountVerificationResult::Invalid) {
         return Err((
             StatusCode::UNAUTHORIZED,
             "Account does not have this key".to_string(),
@@ -220,6 +241,7 @@ async fn handle_login(
         status: SessionStatus::Active,
         app_public_key: request.app_public_key,
         user_logout_public_key: request.user_logout_public_key,
+        verification_result,
     };
 
     let serialized = serde_json::to_vec(&session_info)
