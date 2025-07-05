@@ -705,7 +705,10 @@ pub fn SendTransactions() -> impl IntoView {
                 })
                 .collect()
         } else {
-            log::error!("Failed to deserialize transactions");
+            log::error!(
+                "Failed to deserialize transactions: {:?}",
+                serde_json::from_str::<Vec<WalletSelectorTransaction>>(&request_data.transactions)
+            );
             let message = SendMessage::Error {
                 message: "Failed to deserialize transactions".to_string(),
             };
