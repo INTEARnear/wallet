@@ -1420,7 +1420,7 @@ pub fn StakeValidator() -> impl IntoView {
         <div class="flex flex-col gap-4 p-2 md:p-4 transition-all duration-100">
             <A
                 href="/stake"
-                attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-2 cursor-pointer"
+                attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-2 cursor-pointer no-mobile-ripple"
             >
                 <Icon icon=icondata::LuArrowLeft width="20" height="20" />
                 <span>"Back to Validators"</span>
@@ -1856,7 +1856,7 @@ pub fn UnstakeValidator() -> impl IntoView {
         <div class="flex flex-col gap-4 p-2 md:p-4 transition-all duration-100">
             <A
                 href="/stake"
-                attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-2 cursor-pointer"
+                attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-2 cursor-pointer no-mobile-ripple"
             >
                 <Icon icon=icondata::LuArrowLeft width="20" height="20" />
                 <span>"Back to Validators"</span>
