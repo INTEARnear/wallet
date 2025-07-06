@@ -70,7 +70,7 @@ pub fn App() -> impl IntoView {
     view! {
         <Html attr:lang="en" attr:dir="ltr" attr:data-theme="dark" />
 
-        <Title text="Intear Wallet Beta" />
+        <Title text="Intear Wallet" />
 
         <Meta charset="UTF-8" />
         <Meta
