@@ -121,7 +121,7 @@ pub fn WalletHeader() -> impl IntoView {
                                 } else {
                                     view! {
                                         <button
-                                            class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors cursor-pointer"
+                                            class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors cursor-pointer min-w-11"
                                             on:click=move |_| set_is_expanded(true)
                                         >
                                             <Icon icon=icondata::LuUsers width="20" height="20" />
@@ -133,7 +133,7 @@ pub fn WalletHeader() -> impl IntoView {
                             {move || {
                                 if let Some(account_id) = selected_account() {
                                     view! {
-                                        <div class="flex items-center gap-2">
+                                        <div class="flex items-center gap-2 max-w-auto">
                                             <button
                                                 class="text-white text-xl font-medium hover:text-neutral-400 transition-colors wrap-anywhere no-mobile-ripple"
                                                 on:click=copy_to_clipboard
@@ -165,11 +165,11 @@ pub fn WalletHeader() -> impl IntoView {
                                 }
                             }}
                             <button
-                                class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-all cursor-pointer transition-200"
+                                class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-all cursor-pointer transition-200 min-w-11"
                                 on:click=move |_| set_is_search_expanded(true)
                                 style=move || {
                                     let current_path = location.pathname.get();
-                                    if current_path != "/" && current_path != "/nfts" {
+                                    if current_path != "/" && current_path != "/nfts" && current_path != "/stake" {
                                         "opacity: 0; pointer-events: none"
                                     } else {
                                         ""

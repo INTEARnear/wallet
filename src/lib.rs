@@ -31,7 +31,8 @@ use crate::pages::{
         SecurityLogPage, SecuritySettings,
     },
     AutoImportSecretKey, Connect, Explore, History, Home, Login, NftTokenDetails, Nfts, SendNft,
-    SendToken, SendTransactions, Settings, SignMessage, Swap, TokenDetails, UnwrapToken, WrapToken,
+    SendToken, SendTransactions, Settings, SignMessage, Stake, Swap, TokenDetails, UnwrapToken,
+    WrapToken,
 };
 
 #[component]
@@ -72,7 +73,10 @@ pub fn App() -> impl IntoView {
         <Title text="Intear Wallet Beta" />
 
         <Meta charset="UTF-8" />
-        <Meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+        <Meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+        />
 
         <ConfigProvider theme=RwSignal::new(Theme::dark())>
             <Router>
@@ -84,6 +88,15 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/nfts/:collection_id/*token_id") view=NftTokenDetails />
                         <Route path=path!("/send-nft/:collection_id/*token_id") view=SendNft />
                         <Route path=path!("/swap") view=Swap />
+                        <Route path=path!("/stake") view=Stake />
+                        <Route
+                            path=path!("/stake/:validator_pool/stake")
+                            view=pages::stake::StakeValidator
+                        />
+                        <Route
+                            path=path!("/stake/:validator_pool/unstake")
+                            view=pages::stake::UnstakeValidator
+                        />
                         <Route path=path!("/history") view=History />
                         <Route path=path!("/explore") view=Explore />
                         <Route path=path!("/token/:token_id") view=TokenDetails />

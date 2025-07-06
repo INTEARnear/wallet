@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct SearchContext {
     pub query: ReadSignal<String>,
     pub set_query: WriteSignal<String>,

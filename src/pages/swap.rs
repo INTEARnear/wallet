@@ -30,7 +30,7 @@ use crate::{
         config_context::ConfigContext,
         network_context::{Network, NetworkContext},
         rpc_context::RpcContext,
-        tokens_context::{Token, TokenContext, TokenData, TokenInfo, TokenScore},
+        tokens_context::{Token, TokenData, TokenInfo, TokenScore, TokensContext},
         transaction_queue_context::{
             EnqueuedTransaction, OverlayMode, TransactionQueueContext, TransactionType,
         },
@@ -112,7 +112,7 @@ fn TokenSelector(
     placeholder: &'static str,
 ) -> impl IntoView {
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
-    let TokenContext { set_tokens, .. } = expect_context::<TokenContext>();
+    let TokensContext { set_tokens, .. } = expect_context::<TokensContext>();
 
     let (show, set_show) = signal(false);
     let (search_query, set_search_query) = signal("".to_string());
@@ -174,7 +174,7 @@ fn TokenSelector(
                                         view! {
                                             <div class="absolute -bottom-1 -right-1 bg-neutral-900 rounded-full p-0.5">
                                                 <Icon
-                                                    icon=icondata::LuAlertTriangle
+                                                    icon=icondata::LuTriangleAlert
                                                     width="12"
                                                     height="12"
                                                     attr:class="text-yellow-500"
@@ -357,7 +357,7 @@ fn TokenSelector(
                                                                     ) {
                                                                         view! {
                                                                             <Icon
-                                                                                icon=icondata::LuAlertTriangle
+                                                                                icon=icondata::LuTriangleAlert
                                                                                 width="16"
                                                                                 height="16"
                                                                                 attr:class="text-yellow-500 flex-shrink-0"
@@ -500,7 +500,7 @@ fn TokenSelector(
                                                                                 ) {
                                                                                     view! {
                                                                                         <Icon
-                                                                                            icon=icondata::LuAlertTriangle
+                                                                                            icon=icondata::LuTriangleAlert
                                                                                             width="16"
                                                                                             height="16"
                                                                                             attr:class="text-yellow-500 flex-shrink-0"
@@ -644,11 +644,11 @@ pub fn Swap() -> impl IntoView {
         }
     });
 
-    let TokenContext {
+    let TokensContext {
         tokens,
         loading_tokens,
         set_tokens,
-    } = expect_context::<TokenContext>();
+    } = expect_context::<TokensContext>();
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
     let Location { query, .. } = use_location();

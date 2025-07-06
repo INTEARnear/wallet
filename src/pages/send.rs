@@ -2,7 +2,7 @@ use crate::{
     contexts::{
         accounts_context::AccountsContext,
         rpc_context::RpcContext,
-        tokens_context::{Token, TokenContext, TokenMetadata},
+        tokens_context::{Token, TokenMetadata, TokensContext},
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
     utils::{
@@ -32,11 +32,11 @@ use std::time::Duration;
 pub fn SendToken() -> impl IntoView {
     let params = use_params_map();
     let token_id = move || params.get().get("token_id").unwrap_or_default();
-    let TokenContext {
+    let TokensContext {
         tokens,
         loading_tokens,
         ..
-    } = expect_context::<TokenContext>();
+    } = expect_context::<TokensContext>();
     let RpcContext { client, .. } = expect_context::<RpcContext>();
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let (recipient, set_recipient) = signal("".to_string());
@@ -424,7 +424,7 @@ pub fn SendToken() -> impl IntoView {
                                             view! {
                                                 <p class="text-yellow-500 text-sm mt-2 font-medium flex items-center gap-2">
                                                     <Icon
-                                                        icon=icondata::LuAlertTriangle
+                                                        icon=icondata::LuTriangleAlert
                                                         width="16"
                                                         height="16"
                                                         attr:class="min-w-4 min-h-4"
@@ -442,7 +442,8 @@ pub fn SendToken() -> impl IntoView {
                                             view! {
                                                 <p class="text-green-500 text-sm mt-2 font-medium">
                                                     {move || {
-                                                        if let Ok(recipient) = recipient.get().parse::<AccountId>() {
+                                                        if let Ok(recipient) = recipient.get().parse::<AccountId>()
+                                                        {
                                                             format_account_id_no_hide(&recipient)
                                                         } else {
                                                             ().into_any()
@@ -588,7 +589,7 @@ pub fn SendToken() -> impl IntoView {
                         <div class="flex flex-col items-center justify-center h-32 gap-4">
                             <div class="bg-red-500/10 p-4 rounded-lg border border-red-500/20">
                                 <div class="flex items-center gap-2 text-red-400">
-                                    <Icon icon=icondata::LuAlertTriangle width="20" height="20" />
+                                    <Icon icon=icondata::LuTriangleAlert width="20" height="20" />
                                     <p class="text-white font-medium">Token not found</p>
                                 </div>
                             </div>

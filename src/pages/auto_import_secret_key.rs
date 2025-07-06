@@ -73,7 +73,7 @@ pub fn AutoImportSecretKey() -> impl IntoView {
                         <div class="flex flex-col items-center gap-6 max-w-md w-full">
                             <div class="bg-red-500/10 p-6 rounded-xl border border-red-500/20 w-full">
                                 <div class="flex items-center gap-2 text-red-400">
-                                    <Icon icon=icondata::LuAlertTriangle width="20" height="20" />
+                                    <Icon icon=icondata::LuTriangleAlert width="20" height="20" />
                                     <p class="text-white font-medium">Account Already Imported</p>
                                 </div>
                                 <p class="text-gray-400 text-sm mt-2">
@@ -124,23 +124,24 @@ pub fn AutoImportSecretKey() -> impl IntoView {
                                                 let Some((account_id, secret_key)) = import_info.get() else {
                                                     return;
                                                 };
-
                                                 add_security_log(
-                                                    format!("Account imported on /auto-import-secret-key with private key {secret_key}"),
+                                                    format!(
+                                                        "Account imported on /auto-import-secret-key with private key {secret_key}",
+                                                    ),
                                                     account_id.clone(),
                                                 );
-
-                                                accounts.accounts.push(Account {
-                                                    account_id: account_id.clone(),
-                                                    secret_key: SecretKeyHolder::SecretKey(secret_key.clone()),
-                                                    seed_phrase: None,
-                                                    // Need to do some changes in CLI to pass network in location.hash
-                                                    network: if account_id.as_str().ends_with(".testnet") {
-                                                        Network::Testnet
-                                                    } else {
-                                                        Network::Mainnet
-                                                    },
-                                                });
+                                                accounts
+                                                    .accounts
+                                                    .push(Account {
+                                                        account_id: account_id.clone(),
+                                                        secret_key: SecretKeyHolder::SecretKey(secret_key.clone()),
+                                                        seed_phrase: None,
+                                                        network: if account_id.as_str().ends_with(".testnet") {
+                                                            Network::Testnet
+                                                        } else {
+                                                            Network::Mainnet
+                                                        },
+                                                    });
                                                 accounts.selected_account_id = Some(account_id.clone());
                                                 accounts_context.set_accounts.set(accounts);
                                                 navigate("/", Default::default());

@@ -1,6 +1,6 @@
 use crate::contexts::config_context::ConfigContext;
 use crate::contexts::network_context::{Network, NetworkContext};
-use crate::contexts::tokens_context::TokenContext;
+use crate::contexts::tokens_context::TokensContext;
 use crate::utils::{balance_to_decimal, format_usd_value, power_of_10, USDT_DECIMALS};
 use bigdecimal::{BigDecimal, ToPrimitive};
 use leptos::prelude::*;
@@ -8,11 +8,11 @@ use web_sys::window;
 
 #[component]
 pub fn TotalPortfolioValue() -> impl IntoView {
-    let TokenContext {
+    let TokensContext {
         tokens,
         loading_tokens,
         ..
-    } = expect_context::<TokenContext>();
+    } = expect_context::<TokensContext>();
     let ConfigContext { set_config, .. } = expect_context::<ConfigContext>();
     let network = expect_context::<NetworkContext>().network;
     let (last_tap, set_last_tap) = signal(0u64);

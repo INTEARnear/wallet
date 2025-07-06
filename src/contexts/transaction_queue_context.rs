@@ -520,7 +520,7 @@ impl EnqueuedTransaction {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct TransactionQueueContext {
     pub queue: ReadSignal<VecDeque<EnqueuedTransaction>>,
     pub add_transaction: WriteSignal<Vec<EnqueuedTransaction>>,

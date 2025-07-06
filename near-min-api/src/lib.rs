@@ -19,6 +19,8 @@ use types::{
     SignedTransaction, TxExecutionStatus,
 };
 
+use crate::types::{EpochReference, EpochValidatorInfo, StatusResponse};
+
 #[derive(Clone, Debug)]
 pub struct RpcClient {
     client: reqwest::Client,
@@ -467,6 +469,17 @@ impl RpcClient {
                 });
             Ok(futures_util::future::join_all(futures).await)
         }
+    }
+
+    pub async fn status(&self) -> Result<StatusResponse, Error> {
+        let rpc_method = "status";
+        let rpc_params = serde_json::json!({});
+        self.request(rpc_method, rpc_params).await
+    }
+
+    pub async fn validators(&self, epoch: EpochReference) -> Result<EpochValidatorInfo, Error> {
+        let rpc_method = "validators";
+        self.request(rpc_method, epoch).await
     }
 }
 

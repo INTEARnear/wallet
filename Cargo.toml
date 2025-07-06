@@ -13,7 +13,7 @@ console_log = "1.0.0"
 log = "0.4.27"
 console_error_panic_hook = "0.1.7"
 leptos_icons = "0.6.1"
-icondata = { version = "0.5.0", features = [
+icondata = { version = "0.6.0", features = [
     "lucide",
     "simple-icons",
 ], default-features = false }
@@ -81,6 +81,7 @@ alloy-signer-local = "1.0.8"
 bigdecimal = { version = "0.4.8", features = ["serde-json"] }
 thaw = { version = "0.5.0-beta", features = ["csr", "nightly"] }
 percent-encoding = "2.3.1"
+gloo-net = "0.5"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.50"
@@ -117,10 +118,7 @@ crates = [
     # Need to add async interruptions to not block the main
     # thread for too long and make it abortable
     "argon2",
-    # Update upstream
-    "icondata_si",
 ]
 
 [patch.crates-io]
 argon2 = { path = "./target/patch/argon2-0.5.3" }
-icondata_si = { path = "./target/patch/icondata_si-0.0.10" }

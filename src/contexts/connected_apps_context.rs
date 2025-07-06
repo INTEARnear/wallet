@@ -101,7 +101,7 @@ pub struct ConnectedAppsState {
     pub apps: Vec<ConnectedApp>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct ConnectedAppsContext {
     pub apps: ReadSignal<ConnectedAppsState>,
     pub set_apps: WriteSignal<ConnectedAppsState>,

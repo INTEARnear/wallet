@@ -2,7 +2,7 @@ use crate::{
     contexts::{
         accounts_context::AccountsContext,
         network_context::{Network, NetworkContext},
-        tokens_context::{Token, TokenContext},
+        tokens_context::{Token, TokensContext},
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
     utils::{
@@ -17,11 +17,11 @@ use near_min_api::types::{AccountId, Action, FunctionCallAction, NearGas, NearTo
 
 #[component]
 pub fn WrapToken() -> impl IntoView {
-    let TokenContext {
+    let TokensContext {
         tokens,
         loading_tokens,
         ..
-    } = expect_context::<TokenContext>();
+    } = expect_context::<TokensContext>();
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let NetworkContext { network, .. } = expect_context::<NetworkContext>();
     let (amount, set_amount) = signal("".to_string());
@@ -243,7 +243,7 @@ pub fn WrapToken() -> impl IntoView {
                                 >
                                     <div class="flex items-center justify-center gap-2">
                                         <Icon
-                                            icon=icondata::LuArrowDownCircle
+                                            icon=icondata::LuCircleArrowDown
                                             width="20"
                                             height="20"
                                         />
@@ -259,7 +259,7 @@ pub fn WrapToken() -> impl IntoView {
                         <div class="flex flex-col items-center justify-center h-32 gap-4">
                             <div class="bg-red-500/10 p-4 rounded-lg border border-red-500/20">
                                 <div class="flex items-center gap-2 text-red-400">
-                                    <Icon icon=icondata::LuAlertTriangle width="20" height="20" />
+                                    <Icon icon=icondata::LuTriangleAlert width="20" height="20" />
                                     <p class="text-white font-medium">NEAR token not found</p>
                                 </div>
                             </div>

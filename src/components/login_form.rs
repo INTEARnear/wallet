@@ -10,9 +10,9 @@ use near_min_api::types::{near_crypto::SecretKey, AccountId};
 use near_min_api::QueryFinality;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen;
-use wasm_bindgen::JsCast;
 
 use crate::components::account_selector::{seed_phrase_to_key, LoginMethod, ModalState};
+use crate::components::derivation_path_input::DerivationPathInput;
 use crate::contexts::accounts_context::{
     format_ledger_error, Account, AccountsContext, SecretKeyHolder,
 };
@@ -113,6 +113,11 @@ pub fn LoginForm(
     let (ledger_account_number, set_ledger_account_number) = signal(0u32);
     let (ledger_change_number, set_ledger_change_number) = signal(0u32);
     let (ledger_address_number, set_ledger_address_number) = signal(1u32);
+
+    let on_path_change = move || {
+        set_ledger_current_key_data.set(None);
+        set_available_accounts.set(vec![]);
+    };
 
     Effect::new(move || {
         let path = format!(
@@ -1600,168 +1605,73 @@ pub fn LoginForm(
                                             if ledger_connected.get() {
                                                 view! {
                                                     <div class="space-y-4 w-full">
-                                                        <div class="space-y-4">
-                                                            <label class="block text-neutral-400 text-sm font-medium">
-                                                                "Derivation Path Parameters"
-                                                            </label>
-                                                            <div class="flex items-center gap-0 text-base text-neutral-400 select-none justify-center">
-                                                                <span>"m/44'/397'/"</span>
-                                                                <input
-                                                                    name="ledger_account_number"
-                                                                    type="number"
-                                                                    min="0"
-                                                                    max="2147483647"
-                                                                    step="1"
-                                                                    class="w-8 bg-neutral-900/50 text-white rounded-none border-x-0 border-t-0 border-b border-neutral-700 px-0.5 py-1 focus:outline-none text-base text-center"
-                                                                    style="border-radius: 0.375rem 0 0 0.375rem;"
-                                                                    prop:value=move || ledger_account_number.get().to_string()
-                                                                    on:focus=move |ev| {
-                                                                        if let Some(target) = ev.target() {
-                                                                            if let Ok(input) = target
-                                                                                .dyn_into::<web_sys::HtmlInputElement>()
-                                                                            {
-                                                                                input.select();
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                    on:input=move |ev| {
-                                                                        let val = event_target_value(&ev);
-                                                                        if let Ok(mut v) = val.parse::<i64>() {
-                                                                            if v < 0 {
-                                                                                v = 0;
-                                                                            }
-                                                                            if v > i32::MAX as i64 {
-                                                                                v = i32::MAX as i64;
-                                                                            }
-                                                                            set_ledger_account_number.set(v as u32);
-                                                                        } else {
-                                                                            set_ledger_account_number.set(0);
-                                                                        }
-                                                                        set_ledger_current_key_data.set(None);
-                                                                    }
-                                                                />
-                                                                <span>"'/"</span>
-                                                                <input
-                                                                    name="ledger_change_number"
-                                                                    type="number"
-                                                                    min="0"
-                                                                    max="1"
-                                                                    step="1"
-                                                                    class="w-6 bg-neutral-900/50 text-white rounded-none border-x-0 border-t-0 border-b border-neutral-700 px-0.5 py-1 focus:outline-none text-base text-center"
-                                                                    prop:value=move || ledger_change_number.get().to_string()
-                                                                    on:focus=move |ev| {
-                                                                        if let Some(target) = ev.target() {
-                                                                            if let Ok(input) = target
-                                                                                .dyn_into::<web_sys::HtmlInputElement>()
-                                                                            {
-                                                                                input.select();
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                    on:input=move |ev| {
-                                                                        let val = event_target_value(&ev);
-                                                                        let v = val.parse::<i64>().unwrap_or(0).clamp(0, 1);
-                                                                        set_ledger_change_number.set(v as u32);
-                                                                        set_ledger_current_key_data.set(None);
-                                                                    }
-                                                                />
-                                                                <span>"'/"</span>
-                                                                <input
-                                                                    name="ledger_address_number"
-                                                                    type="number"
-                                                                    min="0"
-                                                                    max="2147483647"
-                                                                    step="1"
-                                                                    class="w-8 bg-neutral-900/50 text-white rounded-none border-x-0 border-t-0 border-b border-neutral-700 px-0.5 py-1 focus:outline-none text-base text-center"
-                                                                    style="border-radius: 0 0.375rem 0.375rem 0;"
-                                                                    prop:value=move || ledger_address_number.get().to_string()
-                                                                    on:focus=move |ev| {
-                                                                        if let Some(target) = ev.target() {
-                                                                            if let Ok(input) = target
-                                                                                .dyn_into::<web_sys::HtmlInputElement>()
-                                                                            {
-                                                                                input.select();
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                    on:input=move |ev| {
-                                                                        let val = event_target_value(&ev);
-                                                                        if let Ok(mut v) = val.parse::<i64>() {
-                                                                            if v < 0 {
-                                                                                v = 0;
-                                                                            }
-                                                                            if v > i32::MAX as i64 {
-                                                                                v = i32::MAX as i64;
-                                                                            }
-                                                                            set_ledger_address_number.set(v as u32);
-                                                                        } else {
-                                                                            set_ledger_address_number.set(0);
-                                                                        }
-                                                                        set_ledger_current_key_data.set(None);
-                                                                    }
-                                                                />
-                                                                <span>"'"</span>
-                                                            </div>
-
-                                                            <button
-                                                                class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden cursor-pointer"
-                                                                style=move || {
-                                                                    if ledger_getting_public_key.get() {
-                                                                        "background: rgb(55 65 81); cursor: not-allowed;"
-                                                                    } else {
-                                                                        "background: linear-gradient(90deg, #8b5cf6 0%, #a855f7 100%);"
-                                                                    }
+                                                        <DerivationPathInput
+                                                            ledger_account_number=ledger_account_number
+                                                            set_ledger_account_number=set_ledger_account_number
+                                                            ledger_change_number=ledger_change_number
+                                                            set_ledger_change_number=set_ledger_change_number
+                                                            ledger_address_number=ledger_address_number
+                                                            set_ledger_address_number=set_ledger_address_number
+                                                            on_change=on_path_change.into()
+                                                        />
+                                                        <button
+                                                            class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden cursor-pointer"
+                                                            style=move || {
+                                                                if ledger_getting_public_key.get() {
+                                                                    "background: rgb(55 65 81); cursor: not-allowed;"
+                                                                } else {
+                                                                    "background: linear-gradient(90deg, #8b5cf6 0%, #a855f7 100%);"
                                                                 }
-                                                                disabled=move || ledger_getting_public_key.get()
-                                                                on:click=move |_| {
-                                                                    set_ledger_getting_public_key(true);
-                                                                    set_available_accounts.set(vec![]);
-                                                                    set_selected_account.set(None);
-                                                                    set_ledger_current_key_data.set(None);
-                                                                    let path = ledger_input_hd_path_input.get_untracked();
-                                                                    let request = JsWalletRequest::LedgerGetPublicKey {
-                                                                        path,
-                                                                    };
-                                                                    if let Ok(js_value) = serde_wasm_bindgen::to_value(
-                                                                        &request,
-                                                                    ) {
-                                                                        let origin = window()
-                                                                            .location()
-                                                                            .origin()
-                                                                            .unwrap_or_else(|_| "*".to_string());
-                                                                        if window().post_message(&js_value, &origin).is_err() {
-                                                                            log::error!("Failed to send Ledger public key request");
-                                                                            set_ledger_getting_public_key(false);
-                                                                        }
-                                                                    } else {
-                                                                        log::error!(
-                                                                            "Failed to serialize Ledger public key request"
-                                                                        );
+                                                            }
+                                                            disabled=move || ledger_getting_public_key.get()
+                                                            on:click=move |_| {
+                                                                set_ledger_getting_public_key(true);
+                                                                set_available_accounts.set(vec![]);
+                                                                set_selected_account.set(None);
+                                                                set_ledger_current_key_data.set(None);
+                                                                let path = ledger_input_hd_path_input.get_untracked();
+                                                                let request = JsWalletRequest::LedgerGetPublicKey {
+                                                                    path,
+                                                                };
+                                                                if let Ok(js_value) = serde_wasm_bindgen::to_value(
+                                                                    &request,
+                                                                ) {
+                                                                    let origin = window()
+                                                                        .location()
+                                                                        .origin()
+                                                                        .unwrap_or_else(|_| "*".to_string());
+                                                                    if window().post_message(&js_value, &origin).is_err() {
+                                                                        log::error!("Failed to send Ledger public key request");
                                                                         set_ledger_getting_public_key(false);
                                                                     }
+                                                                } else {
+                                                                    log::error!(
+                                                                        "Failed to serialize Ledger public key request"
+                                                                    );
+                                                                    set_ledger_getting_public_key(false);
                                                                 }
-                                                            >
-                                                                <span class="relative flex items-center justify-center gap-2">
-                                                                    {move || {
-                                                                        if ledger_getting_public_key.get() {
-                                                                            view! {
-                                                                                <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                                                            }
-                                                                                .into_any()
-                                                                        } else {
-                                                                            ().into_any()
+                                                            }
+                                                        >
+                                                            <span class="relative flex items-center justify-center gap-2">
+                                                                {move || {
+                                                                    if ledger_getting_public_key.get() {
+                                                                        view! {
+                                                                            <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                                                         }
-                                                                    }}
-                                                                    {move || {
-                                                                        if ledger_getting_public_key.get() {
-                                                                            "Confirm in your Ledger".to_string()
-                                                                        } else {
-                                                                            "Find Accounts".to_string()
-                                                                        }
-                                                                    }}
-                                                                </span>
-                                                            </button>
-                                                        </div>
+                                                                            .into_any()
+                                                                    } else {
+                                                                        ().into_any()
+                                                                    }
+                                                                }}
+                                                                {move || {
+                                                                    if ledger_getting_public_key.get() {
+                                                                        "Confirm in your Ledger".to_string()
+                                                                    } else {
+                                                                        "Find Accounts".to_string()
+                                                                    }
+                                                                }}
+                                                            </span>
+                                                        </button>
                                                     </div>
                                                 }
                                                     .into_any()

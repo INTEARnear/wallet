@@ -1739,7 +1739,7 @@ pub fn SendNft() -> impl IntoView {
                                                 view! {
                                                     <p class="text-yellow-500 text-sm mt-2 font-medium flex items-center gap-2">
                                                         <Icon
-                                                            icon=icondata::LuAlertTriangle
+                                                            icon=icondata::LuTriangleAlert
                                                             width="16"
                                                             height="16"
                                                             attr:class="min-w-4 min-h-4"

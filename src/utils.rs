@@ -52,9 +52,9 @@ pub fn format_token_amount_no_hide(amount: Balance, decimals: u32, symbol: &str)
             let value_decimal = &normalized_decimal / &divisor_decimal;
             return match &value_decimal {
                 x if x.is_integer() => {
-                    format!("{value_decimal:.0} {suffix} {symbol}")
+                    format!("{value_decimal:.0}{suffix} {symbol}")
                 }
-                _ => format!("{value_decimal:.2} {suffix} {symbol}"),
+                _ => format!("{value_decimal:.2}{suffix} {symbol}"),
             };
         }
     }
@@ -174,7 +174,7 @@ pub fn format_account_id_no_hide(account_id: &AccountIdRef) -> AnyView {
                     .as_ref()
                     .and_then(|badge| badge.as_ref().map(|get_badge| (get_badge)()))
                     .map(|badge| badge.into_any())
-            }} <span class="truncate max-w-60">{account_id.to_string()}</span>
+            }} <span class="truncate max-w-48">{account_id.to_string()}</span>
         </span>
     }
     .into_any()

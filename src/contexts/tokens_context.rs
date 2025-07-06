@@ -63,6 +63,8 @@ pub struct TokenInfo {
     pub liquidity_usd: f64,
     #[serde(with = "dec_format")]
     pub circulating_supply: Balance,
+    #[serde(with = "dec_format")]
+    pub total_supply: Balance,
     pub reputation: TokenScore,
 }
 
@@ -133,8 +135,8 @@ pub struct TokenPriceUpdate {
 }
 
 /// Tokens that selected account has
-#[derive(Clone)]
-pub struct TokenContext {
+#[derive(Clone, Copy)]
+pub struct TokensContext {
     pub tokens: ReadSignal<Vec<TokenData>>,
     pub loading_tokens: ReadSignal<bool>,
     pub set_tokens: WriteSignal<Vec<TokenData>>,
@@ -572,6 +574,7 @@ pub fn provide_token_context() {
                             volume_usd_24h: wnear_token.token.volume_usd_24h,
                             liquidity_usd: wnear_token.token.liquidity_usd,
                             circulating_supply: wnear_token.token.circulating_supply,
+                            total_supply: wnear_token.token.total_supply,
                             reputation: TokenScore::Reputable,
                         },
                     };
@@ -587,7 +590,7 @@ pub fn provide_token_context() {
         });
     });
 
-    provide_context(TokenContext {
+    provide_context(TokensContext {
         tokens,
         set_tokens,
         loading_tokens: loading,

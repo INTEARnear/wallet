@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::accounts_context::AccountsContext;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct NetworkContext {
     pub network: RwSignal<Network>,
 }

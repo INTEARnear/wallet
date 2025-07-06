@@ -3,7 +3,7 @@ use crate::{
         config_context::ConfigContext,
         network_context::{Network, NetworkContext},
         search_context::SearchContext,
-        tokens_context::{Token, TokenContext, TokenScore},
+        tokens_context::{Token, TokenScore, TokensContext},
     },
     utils::{
         balance_to_decimal, format_token_amount, format_usd_value, power_of_10, USDT_DECIMALS,
@@ -16,11 +16,11 @@ use leptos_router::components::A;
 
 #[component]
 pub fn TokenBalanceList() -> impl IntoView {
-    let TokenContext {
+    let TokensContext {
         tokens,
         loading_tokens,
         ..
-    } = expect_context::<TokenContext>();
+    } = expect_context::<TokensContext>();
     let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
     let SearchContext { query, .. } = expect_context::<SearchContext>();
     let NetworkContext { network } = expect_context::<NetworkContext>();

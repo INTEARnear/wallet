@@ -7,7 +7,7 @@ use crate::{
     components::tooltip::Tooltip,
     contexts::{
         network_context::{Network, NetworkContext},
-        tokens_context::{Token, TokenContext, TokenInfo, TokenScore},
+        tokens_context::{Token, TokenInfo, TokenScore, TokensContext},
     },
     utils::{
         balance_to_decimal, fetch_token_info, format_token_amount, format_usd_value,
@@ -35,7 +35,7 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
     };
 
     let token_account_id = token_info.account_id.clone();
-    let TokenContext { tokens, .. } = expect_context::<TokenContext>();
+    let TokensContext { tokens, .. } = expect_context::<TokensContext>();
     let user_balance = move || {
         tokens
             .get()
@@ -125,11 +125,16 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                                     )
                                 }>
                                     <button class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors flex items-center gap-2 cursor-pointer w-full">
-                                        <Icon icon=icondata::LuArrowLeftRight width="20" height="20" />
+                                        <Icon
+                                            icon=icondata::LuArrowLeftRight
+                                            width="20"
+                                            height="20"
+                                        />
                                         <span>Swap</span>
                                     </button>
                                 </A>
-                            }.into_any()
+                            }
+                                .into_any()
                         } else {
                             ().into_any()
                         }
@@ -233,7 +238,7 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                     view! {
                         <div class="bg-red-500/10 p-4 rounded-lg border border-red-500/20">
                             <div class="flex items-center gap-2 text-red-400">
-                                <Icon icon=icondata::LuAlertTriangle width="20" height="20" />
+                                <Icon icon=icondata::LuTriangleAlert width="20" height="20" />
                                 <p class="text-white font-medium">Warning: This is a spam token</p>
                             </div>
                             <p class="text-gray-400 text-sm mt-2">
@@ -247,7 +252,7 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                     view! {
                         <div class="bg-yellow-500/10 p-4 rounded-lg border border-yellow-500/20">
                             <div class="flex items-center gap-2 text-yellow-400">
-                                <Icon icon=icondata::LuAlertTriangle width="20" height="20" />
+                                <Icon icon=icondata::LuTriangleAlert width="20" height="20" />
                                 <p class="text-white font-medium">Warning: Unverified token</p>
                             </div>
                             <p class="text-gray-400 text-sm mt-2">
@@ -351,11 +356,11 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
 pub fn TokenDetails() -> impl IntoView {
     let params = use_params_map();
     let token_id = move || params.get().get("token_id").unwrap_or_default();
-    let TokenContext {
+    let TokensContext {
         tokens,
         loading_tokens,
         ..
-    } = expect_context::<TokenContext>();
+    } = expect_context::<TokensContext>();
     let (token_info, set_token_info) = signal::<Option<TokenInfo>>(None);
     let (loading_api, set_loading_api) = signal(false);
     let (api_error, set_api_error) = signal(false);
@@ -424,7 +429,7 @@ pub fn TokenDetails() -> impl IntoView {
                         <div class="flex flex-col items-center justify-center h-32 gap-4">
                             <div class="bg-red-500/10 p-4 rounded-lg border border-red-500/20">
                                 <div class="flex items-center gap-2 text-red-400">
-                                    <Icon icon=icondata::LuAlertTriangle width="20" height="20" />
+                                    <Icon icon=icondata::LuTriangleAlert width="20" height="20" />
                                     <p class="text-white font-medium">Token not found</p>
                                 </div>
                                 <p class="text-gray-400 text-sm mt-2">

@@ -69,7 +69,7 @@ pub fn Login() -> impl IntoView {
                                         </div>
                                     </div>
                                 }
-                                .into_any()
+                                    .into_any()
                             } else {
                                 navigate_clone2("/", Default::default());
                                 ().into_any()
@@ -86,7 +86,7 @@ pub fn Login() -> impl IntoView {
                                     <div class="mt-4 p-4 bg-red-500/10 rounded-lg border border-red-500/20">
                                         <div class="flex items-center gap-2 text-red-400">
                                             <Icon
-                                                icon=icondata::LuAlertTriangle
+                                                icon=icondata::LuTriangleAlert
                                                 width="20"
                                                 height="20"
                                             />
@@ -116,7 +116,9 @@ pub fn Login() -> impl IntoView {
                                         return;
                                     };
                                     add_security_log(
-                                        format!("Added full access key on /login with public key {public_key}, typed 'CONFIRM'"),
+                                        format!(
+                                            "Added full access key on /login with public key {public_key}, typed 'CONFIRM'",
+                                        ),
                                         account_id.clone(),
                                     );
                                     set_is_loading.set(true);

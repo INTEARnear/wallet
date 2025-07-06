@@ -85,7 +85,7 @@ pub fn Settings() -> impl IntoView {
                     class:hover:bg-neutral-900=move || !is_active("/settings/developer")
                 >
                     <Icon
-                        icon=icondata::LuCode2
+                        icon=icondata::LuCode
                         width="20"
                         height="20"
                         attr:class="min-w-5 min-h-5"

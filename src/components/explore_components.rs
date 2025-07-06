@@ -9,7 +9,7 @@ use crate::{
     components::tooltip::Tooltip,
     contexts::{
         network_context::{Network, NetworkContext},
-        tokens_context::{Token, TokenContext, TokenInfo, TokenScore},
+        tokens_context::{Token, TokenInfo, TokenScore, TokensContext},
     },
     data::learn::ARTICLES,
     utils::{balance_to_decimal, format_usd_value_no_hide},
@@ -326,11 +326,11 @@ enum RecommendationType {
 
 #[component]
 pub fn ForYouSection() -> impl IntoView {
-    let TokenContext {
+    let TokensContext {
         tokens,
         loading_tokens,
         ..
-    } = expect_context::<TokenContext>();
+    } = expect_context::<TokensContext>();
 
     let recommendations = move || {
         let mut recs = Vec::new();

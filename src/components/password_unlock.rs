@@ -235,7 +235,7 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
                                             .into_any()
                                     } else {
                                         view! {
-                                            <Icon icon=icondata::LuUnlock width="20" height="20" />
+                                            <Icon icon=icondata::LuLockOpen width="20" height="20" />
                                         }
                                             .into_any()
                                     }

@@ -170,7 +170,7 @@ fn default_true() -> bool {
     true
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct ConfigContext {
     pub config: ReadSignal<WalletConfig>,
     pub set_config: WriteSignal<WalletConfig>,

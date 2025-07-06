@@ -101,6 +101,10 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
         path: "/nfts",
         icon: icondata::LuImage,
     };
+    const STAKE_ITEM: &NavItem = &NavItem {
+        path: "/stake",
+        icon: icondata::LuBanknoteArrowUp,
+    };
     const SWAP_ITEM: &NavItem = &NavItem {
         path: "/swap",
         icon: icondata::LuRefreshCw,
@@ -115,10 +119,17 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
     };
     let nav_items = move || match network.get() {
         Network::Mainnet => {
-            vec![HOME_ITEM, NFTS_ITEM, SWAP_ITEM, HISTORY_ITEM, EXPLORE_ITEM]
+            vec![
+                HOME_ITEM,
+                NFTS_ITEM,
+                STAKE_ITEM,
+                SWAP_ITEM,
+                HISTORY_ITEM,
+                EXPLORE_ITEM,
+            ]
         }
         Network::Testnet => {
-            vec![HOME_ITEM, NFTS_ITEM, HISTORY_ITEM, EXPLORE_ITEM]
+            vec![HOME_ITEM, NFTS_ITEM, STAKE_ITEM, HISTORY_ITEM, EXPLORE_ITEM]
         }
     };
 

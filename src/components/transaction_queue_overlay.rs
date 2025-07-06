@@ -63,11 +63,15 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
             <div class="flex items-center gap-2">
                 {match stage {
                     TransactionStage::Finalized => {
-                        view! { <Icon icon=icondata::LuCheckCircle2 attr:class="text-green-500" /> }
+                        view! {
+                            <Icon icon=icondata::LuCircleCheckBig attr:class="text-green-500" />
+                        }
                             .into_any()
                     }
                     TransactionStage::Doomslug => {
-                        view! { <Icon icon=icondata::LuCheckCircle2 attr:class="text-green-300" /> }
+                        view! {
+                            <Icon icon=icondata::LuCircleCheckBig attr:class="text-green-300" />
+                        }
                             .into_any()
                     }
                     TransactionStage::Preparing => {
@@ -75,7 +79,7 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                             .into_any()
                     }
                     TransactionStage::Failed(_) => {
-                        view! { <Icon icon=icondata::LuXCircle attr:class="text-red-500" /> }
+                        view! { <Icon icon=icondata::LuCircleX attr:class="text-red-500" /> }
                             .into_any()
                     }
                     TransactionStage::Publishing | TransactionStage::Included => {
@@ -205,7 +209,7 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                                                             view! {
                                                                 <div class="text-white text-center flex flex-col items-center gap-2 mt-2 border-t border-neutral-700 pt-2">
                                                                     <Icon
-                                                                        icon=icondata::LuAlertTriangle
+                                                                        icon=icondata::LuTriangleAlert
                                                                         width="24"
                                                                         height="24"
                                                                         attr:class="text-red-500"

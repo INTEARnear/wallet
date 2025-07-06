@@ -899,7 +899,7 @@ pub fn SendTransactions() -> impl IntoView {
                                                 view! {
                                                     <div class="flex items-center gap-2 text-yellow-500">
                                                         <Icon
-                                                            icon=LuAlertTriangle
+                                                            icon=LuTriangleAlert
                                                             width="20"
                                                             height="20"
                                                             attr:class="min-w-5 min-h-5"
@@ -922,7 +922,7 @@ pub fn SendTransactions() -> impl IntoView {
                                                 view! {
                                                     <div class="flex items-center gap-2 text-yellow-500">
                                                         <Icon
-                                                            icon=LuAlertTriangle
+                                                            icon=LuTriangleAlert
                                                             width="20"
                                                             height="20"
                                                             attr:class="min-w-5 min-h-5"

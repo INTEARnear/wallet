@@ -3,7 +3,7 @@ use near_min_api::RpcClient;
 
 use super::network_context::NetworkContext;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct RpcContext {
     pub client: RwSignal<RpcClient>,
 }

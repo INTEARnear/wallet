@@ -39,7 +39,7 @@ pub struct OwnedCollection {
 /// Should only be updated on /nfts page, so it's safe to assume that if
 /// an NFT is not here, and the cache is not empty, it's not owned by the
 /// selected account.
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct NftCacheContext {
     pub cache: RwSignal<HashMap<AccountId, OwnedCollection>>,
 }

@@ -101,7 +101,7 @@ pub fn History() -> impl IntoView {
                                 }
                             })
                     }
-                    class="text-white hover:text-neutral-300 transition-colors p-2 pt-5 cursor-pointer"
+                    class="text-white hover:text-neutral-300 transition-colors p-2 pt-5 cursor-pointer no-mobile-ripple"
                 >
                     {move || {
                         if timestamp_format() == TimestampFormat::DateTime {
@@ -603,7 +603,7 @@ fn add_staking_actions(
                                     actions.push(view! {
                                         <div class="flex items-center gap-2">
                                             <Icon
-                                                icon=icondata::LuUnlock
+                                                icon=icondata::LuLockOpen
                                                 width="40"
                                                 height="40"
                                                 attr:class="min-w-[40px] min-h-[40px]"
