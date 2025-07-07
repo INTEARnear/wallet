@@ -84,7 +84,7 @@ percent-encoding = "2.3.1"
 gloo-net = "0.5"
 
 [dev-dependencies]
-wasm-bindgen-test = "0.3.50"
+tokio = { version = "1.40.0", features = ["full"] }
 
 [build-dependencies]
 patch-crate = "=0.1.13"

@@ -19,7 +19,7 @@ use types::{
     SignedTransaction, TxExecutionStatus,
 };
 
-use crate::types::{EpochReference, EpochValidatorInfo, StatusResponse};
+use crate::types::{EpochReference, EpochValidatorInfo, StatusResponse, ViewStateResult};
 
 #[derive(Clone, Debug)]
 pub struct RpcClient {
@@ -480,6 +480,28 @@ impl RpcClient {
     pub async fn validators(&self, epoch: EpochReference) -> Result<EpochValidatorInfo, Error> {
         let rpc_method = "validators";
         self.request(rpc_method, epoch).await
+    }
+
+    pub async fn view_state(
+        &self,
+        account_id: AccountId,
+        prefix: &[u8],
+        finality: QueryFinality,
+    ) -> Result<ViewStateResult, Error> {
+        let rpc_method = "query";
+        let rpc_params = Query {
+            request: QueryRequest::ViewState {
+                account_id,
+                prefix: prefix.to_vec().into(),
+                include_proof: false,
+            },
+            finality,
+        };
+        let response: QueryResponse = self.request(rpc_method, rpc_params).await?;
+        match response.kind {
+            QueryResponseKind::ViewState(view_state_result) => Ok(view_state_result),
+            _ => unreachable!("Unexpected query response kind: {:?}", response.kind),
+        }
     }
 }
 

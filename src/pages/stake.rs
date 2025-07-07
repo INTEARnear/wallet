@@ -1,4 +1,7 @@
 use bigdecimal::BigDecimal;
+use borsh::BorshDeserialize;
+use cached::proc_macro::cached;
+use chrono::{DateTime, Utc};
 use futures_util::future::join;
 use gloo_net::http::Request;
 use leptos::prelude::*;
@@ -6,6 +9,8 @@ use leptos::task::spawn_local;
 use leptos_icons::*;
 use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_params_map};
+use leptos_use::{use_interval, use_interval_fn};
+use near_min_api::types::{Balance, EpochHeight, ViewStateResult};
 use near_min_api::{
     types::{
         AccountId, AccountIdRef, Action, BlockHeightDelta, BlockId, BlockReference, BlockView,
@@ -18,8 +23,15 @@ use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use rand::rngs::OsRng;
 use rand::seq::SliceRandom;
 use serde::Deserialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::io::Cursor;
+use std::time::Duration;
 use std::{future::Future, pin::Pin, str::FromStr};
+
+const ESTIMATED_BLOCK_TIME: Duration = Duration::from_millis(600);
+const EPOCH_LENGTH: BlockHeightDelta = 43200;
+const EPOCH_DURATION: Duration =
+    Duration::from_millis(ESTIMATED_BLOCK_TIME.as_millis() as u64 * EPOCH_LENGTH);
 
 use crate::components::{
     ProjectedRevenue, ProjectedRevenueMode, TransactionErrorModal, TransactionSuccessModal,
@@ -151,6 +163,13 @@ struct PoolDetails {
     twitter: Option<String>,
 }
 
+#[derive(Clone, PartialEq, Debug, Deserialize)]
+struct StakingAccount {
+    can_withdraw: bool,
+    staked_balance: NearToken,
+    unstaked_balance: NearToken,
+}
+
 #[derive(Clone, PartialEq)]
 struct ValidatorDisplayInfo {
     info: CurrentEpochValidatorInfo,
@@ -158,6 +177,8 @@ struct ValidatorDisplayInfo {
     details: Option<PoolDetails>,
     user_staked: NearToken,
     user_unstaked: NearToken,
+    user_can_withdraw: bool,
+    estimated_unlock_time: Option<DateTime<Utc>>,
 }
 
 #[component]
@@ -184,6 +205,7 @@ fn ValidatorCard(
     refresh: impl Fn() + 'static + Copy + Send + Sync,
 ) -> impl IntoView {
     let accounts_context = expect_context::<AccountsContext>();
+    let rpc_context = expect_context::<RpcContext>();
     let transaction_queue_context = expect_context::<TransactionQueueContext>();
     let pool_account_id = validator.info.account_id.clone();
 
@@ -204,6 +226,8 @@ fn ValidatorCard(
 
     let apy = (&one - &fee) * &base_apy * BigDecimal::from(100);
     let apy_str = format!("{:.2}%", apy);
+
+    let fee_str = format!("(fee: {:.2}%)", &fee * BigDecimal::from(100));
 
     let apy_color = if fee > BigDecimal::from_str("0.2").unwrap() {
         "#ef4444" // red-500
@@ -228,6 +252,46 @@ fn ValidatorCard(
 
     let details = validator.details.clone();
     let is_supported = is_validator_supported(&validator.info.account_id, network);
+
+    let initial_time = validator.estimated_unlock_time.unwrap_or(Utc::now());
+    let estimated_unlock_time = RwSignal::new(initial_time);
+    let interval = use_interval(100).counter;
+
+    if !validator.user_can_withdraw {
+        let pool_account_id = pool_account_id.clone();
+        let _ = use_interval_fn(
+            move || {
+                let rpc_client = rpc_context.client.get();
+                let pool_account_id = pool_account_id.clone();
+                spawn_local(async move {
+                    if let Some(user_account_id) = accounts_context
+                        .accounts
+                        .get_untracked()
+                        .selected_account_id
+                    {
+                        if let Ok(epoch_info) = rpc_client.validators(EpochReference::Latest).await
+                        {
+                            let current_epoch_height = epoch_info.epoch_height;
+                            let epoch_start_block_height = epoch_info.epoch_start_height;
+
+                            if let Ok(new_time) = calculate_estimated_unlock_time(
+                                rpc_client,
+                                pool_account_id.clone(),
+                                user_account_id.clone(),
+                                current_epoch_height,
+                                epoch_start_block_height,
+                            )
+                            .await
+                            {
+                                estimated_unlock_time.set(new_time);
+                            }
+                        }
+                    }
+                });
+            },
+            60_000,
+        );
+    }
 
     view! {
         <div class="bg-neutral-800 p-2 sm:p-4 rounded-lg flex items-start justify-between gap-2 sm:gap-4">
@@ -266,25 +330,8 @@ fn ValidatorCard(
                                             <div class="text-xs text-gray-400 text-center">
                                                 "Staked"
                                                 <div class="text-green-400 w-full">
-                                                    {format_token_amount_no_hide(
+                                                    {move || format_token_amount(
                                                         staked.as_yoctonear(),
-                                                        24,
-                                                        "NEAR",
-                                                    )}
-                                                </div>
-                                            </div>
-                                        }
-                                            .into_any()
-                                    } else {
-                                        ().into_any()
-                                    }}
-                                    {if unstaked >= threshold {
-                                        view! {
-                                            <div class="text-xs text-gray-400 text-center">
-                                                "Unstaked"
-                                                <div class="text-yellow-400 w-full">
-                                                    {format_token_amount_no_hide(
-                                                        unstaked.as_yoctonear(),
                                                         24,
                                                         "NEAR",
                                                     )}
@@ -427,8 +474,12 @@ fn ValidatorCard(
                                 {if unstaked >= threshold {
                                     view! {
                                         <button
-                                            class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded cursor-pointer"
+                                            class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center"
+                                            disabled=move || !validator.user_can_withdraw
                                             on:click=move |_| {
+                                                if !validator.user_can_withdraw {
+                                                    return;
+                                                }
                                                 if let Some(signer_id) = accounts_context
                                                     .accounts
                                                     .get_untracked()
@@ -471,6 +522,30 @@ fn ValidatorCard(
                                             }
                                         >
                                             "Withdraw"
+                                            <span>
+                                                {move || format_token_amount(
+                                                    unstaked.as_yoctonear(),
+                                                    24,
+                                                    "NEAR",
+                                                )}
+                                            </span>
+                                            {if !validator.user_can_withdraw {
+                                                view! {
+                                                    <span class="text-xs mt-1">
+                                                        {move || {
+                                                            interval.track();
+                                                            let seconds_left = estimated_unlock_time.get().timestamp() - Utc::now().timestamp();
+                                                            let hours = seconds_left / 3600;
+                                                            let minutes = (seconds_left % 3600) / 60;
+                                                            let seconds = seconds_left % 60;
+                                                            format!("{hours:02}:{minutes:02}:{seconds:02}")
+                                                        }}
+                                                    </span>
+                                                }
+                                                    .into_any()
+                                            } else {
+                                                ().into_any()
+                                            }}
                                         </button>
                                     }
                                         .into_any()
@@ -496,6 +571,7 @@ fn ValidatorCard(
                         {apy_str}
                     </div>
                     <div class="text-gray-400 text-xs">"APY"</div>
+                    <div class="text-gray-500 text-xs">{fee_str}</div>
                 </div>
             </div>
         </div>
@@ -512,21 +588,21 @@ struct MetaPoolState {
     st_near_price: NearToken,
 }
 
-async fn fetch_blocks(rpc_client: &RpcClient) -> Result<(BlockView, BlockView), String> {
-    const EPOCH_LENGTH: u64 = 43200;
-    const BLOCK_DELTA: BlockHeightDelta = EPOCH_LENGTH * 24; // around 7 days given block time 0.6s
+async fn fetch_blocks_for_lst_comparison(
+    rpc_client: &RpcClient,
+) -> Result<(BlockView, BlockView), String> {
+    const TARGET_DELTA: Duration = Duration::from_millis(1000 * 60 * 60 * 24 * 7);
+    const BLOCK_DELTA: BlockHeightDelta =
+        (TARGET_DELTA.as_millis() as f64 / EPOCH_DURATION.as_millis() as f64) as BlockHeightDelta;
     const MAX_ATTEMPTS: u64 = 20;
 
-    let latest_block = rpc_client
-        .block(BlockReference::Finality(Finality::Final))
-        .await
-        .map_err(|e| e.to_string())?;
+    let latest_block = fetch_latest_block(rpc_client).await?;
 
-    if let Ok(prev_block) = rpc_client
-        .block(BlockReference::BlockId(BlockId::Height(
-            latest_block.header.height - BLOCK_DELTA,
-        )))
-        .await
+    if let Ok(prev_block) = fetch_block_by_id(
+        rpc_client,
+        BlockReference::BlockId(BlockId::Height(latest_block.header.height - BLOCK_DELTA)),
+    )
+    .await
     {
         return Ok((latest_block, prev_block));
     }
@@ -535,8 +611,14 @@ async fn fetch_blocks(rpc_client: &RpcClient) -> Result<(BlockView, BlockView), 
         let height_now = latest_block.header.height - offset;
         let height_prev = height_now - BLOCK_DELTA;
         let (res_now, res_prev) = futures_util::join!(
-            rpc_client.block(BlockReference::BlockId(BlockId::Height(height_now))),
-            rpc_client.block(BlockReference::BlockId(BlockId::Height(height_prev)))
+            fetch_block_by_id(
+                rpc_client,
+                BlockReference::BlockId(BlockId::Height(height_now))
+            ),
+            fetch_block_by_id(
+                rpc_client,
+                BlockReference::BlockId(BlockId::Height(height_prev))
+            )
         );
         match (res_now, res_prev) {
             (Ok(b_now), Ok(b_prev)) => return Ok((b_now, b_prev)),
@@ -577,7 +659,7 @@ async fn compute_liquid_staking_apys(
 ) -> Result<(Option<BigDecimal>, Option<BigDecimal>), String> {
     const SECONDS_IN_YEAR: u64 = 60 * 60 * 24 * 365;
 
-    let (block_now, block_prev) = fetch_blocks(rpc_client).await?;
+    let (block_now, block_prev) = fetch_blocks_for_lst_comparison(rpc_client).await?;
     let height_now = block_now.header.height;
     let height_prev = block_prev.header.height;
     let timestamp_now = block_now.header.timestamp_nanosec / 1_000_000_000;
@@ -716,13 +798,14 @@ pub fn Stake() -> impl IntoView {
                                 details: details_res.ok(),
                                 user_staked: NearToken::from_yoctonear(0),
                                 user_unstaked: NearToken::from_yoctonear(0),
+                                user_can_withdraw: true,
+                                estimated_unlock_time: None,
                             })
                     })
                     .collect();
 
                 validators.shuffle(&mut OsRng);
 
-                // Fetch user staking info and reorder validators
                 let user_account_id = accounts_context
                     .accounts
                     .get_untracked()
@@ -767,86 +850,98 @@ pub fn Stake() -> impl IntoView {
 
                     let all_pools: Vec<AccountId> = pools_set.into_iter().collect();
 
-                    let staked_calls: Vec<_> = all_pools
+                    let account_calls: Vec<_> = all_pools
                         .iter()
                         .map(|pool| {
                             (
                                 pool.clone(),
-                                "get_account_staked_balance",
+                                "get_account",
                                 serde_json::json!({ "account_id": user_account_id }),
                                 QueryFinality::Finality(Finality::Final),
                             )
                         })
                         .collect();
 
-                    let unstaked_calls: Vec<_> = all_pools
-                        .iter()
-                        .map(|pool| {
-                            (
-                                pool.clone(),
-                                "get_account_unstaked_balance",
-                                serde_json::json!({ "account_id": user_account_id }),
-                                QueryFinality::Finality(Finality::Final),
-                            )
-                        })
-                        .collect();
+                    if let Ok(account_vec) =
+                        rpc_client.batch_call::<StakingAccount>(account_calls).await
+                    {
+                        for (pool_id, account_result) in all_pools.into_iter().zip(account_vec) {
+                            if let Ok(account_info) = account_result {
+                                let staked_amt = account_info.staked_balance;
+                                let unstaked_amt = account_info.unstaked_balance;
+                                let can_withdraw = account_info.can_withdraw;
 
-                    let (staked_res, unstaked_res) = join(
-                        rpc_client.batch_call::<NearToken>(staked_calls),
-                        rpc_client.batch_call::<NearToken>(unstaked_calls),
-                    )
-                    .await;
+                                if let Some(v) =
+                                    validators.iter_mut().find(|v| v.info.account_id == pool_id)
+                                {
+                                    v.user_staked = staked_amt;
+                                    v.user_unstaked = unstaked_amt;
+                                    v.user_can_withdraw = can_withdraw;
+                                    let estimated_unlock_time =
+                                        if !can_withdraw && unstaked_amt >= BAL_THRESHOLD {
+                                            calculate_estimated_unlock_time(
+                                                rpc_client.clone(),
+                                                pool_id.clone(),
+                                                user_account_id.clone(),
+                                                data.epoch_height,
+                                                data.epoch_start_height,
+                                            )
+                                            .await
+                                            .ok()
+                                        } else {
+                                            None
+                                        };
+                                    v.estimated_unlock_time = estimated_unlock_time;
+                                } else {
+                                    // Create placeholder validator info for pools absent from current set
+                                    let placeholder_info = CurrentEpochValidatorInfo {
+                                        account_id: pool_id.clone(),
+                                        public_key: "ed25519:11111111111111111111111111111111"
+                                            .parse()
+                                            .unwrap(),
+                                        is_slashed: false,
+                                        stake: 0,
+                                        shards_produced: vec![],
+                                        num_produced_blocks: 0,
+                                        num_expected_blocks: 0,
+                                        num_produced_chunks: 0,
+                                        num_expected_chunks: 0,
+                                        num_produced_chunks_per_shard: vec![],
+                                        num_expected_chunks_per_shard: vec![],
+                                        num_produced_endorsements: 0,
+                                        num_expected_endorsements: 0,
+                                        num_produced_endorsements_per_shard: vec![],
+                                        num_expected_endorsements_per_shard: vec![],
+                                        shards_endorsed: vec![],
+                                    };
 
-                    if let (Ok(staked_vec), Ok(unstaked_vec)) = (staked_res, unstaked_res) {
-                        for (pool_id, staked_result, unstaked_result) in all_pools
-                            .into_iter()
-                            .zip(staked_vec)
-                            .zip(unstaked_vec)
-                            .map(|((p, s), u)| (p, s, u))
-                        {
-                            let staked_amt =
-                                staked_result.unwrap_or_else(|_| NearToken::from_yoctonear(0));
-                            let unstaked_amt =
-                                unstaked_result.unwrap_or_else(|_| NearToken::from_yoctonear(0));
-
-                            if let Some(v) =
-                                validators.iter_mut().find(|v| v.info.account_id == pool_id)
-                            {
-                                v.user_staked = staked_amt;
-                                v.user_unstaked = unstaked_amt;
-                            } else {
-                                // Create placeholder validator info for pools absent from current set
-                                let placeholder_info = CurrentEpochValidatorInfo {
-                                    account_id: pool_id.clone(),
-                                    public_key: "ed25519:11111111111111111111111111111111"
-                                        .parse()
-                                        .unwrap(),
-                                    is_slashed: false,
-                                    stake: 0,
-                                    shards_produced: vec![],
-                                    num_produced_blocks: 0,
-                                    num_expected_blocks: 0,
-                                    num_produced_chunks: 0,
-                                    num_expected_chunks: 0,
-                                    num_produced_chunks_per_shard: vec![],
-                                    num_expected_chunks_per_shard: vec![],
-                                    num_produced_endorsements: 0,
-                                    num_expected_endorsements: 0,
-                                    num_produced_endorsements_per_shard: vec![],
-                                    num_expected_endorsements_per_shard: vec![],
-                                    shards_endorsed: vec![],
-                                };
-
-                                validators.push(ValidatorDisplayInfo {
-                                    info: placeholder_info,
-                                    fee_fraction: Fraction {
-                                        numerator: 0,
-                                        denominator: 1,
-                                    },
-                                    details: None,
-                                    user_staked: staked_amt,
-                                    user_unstaked: unstaked_amt,
-                                });
+                                    validators.push(ValidatorDisplayInfo {
+                                        info: placeholder_info,
+                                        fee_fraction: Fraction {
+                                            numerator: 0,
+                                            denominator: 1,
+                                        },
+                                        details: None,
+                                        user_staked: staked_amt,
+                                        user_unstaked: unstaked_amt,
+                                        user_can_withdraw: can_withdraw,
+                                        estimated_unlock_time: if !can_withdraw
+                                            && unstaked_amt >= BAL_THRESHOLD
+                                        {
+                                            calculate_estimated_unlock_time(
+                                                rpc_client.clone(),
+                                                pool_id.clone(),
+                                                user_account_id.clone(),
+                                                data.epoch_height,
+                                                data.epoch_start_height,
+                                            )
+                                            .await
+                                            .ok()
+                                        } else {
+                                            None
+                                        },
+                                    });
+                                }
                             }
                         }
 
@@ -1076,15 +1171,7 @@ pub fn Stake() -> impl IntoView {
                                         } else {
                                             "No validators match your search query."
                                         };
-
-                                        // Check account ID
-
-                                        // Check validator name if available
-
-                                        // Sort by score (highest first), then by account ID for consistency
-
-                                        view! { <p class="text-gray-400">{message}</p> }
-                                            .into_any()
+                                        view! { <p class="text-gray-400">{message}</p> }.into_any()
                                     } else {
                                         let total_staked: u128 = filtered_validators
                                             .iter()
@@ -1269,6 +1356,8 @@ pub fn StakeValidator() -> impl IntoView {
                 details,
                 user_staked: NearToken::from_yoctonear(0),
                 user_unstaked: NearToken::from_yoctonear(0),
+                user_can_withdraw: true,
+                estimated_unlock_time: None,
             };
 
             let total_staked: u128 = all_validators_info.iter().map(|v| v.stake).sum();
@@ -1448,6 +1537,10 @@ pub fn StakeValidator() -> impl IntoView {
                                 let apy_bigdecimal = (&one - &fee) * &data.base_apy;
                                 let apy_percent = &apy_bigdecimal * BigDecimal::from(100);
                                 let apy_str = format!("{:.2}%", apy_percent);
+                                let fee_str = format!(
+                                    "(fee: {:.2}%)",
+                                    &fee * BigDecimal::from(100),
+                                );
                                 let current_stake = current_staked_balance.get().flatten();
 
                                 view! {
@@ -1487,6 +1580,7 @@ pub fn StakeValidator() -> impl IntoView {
                                                         {apy_str}
                                                     </div>
                                                     <div class="text-gray-400 text-xs">"APY"</div>
+                                                    <div class="text-gray-500 text-xs">{fee_str}</div>
                                                 </div>
                                             </div>
                                         </div>
@@ -1540,7 +1634,7 @@ pub fn StakeValidator() -> impl IntoView {
                                                     </p>
                                                     <p class="text-gray-400 text-sm">
                                                         "Balance: "
-                                                        {format_token_amount(near_balance(), 24, "NEAR")}
+                                                        {move || format_token_amount(near_balance(), 24, "NEAR")}
                                                     </p>
                                                 </div>
                                             </div>
@@ -1691,7 +1785,7 @@ pub fn UnstakeValidator() -> impl IntoView {
                             .call::<PoolDetails>(
                                 pool_details_contract,
                                 "get_fields_by_pool",
-                                serde_json::json!({ "pool_id": validator_account_id.clone() }),
+                                serde_json::json!({ "pool_id": validator_account_id }),
                                 QueryFinality::Finality(Finality::Final),
                             )
                             .await
@@ -1712,6 +1806,8 @@ pub fn UnstakeValidator() -> impl IntoView {
                 details,
                 user_staked: NearToken::from_yoctonear(0),
                 user_unstaked: NearToken::from_yoctonear(0),
+                user_can_withdraw: true,
+                estimated_unlock_time: None,
             };
 
             let total_staked: u128 = all_validators_info.iter().map(|v| v.stake).sum();
@@ -1885,6 +1981,10 @@ pub fn UnstakeValidator() -> impl IntoView {
                                 let apy_bigdecimal = (&one - &fee) * &data.base_apy;
                                 let apy_percent = &apy_bigdecimal * BigDecimal::from(100);
                                 let apy_str = format!("{:.2}%", apy_percent);
+                                let fee_str = format!(
+                                    "(fee: {:.2}%)",
+                                    &fee * BigDecimal::from(100),
+                                );
                                 let current_stake = staked_balance.get().flatten();
 
                                 view! {
@@ -1933,6 +2033,7 @@ pub fn UnstakeValidator() -> impl IntoView {
                                                     {apy_str}
                                                 </div>
                                                 <div class="text-gray-400 text-xs">"APY"</div>
+                                                <div class="text-gray-500 text-xs">{fee_str}</div>
                                             </div>
                                         </div>
                                     </div>
@@ -2089,4 +2190,222 @@ pub fn UnstakeValidator() -> impl IntoView {
             }}
         </div>
     }
+}
+
+fn find_exact_match(result: ViewStateResult, key: &[u8]) -> Option<Vec<u8>> {
+    for value in result.values {
+        if key == *value.key {
+            return Some(value.value.to_vec());
+        }
+    }
+    None
+}
+
+#[cached(
+    convert = r##"{ format!("{validator_account_id}:{user_account_id}") }"##,
+    key = "String",
+    time = 10,
+    result = true
+)]
+pub async fn get_unstake_available_epoch(
+    rpc_client: RpcClient,
+    validator_account_id: AccountId,
+    user_account_id: AccountId,
+) -> Result<EpochHeight, String> {
+    if validator_account_id.as_str().ends_with(".pool.near") {
+        get_unstake_available_epoch_pool_near(rpc_client, validator_account_id, user_account_id)
+            .await
+    } else if validator_account_id.as_str().ends_with(".poolv1.near")
+        || validator_account_id.as_str().ends_with("pool.f863973.m0")
+    {
+        get_unstake_available_epoch_poolv1_near(rpc_client, validator_account_id, user_account_id)
+            .await
+    } else {
+        Err("Unsupported validator pool".to_string())
+    }
+}
+
+pub async fn get_unstake_available_epoch_pool_near(
+    rpc_client: RpcClient,
+    validator_account_id: AccountId,
+    user_account_id: AccountId,
+) -> Result<EpochHeight, String> {
+    const ACCOUNTS_PREFIX: &[u8] = &[0];
+    const UNORDERED_MAP_KEY_PREFIX: &[u8] = b"i";
+    let user_account_id_serialized = borsh::to_vec(&user_account_id).unwrap();
+    let key = [
+        ACCOUNTS_PREFIX,
+        UNORDERED_MAP_KEY_PREFIX,
+        &user_account_id_serialized,
+    ]
+    .concat();
+    let result = match rpc_client
+        .view_state(
+            validator_account_id.clone(),
+            &key,
+            QueryFinality::Finality(Finality::Final),
+        )
+        .await
+    {
+        Ok(result) => result,
+        Err(e) => return Err(e.to_string()),
+    };
+    let Some(vector_key) = find_exact_match(result, &key) else {
+        return Err("Key 1 not found".to_string());
+    };
+    const UNORDERED_MAP_VALUE_PREFIX: &[u8] = b"v";
+    let unordered_map_value_key =
+        [ACCOUNTS_PREFIX, UNORDERED_MAP_VALUE_PREFIX, &vector_key].concat();
+    let result = match rpc_client
+        .view_state(
+            validator_account_id.clone(),
+            &unordered_map_value_key,
+            QueryFinality::Finality(Finality::Final),
+        )
+        .await
+    {
+        Ok(result) => result,
+        Err(e) => return Err(e.to_string()),
+    };
+    let Some(mut value) = find_exact_match(result, &unordered_map_value_key) else {
+        return Err("Key 2 not found".to_string());
+    };
+
+    // Copied from https://github.com/referencedev/staking-farm/blob/c37009b45abaef8455974cea6d5d60b726908fbe/staking-farm/src/account.rs#L13-L33
+    type NumStakeShares = Balance;
+    #[derive(BorshDeserialize, Debug, PartialEq)]
+    pub struct Account {
+        pub unstaked: Balance,
+        pub stake_shares: NumStakeShares,
+        pub unstaked_available_epoch_height: EpochHeight,
+        pub last_farm_reward_per_share: HashMap<u64, (u128, u128)>, // U256
+        pub amounts: HashMap<AccountId, Balance>,
+    }
+    if let Ok(account) = borsh::from_reader::<_, Account>(&mut Cursor::new(&mut value)) {
+        Ok(account.unstaked_available_epoch_height)
+    } else {
+        Err("Failed to deserialize account".to_string())
+    }
+}
+
+pub async fn get_unstake_available_epoch_poolv1_near(
+    rpc_client: RpcClient,
+    validator_account_id: AccountId,
+    user_account_id: AccountId,
+) -> Result<EpochHeight, String> {
+    const ACCOUNTS_PREFIX: &[u8] = b"u";
+    const UNORDERED_MAP_KEY_PREFIX: &[u8] = b"i";
+    let user_account_id_serialized = borsh::to_vec(&user_account_id).unwrap();
+    let key = [
+        ACCOUNTS_PREFIX,
+        UNORDERED_MAP_KEY_PREFIX,
+        &user_account_id_serialized,
+    ]
+    .concat();
+    let result = match rpc_client
+        .view_state(
+            validator_account_id.clone(),
+            &key,
+            QueryFinality::Finality(Finality::Final),
+        )
+        .await
+    {
+        Ok(result) => result,
+        Err(e) => return Err(e.to_string()),
+    };
+    let Some(vector_key) = find_exact_match(result, &key) else {
+        return Err("Key 1 not found".to_string());
+    };
+    const UNORDERED_MAP_VALUE_PREFIX: &[u8] = b"v";
+    let unordered_map_value_key =
+        [ACCOUNTS_PREFIX, UNORDERED_MAP_VALUE_PREFIX, &vector_key].concat();
+    let result = match rpc_client
+        .view_state(
+            validator_account_id.clone(),
+            &unordered_map_value_key,
+            QueryFinality::Finality(Finality::Final),
+        )
+        .await
+    {
+        Ok(result) => result,
+        Err(e) => return Err(e.to_string()),
+    };
+    let Some(mut value) = find_exact_match(result, &unordered_map_value_key) else {
+        return Err("Key 2 not found".to_string());
+    };
+
+    // Copied from https://github.com/near/core-contracts/blob/a4c0bf31ac4a5468c1e1839c661b26678ed8b62a/staking-pool/src/lib.rs#L44-L56
+    type NumStakeShares = Balance;
+    #[derive(BorshDeserialize, Debug, PartialEq)]
+    pub struct Account {
+        pub unstaked: Balance,
+        pub stake_shares: NumStakeShares,
+        pub unstaked_available_epoch_height: EpochHeight,
+    }
+    if let Ok(account) = borsh::from_reader::<_, Account>(&mut Cursor::new(&mut value)) {
+        Ok(account.unstaked_available_epoch_height)
+    } else {
+        Err("Failed to deserialize account".to_string())
+    }
+}
+
+#[cached(convert = "{}", key = "()", time = 10, result = true)]
+async fn fetch_latest_block(rpc_client: &RpcClient) -> Result<BlockView, String> {
+    rpc_client
+        .block(BlockReference::Finality(Finality::Final))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cached(
+    convert = r##"{ format!("{block_ref:?}") }"##,
+    key = "String",
+    result = true
+)]
+async fn fetch_block_by_id(
+    rpc_client: &RpcClient,
+    block_ref: BlockReference,
+) -> Result<BlockView, String> {
+    if matches!(block_ref, BlockReference::SyncCheckpoint(_)) {
+        return Err("Sync checkpoints are not supported in fetch_block_by_id".to_string());
+    }
+    rpc_client.block(block_ref).await.map_err(|e| e.to_string())
+}
+
+#[allow(clippy::float_arithmetic)] // The countdown is not precise
+async fn calculate_estimated_unlock_time(
+    rpc_client: RpcClient,
+    validator_account_id: AccountId,
+    user_account_id: AccountId,
+    current_epoch_height: EpochHeight,
+    epoch_start_block_height: u64,
+) -> Result<DateTime<Utc>, String> {
+    let available_epoch =
+        get_unstake_available_epoch(rpc_client.clone(), validator_account_id, user_account_id)
+            .await?;
+
+    if available_epoch <= current_epoch_height {
+        return Ok(Utc::now());
+    }
+
+    let latest_block = fetch_latest_block(&rpc_client).await?;
+    let current_block_height = latest_block.header.height;
+
+    let progress_blocks =
+        current_block_height.saturating_sub(epoch_start_block_height) % EPOCH_LENGTH;
+
+    let epoch_duration_secs = EPOCH_DURATION.as_secs_f64();
+    let progress_secs = (progress_blocks as f64 / EPOCH_LENGTH as f64) * epoch_duration_secs;
+
+    let epochs_left = available_epoch - current_epoch_height;
+
+    let total_remaining_secs_f = (epochs_left as f64 * epoch_duration_secs) - progress_secs;
+
+    let total_remaining_secs = if total_remaining_secs_f <= 0.0 {
+        0u32
+    } else {
+        total_remaining_secs_f.ceil().min(u32::MAX as f64) as u32
+    };
+
+    Ok(Utc::now() + Duration::from_secs(total_remaining_secs as u64))
 }
