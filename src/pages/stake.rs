@@ -171,7 +171,7 @@ struct StakingAccount {
 }
 
 #[derive(Clone, PartialEq)]
-struct ValidatorDisplayInfo {
+struct ValidatorInfo {
     info: CurrentEpochValidatorInfo,
     fee_fraction: Fraction,
     details: Option<PoolDetails>,
@@ -179,6 +179,7 @@ struct ValidatorDisplayInfo {
     user_unstaked: NearToken,
     user_can_withdraw: bool,
     estimated_unlock_time: Option<DateTime<Utc>>,
+    is_active: bool,
 }
 
 #[component]
@@ -198,7 +199,7 @@ fn SocialLink(href: String, icon: icondata::Icon) -> impl IntoView {
 
 #[component]
 fn ValidatorCard(
-    validator: ValidatorDisplayInfo,
+    validator: ValidatorInfo,
     base_apy: BigDecimal,
     total_supply: Option<u128>,
     network: Network,
@@ -534,7 +535,8 @@ fn ValidatorCard(
                                                     <span class="text-xs mt-1">
                                                         {move || {
                                                             interval.track();
-                                                            let seconds_left = estimated_unlock_time.get().timestamp() - Utc::now().timestamp();
+                                                            let seconds_left = estimated_unlock_time.get().timestamp()
+                                                                - Utc::now().timestamp();
                                                             let hours = seconds_left / 3600;
                                                             let minutes = (seconds_left % 3600) / 60;
                                                             let seconds = seconds_left % 60;
@@ -732,9 +734,9 @@ pub fn Stake() -> impl IntoView {
         let rpc_client = rpc_context.client.get();
         match rpc_client.validators(EpochReference::Latest).await {
             Ok(data) => {
-                let validators_info = data.current_validators;
+                let active_validators_info = data.current_validators;
 
-                let fee_requests: Vec<_> = validators_info
+                let fee_requests: Vec<_> = active_validators_info
                     .iter()
                     .map(|v| {
                         (
@@ -754,7 +756,7 @@ pub fn Stake() -> impl IntoView {
 
                 let details_batch_future =
                     if let Some(pool_details_contract) = pool_details_contract {
-                        let details_requests: Vec<_> = validators_info
+                        let details_requests: Vec<_> = active_validators_info
                             .iter()
                             .map(|v| {
                                 (
@@ -769,7 +771,7 @@ pub fn Stake() -> impl IntoView {
                             as Pin<Box<dyn Future<Output = _>>>
                     } else {
                         Box::pin(async {
-                            Ok((0..validators_info.len())
+                            Ok((0..active_validators_info.len())
                                 .map(|_| {
                                     Err(CallError::Rpc(Error::OtherQueryError(
                                         "Pool details not available on this network".to_string(),
@@ -785,22 +787,21 @@ pub fn Stake() -> impl IntoView {
                 let fees = fees_results.map_err(|e| e.to_string())?;
                 let details = details_results.map_err(|e: Error| e.to_string())?;
 
-                let mut validators: Vec<ValidatorDisplayInfo> = validators_info
+                let mut validators: Vec<ValidatorInfo> = active_validators_info
                     .into_iter()
                     .zip(fees)
                     .zip(details)
                     .filter_map(|((info, fee_fraction_res), details_res)| {
-                        fee_fraction_res
-                            .ok()
-                            .map(|fee_fraction| ValidatorDisplayInfo {
-                                info,
-                                fee_fraction,
-                                details: details_res.ok(),
-                                user_staked: NearToken::from_yoctonear(0),
-                                user_unstaked: NearToken::from_yoctonear(0),
-                                user_can_withdraw: true,
-                                estimated_unlock_time: None,
-                            })
+                        fee_fraction_res.ok().map(|fee_fraction| ValidatorInfo {
+                            info,
+                            fee_fraction,
+                            details: details_res.ok(),
+                            user_staked: NearToken::from_yoctonear(0),
+                            user_unstaked: NearToken::from_yoctonear(0),
+                            user_can_withdraw: true,
+                            estimated_unlock_time: None,
+                            is_active: true,
+                        })
                     })
                     .collect();
 
@@ -915,7 +916,7 @@ pub fn Stake() -> impl IntoView {
                                         shards_endorsed: vec![],
                                     };
 
-                                    validators.push(ValidatorDisplayInfo {
+                                    validators.push(ValidatorInfo {
                                         info: placeholder_info,
                                         fee_fraction: Fraction {
                                             numerator: 0,
@@ -940,6 +941,8 @@ pub fn Stake() -> impl IntoView {
                                         } else {
                                             None
                                         },
+                                        // otherwise would've been matched by the condition above
+                                        is_active: false,
                                     });
                                 }
                             }
@@ -1128,12 +1131,12 @@ pub fn Stake() -> impl IntoView {
                             match result {
                                 Ok(validators) => {
                                     let filtered_validators = if query.trim().is_empty() {
-                                        validators
+                                        validators.clone()
                                     } else {
                                         let mut scored_validators: Vec<
-                                            (ValidatorDisplayInfo, i32),
+                                            (ValidatorInfo, i32),
                                         > = validators
-                                            .into_iter()
+                                            .iter()
                                             .filter_map(|validator| {
                                                 let mut score = 0;
                                                 score = score
@@ -1148,7 +1151,11 @@ pub fn Stake() -> impl IntoView {
                                                         score = score.max(compute_match_score(&query, name));
                                                     }
                                                 }
-                                                if score > 0 { Some((validator, score)) } else { None }
+                                                if score > 0 {
+                                                    Some((validator.clone(), score))
+                                                } else {
+                                                    None
+                                                }
                                             })
                                             .collect();
                                         scored_validators
@@ -1173,8 +1180,9 @@ pub fn Stake() -> impl IntoView {
                                         };
                                         view! { <p class="text-gray-400">{message}</p> }.into_any()
                                     } else {
-                                        let total_staked: u128 = filtered_validators
+                                        let total_staked: u128 = validators
                                             .iter()
+                                            .filter(|v| v.is_active)
                                             .map(|v| v.info.stake)
                                             .sum();
                                         let near_total_supply = tokens_context
@@ -1268,7 +1276,7 @@ pub fn Stake() -> impl IntoView {
 
 #[derive(Clone)]
 struct ValidatorPageData {
-    validator: ValidatorDisplayInfo,
+    validator: ValidatorInfo,
     base_apy: BigDecimal,
 }
 
@@ -1308,9 +1316,9 @@ pub fn StakeValidator() -> impl IntoView {
                 .validators(EpochReference::Latest)
                 .await
                 .map_err(|e| e.to_string())?;
-            let all_validators_info = data.current_validators;
+            let active_validators_info = data.current_validators;
 
-            let Some(validator_info) = all_validators_info
+            let Some(validator_info) = active_validators_info
                 .iter()
                 .find(|v| v.account_id == validator_account_id)
                 .cloned()
@@ -1350,7 +1358,7 @@ pub fn StakeValidator() -> impl IntoView {
             let fee_fraction = fee_res.map_err(|e| e.to_string())?;
             let details = details_res.ok();
 
-            let validator = ValidatorDisplayInfo {
+            let validator = ValidatorInfo {
                 info: validator_info,
                 fee_fraction,
                 details,
@@ -1358,9 +1366,10 @@ pub fn StakeValidator() -> impl IntoView {
                 user_unstaked: NearToken::from_yoctonear(0),
                 user_can_withdraw: true,
                 estimated_unlock_time: None,
+                is_active: true,
             };
 
-            let total_staked: u128 = all_validators_info.iter().map(|v| v.stake).sum();
+            let total_staked: u128 = active_validators_info.iter().map(|v| v.stake).sum();
             let near_total_supply = tokens
                 .into_iter()
                 .find(|t| t.token.account_id == Token::Near)
@@ -1759,9 +1768,9 @@ pub fn UnstakeValidator() -> impl IntoView {
                 .validators(EpochReference::Latest)
                 .await
                 .map_err(|e| e.to_string())?;
-            let all_validators_info = data.current_validators;
+            let active_validators_info = data.current_validators;
 
-            let Some(validator_info) = all_validators_info
+            let Some(validator_info) = active_validators_info
                 .iter()
                 .find(|v| v.account_id == validator_account_id)
                 .cloned()
@@ -1800,7 +1809,7 @@ pub fn UnstakeValidator() -> impl IntoView {
             let fee_fraction = fee_res.map_err(|e| e.to_string())?;
             let details = details_res.ok();
 
-            let validator = ValidatorDisplayInfo {
+            let validator = ValidatorInfo {
                 info: validator_info,
                 fee_fraction,
                 details,
@@ -1808,9 +1817,10 @@ pub fn UnstakeValidator() -> impl IntoView {
                 user_unstaked: NearToken::from_yoctonear(0),
                 user_can_withdraw: true,
                 estimated_unlock_time: None,
+                is_active: true,
             };
 
-            let total_staked: u128 = all_validators_info.iter().map(|v| v.stake).sum();
+            let total_staked: u128 = active_validators_info.iter().map(|v| v.stake).sum();
             let near_total_supply = tokens
                 .into_iter()
                 .find(|t| t.token.account_id == Token::Near)
