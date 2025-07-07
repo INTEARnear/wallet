@@ -1620,7 +1620,20 @@ pub fn Swap() -> impl IntoView {
                                                     }
                                                         .into_any()
                                                 }
-                                            }} <div class="flex items-center gap-2">
+                                                DexId::MetaPool => {
+                                                    view! {
+                                                        <img src="/metapool.svg" alt="MetaPool" class="w-auto h-8" />
+                                                    }
+                                                        .into_any()
+                                                }
+                                                DexId::Linear => {
+                                                    view! {
+                                                        <img src="/linear.svg" alt="Linear" class="w-auto h-8" />
+                                                    }
+                                                        .into_any()
+                                                }
+                                            }}
+                                            <div class="flex items-center gap-2">
                                                 <span class="text-white font-medium text-sm">
                                                     "Best Route"
                                                 </span>
@@ -2667,6 +2680,16 @@ pub enum DexId {
     ///
     /// Supports both AmountIn and AmountOut
     RheaDcl,
+    /// https://metapool.app/
+    /// Liquid Staking provider
+    /// 
+    /// Supports NEAR -> STNEAR and STNEAR -> NEAR, both AmountIn and AmountOut
+    MetaPool,
+    /// https://linearprotocol.org/
+    /// Liquid Staking provider
+    ///
+    /// Supports NEAR -> LiNEAR and LiNEAR -> NEAR, both AmountIn and AmountOut
+    Linear,
 }
 
 const RHEA_STR: &str = "Rhea";
@@ -2677,6 +2700,8 @@ const GRA_FUN_STR: &str = "GraFun";
 const JUMPDEFI_STR: &str = "Jumpdefi";
 const WRAP_STR: &str = "Wrap";
 const RHEA_DCL_STR: &str = "RheaDcl";
+const METAPOOL_STR: &str = "MetaPool";
+const LINEAR_STR: &str = "Linear";
 
 impl Display for DexId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -2689,6 +2714,8 @@ impl Display for DexId {
             DexId::Jumpdefi => f.write_str(JUMPDEFI_STR),
             DexId::Wrap => f.write_str(WRAP_STR),
             DexId::RheaDcl => f.write_str(RHEA_DCL_STR),
+            DexId::MetaPool => f.write_str(METAPOOL_STR),
+            DexId::Linear => f.write_str(LINEAR_STR),
         }
     }
 }
@@ -2706,6 +2733,8 @@ impl FromStr for DexId {
             JUMPDEFI_STR => DexId::Jumpdefi,
             WRAP_STR => DexId::Wrap,
             RHEA_DCL_STR => DexId::RheaDcl,
+            METAPOOL_STR => DexId::MetaPool,
+            LINEAR_STR => DexId::Linear,
             _ => return Err(format!("Invalid dex id: {}", s)),
         })
     }
