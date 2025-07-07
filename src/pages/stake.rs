@@ -595,7 +595,8 @@ async fn fetch_blocks_for_lst_comparison(
 ) -> Result<(BlockView, BlockView), String> {
     const TARGET_DELTA: Duration = Duration::from_millis(1000 * 60 * 60 * 24 * 7);
     const BLOCK_DELTA: BlockHeightDelta =
-        (TARGET_DELTA.as_millis() as f64 / EPOCH_DURATION.as_millis() as f64) as BlockHeightDelta;
+        ((TARGET_DELTA.as_millis() as f64 / EPOCH_DURATION.as_millis() as f64) as EpochHeight)
+            * EPOCH_LENGTH;
     const MAX_ATTEMPTS: u64 = 20;
 
     let latest_block = fetch_latest_block(rpc_client).await?;
@@ -1133,9 +1134,7 @@ pub fn Stake() -> impl IntoView {
                                     let filtered_validators = if query.trim().is_empty() {
                                         validators.clone()
                                     } else {
-                                        let mut scored_validators: Vec<
-                                            (ValidatorInfo, i32),
-                                        > = validators
+                                        let mut scored_validators: Vec<(ValidatorInfo, i32)> = validators
                                             .iter()
                                             .filter_map(|validator| {
                                                 let mut score = 0;
