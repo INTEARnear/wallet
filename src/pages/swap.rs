@@ -1942,6 +1942,8 @@ pub fn Swap() -> impl IntoView {
                                                     DexId::Aidols,
                                                     DexId::GraFun,
                                                     DexId::Wrap,
+                                                    DexId::MetaPool,
+                                                    DexId::Linear,
                                                 ];
                                                 all_dexes
                                                     .into_iter()
