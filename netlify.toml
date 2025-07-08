@@ -5,3 +5,9 @@
     Access-Control-Allow-Origin = "*"
     Access-Control-Allow-Methods = "GET"
     Access-Control-Max-Age = "86400"
+
+[[headers]]
+  for = "*.wasm"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+    Content-Type = "application/wasm"
