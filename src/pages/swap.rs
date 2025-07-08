@@ -676,6 +676,8 @@ pub fn Swap() -> impl IntoView {
         DexId::Jumpdefi,
         DexId::Wrap,
         DexId::RheaDcl,
+        DexId::MetaPool,
+        DexId::Linear,
     ]);
 
     Effect::new(move |_| {
@@ -2682,7 +2684,7 @@ pub enum DexId {
     RheaDcl,
     /// https://metapool.app/
     /// Liquid Staking provider
-    /// 
+    ///
     /// Supports NEAR -> STNEAR and STNEAR -> NEAR, both AmountIn and AmountOut
     MetaPool,
     /// https://linearprotocol.org/
