@@ -607,7 +607,7 @@ pub fn AccountCreationForm(
                                 } else {
                                     view! {
                                         <p class="text-neutral-400 text-sm mt-2 font-medium">
-                                            Enter a valid account name
+                                            Enter your account name
                                         </p>
                                     }
                                         .into_any()
