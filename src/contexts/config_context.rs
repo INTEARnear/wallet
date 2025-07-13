@@ -96,7 +96,7 @@ impl BackgroundGroup {
     pub fn get_count(&self) -> u32 {
         match self {
             Self::Group0 => 5,
-            Self::Group1 => 12,
+            Self::Group1 => 17,
             Self::Group2 => 5,
         }
     }
