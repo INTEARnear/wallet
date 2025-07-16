@@ -6,9 +6,9 @@ authors = ["Slime <4sliman4@gmail.com>"]
 license = "AGPL-3.0-or-later"
 
 [dependencies]
-leptos = { version = "0.8.2", features = ["csr", "nightly"] }
-leptos_meta = { version = "0.8.2" }
-leptos_router = { version = "0.8.2", features = ["nightly"] }
+leptos = { version = "0.8.3", features = ["csr", "nightly"] }
+leptos_meta = { version = "0.8.3" }
+leptos_router = { version = "0.8.3", features = ["nightly"] }
 console_log = "1.0.0"
 log = "0.4.27"
 console_error_panic_hook = "0.1.7"
@@ -30,6 +30,7 @@ web-sys = { version = "0.3.77", features = [
     "Touch",
     "TouchList",
     "StorageManager",
+    "ScrollIntoViewOptions",
 ] }
 serde = { version = "1.0.219", features = ["derive"] }
 reqwest = { version = "0.12.15", features = ["json"] }
@@ -49,7 +50,7 @@ ed25519-dalek = { version = "2.1.1", default-features = false }
 slipped10 = "0.4.6"
 argon2 = "0.5.3"
 aes-gcm = "0.10.3"
-leptos-use = { version = "0.16.0-beta2", features = [
+leptos-use = { version = "0.16.2", features = [
     "use_websocket",
     "use_event_listener",
     "use_window",
@@ -82,6 +83,7 @@ bigdecimal = { version = "0.4.8", features = ["serde-json"] }
 thaw = { version = "0.5.0-beta", features = ["csr", "nightly"] }
 percent-encoding = "2.3.1"
 gloo-net = "0.5"
+wasm-bindgen-futures = "0.4.35"
 
 [dev-dependencies]
 tokio = { version = "1.40.0", features = ["full"] }

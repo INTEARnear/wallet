@@ -190,6 +190,7 @@ pub fn SignMessage() -> impl IntoView {
                 }
             ),
             account.account_id.clone(),
+            accounts_context,
         );
         let nep413_message = NEP413Payload {
             message: deserialized_message.message.clone(),

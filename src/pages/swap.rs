@@ -133,7 +133,19 @@ fn TokenSelector(
         });
 
         if let Some(current_account) = current_account {
-            search_tokens(&query, current_account).await
+            search_tokens(&query, current_account).await.map(|results| {
+                results
+                    .into_iter()
+                    .map(|mut r| {
+                        if let Some(icon) = r.metadata.icon.as_ref() {
+                            if !icon.starts_with("data:") {
+                                r.metadata.icon = None;
+                            }
+                        }
+                        r
+                    })
+                    .collect()
+            })
         } else {
             Ok(vec![])
         }
@@ -327,14 +339,14 @@ fn TokenSelector(
                                                                         <img
                                                                             src=icon
                                                                             alt=token_data.token.metadata.symbol.clone()
-                                                                            class="w-10 h-10 rounded-full"
+                                                                            class="min-w-10 min-h-10 max-w-10 max-h-10 rounded-full"
                                                                         />
                                                                     }
                                                                         .into_any()
                                                                 }
                                                                 None => {
                                                                     view! {
-                                                                        <div class="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center text-white">
+                                                                        <div class="min-w-10 min-h-10 max-w-10 max-h-10 rounded-full bg-orange-500 flex items-center justify-center text-white">
                                                                             {token_data
                                                                                 .token
                                                                                 .metadata
@@ -470,14 +482,14 @@ fn TokenSelector(
                                                                                     <img
                                                                                         src=icon
                                                                                         alt=token_data.token.metadata.symbol.clone()
-                                                                                        class="w-10 h-10 rounded-full"
+                                                                                        class="min-w-10 min-h-10 max-w-10 max-h-10 rounded-full"
                                                                                     />
                                                                                 }
                                                                                     .into_any()
                                                                             }
                                                                             None => {
                                                                                 view! {
-                                                                                    <div class="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center text-white">
+                                                                                    <div class="min-w-10 min-h-10 max-w-10 max-h-10 rounded-full bg-orange-500 flex items-center justify-center text-white">
                                                                                         {token_data
                                                                                             .token
                                                                                             .metadata

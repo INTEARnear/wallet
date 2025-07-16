@@ -173,13 +173,15 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                                     view! {
                                         <div class="flex flex-col p-2 bg-neutral-800/50 rounded-lg">
                                             <div class="flex items-center justify-between">
-                                                <span class="text-sm">{tx.description.clone()}</span>
+                                                <span class="text-sm wrap-anywhere">
+                                                    {tx.description.clone()}
+                                                </span>
                                                 {modal_icon(&tx.stage)}
                                             </div>
                                             {match &tx.stage {
                                                 TransactionStage::Failed(error) => {
                                                     view! {
-                                                        <span class="text-sm text-red-400 mt-1">
+                                                        <span class="text-sm text-red-400 mt-1 wrap-anywhere">
                                                             {error.clone()}
                                                         </span>
                                                     }

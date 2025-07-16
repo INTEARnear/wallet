@@ -120,6 +120,7 @@ pub fn Login() -> impl IntoView {
                                             "Added full access key on /login with public key {public_key}, typed 'CONFIRM'",
                                         ),
                                         account_id.clone(),
+                                        accounts_context,
                                     );
                                     set_is_loading.set(true);
                                     set_error.set(None);

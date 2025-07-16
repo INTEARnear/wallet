@@ -8,7 +8,7 @@ use json_filter::{Filter, Operator};
 use leptos::prelude::*;
 use leptos_use::{core::ConnectionReadyState, use_websocket};
 use near_min_api::{
-    types::{AccountId, Balance, BlockHeight, CryptoHash, Finality},
+    types::{AccountId, Balance, BlockHeight, CryptoHash, Finality, U128},
     utils::dec_format,
     QueryFinality,
 };
@@ -501,10 +501,10 @@ pub fn provide_token_context() {
             if let Some(account_id) = current_account {
                 let (token_response, account_response) = join(
                     reqwest::get(format!("{api_url}/get-user-tokens?account_id={account_id}")),
-                    rpc_client
-                        .client
-                        .get_untracked()
-                        .view_account(account_id, QueryFinality::Finality(Finality::DoomSlug)),
+                    rpc_client.client.get_untracked().view_account(
+                        account_id.clone(),
+                        QueryFinality::Finality(Finality::DoomSlug),
+                    ),
                 )
                 .await;
 
@@ -537,17 +537,6 @@ pub fn provide_token_context() {
                         token
                     })
                     .collect::<Vec<_>>();
-
-                // Sort by USD value
-                token_data.sort_by(|a, b| {
-                    let a_balance_decimal = BigDecimal::from(a.balance);
-                    let b_balance_decimal = BigDecimal::from(b.balance);
-                    let a_value = &a.token.price_usd_raw * &a_balance_decimal;
-                    let b_value = &b.token.price_usd_raw * &b_balance_decimal;
-                    b_value
-                        .partial_cmp(&a_value)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                });
 
                 if let Ok(account) = account_response {
                     let wnear_token = token_data
@@ -582,7 +571,84 @@ pub fn provide_token_context() {
                     token_data.insert(0, near);
                 }
 
-                set_tokens(token_data);
+                // Set tokens immediately with API data
+                set_tokens(token_data.clone());
+
+                // Update balances in background using batch RPC calls
+                let nep141_tokens: Vec<_> = token_data
+                    .iter()
+                    .filter_map(|token| {
+                        if let Token::Nep141(contract_id) = &token.token.account_id {
+                            Some(contract_id.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                let rpc_client = rpc_client.client.get_untracked().clone();
+
+                leptos::task::spawn_local(async move {
+                    let near_balance_future = rpc_client.view_account(
+                        account_id.clone(),
+                        QueryFinality::Finality(Finality::DoomSlug),
+                    );
+
+                    let token_balances_future = async {
+                        if nep141_tokens.is_empty() {
+                            return Ok(vec![]);
+                        }
+
+                        let balance_requests: Vec<_> = nep141_tokens
+                            .iter()
+                            .map(|contract_id| {
+                                (
+                                    contract_id.clone(),
+                                    "ft_balance_of",
+                                    serde_json::json!({
+                                        "account_id": account_id,
+                                    }),
+                                    QueryFinality::Finality(Finality::DoomSlug),
+                                )
+                            })
+                            .collect();
+
+                        rpc_client.batch_call::<U128>(balance_requests).await
+                    };
+
+                    let (near_account_result, token_balance_results) =
+                        futures_util::future::join(near_balance_future, token_balances_future)
+                            .await;
+
+                    if let Ok(account) = near_account_result {
+                        let near_balance =
+                            account.amount.saturating_sub(account.locked).as_yoctonear();
+                        set_tokens.update(|tokens| {
+                            if let Some(near_token) = tokens
+                                .iter_mut()
+                                .find(|t| t.token.account_id == Token::Near)
+                            {
+                                near_token.balance = near_balance;
+                            }
+                        });
+                    }
+
+                    if let Ok(balance_results) = token_balance_results {
+                        for (contract_id, balance_result) in
+                            nep141_tokens.iter().zip(balance_results.into_iter())
+                        {
+                            if let Ok(balance) = balance_result {
+                                set_tokens.update(|tokens| {
+                                    if let Some(token) = tokens.iter_mut().find(|t| {
+                                        matches!(&t.token.account_id, Token::Nep141(id) if id == contract_id)
+                                    }) {
+                                        token.balance = balance.into();
+                                    }
+                                });
+                            }
+                        }
+                    }
+                });
             } else {
                 set_tokens(vec![]);
             }

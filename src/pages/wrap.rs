@@ -67,7 +67,7 @@ pub fn WrapToken() -> impl IntoView {
             return;
         }
 
-        let transaction_description = format!("Wrap {} NEAR", amount.get(),);
+        let transaction_description = format!("Wrap {} NEAR", amount.get());
         let Ok(amount_decimal) = amount.get().parse::<BigDecimal>() else {
             panic!(
                 "Amount '{}' cannot be parsed as BigDecimal, yet amount_error is None",

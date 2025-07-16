@@ -311,7 +311,7 @@ fn TransactionItem<'a>(
                 <div class="flex-1">
                     <p class="text-neutral-200 font-medium mb-1">
                         {"Transaction to "}
-                        <code class="px-1.5 py-0.5 bg-neutral-700/50 rounded text-sm font-mono">
+                        <code class="px-1.5 py-0.5 bg-neutral-700/50 rounded text-sm font-mono wrap-anywhere">
                             {tx.receiver_id.to_string()}
                         </code>
                     </p>
@@ -430,11 +430,7 @@ pub fn SendTransactions() -> impl IntoView {
     let (remember_contract, set_remember_contract) = signal(false);
     let (remember_non_financial, set_remember_non_financial) = signal(false);
     let ConnectedAppsContext { apps, set_apps, .. } = expect_context::<ConnectedAppsContext>();
-    let AccountsContext {
-        accounts,
-        set_accounts,
-        ..
-    } = expect_context::<AccountsContext>();
+    let accounts_context = expect_context::<AccountsContext>();
     let TransactionQueueContext {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
@@ -529,8 +525,8 @@ pub fn SendTransactions() -> impl IntoView {
     });
     Effect::new(move || {
         if let Some(app) = connected_app() {
-            if accounts.get().selected_account_id != Some(app.account_id.clone()) {
-                set_accounts.update(|accounts| {
+            if accounts_context.accounts.get().selected_account_id != Some(app.account_id.clone()) {
+                accounts_context.set_accounts.update(|accounts| {
                     accounts.selected_account_id = Some(app.account_id);
                 });
             }
@@ -748,6 +744,7 @@ pub fn SendTransactions() -> impl IntoView {
                 }
             ),
             request_data.account_id.clone(),
+            accounts_context,
         );
 
         let (first_details_tx, first_transaction) = transactions.remove(0);
@@ -985,7 +982,7 @@ pub fn SendTransactions() -> impl IntoView {
                                                                     />
                                                                     <span>
                                                                         "Remember for all app interactions with "
-                                                                        <code class="px-1 py-0.5 bg-neutral-700/50 rounded">
+                                                                        <code class="px-1 py-0.5 bg-neutral-700/50 rounded wrap-anywhere">
                                                                             {receiver_id.to_string()}
                                                                         </code>
                                                                     </span>

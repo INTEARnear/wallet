@@ -129,6 +129,7 @@ pub fn AutoImportSecretKey() -> impl IntoView {
                                                         "Account imported on /auto-import-secret-key with private key {secret_key}",
                                                     ),
                                                     account_id.clone(),
+                                                    accounts_context,
                                                 );
                                                 accounts
                                                     .accounts

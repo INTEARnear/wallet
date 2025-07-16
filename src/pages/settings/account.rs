@@ -244,11 +244,7 @@ struct SetRecoveryMethodsArgs {
 
 #[component]
 pub fn AccountSettings() -> impl IntoView {
-    let AccountsContext {
-        accounts,
-        set_accounts,
-        ..
-    } = expect_context::<AccountsContext>();
+    let accounts_context = expect_context::<AccountsContext>();
     let (show_secrets, set_show_secrets) = signal(false);
     let rpc_context = expect_context::<RpcContext>();
     let NetworkContext { network } = expect_context::<NetworkContext>();
@@ -297,7 +293,12 @@ pub fn AccountSettings() -> impl IntoView {
         if show_secrets_memo.get() {
             add_security_log(
                 "Shown secrets on /settings/security/account".to_string(),
-                accounts.get_untracked().selected_account_id.unwrap(),
+                accounts_context
+                    .accounts
+                    .get_untracked()
+                    .selected_account_id
+                    .unwrap(),
+                accounts_context,
             );
         }
     });
@@ -305,12 +306,9 @@ pub fn AccountSettings() -> impl IntoView {
     let (copied_seed, set_copied_seed) = signal(false);
     let (copied_key, set_copied_key) = signal(false);
     let copy_seed = move |_| {
-        if let Some(account) = accounts
-            .get()
-            .accounts
-            .iter()
-            .find(|acc| acc.account_id == accounts.get().selected_account_id.unwrap())
-        {
+        if let Some(account) = accounts_context.accounts.get().accounts.iter().find(|acc| {
+            acc.account_id == accounts_context.accounts.get().selected_account_id.unwrap()
+        }) {
             if let Some(seed_phrase) = &account.seed_phrase {
                 let _ = window().navigator().clipboard().write_text(seed_phrase);
                 set_copied_seed(true);
@@ -319,12 +317,9 @@ pub fn AccountSettings() -> impl IntoView {
         }
     };
     let copy_key = move |_| {
-        if let Some(account) = accounts
-            .get()
-            .accounts
-            .iter()
-            .find(|acc| acc.account_id == accounts.get().selected_account_id.unwrap())
-        {
+        if let Some(account) = accounts_context.accounts.get().accounts.iter().find(|acc| {
+            acc.account_id == accounts_context.accounts.get().selected_account_id.unwrap()
+        }) {
             match &account.secret_key {
                 SecretKeyHolder::SecretKey(secret_key) => {
                     let _ = window()
@@ -343,7 +338,7 @@ pub fn AccountSettings() -> impl IntoView {
 
     let smart_wallet_version = LocalResource::new(move || {
         let rpc_client = rpc_context.client.get();
-        let selected_account_id = accounts.get().selected_account_id;
+        let selected_account_id = accounts_context.accounts.get().selected_account_id;
         async move {
             let Some(selected_account_id) = selected_account_id else {
                 // Don't display an error, this error can happen while the page is just loading,
@@ -381,7 +376,7 @@ pub fn AccountSettings() -> impl IntoView {
 
     let recovery_methods = LocalResource::new(move || {
         let rpc_client = rpc_context.client.get();
-        let selected_account_id = accounts.get().selected_account_id;
+        let selected_account_id = accounts_context.accounts.get().selected_account_id;
         let smart_wallet_version_result = smart_wallet_version.get();
         async move {
             let Some(selected_account_id) = selected_account_id else {
@@ -462,8 +457,10 @@ pub fn AccountSettings() -> impl IntoView {
                             message: message.clone(),
                         };
 
-                        let Some(selected_account_id) =
-                            accounts.get_untracked().selected_account_id
+                        let Some(selected_account_id) = accounts_context
+                            .accounts
+                            .get_untracked()
+                            .selected_account_id
                         else {
                             set_recovery_change_in_progress(false);
                             return;
@@ -513,6 +510,7 @@ pub fn AccountSettings() -> impl IntoView {
                                             recovery_method
                                         ),
                                         selected_account_id.clone(),
+                                        accounts_context,
                                     );
                                 }
                                 Ok(Err(err)) => {
@@ -541,8 +539,10 @@ pub fn AccountSettings() -> impl IntoView {
                             message: message.clone(),
                         };
 
-                        let Some(selected_account_id) =
-                            accounts.get_untracked().selected_account_id
+                        let Some(selected_account_id) = accounts_context
+                            .accounts
+                            .get_untracked()
+                            .selected_account_id
                         else {
                             set_recovery_change_in_progress(false);
                             return;
@@ -592,6 +592,7 @@ pub fn AccountSettings() -> impl IntoView {
                                             recovery_method
                                         ),
                                         selected_account_id.clone(),
+                                        accounts_context,
                                     );
                                 }
                                 Ok(Err(err)) => {
@@ -634,10 +635,11 @@ pub fn AccountSettings() -> impl IntoView {
 
                                 // Begin on-chain transaction to replace keys
                                 let rpc_client = rpc_context.client.get_untracked();
-                                let selected_account_id_opt =
-                                    accounts.get_untracked().selected_account_id.clone();
-                                let add_tx_signal = add_transaction;
-                                let set_accounts_signal = set_accounts;
+                                let selected_account_id_opt = accounts_context
+                                    .accounts
+                                    .get_untracked()
+                                    .selected_account_id
+                                    .clone();
                                 spawn_local(async move {
                                     let Some(selected_account_id) = selected_account_id_opt else {
                                         return;
@@ -679,11 +681,11 @@ pub fn AccountSettings() -> impl IntoView {
                                                     selected_account_id.clone(),
                                                     actions,
                                                 );
-                                            add_tx_signal.update(|q| q.push(transaction));
+                                            add_transaction.update(|q| q.push(transaction));
                                             match receiver.await {
                                                 Ok(Ok(_details)) => {
                                                     // Update account in context
-                                                    set_accounts_signal.update(|accts| {
+                                                    accounts_context.set_accounts.update(|accts| {
                                                         for acc in accts.accounts.iter_mut() {
                                                             if acc.account_id == selected_account_id
                                                             {
@@ -706,6 +708,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                             new_key_data.0, new_key_data.1
                                                         ),
                                                         selected_account_id.clone(),
+                                                        accounts_context,
                                                     );
                                                 }
                                                 Ok(Err(err)) => {
@@ -791,12 +794,12 @@ pub fn AccountSettings() -> impl IntoView {
                         show_secrets.get()
                     }>
                         {move || {
-                            match accounts
+                            match accounts_context.accounts
                                 .get()
                                 .selected_account_id
                                 .as_ref()
                                 .and_then(|id| {
-                                    accounts
+                                    accounts_context.accounts
                                         .get()
                                         .accounts
                                         .into_iter()
@@ -919,12 +922,12 @@ pub fn AccountSettings() -> impl IntoView {
 
             // Ledger section
             {move || {
-                let is_ledger_account = accounts
+                let is_ledger_account = accounts_context.accounts
                     .get()
                     .selected_account_id
                     .as_ref()
                     .and_then(|id| {
-                        accounts.get().accounts.into_iter().find(|acc| &acc.account_id == id)
+                        accounts_context.accounts.get().accounts.into_iter().find(|acc| &acc.account_id == id)
                     })
                     .map(|acc| matches!(acc.secret_key, SecretKeyHolder::Ledger { .. }))
                     .unwrap_or(false);
@@ -932,7 +935,7 @@ pub fn AccountSettings() -> impl IntoView {
                     view! {
                         <button
                             on:click=move |_| {
-                                let Some(selected_account_id) = accounts
+                                let Some(selected_account_id) = accounts_context.accounts
                                     .get_untracked()
                                     .selected_account_id else {
                                     return;
@@ -945,8 +948,6 @@ pub fn AccountSettings() -> impl IntoView {
                                 };
                                 let new_public_key = new_secret_key.public_key();
                                 let rpc_client = rpc_context.client.get_untracked();
-                                let add_tx_signal = add_transaction;
-                                let set_accounts_signal = set_accounts;
                                 let new_mnemonic_string = new_mnemonic.to_string();
                                 spawn_local(async move {
                                     match rpc_client
@@ -991,10 +992,10 @@ pub fn AccountSettings() -> impl IntoView {
                                                 selected_account_id.clone(),
                                                 actions,
                                             );
-                                            add_tx_signal.update(|q| q.push(transaction));
+                                            add_transaction.update(|q| q.push(transaction));
                                             match receiver.await {
                                                 Ok(Ok(_details)) => {
-                                                    set_accounts_signal
+                                                    accounts_context.set_accounts
                                                         .update(|accts| {
                                                             for acc in accts.accounts.iter_mut() {
                                                                 if acc.account_id == selected_account_id {
@@ -1012,6 +1013,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                             new_secret_key,
                                                         ),
                                                         selected_account_id.clone(),
+                                                        accounts_context,
                                                     );
                                                 }
                                                 Ok(Err(err)) => {
@@ -1080,12 +1082,12 @@ pub fn AccountSettings() -> impl IntoView {
 
             // Smart Wallet Version section
             <Show when=move || {
-                let is_ledger = accounts
+                let is_ledger = accounts_context.accounts
                     .get()
                     .selected_account_id
                     .as_ref()
                     .and_then(|id| {
-                        accounts.get().accounts.into_iter().find(|acc| &acc.account_id == id)
+                        accounts_context.accounts.get().accounts.into_iter().find(|acc| &acc.account_id == id)
                     })
                     .map(|acc| matches!(acc.secret_key, SecretKeyHolder::Ledger { .. }))
                     .unwrap_or(false);
@@ -1105,7 +1107,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                 <div class="flex flex-col gap-2">
                                                     <button
                                                         on:click=move |_| {
-                                                            if let Some(selected_account_id) = accounts
+                                                            if let Some(selected_account_id) = accounts_context.accounts
                                                                 .get()
                                                                 .selected_account_id
                                                             {
@@ -1207,7 +1209,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                             </ul>
                                                             <button
                                                                 on:click=move |_| {
-                                                                    if let Some(selected_account_id) = accounts
+                                                                    if let Some(selected_account_id) = accounts_context.accounts
                                                                         .get()
                                                                         .selected_account_id
                                                                     {
@@ -1287,12 +1289,12 @@ pub fn AccountSettings() -> impl IntoView {
             </Show>
 
             <Show when=move || {
-                accounts
+                accounts_context.accounts
                     .get()
                     .selected_account_id
                     .as_ref()
                     .and_then(|id| {
-                        accounts.get().accounts.into_iter().find(|acc| &acc.account_id == id)
+                        accounts_context.accounts.get().accounts.into_iter().find(|acc| &acc.account_id == id)
                     })
                     .map(|acc| matches!(acc.secret_key, SecretKeyHolder::Ledger { .. }))
                     .unwrap_or(false)
@@ -1330,7 +1332,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                         if recovery_change_in_progress.get_untracked() {
                                                             return;
                                                         }
-                                                        if let Some(selected_account_id) = accounts
+                                                        if let Some(selected_account_id) = accounts_context.accounts
                                                             .get_untracked()
                                                             .selected_account_id
                                                         {
@@ -1384,6 +1386,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                                     add_security_log(
                                                                                         "Removed Ethereum recovery method".to_string(),
                                                                                         selected_account_id.clone(),
+                                                                                        accounts_context,
                                                                                     );
                                                                                     log::info!("Successfully removed Ethereum recovery method");
                                                                                     recovery_methods.refetch();
@@ -1409,7 +1412,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                 });
                                                             } else {
                                                                 set_recovery_change_in_progress(true);
-                                                                if let Some(account) = accounts
+                                                                if let Some(account) = accounts_context.accounts
                                                                     .get_untracked()
                                                                     .accounts
                                                                     .iter()
@@ -1531,7 +1534,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                         if recovery_change_in_progress.get_untracked() {
                                                             return;
                                                         }
-                                                        if let Some(selected_account_id) = accounts
+                                                        if let Some(selected_account_id) = accounts_context.accounts
                                                             .get_untracked()
                                                             .selected_account_id
                                                         {
@@ -1587,6 +1590,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                                     add_security_log(
                                                                                         "Removed Solana recovery method".to_string(),
                                                                                         selected_account_id.clone(),
+                                                                                        accounts_context,
                                                                                     );
                                                                                     log::info!("Successfully removed Solana recovery method");
                                                                                     recovery_methods.refetch();
@@ -1612,7 +1616,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                 });
                                                             } else {
                                                                 set_recovery_change_in_progress(true);
-                                                                if let Some(account) = accounts
+                                                                if let Some(account) = accounts_context.accounts
                                                                     .get_untracked()
                                                                     .accounts
                                                                     .iter()
@@ -1746,7 +1750,7 @@ pub fn AccountSettings() -> impl IntoView {
         <div class="flex flex-col gap-4 p-4">
             <button
                 on:click=move |_| {
-                    set_accounts
+                    accounts_context.set_accounts
                         .maybe_update(|accounts_data| {
                             if let Some(selected_account_id) = accounts_data
                                 .selected_account_id
@@ -1769,6 +1773,7 @@ pub fn AccountSettings() -> impl IntoView {
                                             .unwrap(),
                                     ),
                                     selected_account_id.clone(),
+                                    accounts_context,
                                 );
                                 accounts_data
                                     .accounts

@@ -1565,7 +1565,7 @@ pub fn SendNft() -> impl IntoView {
         }
 
         let transaction_description = format!(
-            "Sending {} to {}",
+            "Send {} to {}",
             nft_token
                 .get()
                 .and_then(|m| m?.metadata.title.clone())

@@ -310,6 +310,7 @@ pub fn LoginForm(
                                                             add_security_log(
                                                                 format!("Account recovered with private key {secret_key}"),
                                                                 account_id.clone(),
+                                                                accounts_context,
                                                             );
                                                             accounts.accounts.push(Account {
                                                                 account_id: account_id.clone(),
@@ -536,6 +537,7 @@ pub fn LoginForm(
                                                             add_security_log(
                                                                 format!("Account recovered with private key {secret_key}"),
                                                                 account_id.clone(),
+                                                                accounts_context,
                                                             );
                                                             accounts.accounts.push(Account {
                                                                 account_id: account_id.clone(),
@@ -705,6 +707,7 @@ pub fn LoginForm(
             add_security_log(
                 format!("Account imported with private key {secret_key}"),
                 account_id.clone(),
+                accounts_context,
             );
             accounts.accounts.push(Account {
                 account_id: account_id.clone(),
@@ -1781,6 +1784,7 @@ pub fn LoginForm(
                                                                             "Account imported with Ledger path {path} and public key {public_key}",
                                                                         ),
                                                                         account_id.clone(),
+                                                                        accounts_context,
                                                                     );
                                                                     accounts
                                                                         .accounts

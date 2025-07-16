@@ -1,4 +1,4 @@
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, ToPrimitive};
 use borsh::BorshDeserialize;
 use cached::proc_macro::cached;
 use chrono::{DateTime, Utc};
@@ -10,13 +10,14 @@ use leptos_icons::*;
 use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_params_map};
 use leptos_use::{use_interval, use_interval_fn};
-use near_min_api::types::{Balance, EpochHeight, ViewStateResult};
+use near_min_api::types::{Balance, EpochHeight, ViewStateResult, U128};
 use near_min_api::{
     types::{
         AccountId, AccountIdRef, Action, BlockHeightDelta, BlockId, BlockReference, BlockView,
         CurrentEpochValidatorInfo, EpochReference, Finality, FunctionCallAction, NearGas,
         NearToken,
     },
+    utils::dec_format,
     CallError, Error, QueryFinality, RpcClient,
 };
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
@@ -32,9 +33,14 @@ const ESTIMATED_BLOCK_TIME: Duration = Duration::from_millis(600);
 const EPOCH_LENGTH: BlockHeightDelta = 43200;
 const EPOCH_DURATION: Duration =
     Duration::from_millis(ESTIMATED_BLOCK_TIME.as_millis() as u64 * EPOCH_LENGTH);
+const NANOSECONDS_IN_YEAR: u64 = 365 * 24 * 60 * 60 * 1_000_000_000;
 
 use crate::components::{
     ProjectedRevenue, ProjectedRevenueMode, TransactionErrorModal, TransactionSuccessModal,
+};
+use crate::contexts::tokens_context::TokenInfo;
+use crate::utils::{
+    fetch_token_info, format_usd_value, power_of_10, StorageBalance, USDT_DECIMALS,
 };
 use crate::{
     contexts::{
@@ -62,6 +68,10 @@ fn is_validator_supported(validator_id: &AccountIdRef, network: Network) -> bool
     supported_farms
         .iter()
         .any(|farm| validator_id.is_sub_account_of(farm))
+}
+
+fn supports_farms(validator_id: &AccountIdRef) -> bool {
+    validator_id.as_str().ends_with(".pool.near")
 }
 
 fn country_code_to_emoji(code: &str) -> Option<String> {
@@ -170,16 +180,37 @@ struct StakingAccount {
     unstaked_balance: NearToken,
 }
 
-#[derive(Clone, PartialEq)]
-struct ValidatorInfo {
-    info: CurrentEpochValidatorInfo,
+#[derive(Clone, Debug)]
+struct PoolFarm {
+    #[allow(dead_code)]
+    pub farm_id: u64,
+    #[allow(dead_code)]
+    pub name: String,
+    pub token: TokenInfo,
+    pub amount: Balance,
+    pub start_date: DateTime<Utc>,
+    pub end_date: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug)]
+struct UnclaimedReward {
+    pub token: TokenInfo,
+    pub amount: Balance,
+}
+
+#[derive(Clone, Debug)]
+struct PoolInfo {
+    account_id: AccountId,
+    active_info: Option<CurrentEpochValidatorInfo>,
     fee_fraction: Fraction,
     details: Option<PoolDetails>,
     user_staked: NearToken,
     user_unstaked: NearToken,
     user_can_withdraw: bool,
     estimated_unlock_time: Option<DateTime<Utc>>,
-    is_active: bool,
+    total_stake: NearToken,
+    active_farms: Vec<PoolFarm>,
+    unclaimed_rewards: Vec<UnclaimedReward>,
 }
 
 #[component]
@@ -199,28 +230,23 @@ fn SocialLink(href: String, icon: icondata::Icon) -> impl IntoView {
 
 #[component]
 fn ValidatorCard(
-    validator: ValidatorInfo,
+    #[prop(into)] validator: Signal<PoolInfo>,
     base_apy: BigDecimal,
-    total_supply: Option<u128>,
+    #[prop(into)] total_supply: Signal<NearToken>,
+    #[prop(into)] near_price: Signal<BigDecimal>,
     network: Network,
     refresh: impl Fn() + 'static + Copy + Send + Sync,
 ) -> impl IntoView {
     let accounts_context = expect_context::<AccountsContext>();
     let rpc_context = expect_context::<RpcContext>();
     let transaction_queue_context = expect_context::<TransactionQueueContext>();
-    let pool_account_id = validator.info.account_id.clone();
+    let pool_account_id = validator().account_id.clone();
 
-    let uptime_ok = if validator.info.num_expected_chunks > 0 {
-        validator.info.num_produced_chunks * 100 >= validator.info.num_expected_chunks * 90
-    } else {
-        true
-    };
-
-    let fee = if validator.fee_fraction.denominator == 0 {
+    let fee = if validator().fee_fraction.denominator == 0 {
         BigDecimal::from(0)
     } else {
-        BigDecimal::from(validator.fee_fraction.numerator)
-            / BigDecimal::from(validator.fee_fraction.denominator)
+        BigDecimal::from(validator().fee_fraction.numerator)
+            / BigDecimal::from(validator().fee_fraction.denominator)
     };
 
     let one = BigDecimal::from(1);
@@ -238,27 +264,26 @@ fn ValidatorCard(
         "#ffffff" // white
     };
 
-    let stake_color = if let Some(total_supply) = total_supply {
-        let stake_percentage =
-            BigDecimal::from(validator.info.stake) / BigDecimal::from(total_supply);
+    let stake_color = move || {
+        let stake = validator().total_stake;
+        let stake_percentage = BigDecimal::from(stake.as_yoctonear())
+            / BigDecimal::from(total_supply().as_yoctonear());
         let one_percent = BigDecimal::from_str("0.01").unwrap();
         if stake_percentage > one_percent {
-            "#eab308" // yellow-500
+            "#eab308"
         } else {
-            "#ffffff" // white
+            "#ffffff"
         }
-    } else {
-        "#ffffff" // white
     };
 
-    let details = validator.details.clone();
-    let is_supported = is_validator_supported(&validator.info.account_id, network);
+    let details = validator().details.clone();
+    let is_supported = is_validator_supported(&validator().account_id, network);
 
-    let initial_time = validator.estimated_unlock_time.unwrap_or(Utc::now());
+    let initial_time = validator().estimated_unlock_time.unwrap_or(Utc::now());
     let estimated_unlock_time = RwSignal::new(initial_time);
     let interval = use_interval(100).counter;
 
-    if !validator.user_can_withdraw {
+    if !validator.get_untracked().user_can_withdraw {
         let pool_account_id = pool_account_id.clone();
         let _ = use_interval_fn(
             move || {
@@ -316,13 +341,17 @@ fn ValidatorCard(
                     }}
                     <div class="text-xs text-gray-400 text-center">
                         "Total Stake" <div style:color=stake_color class="text-center w-full">
-                            {format_token_amount_no_hide(validator.info.stake, 24, "NEAR")}
+                            {format_token_amount_no_hide(
+                                validator().total_stake.as_yoctonear(),
+                                24,
+                                "NEAR",
+                            )}
                         </div>
                     </div>
                     {
                         let threshold = NearToken::from_millinear(1);
-                        let staked = validator.user_staked;
-                        let unstaked = validator.user_unstaked;
+                        let staked = validator().user_staked;
+                        let unstaked = validator().user_unstaked;
                         if staked >= threshold || unstaked >= threshold {
                             view! {
                                 <div class="mt-1 space-y-1">
@@ -343,6 +372,199 @@ fn ValidatorCard(
                                     } else {
                                         ().into_any()
                                     }}
+                                    {if staked >= threshold
+                                        && !validator().unclaimed_rewards.is_empty()
+                                    {
+                                        let total_usd = validator()
+                                            .unclaimed_rewards
+                                            .iter()
+                                            .fold(
+                                                BigDecimal::from(0),
+                                                |acc, reward| {
+                                                    let amount_decimal = balance_to_decimal(
+                                                        reward.amount,
+                                                        reward.token.metadata.decimals,
+                                                    );
+                                                    acc + (amount_decimal * &reward.token.price_usd_raw)
+                                                },
+                                            );
+                                        let has_claimable_rewards = validator()
+                                            .unclaimed_rewards
+                                            .iter()
+                                            .any(|reward| reward.amount > 0);
+
+                                        view! {
+                                            <div class="text-xs text-gray-400 text-center">
+                                                "Unclaimed"
+                                                <div class="w-full space-y-1">
+                                                    {move || {
+                                                        validator()
+                                                            .unclaimed_rewards
+                                                            .iter()
+                                                            .cloned()
+                                                            .map(|reward| {
+                                                                view! {
+                                                                    <div class="text-yellow-400 text-center">
+                                                                        {move || format_token_amount(
+                                                                            reward.amount,
+                                                                            reward.token.metadata.decimals,
+                                                                            &reward.token.metadata.symbol,
+                                                                        )}
+                                                                    </div>
+                                                                }
+                                                            })
+                                                            .collect_view()
+                                                    }}
+                                                    {if total_usd > BigDecimal::from(0) {
+                                                        view! {
+                                                            <div class="text-yellow-400 text-center text-xs">
+                                                                {move || {
+                                                                    format!("Total: {}", format_usd_value(total_usd.clone()))
+                                                                }}
+                                                            </div>
+                                                        }
+                                                            .into_any()
+                                                    } else {
+                                                        ().into_any()
+                                                    }}
+                                                    {if has_claimable_rewards {
+                                                        if validator().account_id == "shitzu.pool.near" {
+                                                            view! {
+                                                                <a
+                                                                    href="https://app.shitzuapes.xyz/stake"
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-1 px-2 rounded cursor-pointer text-xs mt-1 inline-block text-center"
+                                                                >
+                                                                    "Claim"
+                                                                </a>
+                                                            }
+                                                                .into_any()
+                                                        } else {
+                                                            view! {
+                                                                <button
+                                                                    class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-1 px-2 rounded cursor-pointer text-xs mt-1"
+                                                                    on:click=move |_| {
+                                                                        if let Some(signer_id) = accounts_context
+                                                                            .accounts
+                                                                            .get_untracked()
+                                                                            .selected_account_id
+                                                                        {
+                                                                            let signer_id = signer_id.clone();
+                                                                            let rpc_client = rpc_context.client.get();
+                                                                            let unclaimed_rewards = validator().unclaimed_rewards;
+                                                                            let validator_account_id = validator().account_id;
+                                                                            spawn_local(async move {
+                                                                                for reward in &unclaimed_rewards {
+                                                                                    if reward.amount > 0 {
+                                                                                        let token_id = match &reward.token.account_id {
+                                                                                            Token::Near => {
+                                                                                                continue;
+                                                                                            }
+                                                                                            Token::Nep141(account_id) => account_id.clone(),
+                                                                                        };
+                                                                                        let Ok(storage_balance_of_recipient) = rpc_client
+                                                                                            .call::<
+                                                                                                Option<StorageBalance>,
+                                                                                            >(
+                                                                                                token_id.clone(),
+                                                                                                "storage_balance_of",
+                                                                                                serde_json::json!({"account_id": signer_id}),
+                                                                                                QueryFinality::Finality(Finality::DoomSlug),
+                                                                                            )
+                                                                                            .await else {
+                                                                                            return;
+                                                                                        };
+                                                                                        let needs_storage_deposit = match storage_balance_of_recipient {
+                                                                                            Some(storage_balance) => storage_balance.total.is_zero(),
+                                                                                            None => true,
+                                                                                        };
+                                                                                        if needs_storage_deposit {
+                                                                                            let actions = vec![
+                                                                                                Action::FunctionCall(
+                                                                                                    Box::new(FunctionCallAction {
+                                                                                                        method_name: "storage_deposit".to_string(),
+                                                                                                        args: serde_json::to_vec(
+                                                                                                                &serde_json::json!({"registration_only":true}),
+                                                                                                            )
+                                                                                                            .unwrap(),
+                                                                                                        gas: NearGas::from_tgas(5).as_gas(),
+                                                                                                        deposit: "0.00125 NEAR".parse().unwrap(),
+                                                                                                    }),
+                                                                                                ),
+                                                                                            ];
+                                                                                            let description = format!(
+                                                                                                "Deposit storage for {}",
+                                                                                                reward.token.metadata.symbol,
+                                                                                            );
+                                                                                            let (_rx, tx) = EnqueuedTransaction::create(
+                                                                                                description,
+                                                                                                signer_id.clone(),
+                                                                                                token_id.clone(),
+                                                                                                actions,
+                                                                                            );
+                                                                                            transaction_queue_context
+                                                                                                .add_transaction
+                                                                                                .update(|txs| txs.push(tx));
+                                                                                        }
+                                                                                        let actions = vec![
+                                                                                            Action::FunctionCall(
+                                                                                                Box::new(FunctionCallAction {
+                                                                                                    method_name: "claim".to_string(),
+                                                                                                    args: serde_json::to_vec(
+                                                                                                            &serde_json::json!({"token_id": token_id}),
+                                                                                                        )
+                                                                                                        .unwrap(),
+                                                                                                    gas: NearGas::from_tgas(150).as_gas(),
+                                                                                                    deposit: NearToken::from_yoctonear(1),
+                                                                                                }),
+                                                                                            ),
+                                                                                        ];
+                                                                                        let description = format!(
+                                                                                            "Claim {} from {}",
+                                                                                            reward.token.metadata.symbol,
+                                                                                            validator_account_id,
+                                                                                        );
+                                                                                        let (rx, tx) = EnqueuedTransaction::create(
+                                                                                            description,
+                                                                                            signer_id.clone(),
+                                                                                            validator_account_id.clone(),
+                                                                                            actions,
+                                                                                        );
+                                                                                        transaction_queue_context
+                                                                                            .add_transaction
+                                                                                            .update(|txs| txs.push(tx));
+                                                                                        spawn_local(async move {
+                                                                                            match rx.await {
+                                                                                                Ok(_) => {
+                                                                                                    refresh();
+                                                                                                }
+                                                                                                Err(err) => {
+                                                                                                    log::error!("Error claiming {} rewards: {}", token_id, err);
+                                                                                                }
+                                                                                            }
+                                                                                        });
+                                                                                    }
+                                                                                }
+                                                                            });
+                                                                        }
+                                                                    }
+                                                                >
+                                                                    "Claim"
+                                                                </button>
+                                                            }
+                                                                .into_any()
+                                                        }
+                                                    } else {
+                                                        ().into_any()
+                                                    }}
+                                                </div>
+                                            </div>
+                                        }
+                                            .into_any()
+                                    } else {
+                                        ().into_any()
+                                    }}
                                 </div>
                             }
                                 .into_any()
@@ -352,24 +574,36 @@ fn ValidatorCard(
                     }
                 </div>
                 <div class="flex-1 min-w-0">
-                    <div class="flex items-center">
-                        {if !uptime_ok {
-                            view! {
-                                <Icon
-                                    icon=icondata::LuWifiOff
-                                    width="16"
-                                    height="16"
-                                    attr:class="text-red-500 mr-2"
-                                />
+                    <div class="flex items-center gap-2">
+                        {if let Some(active_info) = &validator().active_info {
+                            if active_info.num_expected_chunks > 0 {
+                                let produced = BigDecimal::from(active_info.num_produced_endorsements);
+                                let expected = BigDecimal::from(active_info.num_expected_endorsements);
+                                let endorsement_rate = &produced / &expected * BigDecimal::from(100);
+                                let uptime_threshold = BigDecimal::from(90);
+                                if endorsement_rate < uptime_threshold {
+                                    view! {
+                                        <Icon
+                                            icon=icondata::LuWifiOff
+                                            width="16"
+                                            height="16"
+                                            attr:class="text-red-500"
+                                        />
+                                    }
+                                        .into_any()
+                                } else {
+                                    ().into_any()
+                                }
+                            } else {
+                                ().into_any()
                             }
-                                .into_any()
                         } else {
                             ().into_any()
                         }}
                         <span class="font-mono text-white break-all">
                             {format!(
                                 "{}{}",
-                                validator.info.account_id,
+                                validator().account_id,
                                 if let Some(country_code) = details
                                     .as_ref()
                                     .and_then(|d| d.country_code.as_ref())
@@ -448,11 +682,11 @@ fn ValidatorCard(
             <div class="flex flex-col items-end flex-shrink-0 gap-2">
                 {if is_supported {
                     let threshold = NearToken::from_millinear(1);
-                    let staked = validator.user_staked;
-                    let unstaked = validator.user_unstaked;
+                    let staked = validator().user_staked;
+                    let unstaked = validator().user_unstaked;
                     view! {
                         <A
-                            href=format!("/stake/{}/stake", validator.info.account_id)
+                            href=format!("/stake/{}/stake", validator().account_id)
                             attr:class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded cursor-pointer"
                         >
                             "Stake"
@@ -462,7 +696,7 @@ fn ValidatorCard(
                                 {if staked >= threshold {
                                     view! {
                                         <A
-                                            href=format!("/stake/{}/unstake", validator.info.account_id)
+                                            href=format!("/stake/{}/unstake", validator().account_id)
                                             attr:class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded cursor-pointer"
                                         >
                                             "Unstake"
@@ -476,9 +710,9 @@ fn ValidatorCard(
                                     view! {
                                         <button
                                             class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center"
-                                            disabled=move || !validator.user_can_withdraw
+                                            disabled=move || !validator().user_can_withdraw
                                             on:click=move |_| {
-                                                if !validator.user_can_withdraw {
+                                                if !validator().user_can_withdraw {
                                                     return;
                                                 }
                                                 if let Some(signer_id) = accounts_context
@@ -497,7 +731,7 @@ fn ValidatorCard(
                                                         ),
                                                     ];
                                                     let description = format!(
-                                                        "Withdrawing all from {}",
+                                                        "Withdraw all from {}",
                                                         pool_account_id,
                                                     );
                                                     let (rx, tx) = EnqueuedTransaction::create(
@@ -530,7 +764,7 @@ fn ValidatorCard(
                                                     "NEAR",
                                                 )}
                                             </span>
-                                            {if !validator.user_can_withdraw {
+                                            {if !validator().user_can_withdraw {
                                                 view! {
                                                     <span class="text-xs mt-1">
                                                         {move || {
@@ -568,12 +802,107 @@ fn ValidatorCard(
                         </div>
                     }
                         .into_any()
-                }} <div class="mt-1 text-right">
-                    <div class="text-sm" style:color=apy_color>
-                        {apy_str}
-                    </div>
-                    <div class="text-gray-400 text-xs">"APY"</div>
-                    <div class="text-gray-500 text-xs">{fee_str}</div>
+                }}
+                <div class="mt-1 text-right">
+                    {if validator().active_info.is_some() {
+                        view! {
+                            <div class="text-sm" style:color=apy_color>
+                                {apy_str}
+                            </div>
+                            {validator()
+                                .active_farms
+                                .iter()
+                                .cloned()
+                                .map(|farm| {
+                                    view! {
+                                        <div>
+                                            {move || {
+                                                let farm_period = farm.end_date - farm.start_date;
+                                                if farm_period.is_zero() {
+                                                    ().into_any()
+                                                } else {
+                                                    let annual_amount = (BigDecimal::from(farm.amount)
+                                                        * BigDecimal::from(NANOSECONDS_IN_YEAR))
+                                                        / BigDecimal::from(farm_period.num_nanoseconds().unwrap());
+                                                    let token_symbol = &farm.token.metadata.symbol;
+                                                    if farm.token.price_usd_raw > BigDecimal::from(0) {
+                                                        let annual_amount_decimal = balance_to_decimal(
+                                                            annual_amount.to_u128().unwrap_or(0),
+                                                            farm.token.metadata.decimals,
+                                                        );
+                                                        let annual_usd_value = &annual_amount_decimal
+                                                            * &farm.token.price_usd_raw / power_of_10(USDT_DECIMALS);
+                                                        let total_stake_decimal = balance_to_decimal(
+                                                            validator().total_stake.as_yoctonear(),
+                                                            24,
+                                                        );
+                                                        let total_stake_usd = &total_stake_decimal * &near_price();
+                                                        if total_stake_usd > BigDecimal::from(0) {
+                                                            let additional_apy = (&annual_usd_value / &total_stake_usd)
+                                                                * BigDecimal::from(100);
+                                                            view! {
+                                                                <div class="text-green-400 text-xs">
+                                                                    {format!("+{:.2}% in {}", additional_apy, token_symbol)}
+                                                                </div>
+                                                            }
+                                                                .into_any()
+                                                        } else {
+                                                            view! {
+                                                                <div class="text-green-400 text-xs">
+                                                                    {format!(
+                                                                        "+ {} {} / year",
+                                                                        format_token_amount_no_hide(
+                                                                            annual_amount.to_u128().unwrap_or(0),
+                                                                            farm.token.metadata.decimals,
+                                                                            "",
+                                                                        ),
+                                                                        token_symbol,
+                                                                    )}
+                                                                </div>
+                                                            }
+                                                                .into_any()
+                                                        }
+                                                    } else {
+                                                        // No price data, show token amount
+                                                        view! {
+                                                            <div class="text-green-400 text-xs">
+                                                                {format!(
+                                                                    "+ {} {} / year",
+                                                                    format_token_amount_no_hide(
+                                                                        annual_amount.to_u128().unwrap_or(0),
+                                                                        farm.token.metadata.decimals,
+                                                                        "",
+                                                                    ),
+                                                                    token_symbol,
+                                                                )}
+                                                            </div>
+                                                        }
+                                                            .into_any()
+                                                    }
+                                                }
+                                            }}
+                                        </div>
+                                    }
+                                })
+                                .collect_view()}
+                            <div class="text-gray-400 text-xs">"APY"</div>
+                            <div class="text-gray-500 text-xs">{fee_str}</div>
+                        }
+                            .into_any()
+                    } else {
+                        view! {
+                            <div class="flex items-center gap-2">
+                                <Icon
+                                    icon=icondata::LuOctagonPause
+                                    width="20"
+                                    height="20"
+                                    attr:class="text-red-400"
+                                />
+                                <div class="text-red-400 text-xs">"Inactive"</div>
+                            </div>
+                        }
+                            .into_any()
+                    }}
                 </div>
             </div>
         </div>
@@ -788,20 +1117,97 @@ pub fn Stake() -> impl IntoView {
                 let fees = fees_results.map_err(|e| e.to_string())?;
                 let details = details_results.map_err(|e: Error| e.to_string())?;
 
-                let mut validators: Vec<ValidatorInfo> = active_validators_info
+                let farm_pools: Vec<&CurrentEpochValidatorInfo> = active_validators_info
+                    .iter()
+                    .filter(|v| supports_farms(&v.account_id))
+                    .collect();
+
+                #[derive(Debug, Deserialize, Clone)]
+                struct PoolFarmRaw {
+                    pub farm_id: u64,
+                    pub name: String,
+                    pub token_id: AccountId,
+                    #[serde(with = "dec_format")]
+                    pub amount: Balance,
+                    #[serde(with = "dec_format")]
+                    pub start_date: u64,
+                    #[serde(with = "dec_format")]
+                    pub end_date: u64,
+                    pub active: bool,
+                }
+
+                let farms_results = if !farm_pools.is_empty() {
+                    let farm_requests: Vec<_> = farm_pools
+                        .iter()
+                        .map(|v| {
+                            (
+                                v.account_id.clone(),
+                                "get_active_farms",
+                                serde_json::json!({}),
+                                QueryFinality::Finality(Finality::Final),
+                            )
+                        })
+                        .collect();
+                    rpc_client
+                        .batch_call::<Vec<PoolFarmRaw>>(farm_requests)
+                        .await
+                } else {
+                    Ok(Vec::new())
+                };
+
+                let farms = farms_results.map_err(|e| e.to_string())?;
+
+                let mut validator_farms: HashMap<AccountId, Vec<PoolFarm>> = HashMap::new();
+                let mut all_farm_data: HashMap<AccountId, Vec<PoolFarmRaw>> = HashMap::new();
+
+                for (farm_pool, farm_result) in farm_pools.iter().zip(farms) {
+                    if let Ok(all_farms) = farm_result {
+                        all_farm_data.insert(farm_pool.account_id.clone(), all_farms.clone());
+
+                        let active_farms: Vec<PoolFarmRaw> =
+                            all_farms.into_iter().filter(|f| f.active).collect();
+                        let mut farms = Vec::new();
+                        for f in active_farms {
+                            if let Some(token_info) =
+                                fetch_token_info(f.token_id, network_context.network.get()).await
+                            {
+                                farms.push(PoolFarm {
+                                    farm_id: f.farm_id,
+                                    name: f.name,
+                                    token: token_info,
+                                    amount: f.amount,
+                                    start_date: DateTime::from_timestamp_nanos(f.start_date as i64),
+                                    end_date: DateTime::from_timestamp_nanos(f.end_date as i64),
+                                });
+                            }
+                        }
+                        validator_farms.insert(farm_pool.account_id.clone(), farms);
+                    }
+                }
+
+                let mut validators: Vec<PoolInfo> = active_validators_info
                     .into_iter()
                     .zip(fees)
                     .zip(details)
                     .filter_map(|((info, fee_fraction_res), details_res)| {
-                        fee_fraction_res.ok().map(|fee_fraction| ValidatorInfo {
-                            info,
-                            fee_fraction,
-                            details: details_res.ok(),
-                            user_staked: NearToken::from_yoctonear(0),
-                            user_unstaked: NearToken::from_yoctonear(0),
-                            user_can_withdraw: true,
-                            estimated_unlock_time: None,
-                            is_active: true,
+                        fee_fraction_res.ok().map(|fee_fraction| {
+                            let active_farms = validator_farms
+                                .get(&info.account_id)
+                                .cloned()
+                                .unwrap_or_default();
+                            PoolInfo {
+                                account_id: info.account_id.clone(),
+                                active_info: Some(info.clone()),
+                                fee_fraction,
+                                details: details_res.ok(),
+                                user_staked: NearToken::from_yoctonear(0),
+                                user_unstaked: NearToken::from_yoctonear(0),
+                                user_can_withdraw: true,
+                                estimated_unlock_time: None,
+                                total_stake: NearToken::from_yoctonear(info.stake),
+                                active_farms,
+                                unclaimed_rewards: Vec::new(),
+                            }
                         })
                     })
                     .collect();
@@ -826,10 +1232,8 @@ pub fn Stake() -> impl IntoView {
                 const BAL_THRESHOLD: NearToken = NearToken::from_millinear(1);
 
                 if let Some(user_account_id) = user_account_id {
-                    let mut pools_set: HashSet<AccountId> = validators
-                        .iter()
-                        .map(|v| v.info.account_id.clone())
-                        .collect();
+                    let mut pools_set: HashSet<AccountId> =
+                        validators.iter().map(|v| v.account_id.clone()).collect();
 
                     let network = network_context.network.get();
                     let api_host = match network {
@@ -874,7 +1278,7 @@ pub fn Stake() -> impl IntoView {
                                 let can_withdraw = account_info.can_withdraw;
 
                                 if let Some(v) =
-                                    validators.iter_mut().find(|v| v.info.account_id == pool_id)
+                                    validators.iter_mut().find(|v| v.account_id == pool_id)
                                 {
                                     v.user_staked = staked_amt;
                                     v.user_unstaked = unstaked_amt;
@@ -895,34 +1299,50 @@ pub fn Stake() -> impl IntoView {
                                         };
                                     v.estimated_unlock_time = estimated_unlock_time;
                                 } else {
-                                    // Create placeholder validator info for pools absent from current set
-                                    let placeholder_info = CurrentEpochValidatorInfo {
-                                        account_id: pool_id.clone(),
-                                        public_key: "ed25519:11111111111111111111111111111111"
-                                            .parse()
-                                            .unwrap(),
-                                        is_slashed: false,
-                                        stake: 0,
-                                        shards_produced: vec![],
-                                        num_produced_blocks: 0,
-                                        num_expected_blocks: 0,
-                                        num_produced_chunks: 0,
-                                        num_expected_chunks: 0,
-                                        num_produced_chunks_per_shard: vec![],
-                                        num_expected_chunks_per_shard: vec![],
-                                        num_produced_endorsements: 0,
-                                        num_expected_endorsements: 0,
-                                        num_produced_endorsements_per_shard: vec![],
-                                        num_expected_endorsements_per_shard: vec![],
-                                        shards_endorsed: vec![],
-                                    };
+                                    let network = network_context.network.get();
+                                    let is_supported = is_validator_supported(&pool_id, network);
 
-                                    validators.push(ValidatorInfo {
-                                        info: placeholder_info,
-                                        fee_fraction: Fraction {
+                                    let (fee_fraction, total_stake) = if is_supported {
+                                        let fee_res = rpc_client
+                                            .call::<Fraction>(
+                                                pool_id.clone(),
+                                                "get_reward_fee_fraction",
+                                                serde_json::json!({}),
+                                                QueryFinality::Finality(Finality::Final),
+                                            )
+                                            .await;
+
+                                        let total_stake_res = rpc_client
+                                            .call::<NearToken>(
+                                                pool_id.clone(),
+                                                "get_total_staked_balance",
+                                                serde_json::json!({}),
+                                                QueryFinality::Finality(Finality::Final),
+                                            )
+                                            .await;
+
+                                        let fee = fee_res.unwrap_or(Fraction {
                                             numerator: 0,
                                             denominator: 1,
-                                        },
+                                        });
+                                        let total_stake =
+                                            total_stake_res.unwrap_or(NearToken::from_yoctonear(0));
+                                        (fee, total_stake)
+                                    } else {
+                                        // For unsupported inactive validators, just 0
+                                        (
+                                            Fraction {
+                                                numerator: 0,
+                                                denominator: 1,
+                                            },
+                                            NearToken::from_yoctonear(0),
+                                        )
+                                    };
+
+                                    validators.push(PoolInfo {
+                                        account_id: pool_id.clone(),
+                                        active_info: None,
+                                        fee_fraction,
                                         details: None,
                                         user_staked: staked_amt,
                                         user_unstaked: unstaked_amt,
@@ -942,20 +1362,103 @@ pub fn Stake() -> impl IntoView {
                                         } else {
                                             None
                                         },
-                                        // otherwise would've been matched by the condition above
-                                        is_active: false,
+                                        total_stake,
+                                        active_farms: Vec::new(),
+                                        unclaimed_rewards: Vec::new(),
                                     });
                                 }
                             }
                         }
 
-                        // Reorder: pools with user balance first
+                        let mut unclaimed_requests = Vec::new();
+                        for validator in &validators {
+                            if validator.user_staked >= BAL_THRESHOLD {
+                                if let Some(farm_data) = all_farm_data.get(&validator.account_id) {
+                                    for farm in farm_data {
+                                        unclaimed_requests.push((
+                                            validator.account_id.clone(),
+                                            "get_unclaimed_reward",
+                                            serde_json::json!({
+                                                "account_id": user_account_id,
+                                                "farm_id": farm.farm_id
+                                            }),
+                                            QueryFinality::Finality(Finality::Final),
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+
+                        if !unclaimed_requests.is_empty() {
+                            if let Ok(unclaimed_results) = rpc_client
+                                .batch_call::<U128>(unclaimed_requests.clone())
+                                .await
+                            {
+                                let mut unclaimed_idx = 0;
+                                for validator in &mut validators {
+                                    if validator.user_staked >= BAL_THRESHOLD {
+                                        if let Some(farm_data) =
+                                            all_farm_data.get(&validator.account_id)
+                                        {
+                                            let mut unclaimed_by_token: HashMap<
+                                                AccountId,
+                                                Balance,
+                                            > = HashMap::new();
+
+                                            for farm in farm_data {
+                                                if unclaimed_idx < unclaimed_results.len() {
+                                                    if let Ok(unclaimed_amount) =
+                                                        &unclaimed_results[unclaimed_idx]
+                                                    {
+                                                        let amount: Balance = **unclaimed_amount;
+                                                        if amount > 0 {
+                                                            *unclaimed_by_token
+                                                                .entry(farm.token_id.clone())
+                                                                .or_insert(0) += amount;
+                                                        }
+                                                    }
+                                                    unclaimed_idx += 1;
+                                                }
+                                            }
+
+                                            let mut unclaimed_rewards = Vec::new();
+                                            for (token_id, total_amount) in unclaimed_by_token {
+                                                if let Some(token_info) = fetch_token_info(
+                                                    token_id,
+                                                    network_context.network.get(),
+                                                )
+                                                .await
+                                                {
+                                                    unclaimed_rewards.push(UnclaimedReward {
+                                                        token: token_info,
+                                                        amount: total_amount,
+                                                    });
+                                                }
+                                            }
+                                            validator.unclaimed_rewards = unclaimed_rewards;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Reorder: pools with user balance first (alphabetically), then random
                         validators.sort_by(|a, b| {
                             let a_has =
                                 a.user_staked >= BAL_THRESHOLD || a.user_unstaked >= BAL_THRESHOLD;
                             let b_has =
                                 b.user_staked >= BAL_THRESHOLD || b.user_unstaked >= BAL_THRESHOLD;
-                            b_has.cmp(&a_has)
+
+                            match (a_has, b_has) {
+                                // Both have balance: sort alphabetically
+                                (true, true) => a.account_id.cmp(&b.account_id),
+                                // Only a has balance: a comes first
+                                (true, false) => std::cmp::Ordering::Less,
+                                // Only b has balance: b comes first
+                                (false, true) => std::cmp::Ordering::Greater,
+                                // Neither has balance: keep random order (equal)
+                                (false, false) => std::cmp::Ordering::Equal,
+                            }
                         });
                     }
                 }
@@ -971,6 +1474,27 @@ pub fn Stake() -> impl IntoView {
         async move { compute_liquid_staking_apys(&rpc_client).await }
     });
 
+    let show_shuffle_explanation = RwSignal::new(false);
+    let near_total_supply = Memo::new(move |_| {
+        let supply_yocto = tokens_context
+            .tokens
+            .get_untracked()
+            .into_iter()
+            .find(|t| t.token.account_id == Token::Near)
+            .map(|t| t.token.total_supply)
+            .expect("Near not found");
+        NearToken::from_yoctonear(supply_yocto)
+    });
+    let near_price = Memo::new(move |_| {
+        tokens_context
+            .tokens
+            .get_untracked()
+            .into_iter()
+            .find(|t| t.token.account_id == Token::Near)
+            .map(|t| t.token.price_usd_raw)
+            .expect("Near not found")
+    });
+
     view! {
         <div class="flex flex-col gap-4 text-white sm:p-1">
             {move || {
@@ -979,7 +1503,6 @@ pub fn Stake() -> impl IntoView {
                     view! {
                         <div>
                             <h1 class="text-2xl font-bold">"Search Results"</h1>
-                            <p class="text-gray-400">"Validators matching your search query"</p>
                         </div>
                     }
                         .into_any()
@@ -1117,165 +1640,193 @@ pub fn Stake() -> impl IntoView {
                     ().into_any()
                 }
             }}
-            <Suspense fallback=move || {
-                view! {
-                    <div class="flex items-center justify-center h-32">
-                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-                    </div>
-                }
-            }>
-                {move || {
-                    let query = search_query.get();
-                    validators_resource
-                        .get()
-                        .map(|result| {
-                            match result {
-                                Ok(validators) => {
-                                    let filtered_validators = if query.trim().is_empty() {
-                                        validators.clone()
-                                    } else {
-                                        let mut scored_validators: Vec<(ValidatorInfo, i32)> = validators
-                                            .iter()
-                                            .filter_map(|validator| {
-                                                let mut score = 0;
-                                                score = score
-                                                    .max(
-                                                        compute_match_score(
-                                                            &query,
-                                                            validator.info.account_id.as_ref(),
-                                                        ),
-                                                    );
-                                                if let Some(details) = &validator.details {
-                                                    if let Some(name) = &details.name {
-                                                        score = score.max(compute_match_score(&query, name));
-                                                    }
+            {move || {
+                let query = search_query.get();
+                validators_resource
+                    .get()
+                    .map(|result| {
+                        match result {
+                            Ok(validators) => {
+                                let filtered_validators = if query.trim().is_empty() {
+                                    validators.clone()
+                                } else {
+                                    let mut scored_validators: Vec<(PoolInfo, i32)> = validators
+                                        .iter()
+                                        .filter_map(|validator| {
+                                            let mut score = 0;
+                                            score = score
+                                                .max(
+                                                    compute_match_score(&query, validator.account_id.as_ref()),
+                                                );
+                                            if let Some(details) = &validator.details {
+                                                if let Some(name) = &details.name {
+                                                    score = score.max(compute_match_score(&query, name));
                                                 }
-                                                if score > 0 {
-                                                    Some((validator.clone(), score))
-                                                } else {
-                                                    None
-                                                }
-                                            })
-                                            .collect();
-                                        scored_validators
-                                            .sort_by(|a, b| {
-                                                let score_cmp = b.1.cmp(&a.1);
-                                                if score_cmp == std::cmp::Ordering::Equal {
-                                                    a.0.info.account_id.cmp(&b.0.info.account_id)
-                                                } else {
-                                                    score_cmp
-                                                }
-                                            });
-                                        scored_validators
-                                            .into_iter()
-                                            .map(|(validator, _)| validator)
-                                            .collect()
-                                    };
-                                    if filtered_validators.is_empty() {
-                                        let message = if query.trim().is_empty() {
-                                            "No validators found."
-                                        } else {
-                                            "No validators match your search query."
-                                        };
-                                        view! { <p class="text-gray-400">{message}</p> }.into_any()
-                                    } else {
-                                        let total_staked: u128 = validators
-                                            .iter()
-                                            .filter(|v| v.is_active)
-                                            .map(|v| v.info.stake)
-                                            .sum();
-                                        let near_total_supply = tokens_context
-                                            .tokens
-                                            .get()
-                                            .into_iter()
-                                            .find(|t| t.token.account_id == Token::Near)
-                                            .map(|t| t.token.total_supply);
-                                        let base_apy = near_total_supply
-                                            .map(|supply| {
-                                                if total_staked == 0 {
-                                                    return BigDecimal::from(0);
-                                                }
-                                                let base_inflation = BigDecimal::from_str("0.05").unwrap();
-                                                let treasury_rate = BigDecimal::from_str("0.1").unwrap();
-                                                let validator_rate = BigDecimal::from(1) - &treasury_rate;
-                                                let validator_inflation = &base_inflation * &validator_rate;
-                                                let near_total_supply = BigDecimal::from(supply);
-                                                let total_staked = BigDecimal::from(total_staked);
-                                                &validator_inflation / (&total_staked / &near_total_supply)
-                                            })
-                                            .unwrap_or_default();
+                                            }
+                                            if score > 0 {
+                                                Some((validator.clone(), score))
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .collect();
+                                    if let Ok(searched_account_id) = query
+                                        .trim()
+                                        .parse::<AccountId>()
+                                    {
                                         let current_network = network_context.network.get();
-                                        let show_shuffle_explanation = RwSignal::new(false);
-
-                                        view! {
-                                            <div class="flex flex-col gap-2">
-                                                {move || {
-                                                    if query.trim().is_empty() {
-                                                        view! {
-                                                            <div class="flex items-center justify-between mb-4">
-                                                                <h2 class="text-xl font-semibold">"Native Staking"</h2>
-                                                                <button
-                                                                    class="text-gray-400 hover:text-white cursor-pointer no-mobile-ripple"
-                                                                    on:click=move |_| {
-                                                                        show_shuffle_explanation.update(|show| *show = !*show);
-                                                                    }
-                                                                >
-                                                                    <Icon icon=icondata::LuDices width="20" height="20" />
-                                                                </button>
-                                                            </div>
-                                                        }
-                                                            .into_any()
-                                                    } else {
-                                                        ().into_any()
-                                                    }
-                                                }} <Show when=move || show_shuffle_explanation.get()>
-                                                    <div class="relative bg-neutral-800 p-4 rounded-lg mb-4">
-                                                        <div class="absolute -top-2 right-2 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-neutral-800"></div>
-                                                        <p class="text-gray-300 text-sm">
-                                                            "Validators are randomly shuffled to promote decentralization. This helps prevent bias toward larger validators, ensuring fairer distribution of stake across the network. Of course, you're free to choose any validator you want, but having few validators with large concentration of stake makes the network less secure."
-                                                        </p>
-                                                    </div>
-                                                </Show>
-                                                {filtered_validators
-                                                    .into_iter()
-                                                    .map(|v| {
-                                                        view! {
-                                                            <ValidatorCard
-                                                                validator=v
-                                                                base_apy=base_apy.clone()
-                                                                total_supply=near_total_supply
-                                                                network=current_network
-                                                                refresh=move || {
-                                                                    validators_resource.refetch();
-                                                                }
-                                                            />
-                                                        }
-                                                    })
-                                                    .collect_view()}
-                                            </div>
+                                        if is_validator_supported(
+                                            &searched_account_id,
+                                            current_network,
+                                        ) {
+                                            let already_exists = validators
+                                                .iter()
+                                                .any(|v| v.account_id == searched_account_id);
+                                            if !already_exists {
+                                                let inactive_validator = PoolInfo {
+                                                    account_id: searched_account_id.clone(),
+                                                    active_info: None,
+                                                    fee_fraction: Fraction {
+                                                        numerator: 0,
+                                                        denominator: 1,
+                                                    },
+                                                    details: None,
+                                                    user_staked: NearToken::from_yoctonear(0),
+                                                    user_unstaked: NearToken::from_yoctonear(0),
+                                                    user_can_withdraw: true,
+                                                    estimated_unlock_time: None,
+                                                    total_stake: NearToken::from_yoctonear(0),
+                                                    active_farms: Vec::new(),
+                                                    unclaimed_rewards: Vec::new(),
+                                                };
+                                                scored_validators.push((inactive_validator, 100));
+                                            }
                                         }
-                                            .into_any()
                                     }
-                                }
-                                Err(e) => {
+                                    scored_validators
+                                        .sort_by(|a, b| {
+                                            let score_cmp = b.1.cmp(&a.1);
+                                            if score_cmp == std::cmp::Ordering::Equal {
+                                                a.0.account_id.cmp(&b.0.account_id)
+                                            } else {
+                                                score_cmp
+                                            }
+                                        });
+                                    scored_validators
+                                        .into_iter()
+                                        .map(|(validator, _)| validator)
+                                        .collect()
+                                };
+                                if filtered_validators.is_empty() {
+                                    let message = if query.trim().is_empty() {
+                                        "No validators found."
+                                    } else {
+                                        "No validators match your search query."
+                                    };
+                                    view! { <p class="text-gray-400">{message}</p> }.into_any()
+                                } else {
+                                    let total_staked: u128 = validators
+                                        .iter()
+                                        .filter_map(|v| v.active_info.as_ref())
+                                        .map(|v| v.stake)
+                                        .sum();
+                                    let near_total_supply = near_total_supply();
+                                    let calculated_apy = {
+                                        if total_staked == 0 {
+                                            BigDecimal::from(0)
+                                        } else {
+                                            let base_inflation = BigDecimal::from_str("0.05").unwrap();
+                                            let treasury_rate = BigDecimal::from_str("0.1").unwrap();
+                                            let validator_rate = BigDecimal::from(1) - &treasury_rate;
+                                            let validator_inflation = &base_inflation * &validator_rate;
+                                            let near_total_supply = BigDecimal::from(
+                                                near_total_supply.as_yoctonear(),
+                                            );
+                                            let total_staked = BigDecimal::from(total_staked);
+                                            &validator_inflation / (&total_staked / &near_total_supply)
+                                        }
+                                    };
+                                    let current_network = network_context.network.get();
+
                                     view! {
-                                        <p class="text-red-500">
-                                            {format!("Error loading validators: {}", e)}
-                                        </p>
+                                        <div class="flex flex-col gap-2">
+                                            <Show
+                                                when=move || query.trim().is_empty()
+                                                fallback=move || {
+                                                    view! {
+                                                        <p class="text-gray-400">
+                                                            "Validators matching your search query"
+                                                        </p>
+                                                    }
+                                                }
+                                            >
+                                                <div class="flex items-center justify-between mb-4">
+                                                    <h2 class="text-xl font-semibold">"Native Staking"</h2>
+                                                    <button
+                                                        class="text-gray-400 hover:text-white cursor-pointer no-mobile-ripple"
+                                                        on:click=move |_| {
+                                                            show_shuffle_explanation.update(|show| *show = !*show);
+                                                        }
+                                                    >
+                                                        <Icon icon=icondata::LuDices width="20" height="20" />
+                                                    </button>
+                                                </div>
+                                            </Show>
+                                            <Show when=move || show_shuffle_explanation.get()>
+                                                <div class="relative bg-neutral-800 p-4 rounded-lg mb-4">
+                                                    <div class="absolute -top-2 right-2 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-neutral-800"></div>
+                                                    <p class="text-gray-300 text-sm">
+                                                        "Validators are randomly shuffled to promote decentralization. This helps prevent bias toward larger validators, ensuring fairer distribution of stake across the network. Of course, you're free to choose any validator you want, but having few validators with large concentration of stake makes the network less secure."
+                                                    </p>
+                                                </div>
+                                            </Show>
+                                            <For
+                                                each=move || filtered_validators.clone()
+                                                key=move |v| v.account_id.clone()
+                                                let(v)
+                                            >
+                                                <ValidatorCard
+                                                    validator=v
+                                                    base_apy=calculated_apy.clone()
+                                                    total_supply=near_total_supply
+                                                    near_price=near_price
+                                                    network=current_network
+                                                    refresh=move || {
+                                                        validators_resource.refetch();
+                                                    }
+                                                />
+                                            </For>
+                                        </div>
                                     }
                                         .into_any()
                                 }
                             }
-                        })
-                }}
-            </Suspense>
+                            Err(e) => {
+                                view! {
+                                    <p class="text-red-500">
+                                        {format!("Error loading validators: {}", e)}
+                                    </p>
+                                }
+                                    .into_any()
+                            }
+                        }
+                    })
+                    .unwrap_or_else(|| {
+                        view! {
+                            <div class="flex items-center justify-center h-32">
+                                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                            </div>
+                        }
+                            .into_any()
+                    })
+            }}
         </div>
     }
 }
 
 #[derive(Clone)]
 struct ValidatorPageData {
-    validator: ValidatorInfo,
+    validator: PoolInfo,
     base_apy: BigDecimal,
 }
 
@@ -1317,12 +1868,17 @@ pub fn StakeValidator() -> impl IntoView {
                 .map_err(|e| e.to_string())?;
             let active_validators_info = data.current_validators;
 
-            let Some(validator_info) = active_validators_info
+            let validator_info_opt = active_validators_info
                 .iter()
                 .find(|v| v.account_id == validator_account_id)
-                .cloned()
-            else {
-                return Err("Validator not found in current epoch".to_string());
+                .cloned();
+
+            let active_info = if validator_info_opt.is_some() {
+                validator_info_opt
+            } else if is_validator_supported(&validator_account_id, network) {
+                None
+            } else {
+                return Err("Validator not found or not supported".to_string());
             };
 
             let (fee_res, details_res) = join(
@@ -1357,15 +1913,19 @@ pub fn StakeValidator() -> impl IntoView {
             let fee_fraction = fee_res.map_err(|e| e.to_string())?;
             let details = details_res.ok();
 
-            let validator = ValidatorInfo {
-                info: validator_info,
+            let validator = PoolInfo {
+                account_id: validator_account_id.clone(),
+                active_info,
                 fee_fraction,
                 details,
                 user_staked: NearToken::from_yoctonear(0),
                 user_unstaked: NearToken::from_yoctonear(0),
                 user_can_withdraw: true,
                 estimated_unlock_time: None,
-                is_active: true,
+                // Not displayed on this page
+                total_stake: NearToken::from_yoctonear(0),
+                active_farms: Vec::new(),
+                unclaimed_rewards: Vec::new(),
             };
 
             let total_staked: u128 = active_validators_info.iter().map(|v| v.stake).sum();
@@ -1374,7 +1934,7 @@ pub fn StakeValidator() -> impl IntoView {
                 .find(|t| t.token.account_id == Token::Near)
                 .map(|t| t.token.total_supply);
 
-            let base_apy = near_total_supply
+            let calculated_apy = near_total_supply
                 .map(|supply| {
                     if total_staked == 0 {
                         return BigDecimal::from(0);
@@ -1388,6 +1948,12 @@ pub fn StakeValidator() -> impl IntoView {
                     &validator_inflation / (&total_staked / &near_total_supply)
                 })
                 .unwrap_or_default();
+
+            let base_apy = if validator.active_info.is_some() {
+                calculated_apy
+            } else {
+                BigDecimal::from(0)
+            };
 
             Ok(ValidatorPageData {
                 validator,
@@ -1467,7 +2033,7 @@ pub fn StakeValidator() -> impl IntoView {
         };
         let amount = decimal_to_balance(amount, 24);
         let amount = NearToken::from_yoctonear(amount);
-        let transaction_description = format!("Staking {} with {}", amount, validator_pool);
+        let transaction_description = format!("Stake {} with {}", amount, validator_pool);
         let Some(signer_id) = accounts_context
             .accounts
             .get_untracked()
@@ -1578,7 +2144,7 @@ pub fn StakeValidator() -> impl IntoView {
                                                             .into_any()
                                                     }} <div>
                                                         <h2 class="text-white text-xl font-bold wrap-anywhere">
-                                                            {data.validator.info.account_id.to_string()}
+                                                            {data.validator.account_id.to_string()}
                                                         </h2>
                                                         <p class="text-gray-400 font-bold">"Stake NEAR"</p>
                                                     </div>
@@ -1769,12 +2335,17 @@ pub fn UnstakeValidator() -> impl IntoView {
                 .map_err(|e| e.to_string())?;
             let active_validators_info = data.current_validators;
 
-            let Some(validator_info) = active_validators_info
+            let validator_info_opt = active_validators_info
                 .iter()
                 .find(|v| v.account_id == validator_account_id)
-                .cloned()
-            else {
-                return Err("Validator not found in current epoch".to_string());
+                .cloned();
+
+            let active_info = if validator_info_opt.is_some() {
+                validator_info_opt
+            } else if is_validator_supported(&validator_account_id, network) {
+                None
+            } else {
+                return Err("Validator not found or not supported".to_string());
             };
 
             let (fee_res, details_res) = join(
@@ -1805,18 +2376,23 @@ pub fn UnstakeValidator() -> impl IntoView {
                 },
             )
             .await;
+
             let fee_fraction = fee_res.map_err(|e| e.to_string())?;
             let details = details_res.ok();
 
-            let validator = ValidatorInfo {
-                info: validator_info,
+            let validator = PoolInfo {
+                account_id: validator_account_id.clone(),
+                active_info,
                 fee_fraction,
                 details,
                 user_staked: NearToken::from_yoctonear(0),
                 user_unstaked: NearToken::from_yoctonear(0),
                 user_can_withdraw: true,
                 estimated_unlock_time: None,
-                is_active: true,
+                // Not displayed on this page
+                total_stake: NearToken::from_yoctonear(0),
+                active_farms: Vec::new(),
+                unclaimed_rewards: Vec::new(),
             };
 
             let total_staked: u128 = active_validators_info.iter().map(|v| v.stake).sum();
@@ -1825,7 +2401,7 @@ pub fn UnstakeValidator() -> impl IntoView {
                 .find(|t| t.token.account_id == Token::Near)
                 .map(|t| t.token.total_supply);
 
-            let base_apy = near_total_supply
+            let calculated_apy = near_total_supply
                 .map(|supply| {
                     if total_staked == 0 {
                         return BigDecimal::from(0);
@@ -1839,6 +2415,12 @@ pub fn UnstakeValidator() -> impl IntoView {
                     &validator_inflation / (&total_staked / &near_total_supply)
                 })
                 .unwrap_or_default();
+
+            let base_apy = if validator.active_info.is_some() {
+                calculated_apy
+            } else {
+                BigDecimal::from(0)
+            };
 
             Ok(ValidatorPageData {
                 validator,
@@ -1926,7 +2508,7 @@ pub fn UnstakeValidator() -> impl IntoView {
             return;
         };
 
-        let description = format!("Unstaking {} from {}", amount, validator_pool);
+        let description = format!("Unstake {} from {}", amount, validator_pool);
 
         spawn_local(async move {
             let (rx, tx) = EnqueuedTransaction::create(
@@ -2022,7 +2604,7 @@ pub fn UnstakeValidator() -> impl IntoView {
                                                         .into_any()
                                                 }} <div>
                                                     <h2 class="text-white text-xl font-bold wrap-anywhere">
-                                                        {data.validator.info.account_id.to_string()}
+                                                        {data.validator.account_id.to_string()}
                                                     </h2>
                                                     <p class="text-gray-400 font-bold">"Unstake NEAR"</p>
                                                     {if let Some(s) = current_stake {

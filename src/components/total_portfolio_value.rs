@@ -4,7 +4,8 @@ use crate::contexts::tokens_context::TokensContext;
 use crate::utils::{balance_to_decimal, format_usd_value, power_of_10, USDT_DECIMALS};
 use bigdecimal::{BigDecimal, ToPrimitive};
 use leptos::prelude::*;
-use web_sys::window;
+use leptos_icons::*;
+use leptos_router::components::A;
 
 #[component]
 pub fn TotalPortfolioValue() -> impl IntoView {
@@ -17,11 +18,20 @@ pub fn TotalPortfolioValue() -> impl IntoView {
     let network = expect_context::<NetworkContext>().network;
     let (last_tap, set_last_tap) = signal(0u64);
 
+    // Check storage persistence
+    let storage_persisted = LocalResource::new(|| async {
+        match wasm_bindgen_futures::JsFuture::from(
+            window().navigator().storage().persisted().unwrap(),
+        )
+        .await
+        {
+            Ok(persisted) => persisted.as_bool().unwrap_or(false),
+            Err(_) => false,
+        }
+    });
+
     let handle_tap = move |_| {
-        let now_ms = window()
-            .and_then(|w| w.performance())
-            .map(|p| p.now() as u64)
-            .unwrap_or(0);
+        let now_ms = window().performance().map(|p| p.now() as u64).unwrap_or(0);
         let last_tap_time = last_tap.get();
         let time_since_last_tap_ms = if now_ms > last_tap_time {
             now_ms - last_tap_time
@@ -36,6 +46,19 @@ pub fn TotalPortfolioValue() -> impl IntoView {
             });
         }
         set_last_tap.set(now_ms);
+    };
+
+    let has_non_zero_balance = move || {
+        if loading_tokens.get() {
+            false
+        } else {
+            let total = tokens.get().iter().fold(BigDecimal::from(0), |acc, token| {
+                let normalized_balance =
+                    balance_to_decimal(token.balance, token.token.metadata.decimals);
+                acc + (&token.token.price_usd_hardcoded * &normalized_balance)
+            });
+            total > BigDecimal::from(0)
+        }
     };
 
     let display_value = move || {
@@ -119,6 +142,18 @@ pub fn TotalPortfolioValue() -> impl IntoView {
                     }
                 }}
             </div>
+
+            <Show when=move || { has_non_zero_balance() && storage_persisted.get() == Some(false) }>
+                <div class="mt-4 mx-auto">
+                    <A
+                        href="/settings/security#storage"
+                        attr:class="inline-flex items-center gap-2 py-1.5 px-3 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-yellow-300 hover:bg-yellow-500/20 transition-colors cursor-pointer"
+                    >
+                        <Icon icon=icondata::LuTriangleAlert width="16" height="16" />
+                        <span class="text-xs font-medium">"Enable Persistent Storage"</span>
+                    </A>
+                </div>
+            </Show>
         </div>
     }
 }

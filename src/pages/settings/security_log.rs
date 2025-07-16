@@ -4,7 +4,10 @@ use wasm_bindgen::{prelude::Closure, JsCast, JsValue};
 use web_sys::{js_sys::Date, HtmlDivElement, IntersectionObserver};
 
 use crate::{
-    contexts::security_log_context::{load_security_logs, SecurityLog},
+    contexts::{
+        accounts_context::AccountsContext,
+        security_log_context::{load_security_logs, SecurityLog},
+    },
     utils::format_account_id,
 };
 
@@ -103,15 +106,24 @@ fn LogEntry(log: SecurityLog) -> impl IntoView {
     let local_date = Date::new(&JsValue::from_f64(log.timestamp.timestamp_millis() as f64));
     let formatted_date = local_date.to_locale_string("default", &JsValue::UNDEFINED);
     let formatted_date = formatted_date.as_string().unwrap_or_default();
+
+    let accounts_context = expect_context::<AccountsContext>();
+
+    let log_for_message = log.clone();
+    let account_id = log.account.clone();
+
+    let message =
+        move || log_for_message.get_decrypted_message(accounts_context.cipher.get().as_ref());
+
     view! {
         <div class="p-4 rounded-lg bg-neutral-900">
             <div class="flex items-center justify-between mb-2">
                 <div class="text-sm text-neutral-400">{formatted_date}</div>
                 <div class="text-sm font-mono bg-neutral-800 px-2 py-1 rounded">
-                    {move || format_account_id(&log.account)}
+                    {move || format_account_id(&account_id)}
                 </div>
             </div>
-            <div class="text-white wrap-anywhere">{log.message}</div>
+            <div class="text-white wrap-anywhere">{message}</div>
         </div>
     }
 }

@@ -17,6 +17,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_icons::*;
 use leptos_router::components::A;
+use leptos_router::hooks::use_location;
 use near_min_api::{
     types::{
         AccessKey, AccessKeyPermission, AccessKeyPermissionView, Action, AddKeyAction,
@@ -25,9 +26,39 @@ use near_min_api::{
     QueryFinality,
 };
 use rand::{rngs::OsRng, RngCore};
+use wasm_bindgen_futures;
+use web_sys::js_sys::{Object, Reflect};
 use zxcvbn::zxcvbn;
 
 const MIN_ROUNDS: u32 = 2;
+
+#[allow(clippy::float_arithmetic)] // Not an important calculation
+fn format_bytes(bytes: u64) -> String {
+    const TB: u64 = 1024u64.pow(4);
+    const GB: u64 = 1024u64.pow(3);
+    const MB: u64 = 1024u64.pow(2);
+    const KB: u64 = 1024u64;
+
+    if bytes >= TB {
+        format!("{:.2} TB", bytes as f64 / TB as f64)
+    } else if bytes >= GB {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.2} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.0} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} bytes", bytes)
+    }
+}
+
+fn is_chrome_or_safari() -> bool {
+    let user_agent = window().navigator().user_agent().unwrap_or_default();
+    user_agent.contains("Chrome")
+        || user_agent.contains("Chromium")
+        || user_agent.contains("Edge")
+        || user_agent.contains("Safari")
+}
 
 #[allow(clippy::float_arithmetic)] // Nanoseconds for benchmarking is not precision-critical
 async fn benchmark_argon2() -> (u32, f64) {
@@ -99,13 +130,7 @@ async fn benchmark_argon2() -> (u32, f64) {
 
 #[component]
 pub fn SecuritySettings() -> impl IntoView {
-    let AccountsContext {
-        accounts,
-        set_accounts,
-        set_password,
-        is_encrypted,
-        ..
-    } = expect_context::<AccountsContext>();
+    let accounts_context = expect_context::<AccountsContext>();
     let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
     let TransactionQueueContext {
         add_transaction, ..
@@ -127,9 +152,14 @@ pub fn SecuritySettings() -> impl IntoView {
     let (copied_to_clipboard, set_copied_to_clipboard) = signal(false);
     let (ledger_is_only_key, set_ledger_is_only_key) = signal(false);
     let (checking_keys, set_checking_keys) = signal(false);
+    let (storage_persisted, set_storage_persisted) = signal::<Option<bool>>(None);
+    let (requesting_persistence, set_requesting_persistence) = signal(false);
+    let (storage_usage, set_storage_usage) = signal::<Option<u64>>(None);
+    let (storage_quota, set_storage_quota) = signal::<Option<u64>>(None);
+    let (persistence_denied, set_persistence_denied) = signal(false);
 
     let is_ledger_account = move || {
-        let accs = accounts.get();
+        let accs = accounts_context.accounts.get();
         if let Some(selected_id) = &accs.selected_account_id {
             if let Some(account) = accs.accounts.iter().find(|a| &a.account_id == selected_id) {
                 return matches!(account.secret_key, SecretKeyHolder::Ledger { .. });
@@ -144,17 +174,90 @@ pub fn SecuritySettings() -> impl IntoView {
         set_copied_to_clipboard(false);
     };
 
+    let check_storage_persistence = move || {
+        spawn_local(async move {
+            // Check if storage is persisted
+            match wasm_bindgen_futures::JsFuture::from(
+                window().navigator().storage().persisted().unwrap(),
+            )
+            .await
+            {
+                Ok(persisted) => {
+                    set_storage_persisted(Some(persisted.as_bool().unwrap_or(false)));
+                }
+                Err(_) => {
+                    set_storage_persisted(Some(false));
+                }
+            }
+
+            // Get storage usage and quota
+            match wasm_bindgen_futures::JsFuture::from(
+                window().navigator().storage().estimate().unwrap(),
+            )
+            .await
+            {
+                Ok(estimate) => {
+                    if let Some(estimate_obj) = Object::try_from(&estimate) {
+                        if let Ok(usage_prop) = Reflect::get(estimate_obj, &"usage".into()) {
+                            if let Some(usage) = usage_prop.as_f64() {
+                                set_storage_usage(Some(usage as u64));
+                            }
+                        }
+                        if let Ok(quota_prop) = Reflect::get(estimate_obj, &"quota".into()) {
+                            if let Some(quota) = quota_prop.as_f64() {
+                                set_storage_quota(Some(quota as u64));
+                            }
+                        }
+                    }
+                }
+                Err(err) => {
+                    log::warn!("Failed to get storage estimate: {:?}", err);
+                }
+            }
+        });
+    };
+
+    let request_storage_persistence = move || {
+        set_requesting_persistence(true);
+        set_persistence_denied(false);
+        spawn_local(async move {
+            match wasm_bindgen_futures::JsFuture::from(
+                window().navigator().storage().persist().unwrap(),
+            )
+            .await
+            {
+                Ok(granted) => {
+                    let is_persistent = granted.as_bool().unwrap_or(false);
+                    set_storage_persisted(Some(is_persistent));
+                    if is_persistent {
+                        log::info!("Storage persistence granted");
+                        set_persistence_denied(false);
+                    } else {
+                        log::warn!("Storage persistence denied");
+                        set_persistence_denied(true);
+                    }
+                }
+                Err(err) => {
+                    log::error!("Failed to request storage persistence: {:?}", err);
+                    set_persistence_denied(true);
+                }
+            }
+            set_requesting_persistence(false);
+        });
+    };
+
     let check_ledger_keys = move || {
         if !is_ledger_account() {
             set_ledger_is_only_key(false);
             return;
         }
 
-        let Some(account_id) = accounts.get().selected_account_id else {
+        let Some(account_id) = accounts_context.accounts.get().selected_account_id else {
             return;
         };
 
-        let account = accounts
+        let account = accounts_context
+            .accounts
             .get()
             .accounts
             .into_iter()
@@ -198,14 +301,15 @@ pub fn SecuritySettings() -> impl IntoView {
     };
 
     let terminate_sessions = move |_| {
-        let Some(account_id) = accounts.get().selected_account_id else {
+        let Some(account_id) = accounts_context.accounts.get().selected_account_id else {
             log::error!("No account selected");
             return;
         };
 
         set_terminating_sessions(true);
 
-        let account = accounts
+        let account = accounts_context
+            .accounts
             .get_untracked()
             .accounts
             .into_iter()
@@ -261,6 +365,7 @@ pub fn SecuritySettings() -> impl IntoView {
                         current_public_key
                     ),
                     account_id.clone(),
+                    accounts_context,
                 );
             } else {
                 let secret_key = mnemonic_to_key(mnemonic.clone()).unwrap();
@@ -283,6 +388,7 @@ pub fn SecuritySettings() -> impl IntoView {
                         account.secret_key
                     ),
                     account_id.clone(),
+                    accounts_context,
                 );
             }
 
@@ -296,7 +402,7 @@ pub fn SecuritySettings() -> impl IntoView {
             let res = details_receiver.await;
             if matches!(res, Ok(Ok(_))) && !is_ledger {
                 let secret_key = mnemonic_to_key(mnemonic.clone()).unwrap();
-                set_accounts.update(|accounts| {
+                accounts_context.set_accounts.update(|accounts| {
                     for acc in accounts.accounts.iter_mut() {
                         if acc.account_id == account_id {
                             acc.secret_key = SecretKeyHolder::SecretKey(secret_key.clone());
@@ -314,13 +420,37 @@ pub fn SecuritySettings() -> impl IntoView {
 
     // Check ledger keys when account changes
     Effect::new(move || {
-        accounts.track();
+        accounts_context.accounts.track();
         check_ledger_keys();
+    });
+
+    Effect::new(move || {
+        check_storage_persistence();
+    });
+
+    let location = use_location();
+    Effect::new(move || {
+        let hash = location.hash.get();
+        if hash == "#storage" {
+            set_timeout(
+                move || {
+                    if let Some(element) = window()
+                        .document()
+                        .and_then(|doc| doc.get_element_by_id("storage-section"))
+                    {
+                        let options = web_sys::ScrollIntoViewOptions::new();
+                        options.set_behavior(web_sys::ScrollBehavior::Smooth);
+                        element.scroll_into_view_with_scroll_into_view_options(&options);
+                    }
+                },
+                Duration::from_millis(100),
+            );
+        }
     });
 
     // Watch for encryption completion
     Effect::new(move || {
-        if let Some(result) = set_password.value().get() {
+        if let Some(result) = accounts_context.set_password.value().get() {
             if encrypting_accounts.get_untracked() {
                 set_encryption_result(Some(result));
                 set_encrypting_accounts(false);
@@ -331,7 +461,7 @@ pub fn SecuritySettings() -> impl IntoView {
 
     // Watch for password removal completion
     Effect::new(move || {
-        if let Some(result) = set_password.value().get() {
+        if let Some(result) = accounts_context.set_password.value().get() {
             if removing_password.get_untracked() {
                 set_remove_password_result(Some(result));
                 set_removing_password(false);
@@ -397,7 +527,7 @@ pub fn SecuritySettings() -> impl IntoView {
                                 set_password_input(password.clone());
                                 if !password.is_empty() {
                                     let mut words = vec!["near"];
-                                    let accounts = accounts.read();
+                                    let accounts = accounts_context.accounts.read();
                                     for account in accounts.accounts.iter() {
                                         words
                                             .extend(
@@ -566,11 +696,13 @@ pub fn SecuritySettings() -> impl IntoView {
                                     let mut salt = [0u8; 32];
                                     OsRng.fill_bytes(&mut salt);
                                     set_password_input(String::new());
-                                    set_password
+                                    accounts_context
+                                        .set_password
                                         .dispatch(PasswordAction::SetCipher {
                                             password,
                                             rounds,
                                             salt: salt.to_vec(),
+                                            accounts_context,
                                         });
                                 }
                             }
@@ -582,7 +714,7 @@ pub fn SecuritySettings() -> impl IntoView {
                                 <Icon icon=icondata::LuShield width="20" height="20" />
                                 <span>
                                     {move || {
-                                        if is_encrypted.get() {
+                                        if accounts_context.is_encrypted.get() {
                                             "Change Password"
                                         } else {
                                             "Set Password"
@@ -600,7 +732,7 @@ pub fn SecuritySettings() -> impl IntoView {
                                 <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500"></div>
                                 <span>
                                     {move || {
-                                        if is_encrypted.get() {
+                                        if accounts_context.is_encrypted.get() {
                                             "Changing password..."
                                         } else {
                                             "Setting password..."
@@ -614,7 +746,7 @@ pub fn SecuritySettings() -> impl IntoView {
                             </Show>
                         </button>
 
-                        <Show when=move || is_encrypted.get()>
+                        <Show when=move || accounts_context.is_encrypted.get()>
                             <div class="flex flex-col gap-3">
                                 <div class="text-lg font-medium">Remember Password</div>
                                 <select
@@ -650,7 +782,7 @@ pub fn SecuritySettings() -> impl IntoView {
                             </div>
                         </Show>
 
-                        <Show when=move || is_encrypted.get()>
+                        <Show when=move || accounts_context.is_encrypted.get()>
                             <button
                                 class="flex items-center justify-center gap-2 p-4 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                                 disabled=move || removing_password.get()
@@ -658,7 +790,9 @@ pub fn SecuritySettings() -> impl IntoView {
                                     set_removing_password(true);
                                     set_remove_password_result(None);
                                     set_password_input(String::new());
-                                    set_password.dispatch(PasswordAction::ClearCipher);
+                                    accounts_context
+                                        .set_password
+                                        .dispatch(PasswordAction::ClearCipher);
                                 }
                             >
                                 <Show when=move || {
@@ -915,6 +1049,143 @@ pub fn SecuritySettings() -> impl IntoView {
                                         >
                                             "Confirm"
                                         </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </Show>
+                </div>
+
+                <div class="flex flex-col gap-2" id="storage-section">
+                    <div class="text-lg font-medium">Storage Persistence</div>
+                    <div class="text-sm text-neutral-400">
+                        "Protect your wallet data from being automatically cleared by your browser when storage space is low."
+                    </div>
+
+                    <div class="p-3 rounded-lg bg-neutral-900 border border-neutral-700">
+                        <div class="flex flex-col gap-2 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-neutral-400">
+                                    "Usage (by entire browser, not just this wallet):"
+                                </span>
+                                <span class="text-white">
+                                    {move || {
+                                        if let Some(usage) = storage_usage.get() {
+                                            format_bytes(usage)
+                                        } else {
+                                            "Loading...".to_string()
+                                        }
+                                    }}
+                                </span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-neutral-400">"Available (for the wallet):"</span>
+                                <span class="text-white">
+                                    {move || {
+                                        if let Some(quota) = storage_quota.get() {
+                                            format_bytes(quota)
+                                        } else {
+                                            "Loading...".to_string()
+                                        }
+                                    }}
+                                </span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-neutral-400">
+                                    "Safe from browser auto-clearing when running low on disk:"
+                                </span>
+                                <div class="flex items-center gap-2">
+                                    <Show when=move || storage_persisted.get() == Some(true)>
+                                        <Icon
+                                            icon=icondata::LuCheck
+                                            width="16"
+                                            height="16"
+                                            attr:class="text-green-400"
+                                        />
+                                        <span class="text-green-400 text-sm">"yes"</span>
+                                    </Show>
+                                    <Show when=move || storage_persisted.get() == Some(false)>
+                                        <Icon
+                                            icon=icondata::LuX
+                                            width="16"
+                                            height="16"
+                                            attr:class="text-red-400"
+                                        />
+                                        <span class="text-red-400 text-sm">"no"</span>
+                                        {move || {
+                                            if requesting_persistence.get() {
+                                                view! {
+                                                    <button
+                                                        class="ml-2 px-3 py-1 rounded-md bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-xs w-25"
+                                                        disabled
+                                                    >
+                                                        <div class="flex items-center justify-center gap-1 p-1">
+                                                            <Icon icon=icondata::LuDatabase width="12" height="12" />
+                                                            <span>"Approve"</span>
+                                                        </div>
+                                                    </button>
+                                                }
+                                                    .into_any()
+                                            } else {
+                                                view! {
+                                                    <button
+                                                        class="ml-2 px-3 py-1 rounded-md bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-xs w-25
+                                                        "
+                                                        on:click=move |_| request_storage_persistence()
+                                                    >
+                                                        <div class="flex items-center justify-center gap-1 p-1">
+                                                            <Icon icon=icondata::LuDatabase width="12" height="12" />
+                                                            <span>"Enable"</span>
+                                                        </div>
+                                                    </button>
+                                                }
+                                                    .into_any()
+                                            }
+                                        }}
+                                    </Show>
+                                    <Show when=move || storage_persisted.get().is_none()>
+                                        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-neutral-500"></div>
+                                        <span class="text-neutral-400 text-sm">"checking..."</span>
+                                    </Show>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <Show when=move || {
+                        persistence_denied.get() && storage_persisted.get() == Some(false)
+                            && is_chrome_or_safari()
+                    }>
+                        <div class="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-300">
+                            <div class="flex items-start gap-3">
+                                <Icon
+                                    icon=icondata::LuInfo
+                                    width="20"
+                                    height="20"
+                                    attr:class="text-yellow-400 mt-0.5 flex-shrink-0"
+                                />
+                                <div class="flex-1">
+                                    <h4 class="font-medium text-yellow-200 mb-2">
+                                        "Storage Persistence Request Denied"
+                                    </h4>
+                                    <div class="text-sm space-y-3">
+                                        <p>
+                                            "Your browser denied the storage persistence request. This means your wallet data could be cleared when storage space is low."
+                                        </p>
+
+                                        <div class="space-y-2">
+                                            <p class="font-medium text-yellow-200">
+                                                "To enable storage persistence:"
+                                            </p>
+                                            <ul class="list-disc list-inside space-y-1 text-xs">
+                                                <li>
+                                                    "Add this site to your bookmarks (you can remove it later after clicking the button)"
+                                                </li>
+                                                <li>
+                                                    "Install this wallet as a PWA (Progressive Web App) by clicking the install button in the address bar on PC, or by adding it to your home screen on mobile"
+                                                </li>
+                                            </ul>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

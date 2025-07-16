@@ -111,12 +111,7 @@ pub fn AccountSelector(
     is_expanded: ReadSignal<bool>,
     set_is_expanded: WriteSignal<bool>,
 ) -> impl IntoView {
-    let AccountsContext {
-        accounts,
-        set_accounts,
-        is_encrypted,
-        ..
-    } = expect_context::<AccountsContext>();
+    let accounts_context = expect_context::<AccountsContext>();
     let AccountSelectorSwipeContext {
         progress,
         state,
@@ -130,7 +125,7 @@ pub fn AccountSelector(
         if is_debug_enabled() {
             return;
         }
-        let accounts = accounts.get_untracked();
+        let accounts = accounts_context.accounts.get_untracked();
 
         spawn_local(async move {
             let mut logged_out_accounts = Vec::new();
@@ -174,7 +169,7 @@ pub fn AccountSelector(
                     .iter()
                     .map(|a| a.account_id.clone())
                     .collect::<Vec<_>>();
-                set_accounts.update(|accounts| {
+                accounts_context.set_accounts.update(|accounts| {
                     accounts
                         .accounts
                         .retain(|a| !logged_out_account_ids.contains(&a.account_id));
@@ -192,6 +187,7 @@ pub fn AccountSelector(
                             account.secret_key
                         ),
                         account.account_id.clone(),
+                        accounts_context,
                     );
                 }
 
@@ -212,14 +208,21 @@ pub fn AccountSelector(
 
     // Check acccess key when accounts change
     Effect::new(move |_| {
-        if accounts.get().selected_account_id.is_some() {
+        if accounts_context
+            .accounts
+            .get()
+            .selected_account_id
+            .is_some()
+        {
             check_access_keys();
         }
     });
 
     // Show creation form immediately if there are no accounts
     Effect::new(move |_| {
-        if accounts.get().accounts.is_empty() && !is_encrypted.get() {
+        if accounts_context.accounts.get().accounts.is_empty()
+            && !accounts_context.is_encrypted.get()
+        {
             set_is_expanded(true);
             set_modal_state.set(ModalState::Creating);
         }
@@ -234,13 +237,18 @@ pub fn AccountSelector(
     });
     // Close selector when accounts change
     Effect::new(move |_| {
-        if accounts.get().selected_account_id.is_some() {
+        if accounts_context
+            .accounts
+            .get()
+            .selected_account_id
+            .is_some()
+        {
             set_is_expanded(false);
         }
     });
 
     let switch_account = move |account_id: AccountId| {
-        set_accounts.update(|accounts| {
+        accounts_context.set_accounts.update(|accounts| {
             accounts.selected_account_id = Some(account_id);
         });
         set_is_expanded(false);
@@ -262,7 +270,7 @@ pub fn AccountSelector(
                     view! {
                         <LoginForm
                             set_modal_state
-                            show_back_button=!accounts.get().accounts.is_empty()
+                            show_back_button=!accounts_context.accounts.get_untracked().accounts.is_empty()
                         />
                     }
                         .into_any()
@@ -271,7 +279,7 @@ pub fn AccountSelector(
                     view! {
                         <AccountCreationForm
                             set_modal_state
-                            show_back_button=!accounts.get().accounts.is_empty()
+                            show_back_button=!accounts_context.accounts.get_untracked().accounts.is_empty()
                             set_is_expanded=set_is_expanded
                         />
                     }
@@ -298,8 +306,7 @@ pub fn AccountSelector(
                                             </div>
                                         </button>
                                         {move || {
-                                            accounts
-                                                .get()
+                                            accounts_context.accounts.get()
                                                 .accounts
                                                 .iter()
                                                 .map(|account| {
@@ -320,7 +327,7 @@ pub fn AccountSelector(
                                                         <button
                                                             class="w-full h-28 aspect-square rounded-lg transition-colors flex flex-col items-center justify-center gap-1 p-1 group"
                                                             style=move || {
-                                                                if accounts.get().selected_account_id
+                                                                if accounts_context.accounts.get().selected_account_id
                                                                     == Some(account_id_for_class.clone())
                                                                 {
                                                                     "background-color: rgb(38 38 38)"

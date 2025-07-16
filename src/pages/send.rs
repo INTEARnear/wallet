@@ -233,7 +233,7 @@ pub fn SendToken() -> impl IntoView {
         }
 
         let transaction_description = format!(
-            "Sending {} {} to {}",
+            "Send {} {} to {}",
             amount.get(),
             token().unwrap().token.metadata.symbol,
             recipient.get()

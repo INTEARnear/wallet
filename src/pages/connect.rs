@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use chrono::Utc;
 use ed25519_dalek::SECRET_KEY_LENGTH;
 use leptos::{prelude::*, task::spawn_local};
+use leptos_icons::*;
 use near_min_api::types::{
     near_crypto::{ED25519SecretKey, KeyType, PublicKey, SecretKey, Signature},
     AccessKey, AccessKeyPermission, AccountId, Action, AddKeyAction, CryptoHash,
@@ -12,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsCast;
 use web_sys::{js_sys::Date, Window};
 
+use crate::contexts::account_selector_swipe_context::AccountSelectorSwipeContext;
 use crate::contexts::{
     accounts_context::{AccountsContext, SecretKeyHolder},
     connected_apps_context::{ConnectedApp, ConnectedAppsContext},
@@ -19,7 +21,7 @@ use crate::contexts::{
     security_log_context::add_security_log,
     transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
 };
-use crate::utils::is_debug_enabled;
+use crate::utils::{format_account_id, is_debug_enabled};
 
 const GAS_ALLOWANCE: NearToken = NearToken::from_millinear(1000); // 1 NEAR
 
@@ -103,6 +105,8 @@ pub fn Connect() -> impl IntoView {
     let (request_data, set_request_data) = signal::<Option<SignInRequest>>(None);
     let (origin, set_origin) = signal::<String>("*".to_string());
     let (add_function_call_key, set_add_function_call_key) = signal(false);
+    let AccountSelectorSwipeContext { set_state, .. } =
+        expect_context::<AccountSelectorSwipeContext>();
     let accounts_context = expect_context::<AccountsContext>();
     let ConnectedAppsContext { apps, set_apps } = expect_context::<ConnectedAppsContext>();
     let TransactionQueueContext {
@@ -330,6 +334,7 @@ pub fn Connect() -> impl IntoView {
                     add_security_log(
                         format!("Connected to {app:?} on /connect"),
                         selected_account.clone(),
+                        accounts_context,
                     );
                     apps.apps.push(app);
                 });
@@ -458,10 +463,40 @@ pub fn Connect() -> impl IntoView {
 
                     view! {
                         <div class="flex flex-col items-center gap-6 max-w-md w-full">
-                            <h2 class="text-2xl font-bold text-white mb-2 wrap-anywhere">
-                                "Connect as "
-                                <span class="text-blue-400">{selected_account_id.to_string()}</span>
-                            </h2>
+                            <div class="flex flex-col items-center gap-4 w-full">
+                                <h2 class="text-xl font-bold text-white text-center">
+                                    "Connect as"
+                                </h2>
+                                <button
+                                    class="cursor-pointer w-full px-6 py-4 bg-neutral-800/70 backdrop-blur-sm rounded-xl border border-neutral-700/50 hover:bg-neutral-700/70 transition-all duration-200 shadow-lg flex items-center justify-between gap-3"
+                                    on:click=move |_| set_state(true)
+                                >
+                                    <div class="flex items-center gap-3 flex-1 min-w-0">
+                                        <div class="w-10 h-10 rounded-full bg-blue-600/20 flex items-center justify-center">
+                                            <Icon
+                                                icon=icondata::LuUser
+                                                width="20"
+                                                height="20"
+                                                attr:class="text-blue-400"
+                                            />
+                                        </div>
+                                        <div class="flex flex-col items-start min-w-0 flex-1">
+                                            <span class="text-neutral-400 text-sm">
+                                                "Selected Account"
+                                            </span>
+                                            <div class="text-white text-lg font-medium wrap-anywhere">
+                                                {move || format_account_id(&selected_account_id)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <Icon
+                                        icon=icondata::LuChevronDown
+                                        width="20"
+                                        height="20"
+                                        attr:class="text-neutral-400"
+                                    />
+                                </button>
+                            </div>
                             <div class="flex flex-col gap-4 w-full">
                                 <div class="p-6 bg-neutral-800/50 backdrop-blur-sm rounded-xl border border-neutral-700/50 shadow-lg">
                                     <div class="flex items-center gap-3 pb-4 mb-4 border-b border-neutral-700/50">

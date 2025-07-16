@@ -219,6 +219,7 @@ pub fn AccountCreationForm(
         add_security_log(
             format!("Account creation started with private key {secret_key}"),
             account_id.clone(),
+            accounts_context,
         );
 
         spawn_local(async move {
@@ -343,6 +344,7 @@ pub fn AccountCreationForm(
                                 add_security_log(
                                     format!("Account created with private key {secret_key}"),
                                     account_id.clone(),
+                                    accounts_context,
                                 );
                                 accounts.accounts.push(Account {
                                     account_id: account_id.clone(),

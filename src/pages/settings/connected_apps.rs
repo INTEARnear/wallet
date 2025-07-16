@@ -45,7 +45,7 @@ enum SessionStatus {
 #[component]
 pub fn ConnectedAppsSettings() -> impl IntoView {
     let ConnectedAppsContext { apps, set_apps } = expect_context::<ConnectedAppsContext>();
-    let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+    let accounts_context = expect_context::<AccountsContext>();
     let TransactionQueueContext {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
@@ -66,6 +66,7 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
             add_security_log(
                 format!("Logged out of {app:?} on /logout (NOTE: some logouts made on dapp side might not be displayed on this page)"),
                 app.account_id.clone(),
+                accounts_context,
             );
             let action = Action::DeleteKey(Box::new(DeleteKeyAction {
                 public_key: public_key.clone(),
@@ -76,7 +77,9 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
             // signature from this key in order to add it).
             let details_receiver = if app.requested_contract_id.is_some()
                 && app.public_key
-                    != accounts()
+                    != accounts_context
+                        .accounts
+                        .get()
                         .accounts
                         .into_iter()
                         .find(|account| account.account_id == *account_id)
@@ -105,7 +108,8 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                 let account_id = account_id.clone();
                 let public_key = public_key.clone();
                 async move {
-                    let account = accounts
+                    let account = accounts_context
+                        .accounts
                         .get_untracked()
                         .accounts
                         .into_iter()
@@ -149,14 +153,27 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
             .into_iter()
             .filter(|app| app.logged_out_at.is_none())
             .filter(|app| {
-                app.account_id == accounts().selected_account_id.expect("No selected account")
+                app.account_id
+                    == accounts_context
+                        .accounts
+                        .get()
+                        .selected_account_id
+                        .expect("No selected account")
             })
             .collect::<Vec<_>>();
-        let account = accounts
+        let account = accounts_context
+            .accounts
             .get()
             .accounts
             .into_iter()
-            .find(|a| a.account_id == accounts().selected_account_id.expect("No selected account"))
+            .find(|a| {
+                a.account_id
+                    == accounts_context
+                        .accounts
+                        .get()
+                        .selected_account_id
+                        .expect("No selected account")
+            })
             .expect("Account not found");
 
         if !active_apps.is_empty() {
@@ -273,7 +290,11 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                         .filter(|app| app.logged_out_at.is_none())
                         .filter(|app| {
                             app.account_id
-                                == accounts().selected_account_id.expect("No selected account")
+                                == accounts_context
+                                    .accounts
+                                    .get()
+                                    .selected_account_id
+                                    .expect("No selected account")
                         })
                         .collect::<Vec<_>>();
                     if active_apps.is_empty() {
@@ -322,9 +343,14 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                                                     <Icon icon=icondata::LuGlobe width="20" height="20" />
                                                 </div>
                                                 <div>
-                                                    <div class="font-medium">{app.origin.clone()}</div>
+                                                    <div class="font-medium wrap-anywhere">
+                                                        {app.origin.clone()}
+                                                    </div>
                                                     <div class="text-sm text-neutral-400">
-                                                        "Connected to " {app.account_id.to_string()}
+                                                        "Connected to "
+                                                        <span class="wrap-anywhere">
+                                                            {app.account_id.to_string()}
+                                                        </span>
                                                     </div>
                                                     {move || {
                                                         if let Some(contract_id) = &requested_contract_id {
@@ -399,7 +425,9 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                                                                     <div class="flex items-center justify-between p-2 rounded bg-neutral-800">
                                                                         <span>
                                                                             "Auto-confirm non-financial transactions for "
-                                                                            <span class="font-mono">{receiver.to_string()}</span>
+                                                                            <span class="font-mono wrap-anywhere">
+                                                                                {receiver.to_string()}
+                                                                            </span>
                                                                         </span>
                                                                         <button
                                                                             on:click=move |_| disable_autoconfirm(

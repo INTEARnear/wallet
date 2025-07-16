@@ -26,6 +26,7 @@ use wasm_bindgen::JsValue;
 use wasm_bindgen::{closure::Closure, JsCast};
 use web_sys::js_sys::Reflect;
 
+use crate::contexts::security_log_context::reencrypt_security_logs;
 use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
 use crate::utils::is_debug_enabled;
 
@@ -240,6 +241,8 @@ pub enum PasswordAction {
         password: String,
         rounds: u32,
         salt: Vec<u8>,
+        // for logging only
+        accounts_context: AccountsContext,
     },
     ClearCipher,
 }
@@ -253,6 +256,7 @@ pub struct AccountsContext {
     pub is_encrypted: ReadSignal<bool>,
     pub ledger_sign_rx: RwSignal<mpmc::Receiver<JsWalletResponse>>,
     pub ledger_signing_state: RwSignal<LedgerSigningState>,
+    pub cipher: ReadSignal<Option<Cipher>>,
 }
 
 fn get_local_storage() -> Option<web_sys::Storage> {
@@ -708,12 +712,6 @@ pub fn provide_accounts_context() {
 
     let selected_account_id_memo = Memo::new(move |_| accounts.get().selected_account_id.clone());
 
-    Effect::new(move || {
-        if let Some(account_id) = selected_account_id_memo.get() {
-            add_security_log("Wallet opened".to_string(), account_id.clone());
-        }
-    });
-
     let (is_encrypted, set_is_encrypted) = signal(has_encrypted_data());
     let config_context = expect_context::<ConfigContext>();
 
@@ -754,6 +752,7 @@ pub fn provide_accounts_context() {
                 password,
                 rounds,
                 salt,
+                accounts_context,
             } => {
                 if current_accounts.accounts.is_empty() {
                     // Protect from weird edge cases or when the user tries to use
@@ -765,8 +764,13 @@ pub fn provide_accounts_context() {
                 let password = password.clone();
                 let rounds = *rounds;
                 let salt = salt.clone();
+                let accounts_context = *accounts_context;
+                // Capture the current (old) cipher before generating the new one. This is needed
+                // so we can attempt to decrypt existing security logs that were encrypted with
+                // the old password.
+                let old_cipher_opt = cipher.get_untracked();
                 Box::pin(async move {
-                    let cipher = derive_cipher(password, rounds, &salt).await?;
+                    let new_cipher = derive_cipher(password, rounds, &salt).await?;
                     for account in current_accounts.accounts.iter() {
                         add_security_log(
                             format!(
@@ -774,11 +778,24 @@ pub fn provide_accounts_context() {
                                 account.secret_key
                             ),
                             account.account_id.clone(),
+                            accounts_context,
                         );
                     }
-                    save_encrypted_accounts(cipher.clone(), current_accounts).await?;
+                    save_encrypted_accounts(new_cipher.clone(), current_accounts).await?;
+
+                    let new_cipher_for_task = new_cipher.clone();
+                    spawn_local(async move {
+                        if let Err(e) =
+                            reencrypt_security_logs(old_cipher_opt, new_cipher_for_task).await
+                        {
+                            log::error!(
+                                "Failed to re-encrypt security logs after password change: {e}"
+                            );
+                        }
+                    });
+
                     set_is_encrypted(true);
-                    set_cipher(Some(cipher));
+                    set_cipher(Some(new_cipher));
                     let _ = get_local_storage()
                         .and_then(|storage| storage.remove_item(ACCOUNTS_KEY).ok());
                     Ok(())
@@ -860,7 +877,7 @@ pub fn provide_accounts_context() {
         );
     }
 
-    provide_context(AccountsContext {
+    let accounts_context = AccountsContext {
         accounts,
         set_accounts,
         set_password,
@@ -868,5 +885,18 @@ pub fn provide_accounts_context() {
         is_encrypted,
         ledger_sign_rx: RwSignal::new(ledger_sign_rx),
         ledger_signing_state: RwSignal::new(LedgerSigningState::Idle),
+        cipher,
+    };
+
+    Effect::new(move || {
+        if let Some(account_id) = selected_account_id_memo.get() {
+            add_security_log(
+                "Wallet opened".to_string(),
+                account_id.clone(),
+                accounts_context,
+            );
+        }
     });
+
+    provide_context(accounts_context);
 }
