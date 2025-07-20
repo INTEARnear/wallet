@@ -534,7 +534,7 @@ pub fn AccountCreationForm(
                                     disabled=move || is_creating.get()
                                 />
                                 <select
-                                    class="absolute top-1/2 right-0 -translate-y-1/2 bg-transparent text-neutral-500 font-medium cursor-pointer focus:outline-none text-base max-w-40 text-right truncate border-r-8 border-transparent"
+                                    class="absolute top-1/2 right-2 -translate-y-1/2 bg-transparent text-neutral-500 font-medium cursor-pointer focus:outline-none text-base max-w-40 text-right truncate border-r-8 border-transparent"
                                     on:change=move |ev| {
                                         let value = event_target_value(&ev);
                                         let parent_val = match value.as_str() {

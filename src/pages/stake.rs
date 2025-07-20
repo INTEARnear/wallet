@@ -63,7 +63,7 @@ fn get_supported_staking_farms(network: Network) -> Vec<AccountId> {
     }
 }
 
-fn is_validator_supported(validator_id: &AccountIdRef, network: Network) -> bool {
+pub fn is_validator_supported(validator_id: &AccountIdRef, network: Network) -> bool {
     let supported_farms = get_supported_staking_farms(network);
     supported_farms
         .iter()
@@ -212,6 +212,7 @@ struct PoolInfo {
     active_farms: Vec<PoolFarm>,
     unclaimed_rewards: Vec<UnclaimedReward>,
 }
+
 
 #[component]
 fn SocialLink(href: String, icon: icondata::Icon) -> impl IntoView {

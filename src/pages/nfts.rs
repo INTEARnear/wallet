@@ -24,10 +24,11 @@ use crate::contexts::tokens_context::TokenMetadata;
 use crate::contexts::{
     accounts_context::AccountsContext,
     config_context::{ConfigContext, HiddenNft, NftsViewState},
-    network_context::Network,
+    network_context::{Network, NetworkContext},
     rpc_context::RpcContext,
     transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
 };
+use crate::pages::stake::is_validator_supported;
 use crate::utils::{format_account_id_no_hide, format_token_amount_no_hide};
 
 async fn fetch_spam_list() -> Vec<HiddenNft> {
@@ -1449,12 +1450,20 @@ pub fn SendNft() -> impl IntoView {
     move || params.get().get("token_id").unwrap_or_default();
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let RpcContext { client, .. } = expect_context::<RpcContext>();
+    let NetworkContext { network, .. } = expect_context::<NetworkContext>();
     let NftCacheContext { cache } = expect_context::<NftCacheContext>();
     let (recipient, set_recipient) = signal("".to_string());
     let (is_loading_recipient, set_is_loading_recipient) = signal(false);
     let (recipient_balance, set_recipient_balance) = signal(None);
     let (has_typed_recipient, set_has_typed_recipient) = signal(false);
-    let (recipient_warning, set_recipient_warning) = signal::<Option<String>>(None);
+    #[derive(Clone, Debug)]
+    struct RecipientWarning {
+        message: String,
+        link: Option<String>,
+        link_text: Option<String>,
+    }
+    
+    let (recipient_warning, set_recipient_warning) = signal::<Option<RecipientWarning>>(None);
 
     let collection_metadata = LocalResource::new(move || {
         let rpc_client = client.get().clone();
@@ -1515,6 +1524,9 @@ pub fn SendNft() -> impl IntoView {
 
             if recipient_to_check == recipient.get_untracked() {
                 if account_exists {
+                    // Clone recipient for validator check and futures
+                    let recipient_for_validator_check = recipient_to_check.clone();
+                    
                     let ft_metadata_future = rpc_client.call::<TokenMetadata>(
                         recipient_to_check.clone(),
                         "ft_metadata",
@@ -1536,8 +1548,24 @@ pub fn SendNft() -> impl IntoView {
                     let (ft_metadata_result, nft_metadata_result, balance_result) =
                         join!(ft_metadata_future, nft_metadata_future, balance_future);
 
-                    if ft_metadata_result.is_ok() || nft_metadata_result.is_ok() {
-                        set_recipient_warning.set(Some("This is a token contract address, not someone's wallet address, sending tokens to it would likely result in asset loss".to_string()));
+                    if ft_metadata_result.is_ok() {
+                        set_recipient_warning.set(Some(RecipientWarning {
+                            message: "This is a token contract address, not someone's wallet address, sending NFTs to it would likely result in asset loss".to_string(),
+                            link: Some(format!("/token/{}", recipient_for_validator_check)),
+                            link_text: Some("View token details".to_string()),
+                        }));
+                    } else if nft_metadata_result.is_ok() {
+                        set_recipient_warning.set(Some(RecipientWarning {
+                            message: "This is an NFT contract address, not someone's wallet address, sending NFTs to it would likely result in asset loss".to_string(),
+                            link: Some(format!("/nfts/{}", recipient_for_validator_check)),
+                            link_text: Some("View NFT collection".to_string()),
+                        }));
+                    } else if is_validator_supported(&recipient_for_validator_check, network.get_untracked()) {
+                        set_recipient_warning.set(Some(RecipientWarning {
+                            message: "This is a validator address. Sending NFTs to validators will result in asset loss. Consider using the staking functionality instead".to_string(),
+                            link: Some(format!("/stake/{}/stake", recipient_for_validator_check)),
+                            link_text: Some("Stake instead".to_string()),
+                        }));
                     } else {
                         set_recipient_warning.set(None);
                     }
@@ -1737,15 +1765,35 @@ pub fn SendNft() -> impl IntoView {
                                         {move || {
                                             if let Some(warning) = recipient_warning.get() {
                                                 view! {
-                                                    <p class="text-yellow-500 text-sm mt-2 font-medium flex items-center gap-2">
-                                                        <Icon
-                                                            icon=icondata::LuTriangleAlert
-                                                            width="16"
-                                                            height="16"
-                                                            attr:class="min-w-4 min-h-4"
-                                                        />
-                                                        {warning}
-                                                    </p>
+                                                    <div class="text-yellow-500 text-sm mt-2 font-medium">
+                                                        <div class="flex items-center gap-2 mb-1">
+                                                            <Icon
+                                                                icon=icondata::LuTriangleAlert
+                                                                width="16"
+                                                                height="16"
+                                                                attr:class="min-w-4 min-h-4"
+                                                            />
+                                                            <span>{warning.message}</span>
+                                                        </div>
+                                                        {if let (Some(link), Some(link_text)) = (
+                                                            warning.link,
+                                                            warning.link_text,
+                                                        ) {
+                                                            view! {
+                                                                <div class="ml-6">
+                                                                    <A
+                                                                        href=link
+                                                                        attr:class="text-yellow-400 hover:text-yellow-300 underline cursor-pointer"
+                                                                    >
+                                                                        {link_text}
+                                                                    </A>
+                                                                </div>
+                                                            }
+                                                                .into_any()
+                                                        } else {
+                                                            ().into_any()
+                                                        }}
+                                                    </div>
                                                 }
                                                     .into_any()
                                             } else {

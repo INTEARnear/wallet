@@ -88,9 +88,6 @@ wasm-bindgen-futures = "0.4.35"
 [dev-dependencies]
 tokio = { version = "1.40.0", features = ["full"] }
 
-[build-dependencies]
-patch-crate = "=0.1.13"
-
 [profile.release]
 opt-level = 'z'
 lto = true

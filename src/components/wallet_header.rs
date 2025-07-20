@@ -59,7 +59,13 @@ pub fn WalletHeader() -> impl IntoView {
                                 <input
                                     type="text"
                                     class="bg-transparent text-white w-full focus:outline-none text-base"
-                                    placeholder="Search tokens..."
+                                    placeholder=move || {
+                                        if location.pathname.get() == "/stake" {
+                                            "Search validators..."
+                                        } else {
+                                            "Search tokens..."
+                                        }
+                                    }
                                     prop:value=query
                                     on:input=move |ev| set_query(event_target_value(&ev))
                                     on:keydown=move |ev| {
@@ -169,7 +175,9 @@ pub fn WalletHeader() -> impl IntoView {
                                 on:click=move |_| set_is_search_expanded(true)
                                 style=move || {
                                     let current_path = location.pathname.get();
-                                    if current_path != "/" && current_path != "/nfts" && current_path != "/stake" {
+                                    if current_path != "/" && current_path != "/nfts"
+                                        && current_path != "/stake"
+                                    {
                                         "opacity: 0; pointer-events: none"
                                     } else {
                                         ""

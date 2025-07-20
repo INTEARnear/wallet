@@ -142,6 +142,7 @@ window.addEventListener('message', async (event) => {
             setLedgerClient(null);
             return;
         }
+        setLedgerClient(localLedgerClient);
         window.postMessage({ type: 'ledger-connected' }, window.location.origin)
     } else if (data.type === 'ledger-get-public-key') {
         let localLedgerClient = getLedgerClient();

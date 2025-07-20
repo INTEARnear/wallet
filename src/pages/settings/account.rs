@@ -1,6 +1,7 @@
 use std::{str::FromStr, time::Duration};
 
 use crate::components::account_selector::mnemonic_to_key;
+use crate::components::derivation_path_input::DerivationPathInput;
 use crate::contexts::accounts_context::format_ledger_error;
 use crate::contexts::{
     accounts_context::{AccountsContext, SecretKeyHolder},
@@ -258,12 +259,38 @@ pub fn AccountSettings() -> impl IntoView {
     let (ledger_connection_in_progress, set_ledger_connection_in_progress) = signal(false);
     let (ledger_connected, set_ledger_connected) = signal(false);
     let (ledger_getting_public_key, set_ledger_getting_public_key) = signal(false);
+    let (ledger_error, set_ledger_error) = signal::<Option<String>>(None);
+
+    let (ledger_input_hd_path_input, set_ledger_hd_path_input) =
+        signal("44'/397'/0'/0'/1'".to_string());
+    let (ledger_current_key_data, set_ledger_current_key_data) =
+        signal::<Option<(String, near_min_api::types::near_crypto::PublicKey)>>(None);
+
+    let (ledger_account_number, set_ledger_account_number) = signal(0u32);
+    let (ledger_change_number, set_ledger_change_number) = signal(0u32);
+    let (ledger_address_number, set_ledger_address_number) = signal(1u32);
+
+    let on_path_change = move || {
+        set_ledger_current_key_data.set(None);
+        set_ledger_error.set(None);
+    };
+
+    Effect::new(move || {
+        let path = format!(
+            "44'/397'/{}'/{}'/{}'",
+            ledger_account_number.get(),
+            ledger_change_number.get(),
+            ledger_address_number.get()
+        );
+        set_ledger_hd_path_input.set(path);
+    });
 
     let request_ledger_connection = move || {
         if ledger_connection_in_progress.get_untracked() || ledger_connected.get_untracked() {
             return;
         }
         set_ledger_connection_in_progress(true);
+        set_ledger_error.set(None);
         let request = JsWalletRequest::LedgerConnect;
         if let Ok(js_value) = serde_wasm_bindgen::to_value(&request) {
             let origin = window()
@@ -271,11 +298,11 @@ pub fn AccountSettings() -> impl IntoView {
                 .origin()
                 .unwrap_or_else(|_| "*".to_string());
             if window().post_message(&js_value, &origin).is_err() {
-                log::error!("Failed to send Ledger connection request");
+                set_ledger_error.set(Some("Failed to send Ledger connection request".to_string()));
                 set_ledger_connection_in_progress(false);
             }
         } else {
-            log::error!("Failed to serialize Ledger connection request");
+            set_ledger_error.set(Some("Failed to serialize Ledger connection request".to_string()));
             set_ledger_connection_in_progress(false);
         }
     };
@@ -609,147 +636,38 @@ pub fn AccountSettings() -> impl IntoView {
                     JsWalletResponse::LedgerConnected => {
                         set_ledger_connection_in_progress(false);
                         set_ledger_connected(true);
-                        // After connection, request public key for default path
-                        let path = "44'/397'/0'/0'/1'".to_string();
-                        let request = JsWalletRequest::LedgerGetPublicKey { path: path.clone() };
-                        set_ledger_getting_public_key(true);
-                        if let Ok(js_value) = serde_wasm_bindgen::to_value(&request) {
-                            let origin = window()
-                                .location()
-                                .origin()
-                                .unwrap_or_else(|_| "*".to_string());
-                            let _ = window().post_message(&js_value, &origin);
-                        } else {
-                            set_ledger_getting_public_key(false);
-                        }
+                        set_ledger_error.set(None);
                     }
                     JsWalletResponse::LedgerPublicKey { path, key } => {
                         set_ledger_getting_public_key(false);
+                        
+                        if path != ledger_input_hd_path_input.get_untracked() {
+                            return;
+                        }
+                        
                         if key.len() == 32 {
                             let bs58_key = bs58::encode(&key).into_string();
                             let public_key_str = format!("ed25519:{}", bs58_key);
                             if let Ok(public_key) = public_key_str
                                 .parse::<near_min_api::types::near_crypto::PublicKey>(
                             ) {
-                                let new_key_data = (path.clone(), public_key.clone());
-
-                                // Begin on-chain transaction to replace keys
-                                let rpc_client = rpc_context.client.get_untracked();
-                                let selected_account_id_opt = accounts_context
-                                    .accounts
-                                    .get_untracked()
-                                    .selected_account_id
-                                    .clone();
-                                spawn_local(async move {
-                                    let Some(selected_account_id) = selected_account_id_opt else {
-                                        return;
-                                    };
-                                    // Fetch existing keys
-                                    match rpc_client
-                                        .view_access_key_list(
-                                            selected_account_id.clone(),
-                                            QueryFinality::Finality(Finality::Final),
-                                        )
-                                        .await
-                                    {
-                                        Ok(keys) => {
-                                            let mut actions: Vec<Action> = Vec::new();
-                                            for key_info in keys.keys {
-                                                if matches!(
-                                                    key_info.access_key.permission,
-                                                    AccessKeyPermissionView::FullAccess
-                                                ) {
-                                                    actions.push(Action::DeleteKey(Box::new(
-                                                        DeleteKeyAction {
-                                                            public_key: key_info.public_key,
-                                                        },
-                                                    )));
-                                                }
-                                            }
-                                            actions.push(Action::AddKey(Box::new(AddKeyAction {
-                                                public_key: public_key.clone(),
-                                                access_key: AccessKey {
-                                                    nonce: 0,
-                                                    permission: AccessKeyPermission::FullAccess,
-                                                },
-                                            })));
-
-                                            let (receiver, transaction) =
-                                                EnqueuedTransaction::create(
-                                                    "Connect Ledger".to_string(),
-                                                    selected_account_id.clone(),
-                                                    selected_account_id.clone(),
-                                                    actions,
-                                                );
-                                            add_transaction.update(|q| q.push(transaction));
-                                            match receiver.await {
-                                                Ok(Ok(_details)) => {
-                                                    // Update account in context
-                                                    accounts_context.set_accounts.update(|accts| {
-                                                        for acc in accts.accounts.iter_mut() {
-                                                            if acc.account_id == selected_account_id
-                                                            {
-                                                                acc.secret_key =
-                                                                    SecretKeyHolder::Ledger {
-                                                                        path: new_key_data
-                                                                            .0
-                                                                            .clone(),
-                                                                        public_key: new_key_data
-                                                                            .1
-                                                                            .clone(),
-                                                                    };
-                                                                acc.seed_phrase = None;
-                                                            }
-                                                        }
-                                                    });
-                                                    add_security_log(
-                                                        format!(
-                                                            "Connected Ledger (path {}) public key {}",
-                                                            new_key_data.0, new_key_data.1
-                                                        ),
-                                                        selected_account_id.clone(),
-                                                        accounts_context,
-                                                    );
-                                                }
-                                                Ok(Err(err)) => {
-                                                    log::error!(
-                                                        "Failed to connect Ledger: {}",
-                                                        err
-                                                    );
-                                                }
-                                                Err(_) => {
-                                                    log::error!(
-                                                        "Failed to receive transaction result"
-                                                    );
-                                                }
-                                            }
-                                        }
-                                        Err(err) => {
-                                            log::error!(
-                                                "Failed to fetch access key list for Ledger connect: {}",
-                                                err
-                                            );
-                                        }
-                                    }
-                                });
+                                set_ledger_current_key_data(Some((path.clone(), public_key.clone())));
+                                set_ledger_error.set(None);
                             } else {
-                                log::error!("Failed to parse public key from Ledger");
+                                set_ledger_error.set(Some("Failed to parse public key from Ledger".to_string()));
                             }
                         } else {
-                            log::error!("Invalid public key length from Ledger");
+                            set_ledger_error.set(Some("Invalid public key length from Ledger".to_string()));
                         }
                     }
                     JsWalletResponse::LedgerConnectError { error } => {
                         set_ledger_connection_in_progress(false);
                         set_ledger_connected(false);
-                        log::error!("Ledger connection error: {}", format_ledger_error(&error));
+                        set_ledger_error.set(Some(format_ledger_error(&error)));
                     }
                     JsWalletResponse::LedgerGetPublicKeyError { error } => {
                         set_ledger_getting_public_key(false);
-                        log::error!(
-                            "Ledger get public key error: {}",
-                            format_ledger_error(&error)
-                        );
+                        set_ledger_error.set(Some(format_ledger_error(&error)));
                     }
                     _ => {}
                 }
@@ -794,12 +712,14 @@ pub fn AccountSettings() -> impl IntoView {
                         show_secrets.get()
                     }>
                         {move || {
-                            match accounts_context.accounts
+                            match accounts_context
+                                .accounts
                                 .get()
                                 .selected_account_id
                                 .as_ref()
                                 .and_then(|id| {
-                                    accounts_context.accounts
+                                    accounts_context
+                                        .accounts
                                         .get()
                                         .accounts
                                         .into_iter()
@@ -922,12 +842,18 @@ pub fn AccountSettings() -> impl IntoView {
 
             // Ledger section
             {move || {
-                let is_ledger_account = accounts_context.accounts
+                let is_ledger_account = accounts_context
+                    .accounts
                     .get()
                     .selected_account_id
                     .as_ref()
                     .and_then(|id| {
-                        accounts_context.accounts.get().accounts.into_iter().find(|acc| &acc.account_id == id)
+                        accounts_context
+                            .accounts
+                            .get()
+                            .accounts
+                            .into_iter()
+                            .find(|acc| &acc.account_id == id)
                     })
                     .map(|acc| matches!(acc.secret_key, SecretKeyHolder::Ledger { .. }))
                     .unwrap_or(false);
@@ -935,7 +861,8 @@ pub fn AccountSettings() -> impl IntoView {
                     view! {
                         <button
                             on:click=move |_| {
-                                let Some(selected_account_id) = accounts_context.accounts
+                                let Some(selected_account_id) = accounts_context
+                                    .accounts
                                     .get_untracked()
                                     .selected_account_id else {
                                     return;
@@ -995,7 +922,8 @@ pub fn AccountSettings() -> impl IntoView {
                                             add_transaction.update(|q| q.push(transaction));
                                             match receiver.await {
                                                 Ok(Ok(_details)) => {
-                                                    accounts_context.set_accounts
+                                                    accounts_context
+                                                        .set_accounts
                                                         .update(|accts| {
                                                             for acc in accts.accounts.iter_mut() {
                                                                 if acc.account_id == selected_account_id {
@@ -1042,39 +970,215 @@ pub fn AccountSettings() -> impl IntoView {
                         .into_any()
                 } else {
                     view! {
-                        <button
-                            on:click=move |_| request_ledger_connection()
-                            class="flex items-center justify-center gap-2 p-4 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 transition-colors font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                            disabled=move || {
-                                ledger_connection_in_progress.get()
-                                    || ledger_getting_public_key.get()
-                            }
-                        >
-                            <Show when=move || {
-                                ledger_connection_in_progress.get()
-                                    || ledger_getting_public_key.get()
-                            }>
-                                <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-400"></div>
-                                <span>
-                                    {move || {
-                                        if ledger_connection_in_progress.get() {
-                                            "Connecting Ledger..."
-                                        } else if ledger_getting_public_key.get() {
-                                            "Confirm in Ledger..."
-                                        } else {
-                                            "Connect Ledger"
-                                        }
-                                    }}
-                                </span>
+                        <div class="space-y-4">
+                            <Show when=move || !ledger_connected.get()>
+                                <button
+                                    on:click=move |_| request_ledger_connection()
+                                    class="flex items-center justify-center gap-2 p-4 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 transition-colors font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full"
+                                    disabled=move || ledger_connection_in_progress.get()
+                                >
+                                    <Show when=move || ledger_connection_in_progress.get()>
+                                        <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-400"></div>
+                                        <span>"Connecting Ledger..."</span>
+                                    </Show>
+                                    <Show when=move || !ledger_connection_in_progress.get()>
+                                        <Icon icon=icondata::LuWallet width="20" height="20" />
+                                        <span>"Connect Ledger"</span>
+                                    </Show>
+                                </button>
                             </Show>
-                            <Show when=move || {
-                                !(ledger_connection_in_progress.get()
-                                    || ledger_getting_public_key.get())
-                            }>
-                                <Icon icon=icondata::LuWallet width="20" height="20" />
-                                <span>"Connect Ledger"</span>
+
+                            <Show when=move || ledger_connected.get()>
+                                <div class="space-y-4">
+                                    <DerivationPathInput
+                                        ledger_account_number=ledger_account_number
+                                        set_ledger_account_number=set_ledger_account_number
+                                        ledger_change_number=ledger_change_number
+                                        set_ledger_change_number=set_ledger_change_number
+                                        ledger_address_number=ledger_address_number
+                                        set_ledger_address_number=set_ledger_address_number
+                                        on_change=on_path_change.into()
+                                    />
+
+                                    <Show when=move || ledger_error.get().is_some()>
+                                        <div class="p-4 bg-red-950/30 border border-red-700/30 rounded-lg">
+                                            <div class="flex items-center gap-2 text-red-400">
+                                                <Icon
+                                                    icon=icondata::LuTriangleAlert
+                                                    width="20"
+                                                    height="20"
+                                                />
+                                                <span class="font-medium">"Error"</span>
+                                            </div>
+                                            <p class="text-red-300 text-sm mt-2">
+                                                {move || ledger_error.get().unwrap_or_default()}
+                                            </p>
+                                        </div>
+                                    </Show>
+
+                                    <Show when=move || ledger_current_key_data.get().is_none()>
+                                        <button
+                                            on:click=move |_| {
+                                                set_ledger_getting_public_key(true);
+                                                set_ledger_current_key_data.set(None);
+                                                set_ledger_error.set(None);
+                                                let path = ledger_input_hd_path_input.get_untracked();
+                                                let request = JsWalletRequest::LedgerGetPublicKey {
+                                                    path,
+                                                };
+                                                if let Ok(js_value) = serde_wasm_bindgen::to_value(
+                                                    &request,
+                                                ) {
+                                                    let origin = window()
+                                                        .location()
+                                                        .origin()
+                                                        .unwrap_or_else(|_| "*".to_string());
+                                                    if window().post_message(&js_value, &origin).is_err() {
+                                                        set_ledger_error
+                                                            .set(
+                                                                Some("Failed to send Ledger public key request".to_string()),
+                                                            );
+                                                        set_ledger_getting_public_key(false);
+                                                    }
+                                                } else {
+                                                    set_ledger_error
+                                                        .set(
+                                                            Some(
+                                                                "Failed to serialize Ledger public key request".to_string(),
+                                                            ),
+                                                        );
+                                                    set_ledger_getting_public_key(false);
+                                                }
+                                            }
+                                            class="w-full flex items-center justify-center gap-2 p-4 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 transition-colors font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                            disabled=move || ledger_getting_public_key.get()
+                                        >
+                                            <Show when=move || ledger_getting_public_key.get()>
+                                                <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-400"></div>
+                                                <span>"Confirm in Ledger..."</span>
+                                            </Show>
+                                            <Show when=move || !ledger_getting_public_key.get()>
+                                                <Icon icon=icondata::LuKey width="20" height="20" />
+                                                <span>"Get Public Key"</span>
+                                            </Show>
+                                        </button>
+                                    </Show>
+
+                                    <Show when=move || ledger_current_key_data.get().is_some()>
+                                        <button
+                                            on:click=move |_| {
+                                                let Some((path, public_key)) = ledger_current_key_data.get()
+                                                else {
+                                                    return;
+                                                };
+                                                let rpc_client = rpc_context.client.get_untracked();
+                                                let selected_account_id_opt = accounts_context
+                                                    .accounts
+                                                    .get_untracked()
+                                                    .selected_account_id
+                                                    .clone();
+                                                spawn_local(async move {
+                                                    let Some(selected_account_id) = selected_account_id_opt
+                                                    else {
+                                                        return;
+                                                    };
+                                                    match rpc_client
+                                                        .view_access_key_list(
+                                                            selected_account_id.clone(),
+                                                            QueryFinality::Finality(Finality::Final),
+                                                        )
+                                                        .await
+                                                    {
+                                                        Ok(keys) => {
+                                                            let mut actions: Vec<Action> = Vec::new();
+                                                            for key_info in keys.keys {
+                                                                if matches!(
+                                                                    key_info.access_key.permission,
+                                                                    AccessKeyPermissionView::FullAccess
+                                                                ) {
+                                                                    actions
+                                                                        .push(
+                                                                            Action::DeleteKey(
+                                                                                Box::new(DeleteKeyAction {
+                                                                                    public_key: key_info.public_key,
+                                                                                }),
+                                                                            ),
+                                                                        );
+                                                                }
+                                                            }
+                                                            actions
+                                                                .push(
+                                                                    Action::AddKey(
+                                                                        Box::new(AddKeyAction {
+                                                                            public_key: public_key.clone(),
+                                                                            access_key: AccessKey {
+                                                                                nonce: 0,
+                                                                                permission: AccessKeyPermission::FullAccess,
+                                                                            },
+                                                                        }),
+                                                                    ),
+                                                                );
+                                                            let (receiver, transaction) = EnqueuedTransaction::create(
+                                                                "Connect Ledger".to_string(),
+                                                                selected_account_id.clone(),
+                                                                selected_account_id.clone(),
+                                                                actions,
+                                                            );
+                                                            add_transaction.update(|q| q.push(transaction));
+                                                            match receiver.await {
+                                                                Ok(Ok(_details)) => {
+                                                                    accounts_context
+                                                                        .set_accounts
+                                                                        .update(|accts| {
+                                                                            for acc in accts.accounts.iter_mut() {
+                                                                                if acc.account_id == selected_account_id {
+                                                                                    acc.secret_key = SecretKeyHolder::Ledger {
+                                                                                        path: path.clone(),
+                                                                                        public_key: public_key.clone(),
+                                                                                    };
+                                                                                    acc.seed_phrase = None;
+                                                                                }
+                                                                            }
+                                                                        });
+                                                                    add_security_log(
+                                                                        format!(
+                                                                            "Connected Ledger (path {}) public key {}",
+                                                                            path,
+                                                                            public_key,
+                                                                        ),
+                                                                        selected_account_id.clone(),
+                                                                        accounts_context,
+                                                                    );
+                                                                }
+                                                                Ok(Err(err)) => {
+                                                                    log::error!(
+                                                                        "Failed to connect Ledger: {}",
+                                                                        err
+                                                                    );
+                                                                }
+                                                                Err(_) => {
+                                                                    log::error!("Failed to receive transaction result");
+                                                                }
+                                                            }
+                                                        }
+                                                        Err(err) => {
+                                                            log::error!(
+                                                                "Failed to fetch access key list for Ledger connect: {}",
+                                                                err
+                                                            );
+                                                        }
+                                                    }
+                                                });
+                                            }
+                                            class="w-full flex items-center justify-center gap-2 p-4 rounded-lg bg-green-500/10 hover:bg-green-500/20 text-green-400 transition-colors font-medium cursor-pointer"
+                                        >
+                                            <Icon icon=icondata::LuCheck width="20" height="20" />
+                                            <span>"Complete Ledger Connection"</span>
+                                        </button>
+                                    </Show>
+                                </div>
                             </Show>
-                        </button>
+                        </div>
                     }
                         .into_any()
                 }
@@ -1082,12 +1186,18 @@ pub fn AccountSettings() -> impl IntoView {
 
             // Smart Wallet Version section
             <Show when=move || {
-                let is_ledger = accounts_context.accounts
+                let is_ledger = accounts_context
+                    .accounts
                     .get()
                     .selected_account_id
                     .as_ref()
                     .and_then(|id| {
-                        accounts_context.accounts.get().accounts.into_iter().find(|acc| &acc.account_id == id)
+                        accounts_context
+                            .accounts
+                            .get()
+                            .accounts
+                            .into_iter()
+                            .find(|acc| &acc.account_id == id)
                     })
                     .map(|acc| matches!(acc.secret_key, SecretKeyHolder::Ledger { .. }))
                     .unwrap_or(false);
@@ -1107,7 +1217,8 @@ pub fn AccountSettings() -> impl IntoView {
                                                 <div class="flex flex-col gap-2">
                                                     <button
                                                         on:click=move |_| {
-                                                            if let Some(selected_account_id) = accounts_context.accounts
+                                                            if let Some(selected_account_id) = accounts_context
+                                                                .accounts
                                                                 .get()
                                                                 .selected_account_id
                                                             {
@@ -1209,7 +1320,8 @@ pub fn AccountSettings() -> impl IntoView {
                                                             </ul>
                                                             <button
                                                                 on:click=move |_| {
-                                                                    if let Some(selected_account_id) = accounts_context.accounts
+                                                                    if let Some(selected_account_id) = accounts_context
+                                                                        .accounts
                                                                         .get()
                                                                         .selected_account_id
                                                                     {
@@ -1289,12 +1401,18 @@ pub fn AccountSettings() -> impl IntoView {
             </Show>
 
             <Show when=move || {
-                accounts_context.accounts
+                accounts_context
+                    .accounts
                     .get()
                     .selected_account_id
                     .as_ref()
                     .and_then(|id| {
-                        accounts_context.accounts.get().accounts.into_iter().find(|acc| &acc.account_id == id)
+                        accounts_context
+                            .accounts
+                            .get()
+                            .accounts
+                            .into_iter()
+                            .find(|acc| &acc.account_id == id)
                     })
                     .map(|acc| matches!(acc.secret_key, SecretKeyHolder::Ledger { .. }))
                     .unwrap_or(false)
@@ -1332,7 +1450,8 @@ pub fn AccountSettings() -> impl IntoView {
                                                         if recovery_change_in_progress.get_untracked() {
                                                             return;
                                                         }
-                                                        if let Some(selected_account_id) = accounts_context.accounts
+                                                        if let Some(selected_account_id) = accounts_context
+                                                            .accounts
                                                             .get_untracked()
                                                             .selected_account_id
                                                         {
@@ -1412,7 +1531,8 @@ pub fn AccountSettings() -> impl IntoView {
                                                                 });
                                                             } else {
                                                                 set_recovery_change_in_progress(true);
-                                                                if let Some(account) = accounts_context.accounts
+                                                                if let Some(account) = accounts_context
+                                                                    .accounts
                                                                     .get_untracked()
                                                                     .accounts
                                                                     .iter()
@@ -1534,7 +1654,8 @@ pub fn AccountSettings() -> impl IntoView {
                                                         if recovery_change_in_progress.get_untracked() {
                                                             return;
                                                         }
-                                                        if let Some(selected_account_id) = accounts_context.accounts
+                                                        if let Some(selected_account_id) = accounts_context
+                                                            .accounts
                                                             .get_untracked()
                                                             .selected_account_id
                                                         {
@@ -1616,7 +1737,8 @@ pub fn AccountSettings() -> impl IntoView {
                                                                 });
                                                             } else {
                                                                 set_recovery_change_in_progress(true);
-                                                                if let Some(account) = accounts_context.accounts
+                                                                if let Some(account) = accounts_context
+                                                                    .accounts
                                                                     .get_untracked()
                                                                     .accounts
                                                                     .iter()
@@ -1750,7 +1872,8 @@ pub fn AccountSettings() -> impl IntoView {
         <div class="flex flex-col gap-4 p-4">
             <button
                 on:click=move |_| {
-                    accounts_context.set_accounts
+                    accounts_context
+                        .set_accounts
                         .maybe_update(|accounts_data| {
                             if let Some(selected_account_id) = accounts_data
                                 .selected_account_id
