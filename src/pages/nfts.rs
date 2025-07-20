@@ -1462,7 +1462,7 @@ pub fn SendNft() -> impl IntoView {
         link: Option<String>,
         link_text: Option<String>,
     }
-    
+
     let (recipient_warning, set_recipient_warning) = signal::<Option<RecipientWarning>>(None);
 
     let collection_metadata = LocalResource::new(move || {
@@ -1526,7 +1526,7 @@ pub fn SendNft() -> impl IntoView {
                 if account_exists {
                     // Clone recipient for validator check and futures
                     let recipient_for_validator_check = recipient_to_check.clone();
-                    
+
                     let ft_metadata_future = rpc_client.call::<TokenMetadata>(
                         recipient_to_check.clone(),
                         "ft_metadata",
@@ -1560,7 +1560,10 @@ pub fn SendNft() -> impl IntoView {
                             link: Some(format!("/nfts/{}", recipient_for_validator_check)),
                             link_text: Some("View NFT collection".to_string()),
                         }));
-                    } else if is_validator_supported(&recipient_for_validator_check, network.get_untracked()) {
+                    } else if is_validator_supported(
+                        &recipient_for_validator_check,
+                        network.get_untracked(),
+                    ) {
                         set_recipient_warning.set(Some(RecipientWarning {
                             message: "This is a validator address. Sending NFTs to validators will result in asset loss. Consider using the staking functionality instead".to_string(),
                             link: Some(format!("/stake/{}/stake", recipient_for_validator_check)),

@@ -213,7 +213,6 @@ struct PoolInfo {
     unclaimed_rewards: Vec<UnclaimedReward>,
 }
 
-
 #[component]
 fn SocialLink(href: String, icon: icondata::Icon) -> impl IntoView {
     view! {

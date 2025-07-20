@@ -302,7 +302,9 @@ pub fn AccountSettings() -> impl IntoView {
                 set_ledger_connection_in_progress(false);
             }
         } else {
-            set_ledger_error.set(Some("Failed to serialize Ledger connection request".to_string()));
+            set_ledger_error.set(Some(
+                "Failed to serialize Ledger connection request".to_string(),
+            ));
             set_ledger_connection_in_progress(false);
         }
     };
@@ -640,24 +642,30 @@ pub fn AccountSettings() -> impl IntoView {
                     }
                     JsWalletResponse::LedgerPublicKey { path, key } => {
                         set_ledger_getting_public_key(false);
-                        
+
                         if path != ledger_input_hd_path_input.get_untracked() {
                             return;
                         }
-                        
+
                         if key.len() == 32 {
                             let bs58_key = bs58::encode(&key).into_string();
                             let public_key_str = format!("ed25519:{}", bs58_key);
                             if let Ok(public_key) = public_key_str
                                 .parse::<near_min_api::types::near_crypto::PublicKey>(
                             ) {
-                                set_ledger_current_key_data(Some((path.clone(), public_key.clone())));
+                                set_ledger_current_key_data(Some((
+                                    path.clone(),
+                                    public_key.clone(),
+                                )));
                                 set_ledger_error.set(None);
                             } else {
-                                set_ledger_error.set(Some("Failed to parse public key from Ledger".to_string()));
+                                set_ledger_error.set(Some(
+                                    "Failed to parse public key from Ledger".to_string(),
+                                ));
                             }
                         } else {
-                            set_ledger_error.set(Some("Invalid public key length from Ledger".to_string()));
+                            set_ledger_error
+                                .set(Some("Invalid public key length from Ledger".to_string()));
                         }
                     }
                     JsWalletResponse::LedgerConnectError { error } => {

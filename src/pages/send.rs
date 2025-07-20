@@ -5,10 +5,12 @@ use crate::{
         rpc_context::RpcContext,
         tokens_context::{Token, TokenMetadata, TokensContext},
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
-    }, pages::stake::is_validator_supported, utils::{
+    },
+    pages::stake::is_validator_supported,
+    utils::{
         balance_to_decimal, decimal_to_balance, format_account_id_no_hide, format_token_amount,
         format_token_amount_no_hide, format_usd_value_no_hide, StorageBalance,
-    }
+    },
 };
 use bigdecimal::{BigDecimal, FromPrimitive};
 use futures_util::join;
@@ -53,7 +55,7 @@ pub fn SendToken() -> impl IntoView {
         link: Option<String>,
         link_text: Option<String>,
     }
-    
+
     let (recipient_warning, set_recipient_warning) = signal::<Option<RecipientWarning>>(None);
     let (balance_error_count, set_balance_error_count) = signal(0);
     let (balance_error_timeout, set_balance_error_timeout) = signal::<Option<TimeoutHandle>>(None);
@@ -110,7 +112,7 @@ pub fn SendToken() -> impl IntoView {
                 if account_exists {
                     // Clone recipient for validator check and futures
                     let recipient_for_validator_check = recipient_to_check.clone();
-                    
+
                     let ft_metadata_future = rpc_client.call::<TokenMetadata>(
                         recipient_to_check.clone(),
                         "ft_metadata",
@@ -172,7 +174,10 @@ pub fn SendToken() -> impl IntoView {
                             link: Some(format!("/nfts/{}", recipient_for_validator_check)),
                             link_text: Some("View NFT collection".to_string()),
                         }));
-                    } else if is_validator_supported(&recipient_for_validator_check, network.get_untracked()) {
+                    } else if is_validator_supported(
+                        &recipient_for_validator_check,
+                        network.get_untracked(),
+                    ) {
                         set_recipient_warning.set(Some(RecipientWarning {
                             message: "This is a validator address. Sending tokens to validators will result in asset loss. Consider using the staking functionality instead".to_string(),
                             link: Some(format!("/stake/{}/stake", recipient_for_validator_check)),
