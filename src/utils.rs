@@ -230,7 +230,7 @@ async fn get_user_badge(account_id: AccountId) -> Option<impl Fn() -> AnyView> {
                                     </div>
                                     <div class="text-yellow-400 text-center text-md">
                                         "Sign up on "
-                                        <a href="https://imminent.build/" class="underline">
+                                        <a href="https://imminent.build/" target="_blank" class="underline">
                                             Imminent.build
                                         </a> " to start collecting badges!"
                                     </div>

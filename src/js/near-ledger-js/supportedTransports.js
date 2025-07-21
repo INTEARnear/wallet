@@ -1,7 +1,6 @@
 import { default as LedgerTransportWebUsb } from '@ledgerhq/hw-transport-webusb';
 import { default as LedgerTransportWebHid } from '@ledgerhq/hw-transport-webhid';
 import { default as LedgerTransportWebBle } from '@ledgerhq/hw-transport-web-ble';
-import { default as LedgerTransportWebAuthn } from '@ledgerhq/hw-transport-webauthn';
 
 let ENABLE_DEBUG_LOGGING = false;
 const debugLog = (...args) => {
@@ -35,31 +34,20 @@ async function isWebBleSupported() {
     }
 }
 
-async function isWebAuthnSupported() {
-    try {
-        const isSupported = await LedgerTransportWebAuthn.isSupported();
-        return isSupported;
-    } catch (e) {
-        return false;
-    }
-}
-
 async function createSupportedTransport() {
     const [
         supportWebHid,
         supportWebUsb,
         supportWebBle,
-        supportWebAuthn,
     ] = await Promise.all([
         isWebHidSupported(),
         isWebUsbSupported(),
         isWebBleSupported(),
-        isWebAuthnSupported()
     ]);
 
-    debugLog("Transports supported:", { supportWebHid, supportWebUsb, supportWebBle, supportWebAuthn });
+    debugLog("Transports supported:", { supportWebHid, supportWebUsb, supportWebBle });
 
-    if (!supportWebHid && !supportWebUsb && !supportWebBle && !supportWebAuthn) {
+    if (!supportWebHid && !supportWebUsb && !supportWebBle) {
         const err = new Error('No transports appear to be supported.');
         err.name = 'NoTransportSupported';
         throw err;
@@ -71,7 +59,6 @@ async function createSupportedTransport() {
         ...(supportWebHid ? [{ name: 'WebHID', createTransport: () => LedgerTransportWebHid.create() }] : []),
         ...(supportWebUsb ? [{ name: 'WebUSB', createTransport: () => LedgerTransportWebUsb.create() }] : []),
         ...(supportWebBle ? [{ name: 'WebBLE', createTransport: () => LedgerTransportWebBle.create() }] : []),
-        ...(supportWebAuthn ? [{ name: 'WebAuthn', createTransport: () => LedgerTransportWebAuthn.create() }] : []),
     ]
 
     let transport = null;
