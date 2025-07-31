@@ -103,7 +103,7 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
     };
     const STAKE_ITEM: &NavItem = &NavItem {
         path: "/stake",
-        icon: icondata::LuBanknoteArrowUp,
+        icon: icondata::LuBeef,
     };
     const SWAP_ITEM: &NavItem = &NavItem {
         path: "/swap",

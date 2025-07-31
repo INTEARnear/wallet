@@ -360,7 +360,7 @@ fn TokenSelector(
                                                                 }
                                                             }} <div class="text-left">
                                                                 <div class="flex items-center gap-1">
-                                                                    <div class="text-white font-medium">
+                                                                    <div class="text-white font-medium wrap-anywhere">
                                                                         {token_data.token.metadata.symbol.clone()}
                                                                     </div>
                                                                     {if matches!(
@@ -381,7 +381,7 @@ fn TokenSelector(
                                                                         ().into_any()
                                                                     }}
                                                                 </div>
-                                                                <div class="text-gray-400 text-sm">
+                                                                <div class="text-gray-400 text-sm wrap-anywhere">
                                                                     {token_data.token.metadata.name.clone()}
                                                                 </div>
                                                                 {match &token_data.token.account_id {
@@ -503,7 +503,7 @@ fn TokenSelector(
                                                                             }
                                                                         }} <div class="text-left">
                                                                             <div class="flex items-center gap-1">
-                                                                                <div class="text-white font-medium">
+                                                                                <div class="text-white font-medium wrap-anywhere">
                                                                                     {token_data.token.metadata.symbol.clone()}
                                                                                 </div>
                                                                                 {if matches!(
@@ -524,7 +524,7 @@ fn TokenSelector(
                                                                                     ().into_any()
                                                                                 }}
                                                                             </div>
-                                                                            <div class="text-gray-400 text-sm">
+                                                                            <div class="text-gray-400 text-sm wrap-anywhere">
                                                                                 {token_data.token.metadata.name.clone()}
                                                                             </div>
                                                                             {match &token_data.token.account_id {
@@ -690,6 +690,7 @@ pub fn Swap() -> impl IntoView {
         DexId::RheaDcl,
         DexId::MetaPool,
         DexId::Linear,
+        DexId::XRhea,
     ]);
 
     Effect::new(move |_| {
@@ -1646,6 +1647,17 @@ pub fn Swap() -> impl IntoView {
                                                     }
                                                         .into_any()
                                                 }
+                                                DexId::XRhea => {
+                                                    view! {
+                                                        <div class="flex items-center gap-2">
+                                                            <img src="/rhea.svg" alt="XRhea" class="w-auto h-8" />
+                                                            <span class="text-white font-medium text-sm">
+                                                                "Staking"
+                                                            </span>
+                                                        </div>
+                                                    }
+                                                        .into_any()
+                                                }
                                             }}
                                             <div class="flex items-center gap-2">
                                                 <span class="text-white font-medium text-sm">
@@ -1956,6 +1968,7 @@ pub fn Swap() -> impl IntoView {
                                                     DexId::Wrap,
                                                     DexId::MetaPool,
                                                     DexId::Linear,
+                                                    DexId::XRhea,
                                                 ];
                                                 all_dexes
                                                     .into_iter()
@@ -2657,7 +2670,7 @@ pub enum ExecutionInstruction {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DexId {
-    /// https://dex.rhea.finance/
+    /// https://app.rhea.finance/
     /// AMM DEX
     ///
     /// Supports AmountIn, doesn't support AmountOut
@@ -2670,7 +2683,7 @@ pub enum DexId {
     /// https://app.veax.com/
     /// AMM DEX
     ///
-    /// Not implemented yet
+    /// Supports both AmountIn and AmountOut
     Veax,
     /// https://aidols.bot/
     /// bonding-curve launchpad
@@ -2691,7 +2704,7 @@ pub enum DexId {
     ///
     /// Supports both AmountIn and AmountOut
     Wrap,
-    /// https://dex.rhea.finance/
+    /// https://app.rhea.finance/
     /// AMM DEX
     ///
     /// Supports both AmountIn and AmountOut
@@ -2706,6 +2719,11 @@ pub enum DexId {
     ///
     /// Supports NEAR -> LiNEAR and LiNEAR -> NEAR, both AmountIn and AmountOut
     Linear,
+    /// https://app.rhea.finance/stake
+    /// Staked $RHEA
+    ///
+    /// Supports RHEA -> XRHEA and XRHEA -> RHEA, both AmountIn and AmountOut
+    XRhea,
 }
 
 const RHEA_STR: &str = "Rhea";
@@ -2718,6 +2736,7 @@ const WRAP_STR: &str = "Wrap";
 const RHEA_DCL_STR: &str = "RheaDcl";
 const METAPOOL_STR: &str = "MetaPool";
 const LINEAR_STR: &str = "Linear";
+const XRHEA_STR: &str = "XRhea";
 
 impl Display for DexId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -2732,6 +2751,7 @@ impl Display for DexId {
             DexId::RheaDcl => f.write_str(RHEA_DCL_STR),
             DexId::MetaPool => f.write_str(METAPOOL_STR),
             DexId::Linear => f.write_str(LINEAR_STR),
+            DexId::XRhea => f.write_str(XRHEA_STR),
         }
     }
 }
@@ -2751,6 +2771,7 @@ impl FromStr for DexId {
             RHEA_DCL_STR => DexId::RheaDcl,
             METAPOOL_STR => DexId::MetaPool,
             LINEAR_STR => DexId::Linear,
+            XRHEA_STR => DexId::XRhea,
             _ => return Err(format!("Invalid dex id: {}", s)),
         })
     }

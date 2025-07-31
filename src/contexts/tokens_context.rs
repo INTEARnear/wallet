@@ -414,7 +414,7 @@ pub fn provide_token_context() {
     let mut burn_events_processed = HashSet::new();
     // Handle incoming burn events
     Effect::new(move |_| {
-        let Some(ws) = mint_ws() else {
+        let Some(ws) = burn_ws() else {
             return;
         };
         if let Some(msg) = ws.message.get() {
