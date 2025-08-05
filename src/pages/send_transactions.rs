@@ -66,6 +66,7 @@ fn TransactionAction(
     action: WalletSelectorAction,
     expanded_actions: ReadSignal<HashSet<(usize, usize)>>,
     set_expanded_actions: WriteSignal<HashSet<(usize, usize)>>,
+    receiver_id: AccountId,
 ) -> impl IntoView {
     let is_expandable = matches!(action, WalletSelectorAction::FunctionCall { .. });
     let is_expanded = move || expanded_actions.get().contains(&(tx_idx, action_idx));
@@ -93,7 +94,8 @@ fn TransactionAction(
         );
     };
 
-    let copy_cli_command = move |method_name: &str,
+    let copy_cli_command = move |contract_id: &AccountId,
+                                 method_name: &str,
                                  args: &serde_json::Value,
                                  gas: NearGas,
                                  deposit: NearToken,
@@ -105,7 +107,7 @@ fn TransactionAction(
             "contract".to_string(),
             "call-function".to_string(),
             "as-transaction".to_string(),
-            "contract_id".to_string(),
+            contract_id.to_string(),
             method_name.to_string(),
             "json-args".to_string(),
             minified_args,
@@ -223,6 +225,7 @@ fn TransactionAction(
                         let method_name_clone = method_name.clone();
                         let gas_clone = *gas;
                         let deposit_clone = *deposit;
+                        let receiver_id_clone = receiver_id.clone();
                         view! {
                             <div class="flex flex-col gap-2">
                                 <pre class="text-xs font-mono bg-neutral-800 text-neutral-300 rounded-lg p-3 overflow-x-auto">
@@ -251,6 +254,7 @@ fn TransactionAction(
                                     <button
                                         class="text-xs text-blue-400 hover:text-blue-300 transition-colors px-3 py-1.5 bg-neutral-800 rounded flex items-center gap-2 relative"
                                         on:click=move |_| copy_cli_command(
+                                            &receiver_id_clone,
                                             &method_name_clone,
                                             &args_clone,
                                             NearGas::from_gas(gas_clone),
@@ -328,6 +332,7 @@ fn TransactionItem<'a>(
                                         action=action.clone()
                                         expanded_actions=expanded_actions
                                         set_expanded_actions=set_expanded_actions
+                                        receiver_id=tx.receiver_id.clone()
                                     />
                                 }
                             })
