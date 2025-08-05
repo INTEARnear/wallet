@@ -254,7 +254,7 @@ impl RpcClient {
     /// ```ignore
     /// let account: AccountId = "account.near".parse().unwrap();
     /// let key: SecretKey = "ed25519:...".parse().unwrap();
-    /// let client = RpcClient::new(vec!["https://rpc.intear.tech"]);
+    /// let client = RpcClient::new(vec!["https://rpc.intea.rs"]);
     /// let tx = Transaction::V0(TransactionV0 {
     ///     signer_id: account.clone(),
     ///     public_key: key.public_key(),

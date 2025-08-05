@@ -665,7 +665,7 @@ async fn main() {
             .map(|urls| urls.split(',').map(String::from).collect::<Vec<_>>())
             .unwrap_or_else(|_| {
                 vec![
-                    "https://rpc.intear.tech".to_string(),
+                    "https://rpc.intea.rs".to_string(),
                     "https://rpc.near.org".to_string(),
                     "https://rpc.shitzuapes.xyz".to_string(),
                     "https://archival-rpc.mainnet.near.org".to_string(),
