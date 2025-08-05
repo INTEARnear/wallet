@@ -343,9 +343,10 @@ impl RpcClient {
     }
 
     pub fn supports_intear_methods(&self) -> bool {
-        self.urls
-            .iter()
-            .any(|url| url.host_str().unwrap_or_default().ends_with("intear.tech"))
+        self.urls.iter().any(|url| {
+            url.host_str().unwrap_or_default().ends_with("intear.tech")
+                || url.host_str().unwrap_or_default().ends_with("intea.rs")
+        })
     }
 
     pub async fn INTEAR_batch_query(
