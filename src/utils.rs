@@ -23,7 +23,7 @@ use crate::contexts::{
     config_context::ConfigContext,
     network_context::Network,
     rpc_context::RpcContext,
-    tokens_context::TokenInfo,
+    tokens_context::{Token, TokenInfo, TokenMetadata, TokensContext},
 };
 
 pub const USDT_DECIMALS: u32 = 6;
@@ -230,7 +230,11 @@ async fn get_user_badge(account_id: AccountId) -> Option<impl Fn() -> AnyView> {
                                     </div>
                                     <div class="text-yellow-400 text-center text-md">
                                         "Sign up on "
-                                        <a href="https://imminent.build/" target="_blank" class="underline">
+                                        <a
+                                            href="https://imminent.build/"
+                                            target="_blank"
+                                            class="underline"
+                                        >
                                             Imminent.build
                                         </a> " to start collecting badges!"
                                     </div>
@@ -579,20 +583,19 @@ impl EventLogData<NftContractMetadataUpdateLog> {
     }
 }
 
-#[derive(Deserialize, Debug, Clone, PartialEq)]
-pub struct FtMetadata {
-    pub decimals: u32,
-    pub symbol: String,
-    pub name: String,
-    #[serde(default)]
-    pub icon: Option<String>,
-}
-
 #[cached(result = true)]
-pub async fn get_ft_metadata(ft_contract_id: AccountId) -> Result<FtMetadata, String> {
+pub async fn get_ft_metadata(ft_contract_id: AccountId) -> Result<TokenMetadata, String> {
     let RpcContext { client, .. } = expect_context::<RpcContext>();
+    let TokensContext { tokens, .. } = expect_context::<TokensContext>();
+    if let Some(token) = tokens
+        .get()
+        .iter()
+        .find(|t| t.token.account_id == Token::Nep141(ft_contract_id.clone()))
+    {
+        return Ok(token.token.metadata.clone());
+    }
     let mut metadata = client()
-        .call::<FtMetadata>(
+        .call::<TokenMetadata>(
             ft_contract_id.clone(),
             "ft_metadata",
             serde_json::json!({}),

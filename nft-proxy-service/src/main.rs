@@ -16,7 +16,13 @@ use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use reqwest::Client;
 use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};
-use std::{env, io::Cursor, net::SocketAddr, sync::Arc, time::Duration};
+use std::{
+    env,
+    io::Cursor,
+    net::SocketAddr,
+    sync::Arc,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 use teloxide::{
     dispatching::UpdateHandler,
     prelude::*,
@@ -35,6 +41,12 @@ const HIGH_RES_SIZE: u32 = 576;
 pub enum HiddenNft {
     Collection(AccountId),
     Token(AccountId, String),
+}
+
+#[derive(Deserialize)]
+struct AirdropClaimRequest {
+    addr: AccountId,
+    airdrop_id: i32,
 }
 
 #[derive(Clone)]
@@ -116,6 +128,8 @@ async fn main() {
         .route("/media/low/{*url}", get(proxy_handler_low_res))
         .route("/media/high/{*url}", get(proxy_handler_high_res))
         .route("/traits/{*url}", get(traits_proxy_handler))
+        .route("/airdrop/{id}/{addr}", get(airdrop_proxy_handler))
+        .route("/airdrop/claim", post(airdrop_claim_handler))
         .route("/report-spam", post(report_spam_handler))
         .route("/spam-list", get(spam_list_handler))
         .layer(CorsLayer::permissive())
@@ -508,6 +522,147 @@ async fn proxy_handler(
 
     let webp_bytes = Bytes::from(buffer.into_inner());
     Ok(webp_bytes)
+}
+
+async fn airdrop_claim_handler(
+    State(state): State<AppState>,
+    Json(claim_request): Json<AirdropClaimRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("System time error: {}", e),
+            )
+        })?
+        .as_millis()
+        .to_string();
+
+    let claim_payload = serde_json::json!({
+        "addr": claim_request.addr,
+        "callback_url": "https://app.rhea.finance/airdrop/detail",
+        "data": claim_request.airdrop_id.to_string(),
+        "public_key": &timestamp,
+        "redirect_uri": "https://app.rhea.finance/airdrop/detail",
+        "signature": &timestamp
+    });
+
+    let res = state
+        .client
+        .post("https://api.ref.finance/v3/airdrop/claim")
+        .json(&claim_payload)
+        .send()
+        .await;
+
+    let response = match res {
+        Ok(response) => response,
+        Err(e) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to claim airdrop: {}", e),
+            ));
+        }
+    };
+
+    let status = response.status();
+    let bytes = match response.bytes().await {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to read claim response bytes: {}", e),
+            ));
+        }
+    };
+
+    if serde_json::from_slice::<serde_json::Value>(&bytes).is_err() {
+        return Err((StatusCode::BAD_REQUEST, "Response is not valid JSON".into()));
+    }
+
+    // Give time to process the claim instead of polling (can cause 429 since all requests are from the same IP)
+    tokio::time::sleep(Duration::from_secs(15)).await;
+
+    // If claim was successful, invalidate the cached airdrop data for this account
+    if status == StatusCode::OK {
+        if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+            if json.get("code").and_then(|v| v.as_i64()) == Some(0)
+                && json.get("data").is_some_and(|v| v.is_null())
+            {
+                let cache_key = format!(
+                    "airdrop:{}:{}",
+                    claim_request.airdrop_id, claim_request.addr
+                );
+                state.cache.invalidate(&cache_key).await;
+            }
+        }
+    }
+
+    Ok((status, bytes))
+}
+
+async fn airdrop_proxy_handler(
+    State(state): State<AppState>,
+    Path((id, addr)): Path<(String, String)>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    // Cache key includes both airdrop id and account address for individual account caching
+    let cache_key = format!("airdrop:{}:{}", id, addr);
+
+    if let Some(cached) = state.cache.get(&cache_key).await {
+        return match cached {
+            Ok(bytes) => Ok(bytes),
+            Err(status_code) => Err((
+                StatusCode::from_u16(status_code).unwrap(),
+                format!("Failed to fetch airdrop data from origin with status {status_code}"),
+            )),
+        };
+    }
+
+    let airdrop_url = format!(
+        "https://api.ref.finance/v3/airdrop/check?id={}&addr={}",
+        id, addr
+    );
+
+    let res = state.client.get(&airdrop_url).send().await;
+
+    let response = match res {
+        Ok(response) => response,
+        Err(e) => {
+            let status = e.status().map(|s| s.as_u16()).unwrap_or(500);
+            state.cache.insert(cache_key, Err(status)).await;
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to fetch airdrop data: {e}"),
+            ));
+        }
+    };
+
+    if response.status() != StatusCode::OK {
+        let status = response.status().as_u16();
+        state.cache.insert(cache_key.clone(), Err(status)).await;
+        return Err((
+            response.status(),
+            format!("Upstream returned status: {}", response.status()),
+        ));
+    }
+
+    let bytes = match response.bytes().await {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to read airdrop data bytes: {e}"),
+            ));
+        }
+    };
+
+    if serde_json::from_slice::<serde_json::Value>(&bytes).is_err() {
+        return Err((StatusCode::BAD_REQUEST, "Response is not valid JSON".into()));
+    }
+
+    state.cache.insert(cache_key, Ok(bytes.clone())).await;
+
+    Ok(bytes)
 }
 
 async fn traits_proxy_handler(

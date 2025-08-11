@@ -656,6 +656,49 @@ pub fn provide_token_context() {
         });
     });
 
+    Effect::new(move |_| {
+        tokens.track();
+        set_tokens.maybe_update(|tokens| {
+            let mut new_tokens = tokens.clone();
+            new_tokens.sort_by(|t1, t2| {
+                let t1_hardcoded_order = match &t1.token.account_id {
+                    Token::Near => 0,
+                    Token::Nep141(_) => 1,
+                };
+                let t2_hardcoded_order = match &t2.token.account_id {
+                    Token::Near => 0,
+                    Token::Nep141(_) => 1,
+                };
+                let t1_value = BigDecimal::from(t1.balance) * &t1.token.price_usd_raw;
+                let t2_value = BigDecimal::from(t2.balance) * &t2.token.price_usd_raw;
+                let t1_name_comparable = match &t1.token.account_id {
+                    Token::Near => "NEAR".to_string(),
+                    Token::Nep141(id) => id.to_string(),
+                };
+                let t2_name_comparable = match &t2.token.account_id {
+                    Token::Near => "NEAR".to_string(),
+                    Token::Nep141(id) => id.to_string(),
+                };
+                t1_hardcoded_order
+                    .cmp(&t2_hardcoded_order)
+                    .then_with(|| t1_value.cmp(&t2_value).reverse())
+                    .then_with(|| t1_name_comparable.cmp(&t2_name_comparable))
+            });
+            let has_changed = new_tokens
+                .iter()
+                .map(|token| token.token.account_id.clone())
+                .collect::<Vec<_>>()
+                != tokens
+                    .iter()
+                    .map(|token| token.token.account_id.clone())
+                    .collect::<Vec<_>>();
+            if has_changed {
+                *tokens = new_tokens;
+            }
+            has_changed
+        });
+    });
+
     provide_context(TokensContext {
         tokens,
         set_tokens,

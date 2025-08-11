@@ -133,7 +133,7 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
 
     view! {
         <div
-            class="absolute inset-0 bg-neutral-950 lg:rounded-3xl transition-opacity duration-500 z-[10000]"
+            class="absolute inset-0 bg-neutral-950 lg:rounded-3xl transition-opacity duration-200 z-[10000]"
             style=move || {
                 if should_show_unlock() {
                     "opacity: 1;"
@@ -144,7 +144,7 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
         >
             // Loading overlay
             <div
-                class="absolute inset-0 flex items-center justify-center transition-opacity duration-300"
+                class="absolute inset-0 flex items-center justify-center transition-opacity duration-200"
                 style=move || {
                     if accounts_context.is_loading_cipher.get() {
                         "opacity: 1;"
@@ -161,9 +161,9 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
 
             // Password form overlay
             <div
-                class="absolute inset-0 flex items-center justify-center transition-opacity duration-300"
+                class="absolute inset-0 flex items-center justify-center"
                 style=move || {
-                    if accounts_context.is_loading_cipher.get() {
+                    if accounts_context.is_loading_cipher.get() && should_show_unlock() {
                         "opacity: 0; pointer-events: none;"
                     } else {
                         "opacity: 1;"
