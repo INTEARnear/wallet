@@ -103,6 +103,12 @@ async fn search_tokens(query: &str, account: Account) -> Result<Vec<TokenInfo>, 
     Ok(token_infos)
 }
 
+#[derive(Debug, Clone)]
+enum SearchError {
+    QueryIsEmpty,
+    SearchFailed(#[allow(dead_code)] String),
+}
+
 #[component]
 fn TokenSelector(
     selected_token: ReadSignal<Option<TokenData>>,
@@ -120,7 +126,7 @@ fn TokenSelector(
     let search_resource = LocalResource::new(move || async move {
         let query = search_query.get();
         if query.is_empty() {
-            return Ok::<Vec<TokenInfo>, String>(vec![]);
+            return Err(SearchError::QueryIsEmpty);
         }
 
         let current_account = accounts.get().selected_account_id.map(|id| {
@@ -133,19 +139,22 @@ fn TokenSelector(
         });
 
         if let Some(current_account) = current_account {
-            search_tokens(&query, current_account).await.map(|results| {
-                results
-                    .into_iter()
-                    .map(|mut r| {
-                        if let Some(icon) = r.metadata.icon.as_ref() {
-                            if !icon.starts_with("data:") {
-                                r.metadata.icon = None;
+            search_tokens(&query, current_account)
+                .await
+                .map(|results| {
+                    results
+                        .into_iter()
+                        .map(|mut r| {
+                            if let Some(icon) = r.metadata.icon.as_ref() {
+                                if !icon.starts_with("data:") {
+                                    r.metadata.icon = None;
+                                }
                             }
-                        }
-                        r
-                    })
-                    .collect()
-            })
+                            r
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .map_err(SearchError::SearchFailed)
         } else {
             Ok(vec![])
         }
@@ -281,7 +290,22 @@ fn TokenSelector(
                                 }}
                             </div>
                         </div>
-                        <div class="p-4 space-y-2 overflow-y-auto flex-1">
+                        <div
+                            class="p-4 space-y-2 flex-1"
+                            style=move || {
+                                if !search_query.get().is_empty() {
+                                    if let None | Some(Err(SearchError::QueryIsEmpty)) = search_resource
+                                        .get()
+                                    {
+                                        "overflow-y: hidden;"
+                                    } else {
+                                        "overflow-y: auto;"
+                                    }
+                                } else {
+                                    "overflow-y: auto;"
+                                }
+                            }
+                        >
                             {move || {
                                 if loading_tokens.get() {
                                     view! {
@@ -585,7 +609,7 @@ fn TokenSelector(
                                                         .into_any()
                                                 }
                                             }
-                                            Some(Err(_)) => {
+                                            Some(Err(SearchError::SearchFailed(_))) => {
                                                 view! {
                                                     <div class="flex items-center justify-center h-32 text-red-400">
                                                         "Error loading search results"
@@ -593,10 +617,28 @@ fn TokenSelector(
                                                 }
                                                     .into_any()
                                             }
-                                            None => {
+                                            None | Some(Err(SearchError::QueryIsEmpty)) => {
                                                 view! {
-                                                    <div class="flex items-center justify-center h-32">
-                                                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                                                    <div class="space-y-2 h-full overflow-y-hidden">
+                                                        {(0..10)
+                                                            .map(|_| {
+                                                                view! {
+                                                                    <div class="w-full flex items-center justify-between bg-neutral-800 rounded-xl p-4">
+                                                                        <div class="flex items-center gap-3">
+                                                                            <div class="min-w-10 min-h-10 max-w-10 max-h-10 rounded-full bg-neutral-700 animate-pulse"></div>
+                                                                            <div class="space-y-2">
+                                                                                <div class="h-4 w-24 bg-neutral-700 rounded animate-pulse"></div>
+                                                                                <div class="h-3 w-32 bg-neutral-700/70 rounded"></div>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div class="text-right space-y-2">
+                                                                            <div class="h-4 w-16 bg-neutral-700 rounded animate-pulse ml-auto"></div>
+                                                                            <div class="h-3 w-20 bg-neutral-700/70 rounded ml-auto"></div>
+                                                                        </div>
+                                                                    </div>
+                                                                }
+                                                            })
+                                                            .collect_view()}
                                                     </div>
                                                 }
                                                     .into_any()
@@ -1637,7 +1679,11 @@ pub fn Swap() -> impl IntoView {
                                                 }
                                                 DexId::MetaPool => {
                                                     view! {
-                                                        <img src="/metapool.svg" alt="MetaPool" class="w-auto h-8" />
+                                                        <img
+                                                            src="/metapool.svg"
+                                                            alt="MetaPool"
+                                                            class="w-auto h-8"
+                                                        />
                                                     }
                                                         .into_any()
                                                 }
@@ -1658,8 +1704,7 @@ pub fn Swap() -> impl IntoView {
                                                     }
                                                         .into_any()
                                                 }
-                                            }}
-                                            <div class="flex items-center gap-2">
+                                            }} <div class="flex items-center gap-2">
                                                 <span class="text-white font-medium text-sm">
                                                     "Best Route"
                                                 </span>
