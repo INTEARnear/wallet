@@ -78,6 +78,27 @@ struct FastnearNftResponseToken {
     last_update_block_height: Option<u64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct NftTokenResponse {
+    pub metadata: NftTokenResponseMetadata,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct NftTokenResponseMetadata {
+    pub reference: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct NftTokenAttribute {
+    pub trait_type: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct NftTokenReference {
+    pub attributes: Option<Vec<NftTokenAttribute>>,
+}
+
 async fn fetch_nft_metadata(
     contract_id: AccountId,
     rpc_client: RpcClient,
@@ -95,6 +116,40 @@ async fn fetch_nft_metadata(
         )
         .await)
         .ok()
+}
+
+async fn fetch_nft_token(
+    contract_id: AccountId,
+    token_id: String,
+    rpc_client: RpcClient,
+) -> Option<NftTokenResponse> {
+    rpc_client
+        .call::<NftTokenResponse>(
+            contract_id,
+            "nft_token",
+            serde_json::json!({"token_id": token_id}),
+            QueryFinality::Finality(Finality::DoomSlug),
+        )
+        .await
+        .ok()
+}
+
+async fn fetch_nft_traits(base_uri: String, reference: String) -> Option<Vec<NftTokenAttribute>> {
+    let metadata_url = if reference.starts_with("http") {
+        reference
+    } else {
+        format!("{}/{}", base_uri.trim_end_matches('/'), reference)
+    };
+
+    let proxy_base = dotenvy_macro::dotenv!("SHARED_NFT_PROXY_SERVICE_ADDR");
+    let encoded_url =
+        percent_encoding::utf8_percent_encode(&metadata_url, percent_encoding::NON_ALPHANUMERIC)
+            .to_string();
+    let proxy_url = format!("{proxy_base}/traits/{encoded_url}");
+
+    let response = reqwest::get(&proxy_url).await.ok()?;
+    let metadata: NftTokenReference = response.json().await.ok()?;
+    metadata.attributes
 }
 
 /// Fetch up to 12 000 NFT tokens for the given `contract_id` that belong to `account_id`.
@@ -1937,6 +1992,21 @@ pub fn NftTokenDetails() -> impl IntoView {
         }
     });
 
+    let nft_traits = LocalResource::new(move || {
+        let rpc_client = client.get().clone();
+        async move {
+            let Ok(cid) = contract_id().parse::<AccountId>() else {
+                return None;
+            };
+            let token_id = token_id();
+            let base_uri = collection_metadata.await?.base_uri?;
+            let token_data = fetch_nft_token(cid, token_id, rpc_client).await;
+            let reference = token_data?.metadata.reference?;
+
+            fetch_nft_traits(base_uri, reference).await
+        }
+    });
+
     let navigate = use_navigate();
 
     let toggle_hide_token =
@@ -2129,6 +2199,39 @@ pub fn NftTokenDetails() -> impl IntoView {
                                             description
                                         }}
                                     </p>
+
+                                    {move || {
+                                        match nft_traits.get() {
+                                            Some(Some(traits)) if !traits.is_empty() => {
+                                                view! {
+                                                    <div class="mt-6">
+                                                        <h3 class="text-lg font-semibold text-white mb-3">
+                                                            "Traits"
+                                                        </h3>
+                                                        <div class="grid grid-cols-2 gap-3">
+                                                            {traits
+                                                                .into_iter()
+                                                                .map(|trait_attr| {
+                                                                    view! {
+                                                                        <div class="bg-neutral-800 rounded-lg p-3">
+                                                                            <div class="text-neutral-300 text-sm font-medium">
+                                                                                {trait_attr.trait_type}
+                                                                            </div>
+                                                                            <div class="text-white text-base mt-1">
+                                                                                {trait_attr.value}
+                                                                            </div>
+                                                                        </div>
+                                                                    }
+                                                                })
+                                                                .collect::<Vec<_>>()}
+                                                        </div>
+                                                    </div>
+                                                }
+                                                    .into_any()
+                                            }
+                                            _ => view! { <div></div> }.into_any(),
+                                        }
+                                    }}
                                 </div>
                             </div>
                         }

@@ -3,7 +3,7 @@
 use anyhow::anyhow;
 use axum::{
     extract::{Path, State},
-    http::{header, HeaderMap, StatusCode},
+    http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
@@ -40,7 +40,7 @@ pub enum HiddenNft {
 #[derive(Clone)]
 struct AppState {
     client: Client,
-    cache: Cache<String, Result<(Bytes, String), u16>>,
+    cache: Cache<String, Result<Bytes, u16>>,
     max_size: u64,
     spam_db: Arc<DB>,
     reported_db: Arc<DB>,
@@ -83,7 +83,7 @@ async fn main() {
         .parse::<u64>()
         .expect("Failed to parse CACHE_DURATION_SECONDS");
 
-    let cache: Cache<String, Result<(Bytes, String), u16>> = Cache::builder()
+    let cache: Cache<String, Result<Bytes, u16>> = Cache::builder()
         .time_to_live(Duration::from_secs(cache_duration))
         .build();
 
@@ -115,6 +115,7 @@ async fn main() {
     let app = Router::new()
         .route("/media/low/{*url}", get(proxy_handler_low_res))
         .route("/media/high/{*url}", get(proxy_handler_high_res))
+        .route("/traits/{*url}", get(traits_proxy_handler))
         .route("/report-spam", post(report_spam_handler))
         .route("/spam-list", get(spam_list_handler))
         .layer(CorsLayer::permissive())
@@ -417,11 +418,7 @@ async fn proxy_handler(
 
     if let Some(cached) = state.cache.get(&cache_key_current).await {
         return match cached {
-            Ok((bytes, content_type)) => {
-                let mut headers = HeaderMap::new();
-                headers.insert(header::CONTENT_TYPE, content_type.parse().unwrap());
-                Ok((headers, bytes))
-            }
+            Ok(bytes) => Ok(bytes),
             Err(status_code) => Err((
                 StatusCode::from_u16(status_code).unwrap(),
                 format!("Failed to fetch from origin with status {status_code}"),
@@ -454,13 +451,6 @@ async fn proxy_handler(
         ));
     }
 
-    let content_type = response
-        .headers()
-        .get(header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("application/octet-stream")
-        .to_string();
-
     let bytes = match response.bytes().await {
         Ok(bytes) => bytes,
         Err(e) => {
@@ -482,17 +472,9 @@ async fn proxy_handler(
         Ok(img) => img,
         Err(e) => {
             tracing::warn!("Failed to decode image, proxying as is. Error: {e}");
-            state
-                .cache
-                .insert(cache_key_low, Ok((bytes.clone(), content_type.clone())))
-                .await;
-            state
-                .cache
-                .insert(cache_key_high, Ok((bytes.clone(), content_type.clone())))
-                .await;
-            let mut headers = HeaderMap::new();
-            headers.insert(header::CONTENT_TYPE, content_type.parse().unwrap());
-            return Ok((headers, bytes));
+            state.cache.insert(cache_key_low, Ok(bytes.clone())).await;
+            state.cache.insert(cache_key_high, Ok(bytes.clone())).await;
+            return Ok(bytes);
         }
     };
 
@@ -506,10 +488,7 @@ async fn proxy_handler(
                 return;
             }
             let webp_bytes = Bytes::from(buffer.into_inner());
-            state
-                .cache
-                .insert(cache_key, Ok((webp_bytes, "image/webp".to_string())))
-                .await;
+            state.cache.insert(cache_key, Ok(webp_bytes)).await;
         }
     };
 
@@ -528,9 +507,79 @@ async fn proxy_handler(
     };
 
     let webp_bytes = Bytes::from(buffer.into_inner());
-    let mut headers = HeaderMap::new();
-    headers.insert(header::CONTENT_TYPE, "image/webp".parse().unwrap());
-    Ok((headers, webp_bytes))
+    Ok(webp_bytes)
+}
+
+async fn traits_proxy_handler(
+    State(state): State<AppState>,
+    Path(url): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let decoded_url = percent_encoding::percent_decode_str(&url)
+        .decode_utf8_lossy()
+        .to_string();
+
+    let parsed_url = Url::parse(&decoded_url)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid URL format: {e}")))?;
+
+    if is_local(parsed_url.host()) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Access to local IPs is forbidden".into(),
+        ));
+    }
+
+    let cache_key = format!("traits:{}", decoded_url);
+
+    if let Some(cached) = state.cache.get(&cache_key).await {
+        return match cached {
+            Ok(bytes) => Ok(bytes),
+            Err(status_code) => Err((
+                StatusCode::from_u16(status_code).unwrap(),
+                format!("Failed to fetch traits from origin with status {status_code}"),
+            )),
+        };
+    }
+
+    let res = state.client.get(&decoded_url).send().await;
+
+    let response = match res {
+        Ok(response) => response,
+        Err(e) => {
+            let status = e.status().map(|s| s.as_u16()).unwrap_or(500);
+            state.cache.insert(cache_key, Err(status)).await;
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to fetch traits: {e}"),
+            ));
+        }
+    };
+
+    if response.status() != StatusCode::OK {
+        let status = response.status().as_u16();
+        state.cache.insert(cache_key.clone(), Err(status)).await;
+        return Err((
+            response.status(),
+            format!("Upstream returned status: {}", response.status()),
+        ));
+    }
+
+    let bytes = match response.bytes().await {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to read traits bytes: {e}"),
+            ));
+        }
+    };
+
+    if serde_json::from_slice::<serde_json::Value>(&bytes).is_err() {
+        return Err((StatusCode::BAD_REQUEST, "Response is not valid JSON".into()));
+    }
+
+    state.cache.insert(cache_key, Ok(bytes.clone())).await;
+
+    Ok(bytes)
 }
 
 fn is_local(host: Option<Host<&str>>) -> bool {
