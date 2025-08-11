@@ -14,6 +14,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{js_sys::Date, Window};
 
 use crate::contexts::account_selector_swipe_context::AccountSelectorSwipeContext;
+use crate::contexts::config_context::ConfigContext;
 use crate::contexts::{
     accounts_context::{AccountsContext, SecretKeyHolder},
     connected_apps_context::{ConnectedApp, ConnectedAppsContext},
@@ -112,6 +113,7 @@ pub fn Connect() -> impl IntoView {
     let TransactionQueueContext {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
+    let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
 
     let opener = || {
         if let Ok(opener) = window().opener() {
@@ -165,11 +167,17 @@ pub fn Connect() -> impl IntoView {
             }
             match message {
                 ReceiveMessage::SignIn { data } => {
-                    set_origin(event.origin());
+                    let evt_origin = event.origin();
+                    set_origin(evt_origin.clone());
                     set_loading(false);
-                    if data.contract_id.is_some() && data.contract_id.as_deref() != Some("") {
-                        set_add_function_call_key(true);
-                    }
+                    let has_contract = data.contract_id.as_deref().is_some_and(|v| !v.is_empty());
+                    let default_checked = has_contract;
+                    let restored = config
+                        .get()
+                        .autoconfirm_preference_by_origin
+                        .get(&evt_origin)
+                        .copied();
+                    set_add_function_call_key(restored.unwrap_or(default_checked));
                     set_request_data(Some(data));
                 }
             }
@@ -578,6 +586,12 @@ pub fn Connect() -> impl IntoView {
                                                                 on:change=move |ev| {
                                                                     let checked = event_target_checked(&ev);
                                                                     set_add_function_call_key(checked);
+                                                                    let current_origin = origin();
+                                                                    set_config
+                                                                        .update(|cfg| {
+                                                                            cfg.autoconfirm_preference_by_origin
+                                                                                .insert(current_origin, checked);
+                                                                        });
                                                                 }
                                                             />
                                                             <span class="text-neutral-300 text-sm wrap-anywhere">

@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use near_min_api::types::AccountId;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use web_sys::window;
 
 use crate::pages::Slippage;
@@ -138,6 +139,8 @@ pub struct WalletConfig {
     pub hidden_nfts: Vec<HiddenNft>,
     #[serde(default)]
     pub background_group: BackgroundGroup,
+    #[serde(default)]
+    pub autoconfirm_preference_by_origin: HashMap<String, bool>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -162,6 +165,7 @@ impl Default for WalletConfig {
             nfts_view_state: NftsViewState::default(),
             hidden_nfts: vec![],
             background_group: BackgroundGroup::default(),
+            autoconfirm_preference_by_origin: HashMap::new(),
         }
     }
 }
