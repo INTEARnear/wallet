@@ -24,6 +24,8 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
     let input_ref = NodeRef::<leptos::html::Input>::new();
 
     Effect::new(move || {
+        // Re-focus whenever loading state changes or when the component mounts
+        let _ = accounts_context.is_loading_cipher.get();
         if let Some(input) = input_ref.get() {
             let _ = input.focus();
         }
@@ -131,7 +133,7 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
 
     view! {
         <div
-            class="absolute inset-0 bg-neutral-950 lg:rounded-3xl transition-opacity duration-150 z-[10000]"
+            class="absolute inset-0 bg-neutral-950 lg:rounded-3xl transition-opacity duration-500 z-[10000]"
             style=move || {
                 if should_show_unlock() {
                     "opacity: 1;"
@@ -140,7 +142,34 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
                 }
             }
         >
-            <div class="absolute inset-0 flex items-center justify-center">
+            // Loading overlay
+            <div
+                class="absolute inset-0 flex items-center justify-center transition-opacity duration-300"
+                style=move || {
+                    if accounts_context.is_loading_cipher.get() {
+                        "opacity: 1;"
+                    } else {
+                        "opacity: 0; pointer-events: none;"
+                    }
+                }
+            >
+                <div class="flex flex-col items-center space-y-4">
+                    <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                    <p class="text-white text-lg font-medium">"Loading..."</p>
+                </div>
+            </div>
+
+            // Password form overlay
+            <div
+                class="absolute inset-0 flex items-center justify-center transition-opacity duration-300"
+                style=move || {
+                    if accounts_context.is_loading_cipher.get() {
+                        "opacity: 0; pointer-events: none;"
+                    } else {
+                        "opacity: 1;"
+                    }
+                }
+            >
                 <div class="w-full max-w-md max-h-full p-6 overflow-y-auto">
                     <div class="text-center mb-8">
                         <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-500/20 flex items-center justify-center">

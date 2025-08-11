@@ -257,6 +257,7 @@ pub struct AccountsContext {
     pub ledger_sign_rx: RwSignal<mpmc::Receiver<JsWalletResponse>>,
     pub ledger_signing_state: RwSignal<LedgerSigningState>,
     pub cipher: ReadSignal<Option<Cipher>>,
+    pub is_loading_cipher: ReadSignal<bool>,
 }
 
 fn get_local_storage() -> Option<web_sys::Storage> {
@@ -584,22 +585,31 @@ pub fn provide_accounts_context() {
     let (cipher, set_cipher) = signal::<Option<Cipher>>(None);
     let config_context = expect_context::<ConfigContext>();
     let (password_timeout_handle, set_password_timeout_handle) = signal::<Option<i32>>(None);
+    let (is_loading_cipher, set_is_loading_cipher) = signal(false);
 
     // Try to retrieve cipher from password storage service on page load if we have encrypted data but no cipher
     if has_encrypted_data() && cipher.get_untracked().is_none() {
+        set_is_loading_cipher(true);
         spawn_local(async move {
+            Delay::new(Duration::from_millis(1000)).await;
             if let Ok(Some(retrieved_cipher)) = retrieve_cipher_from_service().await {
                 if let Ok(encrypted_accounts) = get_encrypted_accounts() {
                     let encrypted_data = match general_purpose::STANDARD
                         .decode(&encrypted_accounts.encrypted_data)
                     {
                         Ok(data) => data,
-                        Err(_) => return,
+                        Err(_) => {
+                            set_is_loading_cipher(false);
+                            return;
+                        }
                     };
                     let nonce_bytes =
                         match general_purpose::STANDARD.decode(&encrypted_accounts.nonce) {
                             Ok(data) => data,
-                            Err(_) => return,
+                            Err(_) => {
+                                set_is_loading_cipher(false);
+                                return;
+                            }
                         };
 
                     if let Ok(decrypted_data) = retrieved_cipher
@@ -620,6 +630,7 @@ pub fn provide_accounts_context() {
                     }
                 }
             }
+            set_is_loading_cipher(false);
         });
     }
 
@@ -886,6 +897,7 @@ pub fn provide_accounts_context() {
         ledger_sign_rx: RwSignal::new(ledger_sign_rx),
         ledger_signing_state: RwSignal::new(LedgerSigningState::Idle),
         cipher,
+        is_loading_cipher,
     };
 
     Effect::new(move || {
