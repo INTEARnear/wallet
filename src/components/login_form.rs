@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use bs58;
 use futures_timer::Delay;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
@@ -93,7 +92,7 @@ pub fn LoginForm(
     let (error, set_error) = signal::<Option<String>>(None);
     let (is_hovered, set_is_hovered) = signal(false);
     let (available_accounts, set_available_accounts) = signal::<Vec<(AccountId, Network)>>(vec![]);
-    let (selected_account, set_selected_account) = signal::<Option<(AccountId, Network)>>(None);
+    let (selected_accounts, set_selected_accounts) = signal::<Vec<(AccountId, Network)>>(vec![]);
     let (ethereum_connection_in_progress, set_ethereum_connection_in_progress) = signal(false);
     let (connected_ethereum_address, set_connected_ethereum_address) =
         signal::<Option<alloy_primitives::Address>>(None);
@@ -117,6 +116,7 @@ pub fn LoginForm(
     let on_path_change = move || {
         set_ledger_current_key_data.set(None);
         set_available_accounts.set(vec![]);
+        set_selected_accounts.set(vec![]);
     };
 
     Effect::new(move || {
@@ -186,6 +186,7 @@ pub fn LoginForm(
                                     )));
                                 } else {
                                     set_available_accounts.set(all_accounts);
+                                    set_selected_accounts.set(vec![]);
                                     set_error.set(None);
                                 }
                             });
@@ -229,8 +230,9 @@ pub fn LoginForm(
                                 return;
                             }
 
-                            let Some((account_id, network)) = selected_account.get_untracked()
-                            else {
+                            let Ok([(account_id, network)]) = <[(AccountId, Network); 1]>::try_from(
+                                selected_accounts.get_untracked(),
+                            ) else {
                                 set_error.set(Some("No account selected".to_string()));
                                 set_import_in_progress(false);
                                 return;
@@ -410,6 +412,7 @@ pub fn LoginForm(
                                     )));
                                 } else {
                                     set_available_accounts.set(all_accounts);
+                                    set_selected_accounts.set(vec![]);
                                     set_error.set(None);
                                 }
                             });
@@ -452,8 +455,9 @@ pub fn LoginForm(
                                 return;
                             }
 
-                            let Some((account_id, network)) = selected_account.get_untracked()
-                            else {
+                            let Ok([(account_id, network)]) = <[(AccountId, Network); 1]>::try_from(
+                                selected_accounts.get_untracked(),
+                            ) else {
                                 set_error.set(Some("No account selected".to_string()));
                                 set_import_in_progress(false);
                                 return;
@@ -620,13 +624,12 @@ pub fn LoginForm(
                                         find_accounts_by_public_key(public_key, &accounts_context)
                                             .await;
 
+                                    set_available_accounts.set(all_accounts.clone());
+                                    set_selected_accounts.set(vec![]);
                                     if all_accounts.is_empty() {
-                                        set_available_accounts.set(all_accounts);
                                         set_error.set(Some(
                                             "No accounts found for this Ledger key".to_string(),
                                         ));
-                                    } else {
-                                        set_available_accounts.set(all_accounts);
                                     }
                                 });
                             } else {
@@ -675,19 +678,20 @@ pub fn LoginForm(
         spawn_local(async move {
             let all_accounts = find_accounts_by_public_key(public_key, &accounts_context).await;
 
+            set_available_accounts.set(all_accounts.clone());
+            set_selected_accounts.set(vec![]);
             if all_accounts.is_empty() {
-                set_available_accounts.set(all_accounts);
                 set_error.set(Some("No accounts found for this key".to_string()));
                 set_is_valid.set(None);
             } else {
-                set_available_accounts.set(all_accounts);
                 set_is_valid.set(Some(secret_key));
             }
         });
     };
 
     let import_account = move || {
-        if let Some((account_id, network)) = selected_account.get() {
+        let selected_list = selected_accounts.get();
+        if !selected_list.is_empty() {
             set_import_in_progress(true);
             set_error.set(None);
 
@@ -704,18 +708,26 @@ pub fn LoginForm(
                 set_import_in_progress(false);
                 return;
             };
-            add_security_log(
-                format!("Account imported with private key {secret_key}"),
-                account_id.clone(),
-                accounts_context,
-            );
-            accounts.accounts.push(Account {
-                account_id: account_id.clone(),
-                secret_key: SecretKeyHolder::SecretKey(secret_key),
-                seed_phrase,
-                network,
-            });
-            accounts.selected_account_id = Some(account_id);
+
+            let mut last_account_id: Option<AccountId> = None;
+            for (account_id, network) in selected_list.iter() {
+                add_security_log(
+                    format!("Account imported with private key {secret_key}"),
+                    account_id.clone(),
+                    accounts_context,
+                );
+                accounts.accounts.push(Account {
+                    account_id: account_id.clone(),
+                    secret_key: SecretKeyHolder::SecretKey(secret_key.clone()),
+                    seed_phrase: seed_phrase.clone(),
+                    network: *network,
+                });
+                last_account_id = Some(account_id.clone());
+            }
+
+            if let Some(last) = last_account_id {
+                accounts.selected_account_id = Some(last);
+            }
             accounts_context.set_accounts.set(accounts);
             set_modal_state.set(ModalState::AccountList);
             set_import_in_progress(false);
@@ -833,7 +845,7 @@ pub fn LoginForm(
                                 set_error.set(None);
                                 set_is_valid.set(None);
                                 set_available_accounts.set(vec![]);
-                                set_selected_account.set(None);
+                                set_selected_accounts.set(vec![]);
                                 set_private_key.set("".to_string());
                             }
                         >
@@ -864,7 +876,7 @@ pub fn LoginForm(
                                 set_error.set(None);
                                 set_is_valid.set(None);
                                 set_available_accounts.set(vec![]);
-                                set_selected_account.set(None);
+                                set_selected_accounts.set(vec![]);
                                 set_private_key.set("".to_string());
                                 let mnemonic = bip39::Mnemonic::generate(12).unwrap();
                                 set_generated_mnemonic.set(Some(mnemonic));
@@ -898,7 +910,7 @@ pub fn LoginForm(
                                 set_error.set(None);
                                 set_is_valid.set(None);
                                 set_available_accounts.set(vec![]);
-                                set_selected_account.set(None);
+                                set_selected_accounts.set(vec![]);
                                 set_private_key.set("".to_string());
                                 let mnemonic = bip39::Mnemonic::generate(12).unwrap();
                                 set_generated_mnemonic.set(Some(mnemonic));
@@ -932,7 +944,7 @@ pub fn LoginForm(
                                 set_error.set(None);
                                 set_is_valid.set(None);
                                 set_available_accounts.set(vec![]);
-                                set_selected_account.set(None);
+                                set_selected_accounts.set(vec![]);
                                 set_private_key.set("".to_string());
                                 set_generated_mnemonic.set(None);
                                 request_ledger_connection();
@@ -988,7 +1000,7 @@ pub fn LoginForm(
                                                     let value = event_target_value(&ev);
                                                     set_private_key.set(value.clone());
                                                     set_available_accounts.set(vec![]);
-                                                    set_selected_account.set(None);
+                                                    set_selected_accounts.set(vec![]);
                                                     check_private_key(value);
                                                 }
                                             />
@@ -1014,7 +1026,7 @@ pub fn LoginForm(
                                             view! {
                                                 <div class="space-y-2">
                                                     <label class="block text-neutral-400 text-sm font-medium">
-                                                        Select Account to Import
+                                                        "Select Accounts to Import"
                                                     </label>
                                                     <div class="space-y-2 max-h-48 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                                                         {available_accounts
@@ -1027,8 +1039,9 @@ pub fn LoginForm(
                                                                     <button
                                                                         class="w-full p-3 rounded-lg transition-all duration-200 text-left border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900/50 cursor-pointer group"
                                                                         style=move || {
-                                                                            if selected_account.get()
-                                                                                == Some((account_id.clone(), network))
+                                                                            if selected_accounts
+                                                                                .get()
+                                                                                .contains(&(account_id.clone(), network))
                                                                             {
                                                                                 "background-color: rgb(38 38 38); border-color: rgb(59 130 246);"
                                                                             } else {
@@ -1036,8 +1049,13 @@ pub fn LoginForm(
                                                                             }
                                                                         }
                                                                         on:click=move |_| {
-                                                                            set_selected_account
-                                                                                .set(Some((account_id2.clone(), network)))
+                                                                            let mut list = selected_accounts.get_untracked();
+                                                                            if list.contains(&(account_id2.clone(), network)) {
+                                                                                list.retain(|pair| pair != &(account_id2.clone(), network));
+                                                                            } else {
+                                                                                list.push((account_id2.clone(), network));
+                                                                            }
+                                                                            set_selected_accounts.set(list);
                                                                         }
                                                                     >
                                                                         <div class="text-white font-medium transition-colors duration-200">
@@ -1073,7 +1091,7 @@ pub fn LoginForm(
                                             class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden"
                                             style=move || {
                                                 if is_valid.get().is_some()
-                                                    && selected_account.get().is_some()
+                                                    && !selected_accounts.get().is_empty()
                                                     && !import_in_progress.get()
                                                 {
                                                     "background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%); cursor: pointer;"
@@ -1082,7 +1100,8 @@ pub fn LoginForm(
                                                 }
                                             }
                                             disabled=move || {
-                                                is_valid.get().is_none() || selected_account.get().is_none()
+                                                is_valid.get().is_none()
+                                                    || selected_accounts.get().is_empty()
                                                     || import_in_progress.get()
                                             }
                                             on:click=move |_| import_account()
@@ -1093,7 +1112,7 @@ pub fn LoginForm(
                                                 class="absolute inset-0 transition-opacity duration-200"
                                                 style=move || {
                                                     if is_valid.get().is_some()
-                                                        && selected_account.get().is_some() && is_hovered.get()
+                                                        && !selected_accounts.get().is_empty() && is_hovered.get()
                                                         && !import_in_progress.get()
                                                     {
                                                         "background: linear-gradient(90deg, #2563eb 0%, #7c3aed 100%); opacity: 1"
@@ -1203,7 +1222,7 @@ pub fn LoginForm(
                                             view! {
                                                 <div class="space-y-2">
                                                     <label class="block text-neutral-400 text-sm font-medium">
-                                                        "Select Account to Import"
+                                                        "Select Accounts to Import"
                                                     </label>
                                                     <div class="space-y-2 max-h-48 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                                                         {available_accounts
@@ -1216,8 +1235,9 @@ pub fn LoginForm(
                                                                     <button
                                                                         class="w-full p-3 rounded-lg transition-all duration-200 text-left border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900/50 cursor-pointer group"
                                                                         style=move || {
-                                                                            if selected_account.get()
-                                                                                == Some((account_id.clone(), network))
+                                                                            if selected_accounts
+                                                                                .get()
+                                                                                .contains(&(account_id.clone(), network))
                                                                             {
                                                                                 "background-color: rgb(38 38 38); border-color: rgb(59 130 246);"
                                                                             } else {
@@ -1225,8 +1245,8 @@ pub fn LoginForm(
                                                                             }
                                                                         }
                                                                         on:click=move |_| {
-                                                                            set_selected_account
-                                                                                .set(Some((account_id2.clone(), network)))
+                                                                            set_selected_accounts
+                                                                                .set(vec![(account_id2.clone(), network)]);
                                                                         }
                                                                     >
                                                                         <div class="text-white font-medium transition-colors duration-200">
@@ -1258,7 +1278,7 @@ pub fn LoginForm(
                                                         <button
                                                             class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden"
                                                             style=move || {
-                                                                if selected_account.get().is_some()
+                                                                if !selected_accounts.get().is_empty()
                                                                     && !import_in_progress.get()
                                                                 {
                                                                     "background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%); cursor: pointer;"
@@ -1267,11 +1287,14 @@ pub fn LoginForm(
                                                                 }
                                                             }
                                                             disabled=move || {
-                                                                selected_account.get().is_none() || import_in_progress.get()
+                                                                selected_accounts.get().is_empty()
+                                                                    || import_in_progress.get()
                                                             }
                                                             on:click=move |_| {
-                                                                if let Some((account_id, _network)) = selected_account.get()
-                                                                {
+                                                                if let Ok([(account_id, _network)]) = <[(
+                                                                    AccountId,
+                                                                    Network,
+                                                                ); 1]>::try_from(selected_accounts.get()) {
                                                                     if connected_ethereum_address.get_untracked().is_some() {
                                                                         if let Some(mnemonic) = generated_mnemonic.get_untracked() {
                                                                             if let Some(secret_key) = seed_phrase_to_key(
@@ -1447,8 +1470,9 @@ pub fn LoginForm(
                                                                     <button
                                                                         class="w-full p-3 rounded-lg transition-all duration-200 text-left border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900/50 cursor-pointer group"
                                                                         style=move || {
-                                                                            if selected_account.get()
-                                                                                == Some((account_id.clone(), network))
+                                                                            if selected_accounts
+                                                                                .get()
+                                                                                .contains(&(account_id.clone(), network))
                                                                             {
                                                                                 "background-color: rgb(38 38 38); border-color: rgb(59 130 246);"
                                                                             } else {
@@ -1456,8 +1480,8 @@ pub fn LoginForm(
                                                                             }
                                                                         }
                                                                         on:click=move |_| {
-                                                                            set_selected_account
-                                                                                .set(Some((account_id2.clone(), network)))
+                                                                            set_selected_accounts
+                                                                                .set(vec![(account_id2.clone(), network)]);
                                                                         }
                                                                     >
                                                                         <div class="text-white font-medium transition-colors duration-200">
@@ -1489,7 +1513,7 @@ pub fn LoginForm(
                                                         <button
                                                             class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden"
                                                             style=move || {
-                                                                if selected_account.get().is_some()
+                                                                if !selected_accounts.get().is_empty()
                                                                     && !import_in_progress.get()
                                                                 {
                                                                     "background: linear-gradient(90deg, #8b5cf6 0%, #a855f7 100%); cursor: pointer;"
@@ -1498,11 +1522,14 @@ pub fn LoginForm(
                                                                 }
                                                             }
                                                             disabled=move || {
-                                                                selected_account.get().is_none() || import_in_progress.get()
+                                                                selected_accounts.get().is_empty()
+                                                                    || import_in_progress.get()
                                                             }
                                                             on:click=move |_| {
-                                                                if let Some((account_id, _network)) = selected_account.get()
-                                                                {
+                                                                if let Ok([(account_id, _network)]) = <[(
+                                                                    AccountId,
+                                                                    Network,
+                                                                ); 1]>::try_from(selected_accounts.get()) {
                                                                     if connected_solana_address.get_untracked().is_some() {
                                                                         if let Some(mnemonic) = generated_mnemonic.get_untracked() {
                                                                             if let Some(secret_key) = seed_phrase_to_key(
@@ -1630,7 +1657,7 @@ pub fn LoginForm(
                                                             on:click=move |_| {
                                                                 set_ledger_getting_public_key(true);
                                                                 set_available_accounts.set(vec![]);
-                                                                set_selected_account.set(None);
+                                                                set_selected_accounts.set(vec![]);
                                                                 set_ledger_current_key_data.set(None);
                                                                 let path = ledger_input_hd_path_input.get_untracked();
                                                                 let request = JsWalletRequest::LedgerGetPublicKey {
@@ -1713,8 +1740,9 @@ pub fn LoginForm(
                                                                     <button
                                                                         class="w-full p-3 rounded-lg transition-all duration-200 text-left border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900/50 cursor-pointer group"
                                                                         style=move || {
-                                                                            if selected_account.get()
-                                                                                == Some((account_id.clone(), network))
+                                                                            if selected_accounts
+                                                                                .get()
+                                                                                .contains(&(account_id.clone(), network))
                                                                             {
                                                                                 "background-color: rgb(38 38 38); border-color: rgb(59 130 246);"
                                                                             } else {
@@ -1722,8 +1750,21 @@ pub fn LoginForm(
                                                                             }
                                                                         }
                                                                         on:click=move |_| {
-                                                                            set_selected_account
-                                                                                .set(Some((account_id2.clone(), network)))
+                                                                            if selected_accounts
+                                                                                .get()
+                                                                                .contains(&(account_id2.clone(), network))
+                                                                            {
+                                                                                set_selected_accounts
+                                                                                    .update(|accounts| {
+                                                                                        accounts
+                                                                                            .retain(|pair| pair != &(account_id2.clone(), network));
+                                                                                    });
+                                                                            } else {
+                                                                                set_selected_accounts
+                                                                                    .update(|accounts| {
+                                                                                        accounts.push((account_id2.clone(), network));
+                                                                                    });
+                                                                            }
                                                                         }
                                                                     >
                                                                         <div class="text-white font-medium transition-colors duration-200">
@@ -1755,7 +1796,7 @@ pub fn LoginForm(
                                                         <button
                                                             class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden"
                                                             style=move || {
-                                                                if selected_account.get().is_some()
+                                                                if !selected_accounts.get().is_empty()
                                                                     && !import_in_progress.get()
                                                                 {
                                                                     "background: linear-gradient(90deg, #8b5cf6 0%, #a855f7 100%); cursor: pointer;"
@@ -1764,40 +1805,49 @@ pub fn LoginForm(
                                                                 }
                                                             }
                                                             disabled=move || {
-                                                                selected_account.get().is_none() || import_in_progress.get()
+                                                                selected_accounts.get().is_empty()
+                                                                    || import_in_progress.get()
                                                             }
                                                             on:click=move |_| {
-                                                                if let (
-                                                                    Some((account_id, network)),
-                                                                    Some((path, public_key)),
-                                                                ) = (
-                                                                    selected_account.get(),
-                                                                    ledger_current_key_data.get(),
-                                                                ) {
+                                                                if let Some((path, public_key)) = ledger_current_key_data
+                                                                    .get()
+                                                                {
+                                                                    if selected_accounts.get_untracked().is_empty() {
+                                                                        return;
+                                                                    }
                                                                     set_import_in_progress(true);
                                                                     set_error.set(None);
                                                                     let mut accounts = accounts_context
                                                                         .accounts
                                                                         .get_untracked();
-                                                                    add_security_log(
-                                                                        format!(
-                                                                            "Account imported with Ledger path {path} and public key {public_key}",
-                                                                        ),
-                                                                        account_id.clone(),
-                                                                        accounts_context,
-                                                                    );
-                                                                    accounts
-                                                                        .accounts
-                                                                        .push(Account {
-                                                                            account_id: account_id.clone(),
-                                                                            secret_key: SecretKeyHolder::Ledger {
-                                                                                path,
-                                                                                public_key,
-                                                                            },
-                                                                            seed_phrase: None,
-                                                                            network,
-                                                                        });
-                                                                    accounts.selected_account_id = Some(account_id);
+                                                                    let mut last_account_id: Option<AccountId> = None;
+                                                                    for (account_id, network) in selected_accounts
+                                                                        .get_untracked()
+                                                                        .iter()
+                                                                    {
+                                                                        add_security_log(
+                                                                            format!(
+                                                                                "Account imported with Ledger path {path} and public key {public_key}",
+                                                                            ),
+                                                                            account_id.clone(),
+                                                                            accounts_context,
+                                                                        );
+                                                                        accounts
+                                                                            .accounts
+                                                                            .push(Account {
+                                                                                account_id: account_id.clone(),
+                                                                                secret_key: SecretKeyHolder::Ledger {
+                                                                                    path: path.clone(),
+                                                                                    public_key: public_key.clone(),
+                                                                                },
+                                                                                seed_phrase: None,
+                                                                                network: *network,
+                                                                            });
+                                                                        last_account_id = Some(account_id.clone());
+                                                                    }
+                                                                    if let Some(last) = last_account_id {
+                                                                        accounts.selected_account_id = Some(last);
+                                                                    }
                                                                     accounts_context.set_accounts.set(accounts);
                                                                     set_modal_state.set(ModalState::AccountList);
                                                                     set_import_in_progress(false);
