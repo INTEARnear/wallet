@@ -1,6 +1,6 @@
 #![allow(clippy::float_arithmetic)] // Not important for UI layout
 
-use leptos::prelude::*;
+use leptos::{html::Div, prelude::*};
 use leptos_icons::*;
 use leptos_router::{
     components::*,
@@ -297,6 +297,14 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
         set_prev_path(current_path);
     });
 
+    let scroll_container: NodeRef<Div> = NodeRef::<Div>::new();
+    Effect::new(move |_| {
+        location.pathname.track();
+        if let Some(scroll_container) = scroll_container.get() {
+            scroll_container.set_scroll_top(0);
+        }
+    });
+
     view! {
         <ErrorBoundary fallback=|errors| {
             view! {
@@ -328,7 +336,7 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                     <div class="p-2 sm:p-4">
                         <WalletHeader />
                     </div>
-                    <div class="flex-1 overflow-y-auto overflow-x-hidden px-4 transition-all duration-100 *:min-h-full *:pb-4">
+                    <div node_ref=scroll_container class="flex-1 overflow-y-auto overflow-x-hidden px-4 transition-all duration-100 *:min-h-full *:pb-4">
                         <div
                             class=move || {
                                 format!("{} *:min-h-full *:flex-1 flex flex-col", slide_direction())

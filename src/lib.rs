@@ -81,7 +81,7 @@ pub fn App() -> impl IntoView {
         <ConfigProvider theme=RwSignal::new(Theme::dark())>
             <Router>
                 <Layout>
-                    <Routes fallback=|| view! { NotFound }>
+                    <Routes fallback=|| view! { "404 Not Found" }>
                         <Route path=path!("/") view=Home />
                         <Route path=path!("/nfts") view=Nfts />
                         <Route path=path!("/nfts/:collection_id") view=NftCollection />
