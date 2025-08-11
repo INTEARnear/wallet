@@ -16,11 +16,7 @@ use near_min_api::types::{AccountId, Balance};
 use near_min_api::utils::dec_format;
 use serde::{Deserialize, Serialize};
 
-const AIRDROPS: &[(i32, &str)] = &[
-    (2, "RHEA Genesis Airdrop"),
-    (3, "NEAR Yappers Airdrop"),
-    (4, "Rhea Yappers Airdrop"),
-];
+const AIRDROPS: &[(i32, &str)] = &[(2, "RHEA Genesis Airdrop")];
 
 #[derive(Debug, Clone, Deserialize)]
 struct AirdropClaimToken {
@@ -101,7 +97,8 @@ fn AirdropButton(
                             .post(&claim_url)
                             .json(&claim_request)
                             .send()
-                            .await {
+                            .await
+                        {
                             if response.status().is_success() {
                                 if let Ok(json) = response.json::<serde_json::Value>().await {
                                     if json.get("code").and_then(|v| v.as_i64()) == Some(0) {

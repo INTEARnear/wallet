@@ -21,6 +21,9 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
     let (is_confirmed, set_is_confirmed) = signal(false);
     let (is_resetting, set_is_resetting) = signal(false);
 
+    // Track if we successfully auto-loaded accounts from cipher
+    let (cipher_auto_loaded, set_cipher_auto_loaded) = signal(false);
+
     let input_ref = NodeRef::<leptos::html::Input>::new();
 
     Effect::new(move || {
@@ -38,6 +41,25 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
             set_is_unlocking(false);
             set_error(None);
             set_auto_attempt_abortable(None);
+            set_cipher_auto_loaded(false);
+        }
+    });
+
+    // Track if we got accounts from cipher auto-loading
+    Effect::new(move || {
+        let is_loading = accounts_context.is_loading_cipher.get();
+        let has_accounts = !accounts_context.accounts.get().accounts.is_empty();
+        let is_encrypted = accounts_context.is_encrypted.get();
+
+        // If we were loading cipher, but now we're not loading and have accounts,
+        // and no password was manually entered, then cipher auto-loaded successfully
+        if !is_loading && has_accounts && is_encrypted && password_input.get().is_empty() {
+            set_cipher_auto_loaded(true);
+        }
+
+        // Reset if we start loading again (e.g., page refresh)
+        if is_loading {
+            set_cipher_auto_loaded(false);
         }
     });
 
@@ -128,7 +150,9 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
     };
 
     let should_show_unlock = move || {
-        accounts_context.is_encrypted.get() && accounts_context.accounts.get().accounts.is_empty()
+        accounts_context.is_encrypted.get()
+            && accounts_context.accounts.get().accounts.is_empty()
+            && !cipher_auto_loaded.get()
     };
 
     view! {
@@ -163,10 +187,12 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
             <div
                 class="absolute inset-0 flex items-center justify-center"
                 style=move || {
-                    if accounts_context.is_loading_cipher.get() && should_show_unlock() {
+                    if accounts_context.is_loading_cipher.get() {
                         "opacity: 0; pointer-events: none;"
-                    } else {
+                    } else if should_show_unlock() {
                         "opacity: 1;"
+                    } else {
+                        "opacity: 0; pointer-events: none;"
                     }
                 }
             >
