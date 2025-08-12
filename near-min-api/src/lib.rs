@@ -276,7 +276,10 @@ impl RpcClient {
     ///     .await
     ///     .unwrap();
     /// ```
-    pub async fn send_tx(&self, signed_tx: SignedTransaction) -> Result<PendingTransaction, Error> {
+    pub async fn send_tx(
+        &self,
+        signed_tx: SignedTransaction,
+    ) -> Result<PendingTransaction<'_>, Error> {
         let rpc_method = "send_tx";
         let rpc_params = serde_json::json!({
             "signed_tx_base64": BASE64_STANDARD.encode(borsh::to_vec(&signed_tx).unwrap()),

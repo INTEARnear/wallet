@@ -1,2 +1,2 @@
 [toolchain]
-channel = "nightly-2025-04-19" # This definitely works. Some of the newer ones produce ICEs
+channel = "nightly"
