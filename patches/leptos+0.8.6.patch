@@ -1,0 +1,120 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index bcbda8a..f9684ea 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -87,6 +87,7 @@ max_combination_size = 2
+ rustdoc-args = ["--generate-link-to-definition"]
+ 
+ [features]
++config = ["leptos_config"]
+ csr = [
+     "leptos_macro/csr",
+     "reactive_graph/effects",
+@@ -195,6 +196,7 @@ default-features = true
+ 
+ [dependencies.leptos_config]
+ version = "0.8.5"
++optional = true
+ 
+ [dependencies.leptos_dom]
+ version = "0.8.5"
+diff --git a/Cargo.toml.orig b/Cargo.toml.orig
+index 0fb881d..a71ed52 100644
+--- a/Cargo.toml.orig
++++ b/Cargo.toml.orig
+@@ -23,7 +23,7 @@ leptos_dom = { workspace = true }
+ leptos_hot_reload = { workspace = true }
+ leptos_macro = { workspace = true }
+ leptos_server = { workspace = true, features = ["tachys"] }
+-leptos_config = { workspace = true }
++leptos_config = { workspace = true, optional = true }
+ leptos-spin-macro = { optional = true, workspace = true, default-features = true }
+ oco_ref = { workspace = true }
+ or_poisoned = { workspace = true }
+@@ -60,6 +60,7 @@ send_wrapper = { workspace = true, default-features = true }
+ wasm_split_helpers.workspace = true
+ 
+ [features]
++config = ["leptos_config"]
+ hydration = [
+   "reactive_graph/hydration",
+   "leptos_server/hydration",
+diff --git a/src/hydration/mod.rs b/src/hydration/mod.rs
+index 6072145..b67f4c6 100644
+--- a/src/hydration/mod.rs
++++ b/src/hydration/mod.rs
+@@ -1,20 +1,20 @@
+ #![allow(clippy::needless_lifetimes)]
+ 
+ use crate::{prelude::*, WasmSplitManifest};
+-use leptos_config::LeptosOptions;
+ use leptos_macro::{component, view};
+ use std::{path::PathBuf, sync::OnceLock};
+ 
+ /// Inserts auto-reloading code used in `cargo-leptos`.
+ ///
+ /// This should be included in the `<head>` of your application shell during development.
++#[cfg(feature = "config")]
+ #[component]
+ pub fn AutoReload(
+     /// Whether the file-watching feature should be disabled.
+     #[prop(optional)]
+     disable_watch: bool,
+     /// Configuration options for this project.
+-    options: LeptosOptions,
++    options: leptos_config::LeptosOptions,
+ ) -> impl IntoView {
+     (!disable_watch && std::env::var("LEPTOS_WATCH").is_ok()).then(|| {
+         #[cfg(feature = "nonce")]
+@@ -44,10 +44,11 @@ pub fn AutoReload(
+ /// Inserts hydration scripts that add interactivity to your server-rendered HTML.
+ ///
+ /// This should be included in the `<head>` of your application shell.
++#[cfg(feature = "config")]
+ #[component]
+ pub fn HydrationScripts(
+     /// Configuration options for this project.
+-    options: LeptosOptions,
++    options: leptos_config::LeptosOptions,
+     /// Should be `true` to hydrate in `islands` mode.
+     #[prop(optional)]
+     islands: bool,
+diff --git a/src/lib.rs b/src/lib.rs
+index bf153c0..2d288ad 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -164,7 +164,26 @@ pub mod prelude {
+             form::*, hydration::*, into_view::*, mount::*, suspense::*,
+             text_prop::*,
+         };
++        #[cfg(feature = "config")]
+         pub use leptos_config::*;
++        #[cfg(not(feature = "config"))]
++        #[non_exhaustive]
++        #[allow(missing_docs)]
++        /// Fake LeptosOptions for client-only builds that don't want to depend
++        /// on leptos_config which brings regex
++        pub struct LeptosOptions {
++            pub output_name: std::sync::Arc<str>,
++            pub site_root: std::sync::Arc<str>,
++            pub site_pkg_dir: std::sync::Arc<str>,
++            pub reload_port: u32,
++            pub reload_external_port: Option<u32>,
++            pub not_found_path: std::sync::Arc<str>,
++            pub hash_file: std::sync::Arc<str>,
++            pub hash_files: bool,
++            pub server_fn_prefix: Option<String>,
++            pub disable_server_fn_hash: bool,
++            pub server_fn_mod_path: bool,
++        }
+         pub use leptos_dom::helpers::*;
+         pub use leptos_macro::*;
+         pub use leptos_server::*;
+@@ -259,6 +278,7 @@ mod provider;
+ pub use tachys;
+ /// Tools to mount an application to the DOM, or to hydrate it from server-rendered HTML.
+ pub mod mount;
++#[cfg(feature = "config")]
+ #[doc(inline)]
+ pub use leptos_config as config;
+ #[doc(inline)]

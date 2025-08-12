@@ -12,6 +12,7 @@ use axum::{
 use leptos::logging::log;
 use leptos::prelude::*;
 use tower::ServiceExt;
+use tower_http::compression::CompressionLayer;
 use tower_http::services::ServeDir;
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
@@ -33,9 +34,9 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                     script-src 'self' 'unsafe-inline' 'unsafe-eval' https://wallet.intear.tech;
                     style-src 'self' 'unsafe-inline';
                     font-src 'self' data:;
-                    img-src 'self' data: https://nft-proxy-service.intear.tech https://indexer.nearcatalog.org;
-                    connect-src 'self' ws://127.0.0.1:5678/live_reload https://rpc.near.org https://rpc.mainnet.near.org https://rpc.testnet.near.org https://beta.rpc.mainnet.near.org https://archival-rpc.mainnet.near.org https://archival-rpc.testnet.near.org https://rpc.intea.rs archival-rpc.mainnet.fastnear.com https://rpc.shitzuapes.xyz https://events-v3.intear.tech https://events-v3-testnet.intear.tech https://logout-bridge-service.intear.tech https://rpc.testnet.fastnear.com https://rpc.mainnet.fastnear.com https://password-storage-service.intear.tech https://imminent.build https://prices.intear.tech https://prices-testnet.intear.tech wss://ws-events-v3.intear.tech wss://ws-events-v3-testnet.intear.tech https://api.fastnear.com https://test.api.fastnear.com https://nft-proxy-service.intear.tech https://wallet-history-service.intear.tech https://wallet-history-service-testnet.intear.tech https://api.nearcatalog.org https://router.intear.tech https://wallet-account-creation-service.intear.tech https://wallet-account-creation-service-testnet.intear.tech https://solver-relay-v2.chaindefuser.com http://localhost:3001 http://localhost:3002 http://localhost:3003 http://localhost:3004 http://localhost:3005 http://localhost:4444;
-                    frame-src 'self' https://wallet.intear.tech https://chart.intear.tech https://chart-testnet.intear.tech;
+                    img-src 'self' data: https://nft-proxy-service.intear.tech https://indexer.nearcatalog.org blob:;
+                    connect-src 'self' ws://127.0.0.1:5678/live_reload https://rpc.near.org https://rpc.mainnet.near.org https://rpc.testnet.near.org https://beta.rpc.mainnet.near.org https://archival-rpc.mainnet.near.org https://archival-rpc.testnet.near.org https://rpc.intea.rs archival-rpc.mainnet.fastnear.com https://rpc.shitzuapes.xyz https://events-v3.intear.tech https://events-v3-testnet.intear.tech https://logout-bridge-service.intear.tech https://rpc.testnet.fastnear.com https://rpc.mainnet.fastnear.com https://password-storage-service.intear.tech https://imminent.build https://prices.intear.tech https://prices-testnet.intear.tech wss://ws-events-v3.intear.tech wss://ws-events-v3-testnet.intear.tech https://api.fastnear.com https://test.api.fastnear.com https://nft-proxy-service.intear.tech https://wallet-history-service.intear.tech https://wallet-history-service-testnet.intear.tech https://api.nearcatalog.org https://router.intear.tech https://wallet-account-creation-service.intear.tech https://wallet-account-creation-service-testnet.intear.tech https://solver-relay-v2.chaindefuser.com https://api.web3modal.org wss://relay.walletconnect.org http://localhost:3001 http://localhost:3002 http://localhost:3003 http://localhost:3004 http://localhost:3005 http://localhost:4444;
+                    frame-src 'self' https://wallet.intear.tech https://chart.intear.tech https://chart-testnet.intear.tech https://verify.walletconnect.org;
                     "
                 />
 
@@ -45,6 +46,10 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <link rel="manifest" href="/manifest.json" />
                 <script>
                     r#"
+                        setTimeout(() => {
+                            document.getElementById('app-loader').style.opacity = '1';
+                        }, 500);
+                    
                         window.addEventListener('load', async () => {
                             if ('serviceWorker' in navigator) {
                                 await navigator.serviceWorker.register('/service_worker.js');
@@ -53,12 +58,25 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                         });
                     "#
                 </script>
+                <script type="module" src="/js/index.js" />
 
                 <link rel="stylesheet" href="/pkg/intear-wallet.css" />
                 <AutoReload options=options.clone() />
                 <HydrationScripts options />
             </head>
-            <body style="background-color: #0a0a0a"></body>
+            <body style="background-color: #0a0a0a">
+                <style>
+                    r#"
+                    @keyframes app-spin { to { transform: rotate(360deg); } }
+                    "#
+                </style>
+                <div
+                    id="app-loader"
+                    style="position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: -9999; opacity: 0; transition: opacity 0.5s ease-in-out;"
+                >
+                    <div style="width: 32px; height: 32px; border: 3px solid rgba(255,255,255,0.12); border-top-color: rgba(255,255,255,0.7); border-radius: 50%; animation: app-spin 1s linear infinite;"></div>
+                </div>
+            </body>
         </html>
     }
 }
@@ -74,6 +92,7 @@ async fn main() {
     tokio::fs::write(index_path, shell(leptos_options.clone()).to_html())
         .await
         .expect("could not write index.html");
+    log::info!("Wrote index.html");
 
     if std::env::var("ONLY_CREATE_INDEX_HTML").is_ok() {
         return;
@@ -82,6 +101,7 @@ async fn main() {
     let app = Router::new()
         .route("/", get(file_and_error_handler))
         .fallback(file_and_error_handler)
+        .layer(CompressionLayer::new())
         .with_state(leptos_options);
 
     // run our app with hyper

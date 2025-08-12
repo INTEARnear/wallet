@@ -43,6 +43,7 @@ const PASSWORD_SERVICE_KEY: &str = "password_storage_service_data";
 struct PasswordServiceData {
     id: String,
     encryption_key: Vec<u8>,
+    invalidates_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -495,6 +496,7 @@ async fn store_cipher_to_service(key_bytes: [u8; 32], duration_seconds: u64) -> 
     let service_data = PasswordServiceData {
         id: store_response.id,
         encryption_key: encryption_key.to_vec(),
+        invalidates_at: expires_at,
     };
 
     if let Some(storage) = get_local_storage() {
@@ -519,6 +521,15 @@ async fn retrieve_cipher_from_service() -> Result<Option<Cipher>, String> {
     let Some(service_data) = password_storage_service_data else {
         return Ok(None);
     };
+
+    // If locally we know it should be invalidated, bail out early instead
+    // of waiting for a pointless request
+    if service_data.invalidates_at <= Utc::now() {
+        if let Some(storage) = get_local_storage() {
+            let _ = storage.remove_item(PASSWORD_SERVICE_KEY);
+        }
+        return Ok(None);
+    }
 
     let response = reqwest::Client::new()
         .get(format!(

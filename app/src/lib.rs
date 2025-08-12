@@ -11,7 +11,6 @@ use contexts::search_context::provide_search_context;
 use contexts::tokens_context::provide_token_context;
 use contexts::transaction_queue_context::provide_transaction_queue_context;
 use leptos::prelude::*;
-use leptos_meta::*;
 use leptos_router::{components::*, path, Lazy};
 use thaw::{ConfigProvider, Theme};
 use wasm_bindgen::prelude::*;
@@ -45,7 +44,7 @@ use crate::pages::{
     UnstakeValidator, UnwrapToken, WrapToken,
 };
 
-macro_rules! lazy_route {
+macro_rules! bad_waterfall_lazy_route {
     ($name:ident) => {
         pub struct $name;
 
@@ -63,33 +62,39 @@ macro_rules! lazy_route {
     };
 }
 
-pub mod lazy {
-    lazy_route!(Nfts);
-    lazy_route!(NftCollection);
-    lazy_route!(NftTokenDetails);
-    lazy_route!(SendNft);
-    lazy_route!(Swap);
-    lazy_route!(Stake);
-    lazy_route!(StakeValidator);
-    lazy_route!(UnstakeValidator);
-    lazy_route!(History);
-    lazy_route!(Explore);
-    lazy_route!(TokenDetails);
-    lazy_route!(SendToken);
-    lazy_route!(WrapToken);
-    lazy_route!(UnwrapToken);
-    lazy_route!(Connect);
-    lazy_route!(SendTransactions);
-    lazy_route!(SignMessage);
-    lazy_route!(AutoImportSecretKey);
-    lazy_route!(Login);
-    lazy_route!(Settings);
-    lazy_route!(SecuritySettings);
-    lazy_route!(AccountSettings);
-    lazy_route!(ConnectedAppsSettings);
+// These will be migrated to a real lazy route at some point.
+// Though the wasm is cached by service worker and preloaded
+// (at least, supposed to. but apparently it's not), so it's
+// not really a big problem. Code splitting is useful enough by
+// making it faster to load the app initially, before the
+// service worker caches it.
+pub mod bad_waterfall_lazy_routes {
+    bad_waterfall_lazy_route!(Nfts);
+    bad_waterfall_lazy_route!(NftCollection);
+    bad_waterfall_lazy_route!(NftTokenDetails);
+    bad_waterfall_lazy_route!(SendNft);
+    bad_waterfall_lazy_route!(Swap);
+    bad_waterfall_lazy_route!(Stake);
+    bad_waterfall_lazy_route!(StakeValidator);
+    bad_waterfall_lazy_route!(UnstakeValidator);
+    bad_waterfall_lazy_route!(History);
+    bad_waterfall_lazy_route!(Explore);
+    bad_waterfall_lazy_route!(TokenDetails);
+    bad_waterfall_lazy_route!(SendToken);
+    bad_waterfall_lazy_route!(WrapToken);
+    bad_waterfall_lazy_route!(UnwrapToken);
+    bad_waterfall_lazy_route!(Connect);
+    bad_waterfall_lazy_route!(SendTransactions);
+    bad_waterfall_lazy_route!(SignMessage);
+    bad_waterfall_lazy_route!(AutoImportSecretKey);
+    bad_waterfall_lazy_route!(Login);
+    bad_waterfall_lazy_route!(Settings);
+    bad_waterfall_lazy_route!(SecuritySettings);
+    bad_waterfall_lazy_route!(AccountSettings);
+    bad_waterfall_lazy_route!(ConnectedAppsSettings);
     // lazy_route!(SecurityLogPage);
-    lazy_route!(PreferencesSettings);
-    lazy_route!(DeveloperSettings);
+    bad_waterfall_lazy_route!(PreferencesSettings);
+    bad_waterfall_lazy_route!(DeveloperSettings);
 }
 
 #[component]
@@ -124,49 +129,120 @@ pub fn App() -> impl IntoView {
     provide_transaction_queue_context(); // depends on accounts
 
     view! {
-        <Script type_="module" src="/js/index.js" />
-
         <ConfigProvider theme=RwSignal::new(Theme::dark())>
             <Router>
                 <Layout>
                     <Routes fallback=|| view! { "404 Not Found" }>
                         <Route path=path!("/") view=Home />
-                        <Route path=path!("/nfts") view={Lazy::<lazy::Nfts>::new()} />
-                        <Route path=path!("/nfts/:collection_id") view={Lazy::<lazy::NftCollection>::new()} />
-                        <Route path=path!("/nfts/:collection_id/*token_id") view={Lazy::<lazy::NftTokenDetails>::new()} />
-                        <Route path=path!("/send-nft/:collection_id/*token_id") view={Lazy::<lazy::SendNft>::new()} />
-                        <Route path=path!("/swap") view={Lazy::<lazy::Swap>::new()} />
-                        <Route path=path!("/stake") view={Lazy::<lazy::Stake>::new()} />
+                        <Route
+                            path=path!("/nfts")
+                            view={Lazy::<bad_waterfall_lazy_routes::Nfts>::new()}
+                        />
+                        <Route
+                            path=path!("/nfts/:collection_id")
+                            view={Lazy::<bad_waterfall_lazy_routes::NftCollection>::new()}
+                        />
+                        <Route
+                            path=path!("/nfts/:collection_id/*token_id")
+                            view={Lazy::<bad_waterfall_lazy_routes::NftTokenDetails>::new()}
+                        />
+                        <Route
+                            path=path!("/send-nft/:collection_id/*token_id")
+                            view={Lazy::<bad_waterfall_lazy_routes::SendNft>::new()}
+                        />
+                        <Route
+                            path=path!("/swap")
+                            view={Lazy::<bad_waterfall_lazy_routes::Swap>::new()}
+                        />
+                        <Route
+                            path=path!("/stake")
+                            view={Lazy::<bad_waterfall_lazy_routes::Stake>::new()}
+                        />
                         <Route
                             path=path!("/stake/:validator_pool/stake")
-                            view={Lazy::<lazy::StakeValidator>::new()}
+                            view={Lazy::<bad_waterfall_lazy_routes::StakeValidator>::new()}
                         />
                         <Route
                             path=path!("/stake/:validator_pool/unstake")
-                            view={Lazy::<lazy::UnstakeValidator>::new()}
+                            view={Lazy::<bad_waterfall_lazy_routes::UnstakeValidator>::new()}
                         />
-                        <Route path=path!("/history") view={Lazy::<lazy::History>::new()} />
-                        <Route path=path!("/explore") view={Lazy::<lazy::Explore>::new()} />
-                        <Route path=path!("/token/:token_id") view={Lazy::<lazy::TokenDetails>::new()} />
-                        <Route path=path!("/send/:token_id") view={Lazy::<lazy::SendToken>::new()} />
-                        <Route path=path!("/wrap") view={Lazy::<lazy::WrapToken>::new()} />
-                        <Route path=path!("/unwrap") view={Lazy::<lazy::UnwrapToken>::new()} />
-                        <Route path=path!("/connect") view={Lazy::<lazy::Connect>::new()} />
-                        <Route path=path!("/send-transactions") view={Lazy::<lazy::SendTransactions>::new()} />
-                        <Route path=path!("/sign-message") view={Lazy::<lazy::SignMessage>::new()} />
-                        <Route path=path!("/auto-import-secret-key") view={Lazy::<lazy::AutoImportSecretKey>::new()} />
-                        <Route path=path!("/login") view={Lazy::<lazy::Login>::new()} />
-                        <ParentRoute path=path!("/settings") view={Lazy::<lazy::Settings>::new()}>
+                        <Route
+                            path=path!("/history")
+                            view={Lazy::<bad_waterfall_lazy_routes::History>::new()}
+                        />
+                        <Route
+                            path=path!("/explore")
+                            view={Lazy::<bad_waterfall_lazy_routes::Explore>::new()}
+                        />
+                        <Route
+                            path=path!("/token/:token_id")
+                            view={Lazy::<bad_waterfall_lazy_routes::TokenDetails>::new()}
+                        />
+                        <Route
+                            path=path!("/send/:token_id")
+                            view={Lazy::<bad_waterfall_lazy_routes::SendToken>::new()}
+                        />
+                        <Route
+                            path=path!("/wrap")
+                            view={Lazy::<bad_waterfall_lazy_routes::WrapToken>::new()}
+                        />
+                        <Route
+                            path=path!("/unwrap")
+                            view={Lazy::<bad_waterfall_lazy_routes::UnwrapToken>::new()}
+                        />
+                        <Route
+                            path=path!("/connect")
+                            view={Lazy::<bad_waterfall_lazy_routes::Connect>::new()}
+                        />
+                        <Route
+                            path=path!("/send-transactions")
+                            view={Lazy::<bad_waterfall_lazy_routes::SendTransactions>::new()}
+                        />
+                        <Route
+                            path=path!("/sign-message")
+                            view={Lazy::<bad_waterfall_lazy_routes::SignMessage>::new()}
+                        />
+                        <Route
+                            path=path!("/auto-import-secret-key")
+                            view={Lazy::<bad_waterfall_lazy_routes::AutoImportSecretKey>::new()}
+                        />
+                        <Route
+                            path=path!("/login")
+                            view={Lazy::<bad_waterfall_lazy_routes::Login>::new()}
+                        />
+                        <ParentRoute
+                            path=path!("/settings")
+                            view={Lazy::<bad_waterfall_lazy_routes::Settings>::new()}
+                        >
                             <Route path=path!("") view=() />
-                            <Route path=path!("/security") view={Lazy::<lazy::SecuritySettings>::new()} />
-                            <ParentRoute path=path!("/security") view={Lazy::<lazy::SecuritySettings>::new()}>
-                                <Route path=path!("/account") view={Lazy::<lazy::AccountSettings>::new()} />
-                                <Route path=path!("/connected-apps") view={Lazy::<lazy::ConnectedAppsSettings>::new()} />
-                                // <Route path=path!("/security-log") view={Lazy::<lazy::SecurityLogPage>::new()} />
+                            <Route
+                                path=path!("/security")
+                                view={Lazy::<bad_waterfall_lazy_routes::SecuritySettings>::new()}
+                            />
+                            <ParentRoute
+                                path=path!("/security")
+                                view={Lazy::<bad_waterfall_lazy_routes::SecuritySettings>::new()}
+                            >
+                                <Route
+                                    path=path!("/account")
+                                    view={Lazy::<bad_waterfall_lazy_routes::AccountSettings>::new()}
+                                />
+                                <Route
+                                    path=path!("/connected-apps")
+                                    view={Lazy::<
+                                        bad_waterfall_lazy_routes::ConnectedAppsSettings,
+                                    >::new()}
+                                />
                                 <Route path=path!("/security-log") view=SecurityLogPage />
                             </ParentRoute>
-                            <Route path=path!("/preferences") view={Lazy::<lazy::PreferencesSettings>::new()} />
-                            <Route path=path!("/developer") view={Lazy::<lazy::DeveloperSettings>::new()} />
+                            <Route
+                                path=path!("/preferences")
+                                view={Lazy::<bad_waterfall_lazy_routes::PreferencesSettings>::new()}
+                            />
+                            <Route
+                                path=path!("/developer")
+                                view={Lazy::<bad_waterfall_lazy_routes::DeveloperSettings>::new()}
+                            />
                         </ParentRoute>
                     </Routes>
                 </Layout>

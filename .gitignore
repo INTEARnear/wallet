@@ -1,11 +1,9 @@
 target
-dist
 /history-service/transaction_cache
 /logout-bridge-service/sessions
 /password-storage-service/passwords
 .env
 node_modules
-/js-out/*
-!/js-out/.gitkeep
+/app/public/js
 /nft-proxy-service/spam
 /nft-proxy-service/reported

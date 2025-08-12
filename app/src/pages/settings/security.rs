@@ -28,7 +28,6 @@ use near_min_api::{
 use rand::{rngs::OsRng, RngCore};
 use wasm_bindgen_futures;
 use web_sys::js_sys::{Object, Reflect};
-use zxcvbn::zxcvbn;
 
 const MIN_ROUNDS: u32 = 2;
 
@@ -142,7 +141,6 @@ pub fn SecuritySettings() -> impl IntoView {
     let (benchmark_result, set_benchmark_result) = signal::<Option<(u32, f64)>>(None);
     let (encrypting_accounts, set_encrypting_accounts) = signal(false);
     let (encryption_result, set_encryption_result) = signal::<Option<Result<(), String>>>(None);
-    let (password_strength, set_password_strength) = signal::<Option<zxcvbn::Entropy>>(None);
     let (removing_password, set_removing_password) = signal(false);
     let (remove_password_result, set_remove_password_result) =
         signal::<Option<Result<(), String>>>(None);
@@ -525,31 +523,6 @@ pub fn SecuritySettings() -> impl IntoView {
                             on:input=move |ev| {
                                 let password = event_target_value(&ev);
                                 set_password_input(password.clone());
-                                if !password.is_empty() {
-                                    let mut words = vec!["near"];
-                                    let accounts = accounts_context.accounts.read();
-                                    for account in accounts.accounts.iter() {
-                                        words
-                                            .extend(
-                                                account.account_id.as_str().split(&['.', '-', '_']),
-                                            );
-                                        if let Some((name, _ext)) = account
-                                            .account_id
-                                            .as_str()
-                                            .rsplit_once('.')
-                                        {
-                                            words.push(name);
-                                        }
-                                        words.push(account.account_id.as_str());
-                                    }
-                                    let strength = zxcvbn(
-                                        &password[..(password.len().min(100))],
-                                        &words,
-                                    );
-                                    set_password_strength(Some(strength));
-                                } else {
-                                    set_password_strength(None);
-                                }
                             }
                             on:focus=move |_| {
                                 if benchmark_result.get().is_none() && !benchmarking_password.get()
@@ -565,108 +538,6 @@ pub fn SecuritySettings() -> impl IntoView {
                             }
                             class="w-full p-3 rounded-lg bg-neutral-800 border border-neutral-700 focus:border-blue-500 focus:outline-none text-base"
                         />
-
-                        <Show when=move || {
-                            password_strength.get().is_some() && !password_input.get().is_empty()
-                        }>
-                            <div class="p-3 rounded-lg bg-neutral-900 border border-neutral-700">
-                                <div class="flex items-center justify-between mb-2">
-                                    <span class="text-sm font-medium">Password Strength</span>
-                                    <span class="text-sm">
-                                        {move || {
-                                            if let Some(strength) = password_strength.get() {
-                                                match strength.score() {
-                                                    zxcvbn::Score::Zero => "Very Weak",
-                                                    zxcvbn::Score::One => "Weak",
-                                                    zxcvbn::Score::Two => "Good",
-                                                    zxcvbn::Score::Three | zxcvbn::Score::Four => "Strong",
-                                                    _ => "Unknown",
-                                                }
-                                            } else {
-                                                ""
-                                            }
-                                        }}
-                                    </span>
-                                </div>
-
-                                <div class="w-full bg-neutral-700 rounded-full h-2 mb-3">
-                                    <div
-                                        class="h-2 rounded-full transition-all duration-300"
-                                        style:width=move || {
-                                            if let Some(strength) = password_strength.get() {
-                                                format!("{}%", (strength.score() as u8 + 1) * 20)
-                                            } else {
-                                                "0%".to_string()
-                                            }
-                                        }
-                                        style:background-color=move || {
-                                            if let Some(strength) = password_strength.get() {
-                                                match strength.score() {
-                                                    zxcvbn::Score::Zero => "#ef4444",
-                                                    zxcvbn::Score::One => "#f97316",
-                                                    zxcvbn::Score::Two => "#eab308",
-                                                    zxcvbn::Score::Three => "#22c55e",
-                                                    zxcvbn::Score::Four => "#16a34a",
-                                                    _ => "#6b7280",
-                                                }
-                                            } else {
-                                                "#6b7280"
-                                            }
-                                        }
-                                    ></div>
-                                </div>
-
-                                <Show when=move || {
-                                    password_input.get().len() >= 4
-                                        && if let Some(strength) = password_strength.get() {
-                                            if let Some(feedback) = strength.feedback() {
-                                                feedback.warning().is_some()
-                                            } else {
-                                                false
-                                            }
-                                        } else {
-                                            false
-                                        }
-                                }>
-                                    <div class="mb-3">
-                                        <Show when=move || {
-                                            if let Some(strength) = password_strength.get() {
-                                                if let Some(feedback) = strength.feedback() {
-                                                    feedback.warning().is_some()
-                                                } else {
-                                                    false
-                                                }
-                                            } else {
-                                                false
-                                            }
-                                        }>
-                                            <div class="mb-2">
-                                                <div class="text-xs font-medium text-yellow-400 mb-1">
-                                                    "Warning:"
-                                                </div>
-                                                <div class="text-xs text-yellow-300">
-                                                    {move || {
-                                                        if let Some(strength) = password_strength.get() {
-                                                            if let Some(feedback) = strength.feedback() {
-                                                                if let Some(warning) = feedback.warning() {
-                                                                    format!("• {}", warning)
-                                                                } else {
-                                                                    String::new()
-                                                                }
-                                                            } else {
-                                                                String::new()
-                                                            }
-                                                        } else {
-                                                            String::new()
-                                                        }
-                                                    }}
-                                                </div>
-                                            </div>
-                                        </Show>
-                                    </div>
-                                </Show>
-                            </div>
-                        </Show>
 
                         <button
                             class="flex items-center justify-center gap-2 p-4 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"

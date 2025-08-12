@@ -22,7 +22,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2025-04-19
-          components: rustfmt, clippy
+          components: rustfmt, clippy, rust-src
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -40,7 +40,7 @@ jobs:
         run: cargo binstall cargo-dylint dylint-link
 
       - name: Install Trunk
-        run: cargo binstall trunk
+        run: cargo binstall cargo-leptos
 
       - name: Install npm dependencies
         run: npm install
@@ -68,6 +68,9 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Copy artifacts
+        run: cp -r target/site/ dist/
 
       - name: Set PWA cache version
         run: |
