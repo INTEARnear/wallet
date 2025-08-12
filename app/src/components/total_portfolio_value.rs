@@ -220,8 +220,9 @@ pub fn TotalPortfolioValue() -> impl IntoView {
                 config.amounts_hidden = !config.amounts_hidden;
             });
             set_last_tap.set(0);
+        } else {
+            set_last_tap.set(now_ms);
         }
-        set_last_tap.set(now_ms);
     };
 
     let has_non_zero_balance = move || {

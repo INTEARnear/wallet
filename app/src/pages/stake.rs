@@ -3,13 +3,11 @@ use borsh::BorshDeserialize;
 use cached::proc_macro::cached;
 use chrono::{DateTime, Utc};
 use futures_util::future::join;
-use gloo_net::http::Request;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_icons::*;
 use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_params_map};
-use leptos_router::{lazy_route, LazyRoute};
 use leptos_use::{use_interval, use_interval_fn};
 use near_min_api::types::{Balance, EpochHeight, ViewStateResult, U128};
 use near_min_api::{
@@ -56,19 +54,6 @@ use crate::{
         balance_to_decimal, decimal_to_balance, format_token_amount, format_token_amount_no_hide,
     },
 };
-
-pub struct StakeRoute;
-
-#[lazy_route]
-impl LazyRoute for StakeRoute {
-    fn data() -> Self {
-        Self
-    }
-
-    fn view(_this: Self) -> AnyView {
-        Stake().into_any()
-    }
-}
 
 fn get_supported_staking_farms(network: Network) -> Vec<AccountId> {
     match network {
@@ -1263,7 +1248,7 @@ pub fn Stake() -> impl IntoView {
                         "https://{}/v1/account/{}/staking",
                         api_host, user_account_id
                     );
-                    if let Ok(resp) = Request::get(&fastnear_url).send().await {
+                    if let Ok(resp) = reqwest::get(&fastnear_url).await {
                         if let Ok(json_raw) = resp.json::<FastNearResponseRaw>().await {
                             for p in json_raw.pools {
                                 if let Ok(acc) = p.pool_id.parse::<AccountId>() {

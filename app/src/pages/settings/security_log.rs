@@ -1,7 +1,9 @@
-use leptos::prelude::{guards::ReadGuard, *};
+use leptos::html::Div;
+use leptos::prelude::*;
 use leptos_icons::*;
-use wasm_bindgen::{prelude::Closure, JsCast, JsValue};
-use web_sys::{js_sys::Date, HtmlDivElement, IntersectionObserver};
+use leptos_use::use_intersection_observer;
+use wasm_bindgen::JsValue;
+use web_sys::js_sys::Date;
 
 use crate::{
     contexts::{
@@ -34,24 +36,15 @@ pub fn SecurityLogPage() -> impl IntoView {
         load_more.dispatch(());
     });
 
-    let observer_target = NodeRef::new();
+    let observer_target: NodeRef<Div> = NodeRef::new();
 
-    Effect::new(move || {
-        let target: ReadGuard<Option<HtmlDivElement>, _> = observer_target.read();
-        if let Some(target) = target.as_ref() {
-            let callback = Closure::new(move |entries: Vec<web_sys::IntersectionObserverEntry>| {
-                if !entries.is_empty()
-                    && entries[0].is_intersecting()
-                    && has_more.get_untracked()
-                    && !is_loading.get_untracked()
-                {
-                    load_more.dispatch(());
-                }
-            })
-                as Closure<dyn Fn(Vec<web_sys::IntersectionObserverEntry>)>;
-            let observer =
-                IntersectionObserver::new(&callback.into_js_value().unchecked_into()).unwrap();
-            observer.observe(target);
+    use_intersection_observer(observer_target, move |entries, _observer| {
+        if !entries.is_empty()
+            && entries[0].is_intersecting()
+            && has_more.get_untracked()
+            && !is_loading.get_untracked()
+        {
+            load_more.dispatch(());
         }
     });
 

@@ -1,98 +1,24 @@
-[package]
+[[workspace.metadata.leptos]]
 name = "intear-wallet"
-version = "0.1.0"
-edition = "2021"
-authors = ["Slime <4sliman4@gmail.com>"]
-license = "AGPL-3.0-or-later"
-
-[dependencies]
-leptos = { version = "0.8.3", features = ["csr", "nightly"] }
-leptos_meta = { version = "0.8.3" }
-leptos_router = { version = "0.8.3", features = ["nightly"] }
-console_log = "1.0.0"
-log = "0.4.27"
-console_error_panic_hook = "0.1.7"
-leptos_icons = "0.6.1"
-icondata = { version = "0.6.0", features = [
-    "lucide",
-    "simple-icons",
-], default-features = false }
-wasm-bindgen = "0.2.100"
-web-sys = { version = "0.3.77", features = [
-    "Document",
-    "Window",
-    "Navigator",
-    "Clipboard",
-    "Storage",
-    "StorageEvent",
-    "Performance",
-    "TouchEvent",
-    "Touch",
-    "TouchList",
-    "StorageManager",
-    "ScrollIntoViewOptions",
-] }
-serde = { version = "1.0.219", features = ["derive"] }
-reqwest = { version = "0.12.15", features = ["json"] }
-serde_json = "1.0.140"
-futures-util = "0.3.31"
-lazy_static = "1.5.0"
-# Not actually needed for the wallet, but need to add a feature in transitive dependencies
-getrandom = { version = "0.2", features = ["js"] }
-near-min-api = { path = "./near-min-api" }
-rand = "0.8.5"
-chrono = "0.4.40"
-futures-timer = { version = "3", features = ["wasm-bindgen"] }
-cached = { version = "0.55.1", features = ["wasm", "async"] }
-base64 = "0.22.1"
-bip39 = { version = "2.1.0", features = ["rand"] }
-ed25519-dalek = { version = "2.1.1", default-features = false }
-slipped10 = "0.4.6"
-argon2 = "0.5.3"
-aes-gcm = "0.10.3"
-leptos-use = { version = "0.16.2", features = [
-    "use_websocket",
-    "use_event_listener",
-    "use_window",
-    "use_document",
-] }
-codee = "0.3.0"
-json-filter = "0.1.1"
-dotenvy_macro = "0.15.7"
-serde-wasm-bindgen = "0.6.5"
-futures-channel = "0.3.31"
-borsh = "1.5.7"
-shell-words = "1.1.0"
-deli = "0.2.0"
-zxcvbn = "3.1.0"
-bs58 = "0.5.1"
-solana-pubkey = { version = "2.4.0", features = ["serde"] }
-solana-keypair = { version = "2.2.1", features = [] }
-solana-signer = "2.2.1"
-solana-signature = { version = "2.3.0", features = [
-    "serde",
-    "verify",
-], default-features = false }
-alloy-primitives = { version = "1.1.2", features = [
-    "serde",
-    "k256",
-], default-features = false }
-alloy-signer = "1.0.8"
-alloy-signer-local = "1.0.8"
-bigdecimal = { version = "0.4.8", features = ["serde-json"] }
-thaw = { version = "0.5.0-beta", features = ["csr", "nightly"] }
-percent-encoding = "2.3.1"
-gloo-net = "0.5"
-wasm-bindgen-futures = "0.4.35"
-
-[dev-dependencies]
-tokio = { version = "1.40.0", features = ["full"] }
-
-[profile.release]
-opt-level = 'z'
-lto = true
-codegen-units = 1
-panic = "abort"
+site-root = "target/site"
+site-pkg-dir = "pkg"
+site-addr = "127.0.0.1:3000"
+reload-port = 5678
+browserquery = "defaults"
+env = "DEV"
+bin-package = "server"
+lib-package = "app"
+tailwind-input-file = "style/styles.css"
+assets-dir = "app/public"
+wasm-opt-features = [
+    "-Oz",
+    "--enable-bulk-memory",
+    "--enable-nontrapping-float-to-int",
+    "--dce",
+    "--remove-unused-brs",
+    "--merge-similar-functions",
+    "--dae",
+]
 
 [workspace.metadata.dylint]
 libraries = [
@@ -102,6 +28,13 @@ libraries = [
 [profile.dev.package.argon2]
 opt-level = 3
 
+[profile.release]
+opt-level = 's'
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
 [workspace]
 members = [
     "near-min-api",
@@ -110,14 +43,10 @@ members = [
     "logout-bridge-service",
     "password-storage-service",
     "nft-proxy-service",
+    "server",
+    "app",
 ]
-
-[package.metadata.patch]
-crates = [
-    # Need to add async interruptions to not block the main
-    # thread for too long and make it abortable
-    "argon2",
-]
+resolver = "3"
 
 [patch.crates-io]
 argon2 = { path = "./target/patch/argon2-0.5.3" }

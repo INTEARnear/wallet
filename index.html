@@ -14,11 +14,12 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="icon" href="favicon.png" type="image/png">
   <link rel="icon" href="favicon.ico">
+  <link rel="manifest" href="/manifest.json">
+
   <link data-trunk rel="tailwind-css" href="/style/styles.css" />
   <link data-trunk rel="rust" data-wasm-opt="z" data-weak-refs />
   <link data-trunk rel="copy-dir" href="/public/" data-target-path="/" />
   <link data-trunk rel="copy-dir" href="/js-out/" data-target-path="js" />
-  <link rel="manifest" href="/manifest.json">
 
   <script>
     window.addEventListener('load', async () => {
@@ -27,7 +28,6 @@
       }
     });
   </script>
-  <script type="module" src="/js/index.js"></script>
 </head>
 
 <body style="background-color: #0a0a0a"></body>

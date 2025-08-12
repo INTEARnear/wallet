@@ -1,0 +1,13 @@
+[package]
+name = "server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+leptos = { version = "0.8", features = ["ssr", "nightly"] }
+axum = { version = "0.8", features = ["macros"] }
+simple_logger = { version = "5" }
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.5" }
+tower-http = { version = "0.6", features = ["full"] }
+log = { version = "0.4" }

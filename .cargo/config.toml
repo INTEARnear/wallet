@@ -19,6 +19,18 @@ rustflags = [
     "threads=8"
 ]
 
+[target.'cfg(all(not(debug_assertions), target_arch = "wasm32"))']
+rustflags = [
+    "-Z",
+    "share-generics=y",
+    "-Z",
+    "fmt-debug=none",
+]
+
+[unstable]
+build-std = ["std", "panic_abort", "core", "alloc"]
+build-std-features = ["optimize_for_size"]
+
 # Temporary fix for https://github.com/rust-rocksdb/rust-rocksdb/issues/991
 [env]
 CXXFLAGS = "-include cstdint"
