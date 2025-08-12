@@ -1,15 +1,15 @@
 diff --git a/Cargo.toml b/Cargo.toml
-index bcbda8a..f9684ea 100644
+index bcbda8a..ce79aba 100644
 --- a/Cargo.toml
 +++ b/Cargo.toml
-@@ -87,6 +87,7 @@ max_combination_size = 2
- rustdoc-args = ["--generate-link-to-definition"]
- 
- [features]
-+config = ["leptos_config"]
- csr = [
-     "leptos_macro/csr",
-     "reactive_graph/effects",
+@@ -131,6 +131,7 @@ ssr = [
+     "server_fn/ssr",
+     "hydration",
+     "tachys/ssr",
++    "leptos_config",
+ ]
+ trace-component-props = [
+     "leptos_macro/trace-component-props",
 @@ -195,6 +196,7 @@ default-features = true
  
  [dependencies.leptos_config]
@@ -19,7 +19,7 @@ index bcbda8a..f9684ea 100644
  [dependencies.leptos_dom]
  version = "0.8.5"
 diff --git a/Cargo.toml.orig b/Cargo.toml.orig
-index 0fb881d..a71ed52 100644
+index 0fb881d..97c453e 100644
 --- a/Cargo.toml.orig
 +++ b/Cargo.toml.orig
 @@ -23,7 +23,7 @@ leptos_dom = { workspace = true }
@@ -31,19 +31,19 @@ index 0fb881d..a71ed52 100644
  leptos-spin-macro = { optional = true, workspace = true, default-features = true }
  oco_ref = { workspace = true }
  or_poisoned = { workspace = true }
-@@ -60,6 +60,7 @@ send_wrapper = { workspace = true, default-features = true }
- wasm_split_helpers.workspace = true
- 
- [features]
-+config = ["leptos_config"]
- hydration = [
-   "reactive_graph/hydration",
-   "leptos_server/hydration",
+@@ -82,6 +82,7 @@ ssr = [
+   "server_fn/ssr",
+   "hydration",
+   "tachys/ssr",
++  "leptos_config",
+ ]
+ nightly = ["leptos_macro/nightly", "reactive_graph/nightly", "tachys/nightly"]
+ rkyv = ["server_fn/rkyv", "leptos_server/rkyv"]
 diff --git a/src/hydration/mod.rs b/src/hydration/mod.rs
-index 6072145..b67f4c6 100644
+index 6072145..11f811d 100644
 --- a/src/hydration/mod.rs
 +++ b/src/hydration/mod.rs
-@@ -1,20 +1,20 @@
+@@ -1,7 +1,6 @@
  #![allow(clippy::needless_lifetimes)]
  
  use crate::{prelude::*, WasmSplitManifest};
@@ -51,13 +51,7 @@ index 6072145..b67f4c6 100644
  use leptos_macro::{component, view};
  use std::{path::PathBuf, sync::OnceLock};
  
- /// Inserts auto-reloading code used in `cargo-leptos`.
- ///
- /// This should be included in the `<head>` of your application shell during development.
-+#[cfg(feature = "config")]
- #[component]
- pub fn AutoReload(
-     /// Whether the file-watching feature should be disabled.
+@@ -14,7 +13,7 @@ pub fn AutoReload(
      #[prop(optional)]
      disable_watch: bool,
      /// Configuration options for this project.
@@ -66,11 +60,7 @@ index 6072145..b67f4c6 100644
  ) -> impl IntoView {
      (!disable_watch && std::env::var("LEPTOS_WATCH").is_ok()).then(|| {
          #[cfg(feature = "nonce")]
-@@ -44,10 +44,11 @@ pub fn AutoReload(
- /// Inserts hydration scripts that add interactivity to your server-rendered HTML.
- ///
- /// This should be included in the `<head>` of your application shell.
-+#[cfg(feature = "config")]
+@@ -47,7 +46,7 @@ pub fn AutoReload(
  #[component]
  pub fn HydrationScripts(
      /// Configuration options for this project.
@@ -80,16 +70,22 @@ index 6072145..b67f4c6 100644
      #[prop(optional)]
      islands: bool,
 diff --git a/src/lib.rs b/src/lib.rs
-index bf153c0..2d288ad 100644
+index bf153c0..09836d0 100644
 --- a/src/lib.rs
 +++ b/src/lib.rs
-@@ -164,7 +164,26 @@ pub mod prelude {
-             form::*, hydration::*, into_view::*, mount::*, suspense::*,
+@@ -161,10 +161,31 @@ pub mod prelude {
+         pub use crate::nonce::*;
+         pub use crate::{
+             callback::*, children::*, component::*, control_flow::*, error::*,
+-            form::*, hydration::*, into_view::*, mount::*, suspense::*,
++            form::*, into_view::*, mount::*, suspense::*,
              text_prop::*,
          };
-+        #[cfg(feature = "config")]
++        #[cfg(feature = "ssr")]
++        pub use crate::hydration::*;
++        #[cfg(feature = "ssr")]
          pub use leptos_config::*;
-+        #[cfg(not(feature = "config"))]
++        #[cfg(not(feature = "ssr"))]
 +        #[non_exhaustive]
 +        #[allow(missing_docs)]
 +        /// Fake LeptosOptions for client-only builds that don't want to depend
@@ -110,11 +106,31 @@ index bf153c0..2d288ad 100644
          pub use leptos_dom::helpers::*;
          pub use leptos_macro::*;
          pub use leptos_server::*;
-@@ -259,6 +278,7 @@ mod provider;
+@@ -226,6 +247,7 @@ mod show;
+ pub mod portal;
+ 
+ /// Components to enable server-side rendering and client-side hydration.
++#[cfg(feature = "ssr")]
+ pub mod hydration;
+ 
+ /// Utilities for exporting nonces to be used for a Content Security Policy.
+@@ -259,6 +281,7 @@ mod provider;
  pub use tachys;
  /// Tools to mount an application to the DOM, or to hydrate it from server-rendered HTML.
  pub mod mount;
-+#[cfg(feature = "config")]
++#[cfg(feature = "ssr")]
  #[doc(inline)]
  pub use leptos_config as config;
  #[doc(inline)]
+diff --git a/src/text_prop.rs b/src/text_prop.rs
+index dc13c89..80d2cd4 100644
+--- a/src/text_prop.rs
++++ b/src/text_prop.rs
+@@ -83,6 +83,7 @@ impl IntoAttributeValue for TextProp {
+     }
+ }
+ 
++#[allow(unused_macros)]
+ macro_rules! textprop_reactive {
+     ($name:ident, <$($gen:ident),*>, $v:ty, $( $where_clause:tt )*) =>
+     {

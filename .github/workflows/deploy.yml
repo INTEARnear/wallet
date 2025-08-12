@@ -29,18 +29,9 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
-      
-      - name: Install cargo-binstall
-        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
 
-      - name: Install patch-crate
-        run: cargo binstall patch-crate
-
-      - name: Install dylint
-        run: cargo binstall cargo-dylint dylint-link
-
-      - name: Install Trunk
-        run: cargo binstall cargo-leptos
+      - name: Install build tools
+        run: cargo install patch-crate cargo-dylint dylint-link cargo-leptos --debug --locked
 
       - name: Install npm dependencies
         run: npm install

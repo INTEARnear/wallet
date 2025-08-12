@@ -7,10 +7,10 @@ An open source wallet that can be accessed at [wallet.intear.tech](https://walle
 
 You need both the Rust toolchain and Node installed.
 
-1. Install Rust targets + Trunk + patch-crate if you haven't already:
+1. Install Rust targets + cargo-leptos + patch-crate if you haven't already:
 
 ```bash
-cargo install trunk
+cargo install cargo-leptos
 cargo install patch-crate
 rustup target add wasm32-unknown-unknown
 ```
@@ -42,7 +42,7 @@ The output will be in `dist/`
 
 You need to set up some env variables in `.env` to external services, and if you don't use `.env.prod`, you'd need to set up history-service, account-creation-service, and other services in their respective directories in this repo.
 
-Built with Leptos, TailwindCSS, Trunk, ESBuild, and `near-min-api` (a wasm-ready crate built for this wallet).
+Built with Leptos, TailwindCSS, ESBuild, and `near-min-api` (a wasm-ready crate built for this wallet).
 
 
 ## Contributing
