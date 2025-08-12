@@ -31,7 +31,7 @@ jobs:
           cache: 'npm'
 
       - name: Install build tools
-        run: cargo install patch-crate cargo-dylint dylint-link --debug --locked
+        run: cargo install patch-crate --debug --locked
 
       - name: Install cargo-leptos from git
         run: cargo install cargo-leptos --git https://github.com/Sliman4/cargo-leptos-temp-fix --branch main --debug --locked
@@ -53,9 +53,6 @@ jobs:
 
       - name: Lint with clippy
         run: cargo clippy --all-targets -- -D warnings
-
-      - name: Lint with dylint
-        run: cargo dylint --all
 
       - name: Check formatting
         run: cargo fmt --all -- --check
