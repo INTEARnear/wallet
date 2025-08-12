@@ -48,9 +48,6 @@ jobs:
       - name: Apply patches
         run: cargo patch-crate
 
-      - name: Build JavaScript bundle
-        run: npm run js:build
-
       - name: Lint with clippy
         run: cargo clippy --all-targets -- -D warnings
 
