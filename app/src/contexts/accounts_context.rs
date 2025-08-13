@@ -600,9 +600,8 @@ pub fn provide_accounts_context() {
 
     // Try to retrieve cipher from password storage service on page load if we have encrypted data but no cipher
     if has_encrypted_data() && cipher.get_untracked().is_none() {
-        set_is_loading_cipher(true);
         spawn_local(async move {
-            Delay::new(Duration::from_millis(1000)).await;
+            set_is_loading_cipher(true);
             if let Ok(Some(retrieved_cipher)) = retrieve_cipher_from_service().await {
                 if let Ok(encrypted_accounts) = get_encrypted_accounts() {
                     let encrypted_data = match general_purpose::STANDARD
