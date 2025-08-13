@@ -213,7 +213,7 @@ window.addEventListener('message', async (event) => {
 window.addEventListener("message", (event) => {
     if (event.data.type === "chatwoot-open") {
         if ((window as any).$chatwoot) {
-            (window as any).$chatwoot.toggle('open')
+            (window as any).$chatwoot.toggle('open');
             (window as any).$chatwoot.setConversationCustomAttributes({ account_id: event.data.accountId })
         } else {
             const BASE_URL = "https://app.chatwoot.com";
@@ -231,7 +231,7 @@ window.addEventListener("message", (event) => {
                     if (document.getElementById("cw-bubble-holder")) {
                         (window as any).$chatwoot.toggleBubbleVisibility('hide');
                         (window as any).$chatwoot.toggle('open');
-                        (window as any).$chatwoot.setConversationCustomAttributes({ account_id: event.data.accountId })
+                        (window as any).$chatwoot.setConversationCustomAttributes({ account_id: event.data.accountId });
                         clearInterval(interval)
                     }
                 }, 3);
