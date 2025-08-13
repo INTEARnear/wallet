@@ -215,14 +215,14 @@ pub fn App() -> impl IntoView {
                             view={Lazy::<bad_waterfall_lazy_routes::Settings>::new()}
                         >
                             <Route path=path!("") view=() />
-                            <Route
-                                path=path!("/security")
-                                view={Lazy::<bad_waterfall_lazy_routes::SecuritySettings>::new()}
-                            />
                             <ParentRoute
                                 path=path!("/security")
-                                view={Lazy::<bad_waterfall_lazy_routes::SecuritySettings>::new()}
+                                view=Outlet
                             >
+                                <Route
+                                    path=path!("")
+                                    view={Lazy::<bad_waterfall_lazy_routes::SecuritySettings>::new()}
+                                />
                                 <Route
                                     path=path!("/account")
                                     view={Lazy::<bad_waterfall_lazy_routes::AccountSettings>::new()}
