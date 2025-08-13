@@ -79,7 +79,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <iframe
                     id="chatwoot-iframe"
                     src="https://wallet-sandboxed-assets.intear.tech/chatwoot.html"
-                    style="width: 100%; height: 100%; position: fixed; top: 0; left: 0; z-index: 9999; opacity: 0; pointer-events: none;"
+                    style="width: 100%; height: 100%; position: fixed; top: 0; left: 0; z-index: 15000; opacity: 0; pointer-events: none;"
                     sandbox="allow-scripts allow-same-origin"
                 ></iframe>
                 <script>
@@ -87,7 +87,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                         let chatwootIframe = document.getElementById('chatwoot-iframe');
                         chatwootIframe.onload = () => {
                             chatwootIframe.style.opacity = '1';
-                            chatwootIframe.style.pointerEvents = 'auto';
+                            // chatwootIframe.style.pointerEvents = 'auto';
                         };
                     "#
                 </script>
