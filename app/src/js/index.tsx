@@ -110,7 +110,7 @@ async function connectLedger() {
     if (transport === null) {
         return;
     }
-    transport.setScrambleKey("NEAR")
+    (transport as any).setScrambleKey?.("NEAR")
     const ledgerClient = await createLedgerClient(transport)
         .catch(error => {
             console.error('Error connecting to Ledger device: ', JSON.stringify(error))
@@ -207,5 +207,35 @@ window.addEventListener('message', async (event) => {
             signature: [...signature],
             id,
         }, window.location.origin)
+    }
+});
+
+window.addEventListener("message", (event) => {
+    if (event.data.type === "chatwoot-open") {
+        if ((window as any).$chatwoot) {
+            (window as any).$chatwoot.toggle('open')
+            (window as any).$chatwoot.setConversationCustomAttributes({ account_id: event.data.accountId })
+        } else {
+            const BASE_URL = "https://app.chatwoot.com";
+            const script = document.createElement("script");
+            const firstScriptInBody = document.getElementsByTagName("script")[0];
+            script.src = BASE_URL + "/packs/js/sdk.js";
+            script.async = true;
+            firstScriptInBody.parentNode?.insertBefore(script, firstScriptInBody);
+            script.onload = function () {
+                (window as any).chatwootSDK.run({
+                    websiteToken: 'eUJ4pSCSbXv2dhMiwvX2rjud',
+                    baseUrl: BASE_URL
+                })
+                let interval = setInterval(() => {
+                    if (document.getElementById("cw-bubble-holder")) {
+                        (window as any).$chatwoot.toggleBubbleVisibility('hide');
+                        (window as any).$chatwoot.toggle('open');
+                        (window as any).$chatwoot.setConversationCustomAttributes({ account_id: event.data.accountId })
+                        clearInterval(interval)
+                    }
+                }, 3);
+            }
+        }
     }
 });

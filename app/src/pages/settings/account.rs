@@ -16,6 +16,7 @@ use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_router::hooks::use_navigate;
 use leptos_use::{use_event_listener, use_window};
+use near_min_api::types::AccountId;
 use near_min_api::{
     types::{
         AccessKey, AccessKeyPermission, AccessKeyPermissionView, Action, AddKeyAction, CryptoHash,
@@ -214,6 +215,9 @@ pub enum JsWalletRequest {
         path: String,
         message_to_sign: Vec<u8>,
         id: u32,
+    },
+    ChatwootOpen {
+        account_id: AccountId,
     },
 }
 

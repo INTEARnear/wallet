@@ -1,3 +1,4 @@
+use crate::contexts::accounts_context::AccountsContext;
 use leptos::prelude::*;
 use leptos_icons::*;
 use leptos_router::{
@@ -22,8 +23,22 @@ pub use security_log::SecurityLogPage;
 #[component]
 pub fn Settings() -> impl IntoView {
     let location = use_location();
+    let accounts_context = expect_context::<AccountsContext>();
 
     let is_active = move |path: &str| location.pathname.get().starts_with(path);
+
+    let open_live_chat = move || {
+        let message = JsWalletRequest::ChatwootOpen {
+            account_id: accounts_context.accounts.get().selected_account_id.unwrap(),
+        };
+
+        if let Ok(location_origin) = window().location().origin() {
+            let _ = window().post_message(
+                &serde_wasm_bindgen::to_value(&message).unwrap(),
+                &location_origin,
+            );
+        }
+    };
 
     view! {
         <div class="flex flex-col h-full text-white">
@@ -101,6 +116,13 @@ pub fn Settings() -> impl IntoView {
             <div>
                 <div class="flex flex-col items-center gap-4 p-4 border-t border-neutral-800">
                     <div class="text-sm font-semibold">Support & Resources</div>
+                    <button
+                        class="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-colors cursor-pointer text-sm font-medium"
+                        on:click=move |_| open_live_chat()
+                    >
+                        <Icon icon=icondata::LuMessageCircle width="16" height="16" />
+                        <span>"Live Chat"</span>
+                    </button>
                     <div class="flex flex-row justify-center gap-6">
                         <a
                             href="https://t.me/intearchat"
