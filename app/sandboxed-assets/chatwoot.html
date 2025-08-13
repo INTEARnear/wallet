@@ -21,6 +21,19 @@
             }
             console.log("Localstorage: ", localStorage.getItem("wallet_config")); // Should be nothing since it can't access the parent's localstorage
         }
+
+        window.addEventListener("message", (event) => {
+            if (event.data.type === "loadChatwoot") {
+                loadChatwoot();
+            }
+            if (event.data.type === "setAccountId") {
+                if (window.$chatwoot) {
+                    window.$chatwoot.setConversationCustomAttributes({account_id: event.data.accountId})
+                } else {
+                    console.error("Chatwoot SDK not loaded, yet tried to use setAccountId");
+                }
+            }
+        });
     </script>
 </head>
 
