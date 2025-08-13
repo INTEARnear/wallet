@@ -27,10 +27,10 @@
 })
 ("", "pkg", "intear-wallet", "intear-wallet");</script><!><!><!></head><body style="background-color: #0a0a0a"><style>
                     @keyframes app-spin { to { transform: rotate(360deg); } }
-                    </style><div id="app-loader" style="position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: -9999; opacity: 0; transition: opacity 0.5s ease-in-out;"><div style="width: 32px; height: 32px; border: 3px solid rgba(255,255,255,0.12); border-top-color: rgba(255,255,255,0.7); border-radius: 50%; animation: app-spin 1s linear infinite;"></div></div><iframe id="chatwoot-iframe" src="https://wallet-sandboxed-assets.intear.tech/chatwoot.html" style="width: 100%; height: 100%; position: fixed; top: 0; left: 0; z-index: 9999; opacity: 0; pointer-events: none;" sandbox="allow-scripts allow-same-origin"></iframe><script>
+                    </style><div id="app-loader" style="position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: -9999; opacity: 0; transition: opacity 0.5s ease-in-out;"><div style="width: 32px; height: 32px; border: 3px solid rgba(255,255,255,0.12); border-top-color: rgba(255,255,255,0.7); border-radius: 50%; animation: app-spin 1s linear infinite;"></div></div><iframe id="chatwoot-iframe" src="https://wallet-sandboxed-assets.intear.tech/chatwoot.html" style="width: 100%; height: 100%; position: fixed; top: 0; left: 0; z-index: 15000; opacity: 0; pointer-events: none;" sandbox="allow-scripts allow-same-origin"></iframe><script>
                         let chatwootIframe = document.getElementById('chatwoot-iframe');
                         chatwootIframe.onload = () => {
                             chatwootIframe.style.opacity = '1';
-                            chatwootIframe.style.pointerEvents = 'auto';
+                            // chatwootIframe.style.pointerEvents = 'auto';
                         };
                     </script></body><!><!></html><!>
