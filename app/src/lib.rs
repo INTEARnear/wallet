@@ -88,8 +88,6 @@ pub mod bad_waterfall_lazy_routes {
     bad_waterfall_lazy_route!(SignMessage);
     bad_waterfall_lazy_route!(AutoImportSecretKey);
     bad_waterfall_lazy_route!(Login);
-    bad_waterfall_lazy_route!(Settings);
-    bad_waterfall_lazy_route!(SecuritySettings);
     bad_waterfall_lazy_route!(AccountSettings);
     bad_waterfall_lazy_route!(ConnectedAppsSettings);
     // lazy_route!(SecurityLogPage);
@@ -212,7 +210,7 @@ pub fn App() -> impl IntoView {
                         />
                         <ParentRoute
                             path=path!("/settings")
-                            view={Lazy::<bad_waterfall_lazy_routes::Settings>::new()}
+                            view=Settings
                         >
                             <Route path=path!("") view=() />
                             <ParentRoute
@@ -221,7 +219,7 @@ pub fn App() -> impl IntoView {
                             >
                                 <Route
                                     path=path!("")
-                                    view={Lazy::<bad_waterfall_lazy_routes::SecuritySettings>::new()}
+                                    view=SecuritySettings
                                 />
                                 <Route
                                     path=path!("/account")

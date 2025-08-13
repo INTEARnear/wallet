@@ -155,6 +155,8 @@ pub fn SecuritySettings() -> impl IntoView {
     let (storage_usage, set_storage_usage) = signal::<Option<u64>>(None);
     let (storage_quota, set_storage_quota) = signal::<Option<u64>>(None);
     let (persistence_denied, set_persistence_denied) = signal(false);
+    let (clearing_cache, set_clearing_cache) = signal(false);
+    let (cache_clear_result, set_cache_clear_result) = signal::<Option<Result<(), String>>>(None);
 
     let is_ledger_account = move || {
         let accs = accounts_context.accounts.get();
@@ -241,6 +243,27 @@ pub fn SecuritySettings() -> impl IntoView {
                 }
             }
             set_requesting_persistence(false);
+        });
+    };
+
+    let clear_cache = move || {
+        set_clearing_cache(true);
+        set_cache_clear_result(None);
+
+        let js_code = "window.caches.keys().then(cacheNames=>cacheNames.map(cacheName=>window.caches.delete(cacheName)))";
+
+        spawn_local(async move {
+            match web_sys::js_sys::eval(js_code) {
+                Ok(_) => {
+                    log::info!("Cache cleared");
+                    set_cache_clear_result(Some(Ok(())));
+                }
+                Err(err) => {
+                    log::error!("Failed to clear cache: {:?}", err);
+                    set_cache_clear_result(Some(Err("Failed to clear cache".to_string())));
+                }
+            }
+            set_clearing_cache(false);
         });
     };
 
@@ -1062,6 +1085,62 @@ pub fn SecuritySettings() -> impl IntoView {
                             </div>
                         </div>
                     </Show>
+
+                    <div class="space-y-3 flex flex-col items-center text-center">
+                        <div class="text-sm text-neutral-400">"Pages not loading?"</div>
+                        <div class="flex items-center gap-3">
+                            <button
+                                class="px-4 py-2 rounded-md bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border border-yellow-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm"
+                                disabled=move || clearing_cache.get()
+                                on:click=move |_| clear_cache()
+                            >
+                                <div class="flex items-center gap-2">
+                                    {move || {
+                                        if clearing_cache.get() {
+                                            view! {
+                                                <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-400"></div>
+                                                <span>"Clearing..."</span>
+                                            }
+                                                .into_any()
+                                        } else {
+                                            view! {
+                                                <Icon icon=icondata::LuRotateCcw width="16" height="16" />
+                                                <span>"Reset cache"</span>
+                                            }
+                                                .into_any()
+                                        }
+                                    }}
+                                </div>
+                            </button>
+
+                            {move || {
+                                if let Some(result) = cache_clear_result.get() {
+                                    match result {
+                                        Ok(()) => {
+                                            view! {
+                                                <div class="flex items-center gap-1 text-green-400 text-sm">
+                                                    <Icon icon=icondata::LuCheck width="16" height="16" />
+                                                    <span>"Cache cleared successfully"</span>
+                                                </div>
+                                            }
+                                                .into_any()
+                                        }
+                                        Err(err) => {
+                                            view! {
+                                                <div class="flex items-center gap-1 text-red-400 text-sm">
+                                                    <Icon icon=icondata::LuX width="16" height="16" />
+                                                    <span>{err.clone()}</span>
+                                                </div>
+                                            }
+                                                .into_any()
+                                        }
+                                    }
+                                } else {
+                                    ().into_any()
+                                }
+                            }}
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
