@@ -1698,7 +1698,18 @@ pub fn Swap() -> impl IntoView {
                                                         <div class="flex items-center gap-2">
                                                             <img src="/rhea.svg" alt="XRhea" class="w-auto h-8" />
                                                             <span class="text-white font-medium text-sm">
-                                                                "Staking"
+                                                                "Stake RHEA"
+                                                            </span>
+                                                        </div>
+                                                    }
+                                                        .into_any()
+                                                }
+                                                DexId::RNear => {
+                                                    view! {
+                                                        <div class="flex items-center gap-2">
+                                                            <img src="/rhea.svg" alt="XRhea" class="w-auto h-8" />
+                                                            <span class="text-white font-medium text-sm">
+                                                                "Stake NEAR"
                                                             </span>
                                                         </div>
                                                     }
@@ -2769,6 +2780,11 @@ pub enum DexId {
     ///
     /// Supports RHEA -> XRHEA and XRHEA -> RHEA, both AmountIn and AmountOut
     XRhea,
+    /// https://app.rhea.finance/stake
+    /// Liquid Staking provider
+    ///
+    /// Supports NEAR -> rNEAR and rNEAR -> NEAR, both AmountIn and AmountOut
+    RNear,
 }
 
 const RHEA_STR: &str = "Rhea";
@@ -2782,6 +2798,7 @@ const RHEA_DCL_STR: &str = "RheaDcl";
 const METAPOOL_STR: &str = "MetaPool";
 const LINEAR_STR: &str = "Linear";
 const XRHEA_STR: &str = "XRhea";
+const RNEAR_STR: &str = "RNear";
 
 impl Display for DexId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -2797,6 +2814,7 @@ impl Display for DexId {
             DexId::MetaPool => f.write_str(METAPOOL_STR),
             DexId::Linear => f.write_str(LINEAR_STR),
             DexId::XRhea => f.write_str(XRHEA_STR),
+            DexId::RNear => f.write_str(RNEAR_STR),
         }
     }
 }
