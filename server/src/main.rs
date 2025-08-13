@@ -36,7 +36,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                     font-src 'self' data:;
                     img-src 'self' data: https://nft-proxy-service.intear.tech https://indexer.nearcatalog.org blob:;
                     connect-src 'self' ws://127.0.0.1:5678/live_reload https://rpc.near.org https://rpc.mainnet.near.org https://rpc.testnet.near.org https://beta.rpc.mainnet.near.org https://archival-rpc.mainnet.near.org https://archival-rpc.testnet.near.org https://rpc.intea.rs archival-rpc.mainnet.fastnear.com https://rpc.shitzuapes.xyz https://events-v3.intear.tech https://events-v3-testnet.intear.tech https://logout-bridge-service.intear.tech https://rpc.testnet.fastnear.com https://rpc.mainnet.fastnear.com https://password-storage-service.intear.tech https://imminent.build https://prices.intear.tech https://prices-testnet.intear.tech wss://ws-events-v3.intear.tech wss://ws-events-v3-testnet.intear.tech https://api.fastnear.com https://test.api.fastnear.com https://nft-proxy-service.intear.tech https://wallet-history-service.intear.tech https://wallet-history-service-testnet.intear.tech https://api.nearcatalog.org https://router.intear.tech https://wallet-account-creation-service.intear.tech https://wallet-account-creation-service-testnet.intear.tech https://solver-relay-v2.chaindefuser.com https://api.web3modal.org wss://relay.walletconnect.org https://eu-assets.i.posthog.com https://eu.i.posthog.com http://localhost:3001 http://localhost:3002 http://localhost:3003 http://localhost:3004 http://localhost:3005 http://localhost:4444;
-                    frame-src 'self' https://chart.intear.tech https://chart-testnet.intear.tech https://verify.walletconnect.org;
+                    frame-src 'self' https://chart.intear.tech https://chart-testnet.intear.tech https://verify.walletconnect.org https://wallet-sandboxed-assets.intear.tech;
                     "
                 />
 
@@ -76,6 +76,21 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 >
                     <div style="width: 32px; height: 32px; border: 3px solid rgba(255,255,255,0.12); border-top-color: rgba(255,255,255,0.7); border-radius: 50%; animation: app-spin 1s linear infinite;"></div>
                 </div>
+                <iframe
+                    id="chatwoot-iframe"
+                    src="https://wallet-sandboxed-assets.intear.tech/chatwoot.html"
+                    style="width: 100%; height: 100%; position: fixed; top: 0; left: 0; z-index: 9999; opacity: 0; pointer-events: none;"
+                    sandbox="allow-scripts allow-same-origin"
+                ></iframe>
+                <script>
+                    r#"
+                        let chatwootIframe = document.getElementById('chatwoot-iframe');
+                        chatwootIframe.onload = () => {
+                            chatwootIframe.style.opacity = '1';
+                            chatwootIframe.style.pointerEvents = 'auto';
+                        };
+                    "#
+                </script>
             </body>
         </html>
     }

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatwoot Sandbox</title>
+    <script>
+        function loadChatwoot() {
+            const BASE_URL = "https://app.chatwoot.com";
+            const script = document.createElement("script");
+            const firstScriptInBody = document.getElementsByTagName("script")[0];
+            script.src = BASE_URL + "/packs/js/sdk.js";
+            script.async = true;
+            firstScriptInBody.parentNode.insertBefore(script, firstScriptInBody);
+            script.onload = function () {
+                window.chatwootSDK.run({
+                    websiteToken: 'eUJ4pSCSbXv2dhMiwvX2rjud',
+                    baseUrl: BASE_URL
+                })
+            }
+            console.log("Localstorage: ", localStorage.getItem("wallet_config")); // Should be nothing since it can't access the parent's localstorage
+        }
+    </script>
+</head>
+
+<body>
+
+</body>
+
+</html>
