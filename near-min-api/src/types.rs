@@ -4193,7 +4193,6 @@ pub struct StatusSyncInfo {
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct ValidatorInfo {
     pub account_id: AccountId,
-    pub is_slashed: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -5513,7 +5512,6 @@ pub struct ValidatorKickoutView {
 pub struct CurrentEpochValidatorInfo {
     pub account_id: AccountId,
     pub public_key: PublicKey,
-    pub is_slashed: bool,
     #[serde(with = "dec_format")]
     pub stake: Balance,
     /// Shards this validator is assigned to as chunk producer in the current epoch.
