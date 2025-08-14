@@ -31,10 +31,7 @@ jobs:
           cache: 'npm'
 
       - name: Install build tools
-        run: cargo install patch-crate --debug --locked
-
-      - name: Install cargo-leptos from git
-        run: cargo install cargo-leptos --git https://github.com/Sliman4/cargo-leptos-temp-fix --branch main --debug --locked
+        run: cargo install patch-crate cargo-leptos --debug --locked
 
       - name: Install npm dependencies
         run: npm install
