@@ -88,9 +88,9 @@ jobs:
               Content-Type = "application/wasm"
           EOL
 
-      - name: Deploy to dist branch
+      - name: Deploy to staging branch
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
-          publish_branch: dist
+          publish_branch: staging
