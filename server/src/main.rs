@@ -72,10 +72,30 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 </style>
                 <div
                     id="app-loader"
-                    style="position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: -9999; opacity: 0; transition: opacity 0.5s ease-in-out;"
+                    style="position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: -9999; opacity: 0; transition: opacity 0.5s ease-in-out;"
                 >
                     <div style="width: 32px; height: 32px; border: 3px solid rgba(255,255,255,0.12); border-top-color: rgba(255,255,255,0.7); border-radius: 50%; animation: app-spin 1s linear infinite;"></div>
+                    <div id="cache-clear-section" style="margin-top: 24px; text-align: center; opacity: 0; transition: opacity 0.5s ease-in-out;">
+                        <p style="color: rgba(255,255,255,0.7); margin-bottom: 12px; font-size: 14px;">Not loading?</p>
+                        <button
+                            onclick="window.caches.keys().then(cacheNames=>cacheNames.map(cacheName=>window.caches.delete(cacheName))).then(()=>window.location.reload())"
+                            style="background: rgba(0, 0, 0, 0.2); color: white; border: 1px solid rgba(255,255,255,0.12); padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; transition: background 0.2s;"
+                        >
+                            "Click here"
+                        </button>
+                    </div>
+                    <script>
+                        r#"
+                            setTimeout(() => {
+                                const cacheSection = document.getElementById('cache-clear-section');
+                                if (cacheSection) {
+                                    cacheSection.style.opacity = '1';
+                                }
+                            }, 10000);
+                        "#
+                    </script>
                 </div>
+
             </body>
         </html>
     }

@@ -2025,6 +2025,7 @@ pub fn Swap() -> impl IntoView {
                                                     DexId::MetaPool,
                                                     DexId::Linear,
                                                     DexId::XRhea,
+                                                    DexId::RNear,
                                                 ];
                                                 all_dexes
                                                     .into_iter()
@@ -2032,7 +2033,6 @@ pub fn Swap() -> impl IntoView {
                                                         let is_selected = move || {
                                                             selected_dexes.get().contains(&dex)
                                                         };
-                                                        // DexId::Jumpdefi,
 
                                                         view! {
                                                             <button
