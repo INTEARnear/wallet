@@ -19,6 +19,7 @@ wasm-opt-features = [
     "--merge-similar-functions",
     "--dae",
 ]
+hash-files = true
 
 [profile.dev.package.argon2]
 opt-level = 3

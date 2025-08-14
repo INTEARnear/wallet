@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use axum::Router;
@@ -16,6 +17,21 @@ use tower_http::compression::CompressionLayer;
 use tower_http::services::ServeDir;
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
+    let hash_file = if cfg!(debug_assertions) {
+        format!("target/debug/{}", options.hash_file)
+    } else {
+        format!("target/release/{}", options.hash_file)
+    };
+    let hash_file_content = std::fs::read_to_string(hash_file).expect("could not read hash file");
+    let hashes = hash_file_content
+        .lines()
+        .map(|s| s.split(": ").collect::<Vec<&str>>())
+        .collect::<Vec<Vec<&str>>>();
+    let hash_map = hashes
+        .iter()
+        .map(|h| (h[0], h[1]))
+        .collect::<HashMap<&str, &str>>();
+    let css_hash = hash_map.get("css").expect("css hash not found");
     view! {
         <!DOCTYPE html>
         <html lang="en" dir="ltr" data-theme="dark">
@@ -30,39 +46,71 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <meta
                     http-equiv="Content-Security-Policy"
                     content="
-                    default-src 'self';
-                    script-src 'self' 'unsafe-inline' 'unsafe-eval' https://eu-assets.i.posthog.com https://app.chatwoot.com;
-                    style-src 'self' 'unsafe-inline';
-                    font-src 'self' data:;
-                    img-src 'self' data: https://nft-proxy-service.intear.tech https://indexer.nearcatalog.org blob:;
-                    connect-src 'self' ws://127.0.0.1:5678/live_reload https://rpc.near.org https://rpc.mainnet.near.org https://rpc.testnet.near.org https://beta.rpc.mainnet.near.org https://archival-rpc.mainnet.near.org https://archival-rpc.testnet.near.org https://rpc.intea.rs archival-rpc.mainnet.fastnear.com https://rpc.shitzuapes.xyz https://events-v3.intear.tech https://events-v3-testnet.intear.tech https://logout-bridge-service.intear.tech https://rpc.testnet.fastnear.com https://rpc.mainnet.fastnear.com https://password-storage-service.intear.tech https://imminent.build https://prices.intear.tech https://prices-testnet.intear.tech wss://ws-events-v3.intear.tech wss://ws-events-v3-testnet.intear.tech https://api.fastnear.com https://test.api.fastnear.com https://nft-proxy-service.intear.tech https://wallet-history-service.intear.tech https://wallet-history-service-testnet.intear.tech https://api.nearcatalog.org https://router.intear.tech https://wallet-account-creation-service.intear.tech https://wallet-account-creation-service-testnet.intear.tech https://solver-relay-v2.chaindefuser.com https://api.web3modal.org wss://relay.walletconnect.org https://eu-assets.i.posthog.com https://eu.i.posthog.com https://app.chatwoot.com http://localhost:3001 http://localhost:3002 http://localhost:3003 http://localhost:3004 http://localhost:3005 http://localhost:4444;
-                    frame-src 'self' https://chart.intear.tech https://chart-testnet.intear.tech https://verify.walletconnect.org https://wallet-sandboxed-assets.intear.tech https://app.chatwoot.com;
+                        default-src 'self';
+                        script-src 'self' 'unsafe-inline' 'unsafe-eval' https://eu-assets.i.posthog.com https://app.chatwoot.com;
+                        style-src 'self' 'unsafe-inline';
+                        font-src 'self' data:;
+                        img-src 'self' data: https://nft-proxy-service.intear.tech https://indexer.nearcatalog.org blob:;
+                        connect-src 'self' ws://127.0.0.1:5678/live_reload https://rpc.near.org https://rpc.mainnet.near.org https://rpc.testnet.near.org https://beta.rpc.mainnet.near.org https://archival-rpc.mainnet.near.org https://archival-rpc.testnet.near.org https://rpc.intea.rs archival-rpc.mainnet.fastnear.com https://rpc.shitzuapes.xyz https://events-v3.intear.tech https://events-v3-testnet.intear.tech https://logout-bridge-service.intear.tech https://rpc.testnet.fastnear.com https://rpc.mainnet.fastnear.com https://password-storage-service.intear.tech https://imminent.build https://prices.intear.tech https://prices-testnet.intear.tech wss://ws-events-v3.intear.tech wss://ws-events-v3-testnet.intear.tech https://api.fastnear.com https://test.api.fastnear.com https://nft-proxy-service.intear.tech https://wallet-history-service.intear.tech https://wallet-history-service-testnet.intear.tech https://api.nearcatalog.org https://router.intear.tech https://wallet-account-creation-service.intear.tech https://wallet-account-creation-service-testnet.intear.tech https://solver-relay-v2.chaindefuser.com https://api.web3modal.org wss://relay.walletconnect.org https://eu-assets.i.posthog.com https://eu.i.posthog.com https://app.chatwoot.com http://localhost:3001 http://localhost:3002 http://localhost:3003 http://localhost:3004 http://localhost:3005 http://localhost:4444;
+                        frame-src 'self' https://chart.intear.tech https://chart-testnet.intear.tech https://verify.walletconnect.org https://wallet-sandboxed-assets.intear.tech https://app.chatwoot.com;
                     "
                 />
 
                 <link rel="icon" href="favicon.svg" type="image/svg+xml" />
                 <link rel="icon" href="favicon.png" type="image/png" />
                 <link rel="icon" href="favicon.ico" />
-                <link rel="manifest" href="/manifest.json" />
+                // <link rel="manifest" href="/manifest.json" />
+                // <script>
+                // r#"
+                // setTimeout(() => {
+                // document.getElementById('app-loader').style.opacity = '1';
+                // }, 500);
+
+                // window.addEventListener('load', async () => {
+                // if ('serviceWorker' in navigator) {
+                // await navigator.serviceWorker.register('/service_worker.js');
+                // console.log('Service worker registered');
+                // }
+                // });
+                // "#
+                // </script>
+                <script type="module" src="/js/index.js" />
+
+                <link rel="stylesheet" href=format!("/pkg/intear-wallet.{css_hash}.css") />
+                <AutoReload options=options.clone() />
+                <HydrationScripts options />
+
                 <script>
                     r#"
-                        setTimeout(() => {
-                            document.getElementById('app-loader').style.opacity = '1';
-                        }, 500);
-                    
                         window.addEventListener('load', async () => {
+                            // Clear all caches
+                            if ('caches' in window) {
+                                try {
+                                    const cacheNames = await window.caches.keys();
+                                    await Promise.all(
+                                        cacheNames.map(cacheName => window.caches.delete(cacheName))
+                                    );
+                                    console.log('All caches cleared');
+                                } catch (err) {
+                                    console.error('Error clearing caches:', err);
+                                }
+                            }
+
+                            // Unregister all service workers
                             if ('serviceWorker' in navigator) {
-                                await navigator.serviceWorker.register('/service_worker.js');
-                                console.log('Service worker registered');
+                                try {
+                                    const registrations = await navigator.serviceWorker.getRegistrations();
+                                    await Promise.all(
+                                        registrations.map(registration => registration.unregister())
+                                    );
+                                    console.log('All service workers unregistered');
+                                } catch (err) {
+                                    console.error('Error unregistering service workers:', err);
+                                }
                             }
                         });
                     "#
                 </script>
-                <script type="module" src="/js/index.js" />
-
-                <link rel="stylesheet" href="/pkg/intear-wallet.css" />
-                <AutoReload options=options.clone() />
-                <HydrationScripts options />
             </head>
             <body style="background-color: #0a0a0a">
                 <style>
