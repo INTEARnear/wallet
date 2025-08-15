@@ -23,6 +23,11 @@ jobs:
         with:
           toolchain: nightly
           components: rustfmt, clippy, rust-src
+      
+      - name: Install GLib dev & pkg-config
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libglib2.0-dev pkg-config
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
