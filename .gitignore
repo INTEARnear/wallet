@@ -4,6 +4,7 @@ target
 /password-storage-service/passwords
 .env
 node_modules
-/app/public/js
+/web/public/js
 /nft-proxy-service/spam
 /nft-proxy-service/reported
+/dist

@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::time::Duration;
 
 use bip39::Mnemonic;
+use chrono::Utc;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_router::components::A;
@@ -138,7 +140,18 @@ pub fn AccountSelector(
             }
 
             for (network, accs) in grouped {
+                // Don't remove accounts if RPC has problems
                 let rpc_client = network.default_rpc_client();
+                let Ok(network_info) = rpc_client.status().await else {
+                    continue;
+                };
+                if network_info.sync_info.syncing
+                    || network_info.sync_info.latest_block_time
+                        < Utc::now() - Duration::from_secs(5)
+                {
+                    continue;
+                }
+
                 let requests: Vec<_> = accs
                     .iter()
                     .map(|account| {
@@ -270,7 +283,11 @@ pub fn AccountSelector(
                     view! {
                         <LoginForm
                             set_modal_state
-                            show_back_button=!accounts_context.accounts.get_untracked().accounts.is_empty()
+                            show_back_button=!accounts_context
+                                .accounts
+                                .get_untracked()
+                                .accounts
+                                .is_empty()
                         />
                     }
                         .into_any()
@@ -279,7 +296,11 @@ pub fn AccountSelector(
                     view! {
                         <AccountCreationForm
                             set_modal_state
-                            show_back_button=!accounts_context.accounts.get_untracked().accounts.is_empty()
+                            show_back_button=!accounts_context
+                                .accounts
+                                .get_untracked()
+                                .accounts
+                                .is_empty()
                             set_is_expanded=set_is_expanded
                         />
                     }
@@ -306,7 +327,9 @@ pub fn AccountSelector(
                                             </div>
                                         </button>
                                         {move || {
-                                            accounts_context.accounts.get()
+                                            accounts_context
+                                                .accounts
+                                                .get()
                                                 .accounts
                                                 .iter()
                                                 .map(|account| {

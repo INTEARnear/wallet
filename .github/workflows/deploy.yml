@@ -54,9 +54,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Copy artifacts
-        run: cp -r target/site/ dist/
-
       - name: Set PWA cache version
         run: |
           COMMIT_HASH=$(git rev-parse --short HEAD)

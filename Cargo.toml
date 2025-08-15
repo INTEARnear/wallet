@@ -1,15 +1,15 @@
 [[workspace.metadata.leptos]]
 name = "intear-wallet"
-site-root = "target/site"
+site-root = "dist"
 site-pkg-dir = "pkg"
 site-addr = "127.0.0.1:3000"
 reload-port = 5678
 browserquery = "defaults"
 env = "DEV"
 bin-package = "server"
-lib-package = "app"
+lib-package = "web"
 tailwind-input-file = "style/styles.css"
-assets-dir = "app/public"
+assets-dir = "web/public"
 wasm-opt-features = [
     "-Oz",
     "--enable-bulk-memory",
@@ -39,7 +39,8 @@ members = [
     "password-storage-service",
     "nft-proxy-service",
     "server",
-    "app",
+    "web",
+    "src-tauri",
 ]
 resolver = "3"
 

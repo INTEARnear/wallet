@@ -97,7 +97,7 @@ use crate::pages::{
 
 #[component]
 pub fn App() -> impl IntoView {
-    let _ = window().navigator().storage().persist().unwrap();
+    let _ = window().navigator().storage().persist();
 
     let warning_closure = Closure::wrap(Box::new(|| {
         let message = "%c⚠️ STOP! Don't paste any code here! This is dangerous and could compromise your wallet security. If someone told you to paste code here, they're trying to scam you.";
