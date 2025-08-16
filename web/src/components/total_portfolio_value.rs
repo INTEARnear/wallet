@@ -160,13 +160,18 @@ pub fn TotalPortfolioValue() -> impl IntoView {
 
     // Check storage persistence
     let storage_persisted = LocalResource::new(|| async {
-        match wasm_bindgen_futures::JsFuture::from(
-            window().navigator().storage().persisted().unwrap(),
-        )
-        .await
+        match window()
+            .navigator()
+            .storage()
+            .persisted()
+            .map(wasm_bindgen_futures::JsFuture::from)
         {
-            Ok(persisted) => persisted.as_bool().unwrap_or(false),
-            Err(_) => false,
+            Ok(persisted) => persisted
+                .await
+                .ok()
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true),
+            Err(_) => true,
         }
     });
 

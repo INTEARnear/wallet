@@ -1,10 +1,11 @@
 use crate::contexts::accounts_context::AccountsContext;
-use leptos::prelude::*;
+use leptos::{html::Div, prelude::*};
 use leptos_icons::*;
 use leptos_router::{
     components::{Outlet, A},
     hooks::use_location,
 };
+use leptos_use::use_event_listener;
 
 mod account;
 mod connected_apps;
@@ -19,11 +20,13 @@ pub use developer::DeveloperSettings;
 pub use preferences::{PreferencesSettings, SLIPPAGE_PRESETS};
 pub use security::SecuritySettings;
 pub use security_log::SecurityLogPage;
+use web_sys::{ScrollBehavior, ScrollToOptions};
 
 #[component]
 pub fn Settings() -> impl IntoView {
     let location = use_location();
     let accounts_context = expect_context::<AccountsContext>();
+    let scroll_div_ref = NodeRef::<Div>::new();
 
     let is_active = move |path: &str| location.pathname.get().starts_with(path);
 
@@ -40,9 +43,26 @@ pub fn Settings() -> impl IntoView {
         }
     };
 
+    let _ = use_event_listener(scroll_div_ref, leptos::ev::wheel, move |e| {
+        e.prevent_default();
+        if let Some(scroll_div) = scroll_div_ref.get() {
+            let delta_y = e.delta_y();
+            let scroll_amount = if delta_y < 0.0 { -50.0 } else { 50.0 };
+            scroll_div.scroll_by_with_scroll_to_options(&{
+                let options = ScrollToOptions::default();
+                options.set_left(scroll_amount);
+                options.set_behavior(ScrollBehavior::Smooth);
+                options
+            });
+        }
+    });
+
     view! {
         <div class="flex flex-col h-full text-white">
-            <div class="flex flex-row gap-2 p-4 pb-0 border-b scrollbar-hide border-neutral-800 overflow-x-auto whitespace-nowrap w-full flex-shrink-0">
+            <div
+                node_ref=scroll_div_ref
+                class="flex flex-row gap-2 p-4 pb-0 border-b scrollbar-hide border-neutral-800 overflow-x-auto whitespace-nowrap w-full flex-shrink-0"
+            >
                 <A
                     href="/settings/security"
                     attr:class="flex items-center gap-3 p-3 transition-colors relative flex-shrink-0"
@@ -107,7 +127,7 @@ pub fn Settings() -> impl IntoView {
                     />
                     <span style=move || {
                         if is_active("/settings/developer") { "font-weight: bold;" } else { "" }
-                    }>Developer Settings</span>
+                    }>Developer</span>
                 </A>
             </div>
             <div class="flex-1">

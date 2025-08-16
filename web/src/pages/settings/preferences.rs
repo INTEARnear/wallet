@@ -1,4 +1,5 @@
 use crate::contexts::config_context::{BackgroundGroup, ConfigContext, HiddenNft};
+use crate::utils::is_tauri;
 use bigdecimal::{BigDecimal, FromPrimitive};
 use leptos::prelude::*;
 use leptos_icons::*;
@@ -69,6 +70,7 @@ pub fn PreferencesSettings() -> impl IntoView {
     let realtime_prices = Memo::new(move |_| config_context.config.get().realtime_price_updates);
     let play_sound = Memo::new(move |_| config_context.config.get().play_transfer_sound);
     let analytics_disabled = Memo::new(move |_| config_context.config.get().analytics_disabled);
+    let hide_to_tray = Memo::new(move |_| config_context.config.get().hide_to_tray);
 
     let updates_disabled = Signal::derive(|| false);
     let prices_disabled = Signal::derive(|| false);
@@ -136,6 +138,20 @@ pub fn PreferencesSettings() -> impl IntoView {
                             });
                     }
                 />
+                <Show when=is_tauri>
+                    <ToggleSwitch
+                        label="Hide to system tray instead of closing"
+                        value=hide_to_tray
+                        disabled=Signal::derive(|| false)
+                        on_toggle=move || {
+                            config_context
+                                .set_config
+                                .update(|config| {
+                                    config.hide_to_tray = !config.hide_to_tray;
+                                });
+                        }
+                    />
+                </Show>
             </div>
 
             // Slippage settings section

@@ -976,3 +976,10 @@ pub async fn sign_nep413(
     log::info!("Signing NEP-413 payload: {:?}", bytes);
     secret_key.hash_and_sign(&bytes, context).await
 }
+
+pub fn is_tauri() -> bool {
+    if let Ok(tauri_value) = Reflect::get(&window(), &"__TAURI__".into()) {
+        return !tauri_value.is_undefined();
+    }
+    false
+}

@@ -177,16 +177,22 @@ pub fn SecuritySettings() -> impl IntoView {
     let check_storage_persistence = move || {
         spawn_local(async move {
             // Check if storage is persisted
-            match wasm_bindgen_futures::JsFuture::from(
-                window().navigator().storage().persisted().unwrap(),
-            )
-            .await
+            match window()
+                .navigator()
+                .storage()
+                .persisted()
+                .map(wasm_bindgen_futures::JsFuture::from)
             {
                 Ok(persisted) => {
-                    set_storage_persisted(Some(persisted.as_bool().unwrap_or(false)));
+                    let Some(persisted) = persisted.await.ok().and_then(|v| v.as_bool()) else {
+                        set_storage_persisted(None);
+                        return;
+                    };
+                    set_storage_persisted(Some(persisted));
                 }
                 Err(_) => {
-                    set_storage_persisted(Some(false));
+                    set_storage_persisted(None);
+                    return;
                 }
             }
 
@@ -951,139 +957,143 @@ pub fn SecuritySettings() -> impl IntoView {
                 </div>
 
                 <div class="flex flex-col gap-2" id="storage-section">
-                    <div class="text-lg font-medium">Storage Persistence</div>
-                    <div class="text-sm text-neutral-400">
-                        "Protect your wallet data from being automatically cleared by your browser when storage space is low."
-                    </div>
+                    <Show when=move || storage_persisted.get().is_some()>
+                        <div class="text-lg font-medium">Storage Persistence</div>
+                        <div class="text-sm text-neutral-400">
+                            "Protect your wallet data from being automatically cleared by your browser when storage space is low."
+                        </div>
 
-                    <div class="p-3 rounded-lg bg-neutral-900 border border-neutral-700">
-                        <div class="flex flex-col gap-2 text-sm">
-                            <div class="flex justify-between">
-                                <span class="text-neutral-400">
-                                    "Usage (by entire browser, not just this wallet):"
-                                </span>
-                                <span class="text-white">
-                                    {move || {
-                                        if let Some(usage) = storage_usage.get() {
-                                            format_bytes(usage)
-                                        } else {
-                                            "Loading...".to_string()
-                                        }
-                                    }}
-                                </span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-neutral-400">"Available (for the wallet):"</span>
-                                <span class="text-white">
-                                    {move || {
-                                        if let Some(quota) = storage_quota.get() {
-                                            format_bytes(quota)
-                                        } else {
-                                            "Loading...".to_string()
-                                        }
-                                    }}
-                                </span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-neutral-400">
-                                    "Safe from browser auto-clearing when running low on disk:"
-                                </span>
-                                <div class="flex items-center gap-2">
-                                    <Show when=move || storage_persisted.get() == Some(true)>
-                                        <Icon
-                                            icon=icondata::LuCheck
-                                            width="16"
-                                            height="16"
-                                            attr:class="text-green-400"
-                                        />
-                                        <span class="text-green-400 text-sm">"yes"</span>
-                                    </Show>
-                                    <Show when=move || storage_persisted.get() == Some(false)>
-                                        <Icon
-                                            icon=icondata::LuX
-                                            width="16"
-                                            height="16"
-                                            attr:class="text-red-400"
-                                        />
-                                        <span class="text-red-400 text-sm">"no"</span>
+                        <div class="p-3 rounded-lg bg-neutral-900 border border-neutral-700">
+                            <div class="flex flex-col gap-2 text-sm">
+                                <div class="flex justify-between">
+                                    <span class="text-neutral-400">
+                                        "Usage (by entire browser, not just this wallet):"
+                                    </span>
+                                    <span class="text-white">
                                         {move || {
-                                            if requesting_persistence.get() {
-                                                view! {
-                                                    <button
-                                                        class="ml-2 px-3 py-1 rounded-md bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-xs w-25"
-                                                        disabled
-                                                    >
-                                                        <div class="flex items-center justify-center gap-1 p-1">
-                                                            <Icon icon=icondata::LuDatabase width="12" height="12" />
-                                                            <span>"Approve"</span>
-                                                        </div>
-                                                    </button>
-                                                }
-                                                    .into_any()
+                                            if let Some(usage) = storage_usage.get() {
+                                                format_bytes(usage)
                                             } else {
-                                                view! {
-                                                    <button
-                                                        class="ml-2 px-3 py-1 rounded-md bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-xs w-25
-                                                        "
-                                                        on:click=move |_| request_storage_persistence()
-                                                    >
-                                                        <div class="flex items-center justify-center gap-1 p-1">
-                                                            <Icon icon=icondata::LuDatabase width="12" height="12" />
-                                                            <span>"Enable"</span>
-                                                        </div>
-                                                    </button>
-                                                }
-                                                    .into_any()
+                                                "Loading...".to_string()
                                             }
                                         }}
-                                    </Show>
-                                    <Show when=move || storage_persisted.get().is_none()>
-                                        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-neutral-500"></div>
-                                        <span class="text-neutral-400 text-sm">"checking..."</span>
-                                    </Show>
+                                    </span>
                                 </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <Show when=move || {
-                        persistence_denied.get() && storage_persisted.get() == Some(false)
-                            && is_chrome_or_safari()
-                    }>
-                        <div class="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-300">
-                            <div class="flex items-start gap-3">
-                                <Icon
-                                    icon=icondata::LuInfo
-                                    width="20"
-                                    height="20"
-                                    attr:class="text-yellow-400 mt-0.5 flex-shrink-0"
-                                />
-                                <div class="flex-1">
-                                    <h4 class="font-medium text-yellow-200 mb-2">
-                                        "Storage Persistence Request Denied"
-                                    </h4>
-                                    <div class="text-sm space-y-3">
-                                        <p>
-                                            "Your browser denied the storage persistence request. This means your wallet data could be cleared when storage space is low."
-                                        </p>
-
-                                        <div class="space-y-2">
-                                            <p class="font-medium text-yellow-200">
-                                                "To enable storage persistence:"
-                                            </p>
-                                            <ul class="list-disc list-inside space-y-1 text-xs">
-                                                <li>
-                                                    "Add this site to your bookmarks (you can remove it later after clicking the button)"
-                                                </li>
-                                                <li>
-                                                    "Install this wallet as a PWA (Progressive Web App) by clicking the install button in the address bar on PC, or by adding it to your home screen on mobile"
-                                                </li>
-                                            </ul>
-                                        </div>
+                                <div class="flex justify-between">
+                                    <span class="text-neutral-400">
+                                        "Available (for the wallet):"
+                                    </span>
+                                    <span class="text-white">
+                                        {move || {
+                                            if let Some(quota) = storage_quota.get() {
+                                                format_bytes(quota)
+                                            } else {
+                                                "Loading...".to_string()
+                                            }
+                                        }}
+                                    </span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-neutral-400">
+                                        "Safe from browser auto-clearing when running low on disk:"
+                                    </span>
+                                    <div class="flex items-center gap-2">
+                                        <Show when=move || storage_persisted.get() == Some(true)>
+                                            <Icon
+                                                icon=icondata::LuCheck
+                                                width="16"
+                                                height="16"
+                                                attr:class="text-green-400"
+                                            />
+                                            <span class="text-green-400 text-sm">"yes"</span>
+                                        </Show>
+                                        <Show when=move || storage_persisted.get() == Some(false)>
+                                            <Icon
+                                                icon=icondata::LuX
+                                                width="16"
+                                                height="16"
+                                                attr:class="text-red-400"
+                                            />
+                                            <span class="text-red-400 text-sm">"no"</span>
+                                            {move || {
+                                                if requesting_persistence.get() {
+                                                    view! {
+                                                        <button
+                                                            class="ml-2 px-3 py-1 rounded-md bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-xs w-25"
+                                                            disabled
+                                                        >
+                                                            <div class="flex items-center justify-center gap-1 p-1">
+                                                                <Icon icon=icondata::LuDatabase width="12" height="12" />
+                                                                <span>"Approve"</span>
+                                                            </div>
+                                                        </button>
+                                                    }
+                                                        .into_any()
+                                                } else {
+                                                    view! {
+                                                        <button
+                                                            class="ml-2 px-3 py-1 rounded-md bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-xs w-25
+                                                            "
+                                                            on:click=move |_| request_storage_persistence()
+                                                        >
+                                                            <div class="flex items-center justify-center gap-1 p-1">
+                                                                <Icon icon=icondata::LuDatabase width="12" height="12" />
+                                                                <span>"Enable"</span>
+                                                            </div>
+                                                        </button>
+                                                    }
+                                                        .into_any()
+                                                }
+                                            }}
+                                        </Show>
+                                        <Show when=move || storage_persisted.get().is_none()>
+                                            <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-neutral-500"></div>
+                                            <span class="text-neutral-400 text-sm">"checking..."</span>
+                                        </Show>
                                     </div>
                                 </div>
                             </div>
                         </div>
+
+                        <Show when=move || {
+                            persistence_denied.get() && storage_persisted.get() == Some(false)
+                                && is_chrome_or_safari()
+                        }>
+                            <div class="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-300">
+                                <div class="flex items-start gap-3">
+                                    <Icon
+                                        icon=icondata::LuInfo
+                                        width="20"
+                                        height="20"
+                                        attr:class="text-yellow-400 mt-0.5 flex-shrink-0"
+                                    />
+                                    <div class="flex-1">
+                                        <h4 class="font-medium text-yellow-200 mb-2">
+                                            "Storage Persistence Request Denied"
+                                        </h4>
+                                        <div class="text-sm space-y-3">
+                                            <p>
+                                                "Your browser denied the storage persistence request. This means your wallet data could be cleared when storage space is low."
+                                            </p>
+
+                                            <div class="space-y-2">
+                                                <p class="font-medium text-yellow-200">
+                                                    "To enable storage persistence:"
+                                                </p>
+                                                <ul class="list-disc list-inside space-y-1 text-xs">
+                                                    <li>
+                                                        "Add this site to your bookmarks (you can remove it later after clicking the button)"
+                                                    </li>
+                                                    <li>
+                                                        "Install this wallet as a PWA (Progressive Web App) by clicking the install button in the address bar on PC, or by adding it to your home screen on mobile"
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </Show>
                     </Show>
 
                     <div class="space-y-3 flex flex-col items-center text-center">

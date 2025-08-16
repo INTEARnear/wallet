@@ -2,9 +2,9 @@ use leptos::prelude::*;
 use near_min_api::types::AccountId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use web_sys::window;
+use wasm_bindgen::prelude::wasm_bindgen;
 
-use crate::pages::Slippage;
+use crate::{pages::Slippage, utils::is_tauri};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub enum TimestampFormat {
@@ -141,6 +141,12 @@ pub struct WalletConfig {
     pub background_group: BackgroundGroup,
     #[serde(default)]
     pub autoconfirm_preference_by_origin: HashMap<String, bool>,
+    #[serde(default = "default_true")]
+    pub hide_to_tray: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -166,12 +172,9 @@ impl Default for WalletConfig {
             hidden_nfts: vec![],
             background_group: BackgroundGroup::default(),
             autoconfirm_preference_by_origin: HashMap::new(),
+            hide_to_tray: false,
         }
     }
-}
-
-fn default_true() -> bool {
-    true
 }
 
 #[derive(Clone, Copy)]
@@ -183,7 +186,7 @@ pub struct ConfigContext {
 const CONFIG_KEY: &str = "wallet_config";
 
 fn get_local_storage() -> Option<web_sys::Storage> {
-    window().and_then(|w| w.local_storage().ok()).flatten()
+    window().local_storage().ok().flatten()
 }
 
 fn load_config() -> WalletConfig {
@@ -202,12 +205,30 @@ fn save_config(config: &WalletConfig) {
     }
 }
 
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = ["__TAURI__", "core"])]
+    pub fn invoke(cmd: &str, args: &wasm_bindgen::JsValue) -> web_sys::js_sys::Promise;
+}
+
+fn emit_config_change_event(config: &WalletConfig) {
+    if let Ok(js_value) = serde_wasm_bindgen::to_value(config) {
+        let wrapped_js_value = web_sys::js_sys::Object::new();
+        let _ = web_sys::js_sys::Reflect::set(&wrapped_js_value, &"newConfig".into(), &js_value);
+        let _ = invoke("update_config", &wrapped_js_value);
+    }
+}
+
 pub fn provide_config_context() {
     let (config, set_config) = signal(load_config());
 
     // Save to localStorage whenever config changes
     Effect::new(move |_| {
-        save_config(&config.get());
+        let current_config = config.get();
+        save_config(&current_config);
+        if is_tauri() {
+            emit_config_change_event(&current_config);
+        }
     });
 
     provide_context(ConfigContext { config, set_config });
