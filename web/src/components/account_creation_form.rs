@@ -17,6 +17,7 @@ use web_sys::KeyboardEvent;
 
 use crate::components::account_selector::{mnemonic_to_key, ModalState};
 use crate::components::derivation_path_input::DerivationPathInput;
+use crate::components::{Select, SelectOption};
 use crate::contexts::accounts_context::{
     format_ledger_error, Account, AccountsContext, SecretKeyHolder,
 };
@@ -533,58 +534,40 @@ pub fn AccountCreationForm(
                                     on:keydown=handle_keydown
                                     disabled=move || is_creating.get()
                                 />
-                                <select
-                                    class="absolute top-1/2 right-2 -translate-y-1/2 bg-transparent text-neutral-500 font-medium cursor-pointer focus:outline-none text-base max-w-40 text-right truncate border-r-8 border-transparent"
-                                    on:change=move |ev| {
-                                        let value = event_target_value(&ev);
-                                        let parent_val = match value.as_str() {
-                                            "near" => Parent::Mainnet,
-                                            "testnet" => Parent::Testnet,
-                                            other => Parent::SubAccount(other.parse().unwrap()),
-                                        };
-                                        set_parent.set(parent_val);
-                                        check_account(account_name.get_untracked().clone());
-                                    }
-                                >
-                                    <option
-                                        value="near"
-                                        selected=move || matches!(parent.get(), Parent::Mainnet)
-                                    >
-                                        ".near"
-                                    </option>
-                                    <option
-                                        value="testnet"
-                                        selected=move || matches!(parent.get(), Parent::Testnet)
-                                    >
-                                        ".testnet"
-                                    </option>
-                                    {move || {
-                                        accounts_context
-                                            .accounts
-                                            .get()
-                                            .accounts
-                                            .iter()
-                                            .map(|account| {
+                                <div class="absolute top-1/2 right-2 -translate-y-1/2 max-w-40 z-10">
+                                    <Select
+                                        options=move || {
+                                            let mut options = vec![
+                                                SelectOption::new("near".to_string(), ".near".to_string()),
+                                                SelectOption::new(
+                                                    "testnet".to_string(),
+                                                    ".testnet".to_string(),
+                                                ),
+                                            ];
+                                            for account in accounts_context
+                                                .accounts
+                                                .get_untracked()
+                                                .accounts
+                                                .iter()
+                                            {
                                                 let id = account.account_id.to_string();
-                                                view! {
-                                                    <option
-                                                        value=id.clone()
-                                                        selected=move || {
-                                                            matches!(
-                                                                parent.get(),
-                                                                Parent::SubAccount(ref x)
-                                                                if x == &id
-                                                            )
-                                                        }
-                                                        class="truncate"
-                                                    >
-                                                        {format!(".{id}")}
-                                                    </option>
-                                                }
-                                            })
-                                            .collect::<Vec<_>>()
-                                    }}
-                                </select>
+                                                options
+                                                    .push(SelectOption::new(id.clone(), format!(".{id}")));
+                                            }
+                                            options
+                                        }
+                                        on_change=move |value: String| {
+                                            let parent_val = match value.as_str() {
+                                                "near" => Parent::Mainnet,
+                                                "testnet" => Parent::Testnet,
+                                                other => Parent::SubAccount(other.parse().unwrap()),
+                                            };
+                                            set_parent.set(parent_val);
+                                            check_account(account_name.get_untracked().clone());
+                                        }
+                                        class="text-right min-w-25"
+                                    />
+                                </div>
                             </div>
                             {move || {
                                 if let Some(err) = error.get() {

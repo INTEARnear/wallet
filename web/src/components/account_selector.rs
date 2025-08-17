@@ -320,7 +320,7 @@ pub fn AccountSelector(
                                             class="w-full h-16 aspect-square rounded-lg transition-colors flex flex-col items-center justify-center gap-1 text-neutral-400 group"
                                             on:click=move |_| set_is_expanded(false)
                                         >
-                                            <div class="w-10 h-10 rounded-full flex items-center justify-center group-hover:bg-neutral-300">
+                                            <div class="w-10 h-10 rounded-full flex items-center justify-center group-hover:bg-neutral-300 mr-7 mb-1">
                                                 <div class="group-hover:text-black">
                                                     <Icon icon=icondata::LuArrowLeft width="20px" height="20" />
                                                 </div>

@@ -17,13 +17,8 @@ struct AppState {
 
 #[tauri::command]
 fn update_config(new_config: WalletConfig, state: tauri::State<AppState>) -> Result<(), String> {
-    let hide_to_tray = new_config.hide_to_tray;
     if let Ok(mut config_guard) = state.config.lock() {
         *config_guard = new_config;
-        log::info!(
-            "Config updated from webview: hide_to_tray = {}",
-            hide_to_tray
-        );
     }
     Ok(())
 }

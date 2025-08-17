@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::{
-    components::{account_selector::mnemonic_to_key, DangerConfirmInput},
+    components::{account_selector::mnemonic_to_key, DangerConfirmInput, Select, SelectOption},
     contexts::{
         accounts_context::{
             AccountsContext, PasswordAction, SecretKeyHolder, ENCRYPTION_MEMORY_COST_KB,
@@ -649,36 +649,28 @@ pub fn SecuritySettings() -> impl IntoView {
                         <Show when=move || accounts_context.is_encrypted.get()>
                             <div class="flex flex-col gap-3">
                                 <div class="text-lg font-medium">Remember Password</div>
-                                <select
-                                    class="w-full p-3 rounded-lg bg-neutral-800 border border-neutral-700 focus:border-blue-500 focus:outline-none"
-                                    on:change=move |ev| {
-                                        let value = event_target_value(&ev);
+                                <Select
+                                    options=move || {
+                                        PasswordRememberDuration::all_variants()
+                                            .iter()
+                                            .map(|variant| {
+                                                SelectOption::new(
+                                                    variant.option_value().to_string(),
+                                                    variant.display_name().to_string(),
+                                                )
+                                            })
+                                            .collect()
+                                    }
+                                    on_change=move |value: String| {
                                         let duration = PasswordRememberDuration::from_option_value(
                                             &value,
                                         );
                                         set_config
                                             .update(|c| c.password_remember_duration = duration);
                                     }
-                                >
-                                    {PasswordRememberDuration::all_variants()
-                                        .iter()
-                                        .map(|variant| {
-                                            let option_value = variant.option_value();
-                                            let display_name = variant.display_name();
-                                            let is_selected = *variant;
-                                            view! {
-                                                <option
-                                                    value=option_value
-                                                    selected=move || {
-                                                        config.get().password_remember_duration == is_selected
-                                                    }
-                                                >
-                                                    {display_name}
-                                                </option>
-                                            }
-                                        })
-                                        .collect::<Vec<_>>()}
-                                </select>
+                                    class="w-full border rounded-lg border-neutral-700 bg-neutral-900"
+                                    initial_value=config.get_untracked().password_remember_duration.option_value().to_string()
+                                />
                             </div>
                         </Show>
 
