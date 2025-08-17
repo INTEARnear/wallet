@@ -8,6 +8,7 @@ use std::time::Duration;
 use aes_gcm::aead::{rand_core::RngCore, Aead, OsRng};
 use aes_gcm::{Aes256Gcm, Key, KeyInit, Nonce};
 use argon2::{Argon2, ParamsBuilder};
+use base64::prelude::BASE64_STANDARD;
 use base64::{engine::general_purpose, Engine as _};
 use chrono::{DateTime, Utc};
 use futures_timer::Delay;
@@ -24,11 +25,12 @@ use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::{closure::Closure, JsCast};
+use wasm_bindgen_futures::JsFuture;
 use web_sys::js_sys::Reflect;
 
 use crate::contexts::security_log_context::reencrypt_security_logs;
 use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
-use crate::utils::is_debug_enabled;
+use crate::utils::{is_debug_enabled, is_tauri, tauri_invoke_no_args};
 
 use super::{
     config_context::ConfigContext, network_context::Network, security_log_context::add_security_log,
@@ -353,6 +355,38 @@ async fn save_encrypted_accounts(cipher: Cipher, accounts: AccountsState) -> Res
         .encrypt(nonce, accounts_json.as_bytes())
         .map_err(|e| format!("Failed to encrypt data: {}", e))?;
 
+    let encrypted_data = if is_tauri() {
+        let (tx, rx) = futures_channel::oneshot::channel();
+        let nonce = *nonce;
+        spawn_local(async move {
+            let key_promise = tauri_invoke_no_args("get_os_encryption_key");
+            let key_future = JsFuture::from(key_promise);
+            let Ok(key_js) = key_future.await else {
+                tx.send(Err("Failed to get key".to_string())).unwrap();
+                return;
+            };
+            let Some(key_string) = key_js.as_string() else {
+                tx.send(Err("Key is not a string".to_string())).unwrap();
+                return;
+            };
+            let Ok(key_bytes) = BASE64_STANDARD.decode(&key_string) else {
+                tx.send(Err("Failed to decode key".to_string())).unwrap();
+                return;
+            };
+            let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
+            let cipher = Aes256Gcm::new(key);
+            let Ok(encrypted_data) = cipher.encrypt(&nonce, encrypted_data.as_ref()) else {
+                tx.send(Err("Failed to encrypt data using OS key".to_string()))
+                    .unwrap();
+                return;
+            };
+            tx.send(Ok(encrypted_data)).unwrap();
+        });
+        rx.await.unwrap()?
+    } else {
+        encrypted_data
+    };
+
     let encrypted_accounts = EncryptedAccountsData {
         encrypted_data: general_purpose::STANDARD.encode(&encrypted_data),
         salt: general_purpose::STANDARD.encode(cipher.salt),
@@ -406,6 +440,39 @@ async fn try_decrypt_accounts(
         .decode(&encrypted_accounts.encrypted_data)
         .map_err(|e| format!("Failed to decode encrypted data: {}", e))?;
 
+    let nonce = Nonce::from_slice(&nonce_bytes);
+    let encrypted_data = if is_tauri() {
+        let (tx, rx) = futures_channel::oneshot::channel();
+        let nonce = *nonce;
+        spawn_local(async move {
+            let key_promise = tauri_invoke_no_args("get_os_encryption_key");
+            let key_future = JsFuture::from(key_promise);
+            let Ok(key_js) = key_future.await else {
+                tx.send(Err("Failed to get key".to_string())).unwrap();
+                return;
+            };
+            let Some(key_string) = key_js.as_string() else {
+                tx.send(Err("Key is not a string".to_string())).unwrap();
+                return;
+            };
+            let Ok(key_bytes) = BASE64_STANDARD.decode(&key_string) else {
+                tx.send(Err("Failed to decode key".to_string())).unwrap();
+                return;
+            };
+            let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
+            let cipher = Aes256Gcm::new(key);
+            let Ok(decrypted_data) = cipher.decrypt(&nonce, encrypted_data.as_ref()) else {
+                tx.send(Err("Failed to decrypt data using OS key".to_string()))
+                    .unwrap();
+                return;
+            };
+            tx.send(Ok(decrypted_data)).unwrap();
+        });
+        rx.await.unwrap()?
+    } else {
+        encrypted_data
+    };
+
     let params = ParamsBuilder::new()
         .m_cost(ENCRYPTION_MEMORY_COST_KB)
         .t_cost(encrypted_accounts.rounds)
@@ -421,7 +488,6 @@ async fn try_decrypt_accounts(
 
     let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
     let cipher = Aes256Gcm::new(key);
-    let nonce = Nonce::from_slice(&nonce_bytes);
 
     let decrypted_data = cipher
         .decrypt(nonce, encrypted_data.as_ref())
@@ -569,7 +635,7 @@ async fn retrieve_cipher_from_service() -> Result<Option<Cipher>, String> {
     let nonce = Nonce::from_slice(nonce_bytes);
 
     let decrypted_data = aes_cipher
-        .decrypt(nonce, encrypted_data)
+        .decrypt(nonce, encrypted_data.as_ref())
         .map_err(|e| format!("Failed to decrypt cipher: {}", e))?;
 
     let encrypted_accounts =
@@ -622,9 +688,50 @@ pub fn provide_accounts_context() {
                             }
                         };
 
+                    let nonce = Nonce::from_slice(&nonce_bytes);
+                    let encrypted_data = if is_tauri() {
+                        let (tx, rx) = futures_channel::oneshot::channel();
+                        let nonce = *nonce;
+                        spawn_local(async move {
+                            let key_promise = tauri_invoke_no_args("get_os_encryption_key");
+                            let key_future = JsFuture::from(key_promise);
+                            let Ok(key_js) = key_future.await else {
+                                tx.send(Err("Failed to get key".to_string())).unwrap();
+                                return;
+                            };
+                            let Some(key_string) = key_js.as_string() else {
+                                tx.send(Err("Key is not a string".to_string())).unwrap();
+                                return;
+                            };
+                            let Ok(key_bytes) = BASE64_STANDARD.decode(&key_string) else {
+                                tx.send(Err("Failed to decode key".to_string())).unwrap();
+                                return;
+                            };
+                            let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
+                            let cipher = Aes256Gcm::new(key);
+                            let Ok(decrypted_data) =
+                                cipher.decrypt(&nonce, encrypted_data.as_ref())
+                            else {
+                                tx.send(Err("Failed to decrypt data using OS key".to_string()))
+                                    .unwrap();
+                                return;
+                            };
+                            tx.send(Ok(decrypted_data)).unwrap();
+                        });
+                        match rx.await.unwrap() {
+                            Ok(decrypted_data) => decrypted_data,
+                            Err(e) => {
+                                log::error!("Failed to decrypt data using OS key: {}", e);
+                                return;
+                            }
+                        }
+                    } else {
+                        encrypted_data
+                    };
+
                     if let Ok(decrypted_data) = retrieved_cipher
                         .cipher
-                        .decrypt(Nonce::from_slice(&nonce_bytes), encrypted_data.as_ref())
+                        .decrypt(nonce, encrypted_data.as_ref())
                     {
                         if let Ok(accounts_json) = String::from_utf8(decrypted_data) {
                             if let Ok(decrypted_accounts) =

@@ -16,7 +16,11 @@ use near_min_api::{
 };
 use serde::Deserialize;
 use std::{fmt::Display, ops::Deref, time::Duration};
-use web_sys::{js_sys::Reflect, MouseEvent};
+use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
+use web_sys::{
+    js_sys::{Promise, Reflect},
+    MouseEvent,
+};
 
 use crate::contexts::{
     accounts_context::{AccountsContext, SecretKeyHolder, UserCancelledSigning},
@@ -982,4 +986,12 @@ pub fn is_tauri() -> bool {
         return !tauri_value.is_undefined();
     }
     false
+}
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = ["__TAURI__", "core"], js_name = "invoke")]
+    pub fn tauri_invoke(cmd: &str, args: &JsValue) -> Promise;
+    #[wasm_bindgen(js_namespace = ["__TAURI__", "core"], js_name = "invoke")]
+    pub fn tauri_invoke_no_args(cmd: &str) -> Promise;
 }

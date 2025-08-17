@@ -16,7 +16,7 @@
         "title": "Intear Wallet",
         "width": 420,
         "height": 880,
-        "resizable": false,
+        "resizable": true,
         "fullscreen": false
       }
     ],

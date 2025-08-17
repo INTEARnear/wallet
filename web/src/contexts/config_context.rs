@@ -2,9 +2,11 @@ use leptos::prelude::*;
 use near_min_api::types::AccountId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use wasm_bindgen::prelude::wasm_bindgen;
 
-use crate::{pages::Slippage, utils::is_tauri};
+use crate::{
+    pages::Slippage,
+    utils::{is_tauri, tauri_invoke},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub enum TimestampFormat {
@@ -205,17 +207,11 @@ fn save_config(config: &WalletConfig) {
     }
 }
 
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = ["__TAURI__", "core"])]
-    pub fn invoke(cmd: &str, args: &wasm_bindgen::JsValue) -> web_sys::js_sys::Promise;
-}
-
 fn emit_config_change_event(config: &WalletConfig) {
     if let Ok(js_value) = serde_wasm_bindgen::to_value(config) {
         let wrapped_js_value = web_sys::js_sys::Object::new();
         let _ = web_sys::js_sys::Reflect::set(&wrapped_js_value, &"newConfig".into(), &js_value);
-        let _ = invoke("update_config", &wrapped_js_value);
+        let _ = tauri_invoke("update_config", &wrapped_js_value);
     }
 }
 

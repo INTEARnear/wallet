@@ -1,3 +1,6 @@
+use base64::{Engine, prelude::BASE64_STANDARD};
+use keyring::Entry;
+use rand::{RngCore, rngs::OsRng};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::{
@@ -5,6 +8,48 @@ use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
+
+const SERVICE_NAME: &str = "intearwallet";
+const ENTRY_NAME: &str = "accounts";
+
+#[tauri::command]
+async fn get_os_encryption_key() -> Result<String, String> {
+    let entry = Entry::new(SERVICE_NAME, ENTRY_NAME)
+        .map_err(|e| format!("Failed to create keyring entry: {}", e))?;
+
+    match entry.get_password() {
+        Ok(key) => {
+            let key_bytes = BASE64_STANDARD
+                .decode(&key)
+                .map_err(|e| format!("Failed to decode key: {}", e))?;
+            if key_bytes.len() == 32 {
+                Ok(key)
+            } else {
+                panic!("Invalid key length: {}", key_bytes.len());
+            }
+        }
+        Err(keyring::Error::NoEntry) => {
+            log::info!("No entry found, generating new key");
+            generate_and_store_os_key(&entry)
+        }
+        Err(e) => {
+            log::warn!("Failed to get OS key: {e:?}");
+            Err(format!("Failed to get OS key: {e:?}"))
+        }
+    }
+}
+
+fn generate_and_store_os_key(entry: &Entry) -> Result<String, String> {
+    let mut new_key = [0u8; 32];
+    OsRng.fill_bytes(&mut new_key);
+
+    let key_string = BASE64_STANDARD.encode(new_key);
+    entry
+        .set_password(&key_string)
+        .map_err(|e| format!("Failed to store OS key: {}", e))?;
+
+    Ok(key_string)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WalletConfig {
@@ -29,6 +74,7 @@ pub fn run() {
         // Wayland + nvidia fix
         std::env::set_var("__GL_THREADED_OPTIMIZATIONS", "0");
         std::env::set_var("__NV_DISABLE_EXPLICIT_SYNC", "1");
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
     tauri::Builder::default()
         .manage(AppState {
@@ -36,7 +82,10 @@ pub fn run() {
                 hide_to_tray: false,
             }),
         })
-        .invoke_handler(tauri::generate_handler![update_config,])
+        .invoke_handler(tauri::generate_handler![
+            update_config,
+            get_os_encryption_key
+        ])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(

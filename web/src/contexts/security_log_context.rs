@@ -1,7 +1,8 @@
 use aes_gcm::{
     aead::{rand_core::RngCore, Aead, OsRng},
-    Nonce,
+    Aes256Gcm, Key, KeyInit, Nonce,
 };
+use base64::prelude::BASE64_STANDARD;
 use base64::{engine::general_purpose, Engine as _};
 use chrono::{DateTime, Utc};
 use deli::{CursorDirection, Database, Model};
@@ -10,8 +11,10 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use near_min_api::types::AccountId;
 use serde::{Deserialize, Serialize};
+use wasm_bindgen_futures::JsFuture;
 
 use crate::contexts::accounts_context::{AccountsContext, Cipher};
+use crate::utils::{is_tauri, tauri_invoke_no_args};
 
 const DB_NAME: &str = "smile_wallet_security";
 
@@ -28,7 +31,7 @@ pub struct SecurityLog {
 }
 
 impl SecurityLog {
-    pub fn get_decrypted_message(&self, cipher: Option<&Cipher>) -> String {
+    pub async fn get_decrypted_message(&self, cipher: Option<&Cipher>) -> String {
         let Some(nonce_str) = &self.nonce else {
             // No nonce means the message is not encrypted
             return self.message.clone();
@@ -38,9 +41,9 @@ impl SecurityLog {
             return "[ENCRYPTED - Unlock wallet to view]".to_string();
         };
 
-        match decrypt_message(&self.message, nonce_str, cipher) {
+        match decrypt_message(&self.message, nonce_str, cipher).await {
             Ok(decrypted) => decrypted,
-            Err(_) => "[ENCRYPTED - Failed to decrypt]".to_string(),
+            Err(err) => format!("[ENCRYPTED - Failed to decrypt: {}]", err),
         }
     }
 
@@ -49,7 +52,7 @@ impl SecurityLog {
     }
 }
 
-fn encrypt_message(message: &str, cipher: &Cipher) -> Result<(String, String), String> {
+async fn encrypt_message(message: &str, cipher: &Cipher) -> Result<(String, String), String> {
     let mut nonce_bytes = [0u8; 12];
     OsRng.fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
@@ -59,13 +62,45 @@ fn encrypt_message(message: &str, cipher: &Cipher) -> Result<(String, String), S
         .encrypt(nonce, message.as_bytes())
         .map_err(|e| format!("Failed to encrypt message: {}", e))?;
 
+    let encrypted_data = if is_tauri() {
+        let (tx, rx) = futures_channel::oneshot::channel();
+        let nonce = *nonce;
+        spawn_local(async move {
+            let key_promise = tauri_invoke_no_args("get_os_encryption_key");
+            let key_future = JsFuture::from(key_promise);
+            let Ok(key_js) = key_future.await else {
+                tx.send(Err("Failed to get key".to_string())).unwrap();
+                return;
+            };
+            let Some(key_string) = key_js.as_string() else {
+                tx.send(Err("Key is not a string".to_string())).unwrap();
+                return;
+            };
+            let Ok(key_bytes) = BASE64_STANDARD.decode(&key_string) else {
+                tx.send(Err("Failed to decode key".to_string())).unwrap();
+                return;
+            };
+            let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
+            let cipher = Aes256Gcm::new(key);
+            let Ok(encrypted_data) = cipher.encrypt(&nonce, encrypted_data.as_ref()) else {
+                tx.send(Err("Failed to encrypt data using OS key".to_string()))
+                    .unwrap();
+                return;
+            };
+            tx.send(Ok(encrypted_data)).unwrap();
+        });
+        rx.await.unwrap()?
+    } else {
+        encrypted_data
+    };
+
     let encrypted_base64 = general_purpose::STANDARD.encode(&encrypted_data);
     let nonce_base64 = general_purpose::STANDARD.encode(nonce_bytes);
 
     Ok((encrypted_base64, nonce_base64))
 }
 
-fn decrypt_message(
+async fn decrypt_message(
     encrypted_message: &str,
     nonce_str: &str,
     cipher: &Cipher,
@@ -79,6 +114,28 @@ fn decrypt_message(
         .map_err(|e| format!("Failed to decode nonce: {}", e))?;
 
     let nonce = Nonce::from_slice(&nonce_bytes);
+
+    let encrypted_data = if is_tauri() {
+        let key_promise = tauri_invoke_no_args("get_os_encryption_key");
+        let key_future = JsFuture::from(key_promise);
+        let Ok(key_js) = key_future.await else {
+            return Err("Failed to get OS key".to_string());
+        };
+        let Some(key_string) = key_js.as_string() else {
+            return Err("OS key is not a string".to_string());
+        };
+        let Ok(key_bytes) = BASE64_STANDARD.decode(&key_string) else {
+            return Err("Failed to decode OS key".to_string());
+        };
+        let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
+        let os_cipher = Aes256Gcm::new(key);
+        let Ok(decrypted_data) = os_cipher.decrypt(nonce, encrypted_data.as_ref()) else {
+            return Err("Failed to decrypt data using OS key".to_string());
+        };
+        decrypted_data
+    } else {
+        encrypted_data
+    };
 
     let decrypted_data = cipher
         .cipher
@@ -112,7 +169,7 @@ async fn add_log_entry(
     cipher: Option<Cipher>,
 ) -> Result<u32, deli::Error> {
     let (final_message, nonce) = if let Some(cipher) = &cipher {
-        match encrypt_message(&message, cipher) {
+        match encrypt_message(&message, cipher).await {
             Ok((encrypted_message, nonce)) => (encrypted_message, Some(nonce)),
             Err(e) => {
                 log::error!("Failed to encrypt log message: {}", e);
@@ -239,7 +296,9 @@ pub async fn reencrypt_security_logs(
             let plaintext_opt: Option<String> = if log_entry.is_encrypted() {
                 match (&old_cipher, log_entry.nonce.as_ref()) {
                     (Some(cipher), Some(nonce_str)) => {
-                        decrypt_message(&log_entry.message, nonce_str, cipher).ok()
+                        decrypt_message(&log_entry.message, nonce_str, cipher)
+                            .await
+                            .ok()
                     }
                     _ => None, // Cannot decrypt, leave as is and continue
                 }
@@ -248,7 +307,7 @@ pub async fn reencrypt_security_logs(
             };
 
             if let Some(plaintext) = plaintext_opt {
-                if let Ok((enc_msg, new_nonce)) = encrypt_message(&plaintext, &new_cipher) {
+                if let Ok((enc_msg, new_nonce)) = encrypt_message(&plaintext, &new_cipher).await {
                     log_entry.message = enc_msg;
                     log_entry.nonce = Some(new_nonce);
                     if let Err(e) = store.update(&log_entry).await {

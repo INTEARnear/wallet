@@ -1,5 +1,6 @@
 use leptos::html::Div;
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use leptos_icons::*;
 use leptos_use::use_intersection_observer;
 use wasm_bindgen::JsValue;
@@ -105,8 +106,13 @@ fn LogEntry(log: SecurityLog) -> impl IntoView {
     let log_for_message = log.clone();
     let account_id = log.account.clone();
 
-    let message =
-        move || log_for_message.get_decrypted_message(accounts_context.cipher.get().as_ref());
+    let (message, set_message) = signal("[Loading...]".to_string());
+
+    spawn_local(async move {
+        let cipher = accounts_context.cipher.get_untracked();
+        let decrypted = log_for_message.get_decrypted_message(cipher.as_ref()).await;
+        set_message(decrypted);
+    });
 
     view! {
         <div class="p-4 rounded-lg bg-neutral-900">

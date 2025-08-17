@@ -16,3 +16,11 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.7.0", features = ["tray-icon"] }
 tauri-plugin-log = "2"
+keyring = { version = "3.6.3", features = [
+    "apple-native",
+    "windows-native",
+    "sync-secret-service",
+    "vendored",
+] }
+rand = "0.8"
+base64 = "0.22.1"
