@@ -21,6 +21,12 @@ jobs:
           toolchain: nightly
           components: rustfmt, clippy, rust-src
 
+      - name: Install build tools
+        run: cargo install patch-crate --debug --locked
+
+      - name: Apply patches
+        run: cargo patch-crate
+
       - name: Lint with clippy
         run: cargo clippy --all-targets -- -D warnings
 
