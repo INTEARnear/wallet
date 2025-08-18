@@ -8,14 +8,34 @@ on:
 
 jobs:
   build-tauri:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            bundle_paths: |
+              target/release/bundle/deb/Intear Wallet_0.1.0_amd64.deb
+              target/release/bundle/rpm/Intear Wallet-0.1.0-1.x86_64.rpm
+              target/release/bundle/appimage/Intear Wallet_0.1.0_amd64.AppImage
+          - os: windows-latest
+            platform: windows
+            bundle_paths: |
+              target/release/bundle/msi/Intear Wallet_0.1.0_x64_en-US.msi
+              target/release/bundle/nsis/Intear Wallet_0.1.0_x64-setup.exe
+          - os: macos-latest
+            platform: macos
+            bundle_paths: |
+              target/release/bundle/dmg/Intear Wallet_0.1.0_x64.dmg
+              target/release/bundle/app/Intear Wallet.app
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Create .env file
         run: cp .env.prod .env
 
-      - name: Setup mold
+      - name: Setup mold (Linux only)
+        if: matrix.platform == 'linux'
         uses: rui314/setup-mold@v1
 
       - name: Install Rust
@@ -24,7 +44,8 @@ jobs:
           toolchain: nightly
           components: rust-src
 
-      - name: Install Tauri system dependencies
+      - name: Install Tauri system dependencies (Linux only)
+        if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -33,6 +54,11 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             pkg-config build-essential
+
+      - name: Install Tauri system dependencies (macOS only)
+        if: matrix.platform == 'macos'
+        run: |
+          brew install pkg-config cairo pango libpng jpeg giflib librsvg
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -61,8 +87,6 @@ jobs:
       - name: Upload Tauri artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: tauri-app
+          name: tauri-app-${{ matrix.platform }}
           path: |
-            target/release/bundle/deb/Intear Wallet_0.1.0_amd64.deb
-            target/release/bundle/rpm/Intear Wallet-0.1.0-1.x86_64.rpm
-            target/release/bundle/appimage/Intear Wallet_0.1.0_amd64.AppImage
+            ${{ matrix.bundle_paths }}

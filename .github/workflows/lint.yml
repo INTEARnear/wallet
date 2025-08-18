@@ -12,6 +12,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Create .env file
+        run: cp .env.prod .env
+
       - name: Setup mold
         uses: rui314/setup-mold@v1
 
