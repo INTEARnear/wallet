@@ -5,95 +5,19 @@ on:
     branches: [ main ]
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    needs: [build-web]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create .env file
-        run: cp .env.prod .env
-
-      - name: Setup mold
-        uses: rui314/setup-mold@v1
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
+      - name: Download web build artifacts
+        uses: actions/download-artifact@v4
         with:
-          toolchain: nightly
-          components: rustfmt, clippy, rust-src
-      
-      - name: Install Tauri system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            pkg-config build-essential
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-
-      - name: Install build tools
-        run: cargo install patch-crate cargo-leptos --debug --locked
-
-      - name: Install npm dependencies
-        run: npm install
-
-      - name: Install Tailwind CLI
-        run: npm install -g @tailwindcss/cli@4.1.8
-
-      - name: Add WASM target
-        run: rustup target add wasm32-unknown-unknown
-
-      - name: Apply patches
-        run: cargo patch-crate
-
-      - name: Lint with clippy
-        run: cargo clippy --all-targets -- -D warnings
-
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-      - name: Build
-        run: npm run build
-
-      - name: Set PWA cache version
-        run: |
-          COMMIT_HASH=$(git rev-parse --short HEAD)
-          sed -i "s/{{{VERSION}}}/$COMMIT_HASH/g" dist/service_worker.js
-
-      - name: Set Posthog API key
-        # it's public
-        run: |
-          sed -i "s/{{{POSTHOG_API_KEY}}}/phc_GqwXPBXc21Vg3guG1pqkm51HGIVERCmloAI7PcxCRaC/g" dist/js/index.js
-
-      - name: Create _redirects file
-        run: echo "/*   /index.html   200" > dist/_redirects
-
-      - name: Create netlify.toml file
-        run: |
-          cat > dist/netlify.toml << 'EOL'
-          [[headers]]
-            for = "/*"
-            [headers.values]
-              Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
-              Access-Control-Allow-Origin = "*"
-              Access-Control-Allow-Methods = "GET"
-              Access-Control-Max-Age = "86400"
-
-          [[headers]]
-            for = "*.wasm"
-            [headers.values]
-              Cache-Control = "public, max-age=31536000, immutable"
-              Content-Type = "application/wasm"
-          EOL
+          name: web-build
+          path: ./dist
 
       - name: Deploy to staging branch
         uses: peaceiris/actions-gh-pages@v3
