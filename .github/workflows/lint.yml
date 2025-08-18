@@ -21,6 +21,16 @@ jobs:
           toolchain: nightly
           components: rustfmt, clippy, rust-src
 
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            pkg-config build-essential
+
       - name: Install build tools
         run: cargo install patch-crate --debug --locked
 
