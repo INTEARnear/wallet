@@ -25,8 +25,8 @@ jobs:
           - os: macos-latest
             platform: macos
             bundle_paths: |
-              target/release/bundle/dmg/Intear Wallet_0.1.0_x64.dmg
-              target/release/bundle/app/Intear Wallet.app
+              target/release/bundle/dmg/Intear Wallet_0.1.0_aarch64.dmg
+              target/release/bundle/macos/Intear Wallet.app
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -58,7 +58,7 @@ jobs:
       - name: Install Tauri system dependencies (macOS only)
         if: matrix.platform == 'macos'
         run: |
-          brew install pkg-config cairo pango libpng jpeg giflib librsvg
+          brew install pango jpeg librsvg
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
