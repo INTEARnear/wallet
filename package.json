@@ -26,7 +26,7 @@
   "scripts": {
     "js:build": "node build-js.js",
     "js:watch": "node build-js.js --watch",
-    "build": "npm run js:build && ONLY_CREATE_INDEX_HTML=1 cargo leptos serve --release",
+    "build": "npm run js:build && npx cross-env ONLY_CREATE_INDEX_HTML=1 cargo leptos serve --release",
     "dev": "npm run js:watch & cargo leptos watch",
     "dev-release": "npm run js:watch & cargo leptos watch --release"
   }
