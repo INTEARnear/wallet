@@ -1,9 +1,12 @@
 use std::{str::FromStr, time::Duration};
 
-use crate::components::account_selector::mnemonic_to_key;
+use crate::components::account_selector::{
+    mnemonic_to_key, AccountCreateParent, AccountCreateRecoveryMethod, ModalState,
+};
 use crate::components::derivation_path_input::DerivationPathInput;
 use crate::contexts::accounts_context::format_ledger_error;
 use crate::contexts::{
+    account_selector_context::AccountSelectorContext,
     accounts_context::{AccountsContext, SecretKeyHolder},
     network_context::{Network, NetworkContext},
     rpc_context::RpcContext,
@@ -256,6 +259,7 @@ pub fn AccountSettings() -> impl IntoView {
     let TransactionQueueContext {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
+    let account_selector_context = expect_context::<AccountSelectorContext>();
     let navigate = use_navigate();
 
     let (recovery_change_in_progress, set_recovery_change_in_progress) = signal(false);
@@ -1878,6 +1882,41 @@ pub fn AccountSettings() -> impl IntoView {
                     })
                     .unwrap_or_else(|| ().into_any())
             }}
+        </div>
+
+        // Create Subaccount section
+        <div class="flex flex-col gap-4 p-4">
+            <button
+                on:click=move |_| {
+                    let current_account_id = accounts_context
+                        .accounts
+                        .get()
+                        .selected_account_id
+                        .unwrap();
+                    let current_account = accounts_context
+                        .accounts
+                        .get()
+                        .accounts
+                        .into_iter()
+                        .find(|acc| acc.account_id == current_account_id)
+                        .unwrap();
+                    account_selector_context
+                        .set_modal_state
+                        .set(ModalState::Creating {
+                            parent: AccountCreateParent::SubAccount(
+                                current_account.network,
+                                current_account.account_id,
+                            ),
+                            recovery_method: AccountCreateRecoveryMethod::RecoveryPhrase,
+                        });
+                    log::info!("Creating subaccount");
+                    account_selector_context.set_expanded.set(true);
+                }
+                class="flex items-center justify-center gap-2 p-4 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 transition-colors font-medium cursor-pointer"
+            >
+                <Icon icon=icondata::LuPlus width="20" height="20" />
+                <span>"Create Subaccount"</span>
+            </button>
         </div>
 
         // Log Out section

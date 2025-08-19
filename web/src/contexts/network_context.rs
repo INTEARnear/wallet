@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use leptos::prelude::*;
 use near_min_api::RpcClient;
 use serde::{Deserialize, Serialize};
@@ -20,6 +22,17 @@ impl std::fmt::Display for Network {
         match self {
             Network::Mainnet => write!(f, "mainnet"),
             Network::Testnet => write!(f, "testnet"),
+        }
+    }
+}
+
+impl FromStr for Network {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "mainnet" => Ok(Network::Mainnet),
+            "testnet" => Ok(Network::Testnet),
+            _ => Err(format!("Invalid network: {}", s)),
         }
     }
 }

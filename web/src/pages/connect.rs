@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsCast;
 use web_sys::{js_sys::Date, Window};
 
-use crate::contexts::account_selector_swipe_context::AccountSelectorSwipeContext;
+use crate::contexts::account_selector_context::AccountSelectorContext;
 use crate::contexts::config_context::ConfigContext;
 use crate::contexts::{
     accounts_context::{AccountsContext, SecretKeyHolder},
@@ -106,8 +106,7 @@ pub fn Connect() -> impl IntoView {
     let (request_data, set_request_data) = signal::<Option<SignInRequest>>(None);
     let (origin, set_origin) = signal::<String>("*".to_string());
     let (add_function_call_key, set_add_function_call_key) = signal(false);
-    let AccountSelectorSwipeContext { set_state, .. } =
-        expect_context::<AccountSelectorSwipeContext>();
+    let AccountSelectorContext { set_expanded, .. } = expect_context::<AccountSelectorContext>();
     let accounts_context = expect_context::<AccountsContext>();
     let ConnectedAppsContext { apps, set_apps } = expect_context::<ConnectedAppsContext>();
     let TransactionQueueContext {
@@ -477,7 +476,7 @@ pub fn Connect() -> impl IntoView {
                                 </h2>
                                 <button
                                     class="cursor-pointer w-full px-6 py-4 bg-neutral-800/70 backdrop-blur-sm rounded-xl border border-neutral-700/50 hover:bg-neutral-700/70 transition-all duration-200 shadow-lg flex items-center justify-between gap-3"
-                                    on:click=move |_| set_state(true)
+                                    on:click=move |_| set_expanded(true)
                                 >
                                     <div class="flex items-center gap-3 flex-1 min-w-0">
                                         <div class="w-10 h-10 rounded-full bg-blue-600/20 flex items-center justify-center">

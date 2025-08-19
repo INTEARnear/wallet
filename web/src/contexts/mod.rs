@@ -1,4 +1,4 @@
-pub mod account_selector_swipe_context;
+pub mod account_selector_context;
 pub mod accounts_context;
 pub mod config_context;
 pub mod connected_apps_context;

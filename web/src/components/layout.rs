@@ -12,7 +12,7 @@ use std::time::Duration;
 use web_sys::TouchEvent;
 
 use crate::contexts::{
-    account_selector_swipe_context::AccountSelectorSwipeContext, config_context::BackgroundGroup,
+    account_selector_context::AccountSelectorContext, config_context::BackgroundGroup,
 };
 use crate::{
     components::wallet_header::WalletHeader,
@@ -74,12 +74,11 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
     let (initial_movement_direction, set_initial_movement_direction) =
         signal(Option::<MovementDirection>::None);
     let (is_left_edge_swipe, set_is_left_edge_swipe) = signal(false);
-    let AccountSelectorSwipeContext {
-        progress: _,
-        set_progress: set_account_selector_progress,
-        state: _,
-        set_state: set_account_selector_state,
-    } = expect_context::<AccountSelectorSwipeContext>();
+    let AccountSelectorContext {
+        set_swipe_progress: set_account_selector_progress,
+        set_expanded: set_account_selector_state,
+        ..
+    } = expect_context::<AccountSelectorContext>();
     let NetworkContext { network } = expect_context::<NetworkContext>();
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let config_context = expect_context::<ConfigContext>();
@@ -336,7 +335,10 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                     <div class="p-2 sm:p-4">
                         <WalletHeader />
                     </div>
-                    <div node_ref=scroll_container class="flex-1 overflow-y-auto overflow-x-hidden px-4 transition-all duration-100 *:min-h-full *:pb-4">
+                    <div
+                        node_ref=scroll_container
+                        class="flex-1 overflow-y-auto overflow-x-hidden px-4 transition-all duration-100 *:min-h-full *:pb-4"
+                    >
                         <div
                             class=move || {
                                 format!("{} *:min-h-full *:flex-1 flex flex-col", slide_direction())

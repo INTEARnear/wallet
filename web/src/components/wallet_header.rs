@@ -8,7 +8,10 @@ use web_sys::{window, Clipboard, HtmlInputElement};
 
 use crate::{
     components::account_selector::AccountSelector,
-    contexts::{accounts_context::AccountsContext, search_context::SearchContext},
+    contexts::{
+        account_selector_context::AccountSelectorContext, accounts_context::AccountsContext,
+        search_context::SearchContext,
+    },
     utils::format_account_id,
 };
 
@@ -18,10 +21,10 @@ pub fn WalletHeader() -> impl IntoView {
     let SearchContext { query, set_query } = expect_context::<SearchContext>();
     let selected_account = move || accounts_context.accounts.get().selected_account_id.clone();
     let (is_copied, set_is_copied) = signal(false);
-    let (is_expanded, set_is_expanded) = signal(false);
     let (is_search_expanded, set_is_search_expanded) = signal(false);
     let search_input_ref = NodeRef::<leptos::html::Input>::new();
     let location = use_location();
+    let AccountSelectorContext { set_expanded, .. } = expect_context::<AccountSelectorContext>();
 
     // Focus the input when search is expanded
     Effect::new(move || {
@@ -128,7 +131,7 @@ pub fn WalletHeader() -> impl IntoView {
                                     view! {
                                         <button
                                             class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors cursor-pointer min-w-11"
-                                            on:click=move |_| set_is_expanded(true)
+                                            on:click=move |_| set_expanded(true)
                                         >
                                             <Icon icon=icondata::LuUsers width="20" height="20" />
                                         </button>
@@ -192,6 +195,6 @@ pub fn WalletHeader() -> impl IntoView {
                 }
             }}
         </div>
-        <AccountSelector is_expanded=is_expanded set_is_expanded=set_is_expanded />
+        <AccountSelector />
     }
 }

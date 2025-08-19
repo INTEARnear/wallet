@@ -1,7 +1,7 @@
 #![feature(closure_track_caller, stmt_expr_attributes, mpmc_channel)]
 #![deny(clippy::float_arithmetic)]
 
-use contexts::account_selector_swipe_context::provide_account_selector_swipe_context;
+use contexts::account_selector_context::provide_account_selector_context;
 use contexts::accounts_context::provide_accounts_context;
 use contexts::config_context::provide_config_context;
 use contexts::connected_apps_context::provide_connected_apps_context;
@@ -121,7 +121,7 @@ pub fn App() -> impl IntoView {
     provide_rpc_context(); // depends on config for rpc configuration and network for default rpc
     provide_token_context(); // depends on rpc for fetching near balance
     provide_nft_cache_context(); // depends on accounts for resetting the cache when account changes
-    provide_account_selector_swipe_context(); // depends on accounts
+    provide_account_selector_context(); // depends on accounts
     provide_search_context();
     provide_connected_apps_context();
     provide_transaction_queue_context(); // depends on accounts

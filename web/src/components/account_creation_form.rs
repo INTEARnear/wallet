@@ -15,9 +15,12 @@ use near_min_api::{
 };
 use web_sys::KeyboardEvent;
 
-use crate::components::account_selector::{mnemonic_to_key, ModalState};
+use crate::components::account_selector::{
+    mnemonic_to_key, AccountCreateParent, AccountCreateRecoveryMethod, ModalState,
+};
 use crate::components::derivation_path_input::DerivationPathInput;
 use crate::components::{Select, SelectOption};
+use crate::contexts::account_selector_context::AccountSelectorContext;
 use crate::contexts::accounts_context::{
     format_ledger_error, Account, AccountsContext, SecretKeyHolder,
 };
@@ -29,55 +32,42 @@ use bs58;
 use leptos_use::{use_event_listener, use_window};
 use serde_wasm_bindgen;
 
-#[derive(Clone, Debug)]
-enum Parent {
-    Mainnet,
-    Testnet,
-    SubAccount(AccountId),
-}
-
-#[derive(Clone, Copy, PartialEq)]
-enum RecoveryMethod {
-    RecoveryPhrase,
-    EthereumWallet,
-    SolanaWallet,
-    Ledger,
-}
-
 struct AccountCreationDetails {
     subaccount_of: AccountId,
     account_to_sign_with: Option<Account>,
     network: Network,
 }
 
-impl Parent {
+impl AccountCreateParent {
     fn into_details(
         self,
         accounts_context: &AccountsContext,
     ) -> Result<AccountCreationDetails, String> {
         match self {
-            Parent::Mainnet => Ok(AccountCreationDetails {
+            AccountCreateParent::Mainnet => Ok(AccountCreationDetails {
                 subaccount_of: "near".parse().unwrap(),
                 account_to_sign_with: None,
                 network: Network::Mainnet,
             }),
-            Parent::Testnet => Ok(AccountCreationDetails {
+            AccountCreateParent::Testnet => Ok(AccountCreationDetails {
                 subaccount_of: "testnet".parse().unwrap(),
                 account_to_sign_with: None,
                 network: Network::Testnet,
             }),
-            Parent::SubAccount(subaccount_of) => {
-                if let Some(account) = accounts_context
-                    .accounts
-                    .get()
-                    .accounts
-                    .into_iter()
-                    .find(|account| account.account_id == subaccount_of)
+            AccountCreateParent::SubAccount(network, subaccount_of) => {
+                if let Some(account) =
+                    accounts_context
+                        .accounts
+                        .get()
+                        .accounts
+                        .into_iter()
+                        .find(|account| {
+                            account.account_id == subaccount_of && account.network == network
+                        })
                 {
-                    log::info!("Account creation details: {:?}", account);
                     Ok(AccountCreationDetails {
                         subaccount_of,
-                        network: account.network,
+                        network: network,
                         account_to_sign_with: Some(account),
                     })
                 } else {
@@ -89,11 +79,13 @@ impl Parent {
 }
 
 #[component]
-pub fn AccountCreationForm(
-    set_modal_state: WriteSignal<ModalState>,
-    show_back_button: bool,
-    set_is_expanded: WriteSignal<bool>,
-) -> impl IntoView {
+pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
+    let AccountSelectorContext {
+        set_modal_state,
+        set_expanded,
+        modal_state,
+        ..
+    } = expect_context::<AccountSelectorContext>();
     let accounts_context = expect_context::<AccountsContext>();
     let (account_name, set_account_name) = signal("".to_string());
     let (is_valid, set_is_valid) = signal(None);
@@ -101,8 +93,6 @@ pub fn AccountCreationForm(
     let (is_creating, set_is_creating) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
     let (is_hovered, set_is_hovered) = signal(false);
-    let (parent, set_parent) = signal(Parent::Mainnet);
-    let (recovery_method, set_recovery_method) = signal(RecoveryMethod::RecoveryPhrase);
     let TransactionQueueContext {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
@@ -123,6 +113,27 @@ pub fn AccountCreationForm(
         set_ledger_current_key_data.set(None);
     };
 
+    let parent = move || match modal_state.get() {
+        ModalState::Creating { parent, .. } => parent,
+        _ => unreachable!(),
+    };
+    let parent_untracked = move || match modal_state.get_untracked() {
+        ModalState::Creating { parent, .. } => parent,
+        _ => unreachable!(),
+    };
+    let recovery_method = move || match modal_state.get() {
+        ModalState::Creating {
+            recovery_method, ..
+        } => recovery_method,
+        _ => unreachable!(),
+    };
+    let recovery_method_untracked = move || match modal_state.get_untracked() {
+        ModalState::Creating {
+            recovery_method, ..
+        } => recovery_method,
+        _ => unreachable!(),
+    };
+
     let check_account = move |name: String| {
         set_error.set(None);
         if name.is_empty() {
@@ -135,7 +146,7 @@ pub fn AccountCreationForm(
             subaccount_of,
             network,
             ..
-        } = match parent.get_untracked().into_details(&accounts_context) {
+        } = match parent_untracked().into_details(&accounts_context) {
             Ok(details) => details,
             Err(e) => {
                 set_error.set(Some(e));
@@ -180,17 +191,17 @@ pub fn AccountCreationForm(
             return;
         };
 
-        let (secret_key, seed_phrase) = match recovery_method.get_untracked() {
-            RecoveryMethod::RecoveryPhrase
-            | RecoveryMethod::EthereumWallet
-            | RecoveryMethod::SolanaWallet => {
+        let (secret_key, seed_phrase) = match recovery_method_untracked() {
+            AccountCreateRecoveryMethod::RecoveryPhrase
+            | AccountCreateRecoveryMethod::EthereumWallet
+            | AccountCreateRecoveryMethod::SolanaWallet => {
                 let mnemonic = bip39::Mnemonic::generate(12).unwrap();
                 (
                     SecretKeyHolder::SecretKey(mnemonic_to_key(mnemonic.clone()).unwrap()),
                     Some(mnemonic.to_string()),
                 )
             }
-            RecoveryMethod::Ledger => {
+            AccountCreateRecoveryMethod::Ledger => {
                 let Some((path, public_key)) = ledger_current_key_data.get() else {
                     set_error.set(Some("Please get the Ledger public key first".to_string()));
                     return;
@@ -209,7 +220,7 @@ pub fn AccountCreationForm(
             account_to_sign_with,
             network,
             ..
-        } = match parent.get_untracked().into_details(&accounts_context) {
+        } = match parent_untracked().into_details(&accounts_context) {
             Ok(details) => details,
             Err(e) => {
                 log::error!("Couldn't extract data from parent: {e}");
@@ -356,7 +367,7 @@ pub fn AccountCreationForm(
                                 accounts.selected_account_id = Some(account_id);
                                 accounts_context.set_accounts.set(accounts);
                                 set_modal_state.set(ModalState::AccountList);
-                                set_is_expanded(false);
+                                set_expanded(false);
                                 break;
                             }
                             _ => {
@@ -551,19 +562,48 @@ pub fn AccountCreationForm(
                                                 .iter()
                                             {
                                                 let id = account.account_id.to_string();
+                                                let network = account.network.to_string();
                                                 options
-                                                    .push(SelectOption::new(id.clone(), format!(".{id}")));
+                                                    .push(
+                                                        SelectOption::new(
+                                                            format!("{network}:{id}"),
+                                                            format!(".{id}"),
+                                                        ),
+                                                    );
                                             }
                                             options
                                         }
                                         on_change=move |value: String| {
                                             let parent_val = match value.as_str() {
-                                                "near" => Parent::Mainnet,
-                                                "testnet" => Parent::Testnet,
-                                                other => Parent::SubAccount(other.parse().unwrap()),
+                                                "near" => AccountCreateParent::Mainnet,
+                                                "testnet" => AccountCreateParent::Testnet,
+                                                other => {
+                                                    if let Some((network, id)) = other.split_once(':') {
+                                                        AccountCreateParent::SubAccount(
+                                                            network.parse().unwrap(),
+                                                            id.parse().unwrap(),
+                                                        )
+                                                    } else {
+                                                        unreachable!()
+                                                    }
+                                                }
                                             };
-                                            set_parent.set(parent_val);
+                                            set_modal_state
+                                                .update(|state| {
+                                                    if let ModalState::Creating { parent, .. } = state {
+                                                        *parent = parent_val;
+                                                    } else {
+                                                        unreachable!()
+                                                    }
+                                                });
                                             check_account(account_name.get_untracked().clone());
+                                        }
+                                        initial_value=match parent() {
+                                            AccountCreateParent::Mainnet => "near".to_string(),
+                                            AccountCreateParent::Testnet => "testnet".to_string(),
+                                            AccountCreateParent::SubAccount(network, subaccount_of) => {
+                                                format!("{network}:{subaccount_of}")
+                                            }
                                         }
                                         class="text-right min-w-25"
                                     />
@@ -601,7 +641,7 @@ pub fn AccountCreationForm(
                             {move || {
                                 let is_testnet = if let Ok(
                                     AccountCreationDetails { network, .. },
-                                ) = parent.get().into_details(&accounts_context)
+                                ) = parent().into_details(&accounts_context)
                                 {
                                     network == Network::Testnet
                                 } else {
@@ -627,14 +667,23 @@ pub fn AccountCreationForm(
                                 <button
                                     class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
                                     style=move || {
-                                        if recovery_method.get() == RecoveryMethod::RecoveryPhrase {
+                                        if recovery_method()
+                                            == AccountCreateRecoveryMethod::RecoveryPhrase
+                                        {
                                             "border-color: rgb(96 165 250); background-color: rgb(59 130 246 / 0.1);"
                                         } else {
                                             "border-color: rgb(55 65 81); background-color: transparent;"
                                         }
                                     }
                                     on:click=move |_| {
-                                        set_recovery_method.set(RecoveryMethod::RecoveryPhrase);
+                                        set_modal_state
+                                            .update(|state| {
+                                                if let ModalState::Creating { recovery_method, .. } = state {
+                                                    *recovery_method = AccountCreateRecoveryMethod::RecoveryPhrase;
+                                                } else {
+                                                    unreachable!()
+                                                }
+                                            });
                                         set_error.set(None);
                                     }
                                 >
@@ -656,14 +705,23 @@ pub fn AccountCreationForm(
                                 <button
                                     class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
                                     style=move || {
-                                        if recovery_method.get() == RecoveryMethod::EthereumWallet {
+                                        if recovery_method()
+                                            == AccountCreateRecoveryMethod::EthereumWallet
+                                        {
                                             "border-color: rgb(129 140 248); background-color: rgb(99 102 241 / 0.1);"
                                         } else {
                                             "border-color: rgb(55 65 81); background-color: transparent;"
                                         }
                                     }
                                     on:click=move |_| {
-                                        set_recovery_method.set(RecoveryMethod::EthereumWallet);
+                                        set_modal_state
+                                            .update(|state| {
+                                                if let ModalState::Creating { recovery_method, .. } = state {
+                                                    *recovery_method = AccountCreateRecoveryMethod::EthereumWallet;
+                                                } else {
+                                                    unreachable!()
+                                                }
+                                            });
                                         set_error.set(None);
                                         web_sys::window()
                                             .unwrap()
@@ -689,14 +747,23 @@ pub fn AccountCreationForm(
                                 <button
                                     class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
                                     style=move || {
-                                        if recovery_method.get() == RecoveryMethod::SolanaWallet {
+                                        if recovery_method()
+                                            == AccountCreateRecoveryMethod::SolanaWallet
+                                        {
                                             "border-color: rgb(196 181 253); background-color: rgb(147 51 234 / 0.1);"
                                         } else {
                                             "border-color: rgb(55 65 81); background-color: transparent;"
                                         }
                                     }
                                     on:click=move |_| {
-                                        set_recovery_method.set(RecoveryMethod::SolanaWallet);
+                                        set_modal_state
+                                            .update(|state| {
+                                                if let ModalState::Creating { recovery_method, .. } = state {
+                                                    *recovery_method = AccountCreateRecoveryMethod::SolanaWallet;
+                                                } else {
+                                                    unreachable!()
+                                                }
+                                            });
                                         set_error.set(None);
                                         web_sys::window()
                                             .unwrap()
@@ -722,14 +789,22 @@ pub fn AccountCreationForm(
                                 <button
                                     class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
                                     style=move || {
-                                        if recovery_method.get() == RecoveryMethod::Ledger {
+                                        if recovery_method() == AccountCreateRecoveryMethod::Ledger
+                                        {
                                             "border-color: rgb(196 181 253); background-color: rgb(147 51 234 / 0.1);"
                                         } else {
                                             "border-color: rgb(55 65 81); background-color: transparent;"
                                         }
                                     }
                                     on:click=move |_| {
-                                        set_recovery_method.set(RecoveryMethod::Ledger);
+                                        set_modal_state
+                                            .update(|state| {
+                                                if let ModalState::Creating { recovery_method, .. } = state {
+                                                    *recovery_method = AccountCreateRecoveryMethod::Ledger;
+                                                } else {
+                                                    unreachable!()
+                                                }
+                                            });
                                         set_error.set(None);
                                         request_ledger_connection();
                                     }
@@ -750,7 +825,7 @@ pub fn AccountCreationForm(
                         </div>
 
                         {move || {
-                            if recovery_method.get() == RecoveryMethod::Ledger {
+                            if recovery_method() == AccountCreateRecoveryMethod::Ledger {
                                 view! {
                                     <div class="space-y-6">
                                         <div class="text-center py-2">
@@ -900,9 +975,9 @@ pub fn AccountCreationForm(
                                 class="flex-1 text-white rounded-xl px-4 py-3 transition-all cursor-pointer duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden"
                                 style=move || {
                                     if is_valid.get().is_some()
-                                        && ((recovery_method.get()
-                                            == RecoveryMethod::RecoveryPhrase)
-                                            || (recovery_method.get() == RecoveryMethod::Ledger
+                                        && ((recovery_method()
+                                            == AccountCreateRecoveryMethod::RecoveryPhrase)
+                                            || (recovery_method() == AccountCreateRecoveryMethod::Ledger
                                                 && ledger_current_key_data.get().is_some()))
                                     {
                                         "background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%);"
@@ -913,9 +988,9 @@ pub fn AccountCreationForm(
                                 disabled=move || {
                                     is_valid.get().is_none() || is_creating.get()
                                         || is_loading.get()
-                                        || match recovery_method.get() {
-                                            RecoveryMethod::RecoveryPhrase => false,
-                                            RecoveryMethod::Ledger => {
+                                        || match recovery_method() {
+                                            AccountCreateRecoveryMethod::RecoveryPhrase => false,
+                                            AccountCreateRecoveryMethod::Ledger => {
                                                 ledger_current_key_data.get().is_none()
                                             }
                                             _ => true,
@@ -930,9 +1005,9 @@ pub fn AccountCreationForm(
                                     style=move || {
                                         if is_valid.get().is_some() && !is_loading.get()
                                             && is_hovered.get()
-                                            && ((recovery_method.get()
-                                                == RecoveryMethod::RecoveryPhrase)
-                                                || (recovery_method.get() == RecoveryMethod::Ledger
+                                            && ((recovery_method()
+                                                == AccountCreateRecoveryMethod::RecoveryPhrase)
+                                                || (recovery_method() == AccountCreateRecoveryMethod::Ledger
                                                     && ledger_current_key_data.get().is_some()))
                                         {
                                             "background: linear-gradient(90deg, #2563eb 0%, #7c3aed 100%); opacity: 1"

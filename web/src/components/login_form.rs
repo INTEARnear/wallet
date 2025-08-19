@@ -10,8 +10,11 @@ use near_min_api::QueryFinality;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen;
 
-use crate::components::account_selector::{seed_phrase_to_key, LoginMethod, ModalState};
+use crate::components::account_selector::{
+    seed_phrase_to_key, AccountCreateParent, AccountCreateRecoveryMethod, LoginMethod, ModalState,
+};
 use crate::components::derivation_path_input::DerivationPathInput;
+use crate::contexts::account_selector_context::AccountSelectorContext;
 use crate::contexts::accounts_context::{
     format_ledger_error, Account, AccountsContext, SecretKeyHolder,
 };
@@ -81,12 +84,12 @@ async fn find_accounts_by_public_key(
 }
 
 #[component]
-pub fn LoginForm(
-    set_modal_state: WriteSignal<ModalState>,
-    show_back_button: bool,
-) -> impl IntoView {
+pub fn LoginForm(show_back_button: bool) -> impl IntoView {
+    let AccountSelectorContext {
+        set_modal_state, ..
+    } = expect_context::<AccountSelectorContext>();
     let accounts_context = expect_context::<AccountsContext>();
-    let (login_method, set_login_method) = signal(LoginMethod::Selection);
+    let (login_method, set_login_method) = signal(LoginMethod::NotSelected);
     let (private_key, set_private_key) = signal("".to_string());
     let (is_valid, set_is_valid) = signal(None);
     let (error, set_error) = signal::<Option<String>>(None);
@@ -965,7 +968,7 @@ pub fn LoginForm(
                     </div>
 
                     {move || match login_method.get() {
-                        LoginMethod::Selection => {
+                        LoginMethod::NotSelected => {
                             view! {
                                 <div class="space-y-4">
                                     <div class="text-center py-8">
@@ -1906,7 +1909,13 @@ pub fn LoginForm(
 
                     <button
                         class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden border border-neutral-800 hover:border-neutral-700 cursor-pointer mt-6"
-                        on:click=move |_| set_modal_state.set(ModalState::Creating)
+                        on:click=move |_| {
+                            set_modal_state
+                                .set(ModalState::Creating {
+                                    parent: AccountCreateParent::Mainnet,
+                                    recovery_method: AccountCreateRecoveryMethod::RecoveryPhrase,
+                                })
+                        }
                     >
                         <span class="relative">Create New Account</span>
                     </button>

@@ -19,24 +19,42 @@ use slipped10::BIP32Path;
 use crate::components::account_creation_form::AccountCreationForm;
 use crate::components::login_form::LoginForm;
 use crate::contexts::accounts_context::Account;
-use crate::contexts::network_context::Network;
+use crate::contexts::network_context::{Network, NetworkContext};
 use crate::contexts::security_log_context::add_security_log;
 use crate::contexts::{
-    account_selector_swipe_context::AccountSelectorSwipeContext, accounts_context::AccountsContext,
+    account_selector_context::AccountSelectorContext, accounts_context::AccountsContext,
 };
 use crate::utils::is_debug_enabled;
 
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ModalState {
     AccountList,
-    Creating,
+    Creating {
+        parent: AccountCreateParent,
+        recovery_method: AccountCreateRecoveryMethod,
+    },
     LoggingIn,
     LoggedOut(Vec<AccountId>),
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum AccountCreateParent {
+    Mainnet,
+    Testnet,
+    SubAccount(Network, AccountId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AccountCreateRecoveryMethod {
+    RecoveryPhrase,
+    EthereumWallet,
+    SolanaWallet,
+    Ledger,
+}
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum LoginMethod {
-    Selection,
+    NotSelected,
     SeedPhrase,
     EthereumWallet,
     SolanaWallet,
@@ -109,19 +127,18 @@ fn get_account_gradient(account_id: &str, brightness: f32) -> String {
 }
 
 #[component]
-pub fn AccountSelector(
-    is_expanded: ReadSignal<bool>,
-    set_is_expanded: WriteSignal<bool>,
-) -> impl IntoView {
+pub fn AccountSelector() -> impl IntoView {
     let accounts_context = expect_context::<AccountsContext>();
-    let AccountSelectorSwipeContext {
-        progress,
-        state,
-        set_state,
+    let AccountSelectorContext {
+        swipe_progress,
+        is_expanded,
+        set_expanded,
+        modal_state,
+        set_modal_state,
         ..
-    } = expect_context::<AccountSelectorSwipeContext>();
-    let (modal_state, set_modal_state) = signal(ModalState::AccountList);
+    } = expect_context::<AccountSelectorContext>();
     let (show_security_alert, set_show_security_alert) = signal(false);
+    let network = expect_context::<NetworkContext>();
 
     let check_access_keys = move || {
         if is_debug_enabled() {
@@ -205,7 +222,7 @@ pub fn AccountSelector(
                 }
 
                 set_modal_state.set(ModalState::LoggedOut(logged_out_account_ids));
-                set_is_expanded(true);
+                set_expanded(true);
             }
         });
     };
@@ -236,16 +253,14 @@ pub fn AccountSelector(
         if accounts_context.accounts.get().accounts.is_empty()
             && !accounts_context.is_encrypted.get()
         {
-            set_is_expanded(true);
-            set_modal_state.set(ModalState::Creating);
-        }
-    });
-    // Open selector when swipe is complete
-    Effect::new(move |_| {
-        if state() {
-            set_state(false);
-            set_is_expanded(true);
-            set_modal_state.set(ModalState::AccountList);
+            set_expanded(true);
+            set_modal_state.set(ModalState::Creating {
+                parent: match network.network.get() {
+                    Network::Mainnet => AccountCreateParent::Mainnet,
+                    Network::Testnet => AccountCreateParent::Testnet,
+                },
+                recovery_method: AccountCreateRecoveryMethod::RecoveryPhrase,
+            });
         }
     });
     // Close selector when accounts change
@@ -256,7 +271,7 @@ pub fn AccountSelector(
             .selected_account_id
             .is_some()
         {
-            set_is_expanded(false);
+            set_expanded(false);
         }
     });
 
@@ -264,7 +279,7 @@ pub fn AccountSelector(
         accounts_context.set_accounts.update(|accounts| {
             accounts.selected_account_id = Some(account_id);
         });
-        set_is_expanded(false);
+        set_expanded(false);
     };
 
     view! {
@@ -274,34 +289,29 @@ pub fn AccountSelector(
                 if is_expanded.get() {
                     "opacity: 1; pointer-events: auto".to_string()
                 } else {
-                    format!("opacity: {}; pointer-events: none", progress.get())
+                    format!("opacity: {}; pointer-events: none", swipe_progress.get())
                 }
             }
         >
             {move || match modal_state.get() {
                 ModalState::LoggingIn => {
                     view! {
-                        <LoginForm
-                            set_modal_state
-                            show_back_button=!accounts_context
-                                .accounts
-                                .get_untracked()
-                                .accounts
-                                .is_empty()
-                        />
+                        <LoginForm show_back_button=!accounts_context
+                            .accounts
+                            .get_untracked()
+                            .accounts
+                            .is_empty() />
                     }
                         .into_any()
                 }
-                ModalState::Creating => {
+                ModalState::Creating { .. } => {
                     view! {
                         <AccountCreationForm
-                            set_modal_state
                             show_back_button=!accounts_context
                                 .accounts
                                 .get_untracked()
                                 .accounts
                                 .is_empty()
-                            set_is_expanded=set_is_expanded
                         />
                     }
                         .into_any()
@@ -311,14 +321,14 @@ pub fn AccountSelector(
                         <div>
                             <div
                                 class="absolute inset-0 bg-neutral-950/40 backdrop-blur-[2px] lg:rounded-3xl"
-                                on:click=move |_| set_is_expanded(false)
+                                on:click=move |_| set_expanded(false)
                             />
                             <div class="absolute left-0 top-0 bottom-0 w-[100px] bg-neutral-950 lg:rounded-l-3xl">
                                 <div class="p-2 h-full bg-neutral-950 flex flex-col lg:rounded-l-3xl">
                                     <div class="flex-1 space-y-2 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                                         <button
                                             class="w-full h-16 aspect-square rounded-lg transition-colors flex flex-col items-center justify-center gap-1 text-neutral-400 group"
-                                            on:click=move |_| set_is_expanded(false)
+                                            on:click=move |_| set_expanded(false)
                                         >
                                             <div class="w-10 h-10 rounded-full flex items-center justify-center group-hover:bg-neutral-300 mr-7 mb-1">
                                                 <div class="group-hover:text-black">
@@ -412,7 +422,13 @@ pub fn AccountSelector(
                                     <div class="flex gap-2 flex-col bg-neutral-900 mt-2 lg:rounded-bl-3xl transition-all duration-200">
                                         <button
                                             class="w-full aspect-square rounded-lg transition-colors flex flex-col items-center justify-center gap-1 p-1 text-green-500 group hover:bg-green-500/10"
-                                            on:click=move |_| set_modal_state.set(ModalState::Creating)
+                                            on:click=move |_| set_modal_state.set(ModalState::Creating {
+                                                parent: match network.network.get() {
+                                                    Network::Mainnet => AccountCreateParent::Mainnet,
+                                                    Network::Testnet => AccountCreateParent::Testnet,
+                                                },
+                                                recovery_method: AccountCreateRecoveryMethod::RecoveryPhrase,
+                                            })
                                         >
                                             <div class="w-10 h-10 rounded-full flex items-center justify-center bg-green-500/20 group-hover:bg-neutral-300">
                                                 <div class="group-hover:text-black">
@@ -425,7 +441,7 @@ pub fn AccountSelector(
                                         <A
                                             href="/settings/security"
                                             attr:class="w-full aspect-square rounded-lg lg:rounded-bl-3xl transition-colors flex flex-col items-center justify-center gap-1 p-1 text-neutral-400 group hover:bg-neutral-500/10"
-                                            on:click=move |_| set_is_expanded(false)
+                                            on:click=move |_| set_expanded(false)
                                         >
                                             <div class="w-10 h-10 rounded-full flex items-center justify-center bg-neutral-500/20 group-hover:bg-neutral-300">
                                                 <div class="group-hover:text-black">
@@ -446,7 +462,7 @@ pub fn AccountSelector(
                         <div>
                             <div
                                 class="absolute inset-0 bg-neutral-950/40 backdrop-blur-[2px] lg:rounded-3xl"
-                                on:click=move |_| set_is_expanded(false)
+                                on:click=move |_| set_expanded(false)
                             />
                             <div class="absolute inset-0 flex items-center justify-center">
                                 <div class="bg-neutral-950 p-8 rounded-xl w-full max-w-md">
@@ -492,7 +508,7 @@ pub fn AccountSelector(
                                         </button>
                                         <button
                                             class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden bg-neutral-800 hover:bg-neutral-700 cursor-pointer"
-                                            on:click=move |_| set_is_expanded(false)
+                                            on:click=move |_| set_expanded(false)
                                         >
                                             "OK"
                                         </button>
