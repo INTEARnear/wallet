@@ -318,8 +318,8 @@ pub fn provide_token_context() {
         };
         if let Some(msg) = ws.message.get() {
             if let Ok(events) = serde_json::from_str::<Vec<FtTransferEvent>>(&msg) {
-                for event in events {
-                    if !transfer_events_processed.insert(event.receipt_id) {
+                for (i, event) in events.into_iter().enumerate() {
+                    if !transfer_events_processed.insert((event.receipt_id, i)) {
                         continue;
                     }
                     let current_account = accounts_context.accounts.get().selected_account_id;
@@ -333,6 +333,7 @@ pub fn provide_token_context() {
 
                     if let Some(account_id) = &current_account {
                         if event.old_owner_id == *account_id {
+                            log::info!("Decreasing balance for {event_token_id:?}");
                             // Decrease balance
                             set_tokens.update(|tokens| {
                                 if let Some(token) = tokens
@@ -382,8 +383,8 @@ pub fn provide_token_context() {
         };
         if let Some(msg) = ws.message.get() {
             if let Ok(events) = serde_json::from_str::<Vec<FtMintEvent>>(&msg) {
-                for event in events {
-                    if !mint_events_processed.insert(event.receipt_id) {
+                for (i, event) in events.into_iter().enumerate() {
+                    if !mint_events_processed.insert((event.receipt_id, i)) {
                         continue;
                     }
                     let current_account =
@@ -419,8 +420,8 @@ pub fn provide_token_context() {
         };
         if let Some(msg) = ws.message.get() {
             if let Ok(events) = serde_json::from_str::<Vec<FtBurnEvent>>(&msg) {
-                for event in events {
-                    if !burn_events_processed.insert(event.receipt_id) {
+                for (i, event) in events.into_iter().enumerate() {
+                    if !burn_events_processed.insert((event.receipt_id, i)) {
                         continue;
                     }
                     let current_account =
