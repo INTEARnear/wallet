@@ -41,7 +41,7 @@ use crate::pages::{
     },
     AutoImportSecretKey, Connect, Explore, History, Home, Login, NftTokenDetails, Nfts, SendNft,
     SendToken, SendTransactions, Settings, SignMessage, Stake, StakeValidator, Swap, TokenDetails,
-    UnstakeValidator, UnwrapToken, WrapToken,
+    UnstakeValidator,
 };
 
 // macro_rules! bad_waterfall_lazy_route {
@@ -81,8 +81,6 @@ use crate::pages::{
 //     bad_waterfall_lazy_route!(Explore);
 //     bad_waterfall_lazy_route!(TokenDetails);
 //     bad_waterfall_lazy_route!(SendToken);
-//     bad_waterfall_lazy_route!(WrapToken);
-//     bad_waterfall_lazy_route!(UnwrapToken);
 //     bad_waterfall_lazy_route!(Connect);
 //     bad_waterfall_lazy_route!(SendTransactions);
 //     bad_waterfall_lazy_route!(SignMessage);
@@ -144,8 +142,6 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/explore") view=Explore />
                         <Route path=path!("/token/:token_id") view=TokenDetails />
                         <Route path=path!("/send/:token_id") view=SendToken />
-                        <Route path=path!("/wrap") view=WrapToken />
-                        <Route path=path!("/unwrap") view=UnwrapToken />
                         <Route path=path!("/connect") view=Connect />
                         <Route path=path!("/send-transactions") view=SendTransactions />
                         <Route path=path!("/sign-message") view=SignMessage />

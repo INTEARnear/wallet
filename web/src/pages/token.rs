@@ -59,7 +59,6 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
     let token_account_id2 = token_info.account_id.clone();
     let token_account_id3 = token_info.account_id.clone();
     let token_account_id4 = token_info.account_id.clone();
-    let token_account_id5 = token_info.account_id.clone();
     let network = expect_context::<NetworkContext>().network;
 
     view! {
@@ -101,16 +100,16 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
 
                     {move || {
                         if network.get() != Network::Testnet {
-                            let token_account_id5 = token_account_id5.clone();
+                            let token_account_id = token_account_id4.clone();
                             view! {
                                 <A href=move || {
                                     format!(
                                         "/swap?from={}&to={}",
-                                        match &token_account_id5 {
+                                        match &token_account_id {
                                             Token::Near => "near".to_string(),
                                             Token::Nep141(account_id) => account_id.to_string(),
                                         },
-                                        match &token_account_id5 {
+                                        match &token_account_id {
                                             Token::Nep141(_) => "near".to_string(),
                                             Token::Near => {
                                                 match network.get() {
@@ -145,31 +144,10 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                             let acc_str = account_id.to_string();
                             if acc_str == "wrap.near" || acc_str == "wrap.testnet" {
                                 view! {
-                                    <A href="/wrap">
+                                    <A href=format!("/swap?from=near&to={acc_str}")>
                                         <button class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors flex items-center gap-2 cursor-pointer w-full">
                                             <Icon icon=icondata::LuPackage width="20" height="20" />
                                             <span>Wrap</span>
-                                        </button>
-                                    </A>
-                                }
-                                    .into_any()
-                            } else {
-                                ().into_any()
-                            }
-                        } else {
-                            ().into_any()
-                        }
-                    }}
-
-                    {move || {
-                        if let Token::Nep141(account_id) = &token_account_id4 {
-                            let acc_str = account_id.to_string();
-                            if acc_str == "wrap.near" || acc_str == "wrap.testnet" {
-                                view! {
-                                    <A href="/unwrap">
-                                        <button class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors flex items-center gap-2 cursor-pointer w-full">
-                                            <Icon icon=icondata::LuPackageOpen width="20" height="20" />
-                                            <span>Unwrap</span>
                                         </button>
                                     </A>
                                 }

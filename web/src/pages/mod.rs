@@ -13,8 +13,6 @@ mod sign_message;
 mod stake;
 mod swap;
 mod token;
-mod unwrap;
-mod wrap;
 
 pub use auto_import_secret_key::AutoImportSecretKey;
 pub use connect::Connect;
@@ -30,5 +28,3 @@ pub use sign_message::SignMessage;
 pub use stake::{Stake, StakeValidator, UnstakeValidator};
 pub use swap::{DexId, Slippage, Swap};
 pub use token::TokenDetails;
-pub use unwrap::UnwrapToken;
-pub use wrap::WrapToken;
