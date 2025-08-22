@@ -183,6 +183,14 @@ pub fn SendToken() -> impl IntoView {
                             link: Some(format!("/stake/{}/stake", recipient_for_validator_check)),
                             link_text: Some("Stake instead".to_string()),
                         }));
+                    } else if recipient_is_evm_implicit
+                        && !balance_result.as_ref().is_ok_and(|b| *b != 0)
+                    {
+                        set_recipient_warning.set(Some(RecipientWarning {
+                            message: "This is an EVM-like address on NEAR blockchain. These addresses are supported, but they're incredibly rare, so you probably don't want to do this. Please use a bridge if you want to send tokens to Ethereum or other networks".to_string(),
+                            link: None,
+                            link_text: None,
+                        }));
                     } else {
                         set_recipient_warning.set(None);
                     }
