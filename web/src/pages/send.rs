@@ -565,7 +565,7 @@ pub fn SendToken() -> impl IntoView {
                                                 {
                                                     BigDecimal::from_f64(0.0001).unwrap_or_default()
                                                 } else {
-                                                    BigDecimal::from_f64(0.001).unwrap_or_default()
+                                                    BigDecimal::from(0)
                                                 };
                                                 let final_amount_decimal = (&max_amount_decimal
                                                     - &gas_cost_decimal)
