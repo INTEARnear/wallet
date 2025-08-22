@@ -41,7 +41,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly
+          toolchain: nightly-2025-08-18
           components: rust-src
 
       - name: Install Tauri system dependencies (Linux only)
