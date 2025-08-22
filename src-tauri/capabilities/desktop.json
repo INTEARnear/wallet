@@ -8,5 +8,7 @@
   "windows": [
     "main"
   ],
-  "permissions": []
+  "permissions": [
+    "autostart:default"
+  ]
 }

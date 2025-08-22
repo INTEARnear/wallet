@@ -145,6 +145,8 @@ pub struct WalletConfig {
     pub autoconfirm_preference_by_origin: HashMap<String, bool>,
     #[serde(default = "default_true")]
     pub hide_to_tray: bool,
+    #[serde(default)]
+    pub autostart: bool,
 }
 
 fn default_true() -> bool {
@@ -174,7 +176,8 @@ impl Default for WalletConfig {
             hidden_nfts: vec![],
             background_group: BackgroundGroup::default(),
             autoconfirm_preference_by_origin: HashMap::new(),
-            hide_to_tray: false,
+            hide_to_tray: true,
+            autostart: false,
         }
     }
 }

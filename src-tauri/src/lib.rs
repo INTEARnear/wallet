@@ -2,7 +2,7 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use keyring::Entry;
 use rand::{RngCore, rngs::OsRng};
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use tauri::{
     AppHandle, Manager, Url, Wry,
     menu::{Menu, MenuItem},
@@ -59,15 +59,31 @@ fn generate_and_store_os_key(entry: &Entry) -> Result<String, String> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WalletConfig {
     pub hide_to_tray: bool,
+    pub autostart: bool,
 }
 
 struct AppState {
     config: Mutex<WalletConfig>,
+    handle: OnceLock<AppHandle<Wry>>,
 }
 
 #[tauri::command]
 fn update_config(new_config: WalletConfig, state: tauri::State<AppState>) -> Result<(), String> {
     if let Ok(mut config_guard) = state.config.lock() {
+        #[cfg(all(desktop, not(debug_assertions)))]
+        {
+            use tauri_plugin_autostart::ManagerExt;
+
+            let handle = state.handle.get().unwrap();
+
+            let autostart_manager = handle.autolaunch();
+            if new_config.autostart {
+                let _ = autostart_manager.enable();
+            } else {
+                let _ = autostart_manager.disable();
+            }
+        }
+
         *config_guard = new_config;
     }
     Ok(())
@@ -86,13 +102,20 @@ pub fn run() {
         .manage(AppState {
             config: Mutex::new(WalletConfig {
                 hide_to_tray: false,
+                autostart: false,
             }),
+            handle: OnceLock::new(),
         })
         .invoke_handler(tauri::generate_handler![
             update_config,
             get_os_encryption_key
         ])
         .setup(|app| {
+            app.state::<AppState>()
+                .handle
+                .set(app.handle().clone())
+                .expect("Failed to set app handle");
+
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
@@ -126,6 +149,16 @@ pub fn run() {
                         log::warn!("Failed to process deep link: {err:?}");
                     }
                 }
+            }
+
+            #[cfg(all(desktop, not(debug_assertions)))]
+            {
+                use tauri_plugin_autostart::MacosLauncher;
+
+                app.handle().plugin(tauri_plugin_autostart::init(
+                    MacosLauncher::LaunchAgent,
+                    None,
+                ))?;
             }
 
             let show_item = MenuItem::with_id(app, "show", "Open", true, None::<&str>)?;
