@@ -50,6 +50,18 @@ pub struct SignInRequest {
     nonce: u64,
     signature: Signature,
     message: String,
+    // Below: added in V2
+    #[serde(default)]
+    version: Version,
+    #[serde(default)]
+    actual_origin: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone, Default)]
+enum Version {
+    #[default]
+    V1,
+    V2,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -104,7 +116,8 @@ struct LoginBridgeRequest {
 pub fn Connect() -> impl IntoView {
     let (loading, set_loading) = signal(true);
     let (request_data, set_request_data) = signal::<Option<SignInRequest>>(None);
-    let (origin, set_origin) = signal::<String>("*".to_string());
+    let (origin_for_post_message, set_origin) = signal::<String>("*".to_string());
+    let (actual_origin, set_actual_origin) = signal::<Option<String>>(None);
     let (add_function_call_key, set_add_function_call_key) = signal(false);
     let AccountSelectorContext { set_expanded, .. } = expect_context::<AccountSelectorContext>();
     let accounts_context = expect_context::<AccountsContext>();
@@ -116,7 +129,12 @@ pub fn Connect() -> impl IntoView {
 
     let opener = || {
         if let Ok(opener) = window().opener() {
-            opener.unchecked_into::<Window>()
+            let opener = opener.unchecked_into::<Window>();
+            if let Ok(Some(top)) = opener.top() {
+                top.unchecked_into::<Window>()
+            } else {
+                opener
+            }
         } else {
             window()
         }
@@ -128,7 +146,11 @@ pub fn Connect() -> impl IntoView {
                 return false;
             };
 
-            if message.origin != origin() {
+            // No origin check in V2+
+            if matches!(request_data.version, Version::V1)
+                && message.origin != origin_for_post_message()
+                && message.origin != "*"
+            {
                 return false;
             }
 
@@ -167,7 +189,19 @@ pub fn Connect() -> impl IntoView {
             match message {
                 ReceiveMessage::SignIn { data } => {
                     let evt_origin = event.origin();
-                    set_origin(evt_origin.clone());
+                    if matches!(data.version, Version::V1) {
+                        // In V1 the event origin in the dapp. In V2+ it's an iframe which can't
+                        // possibly navigate to a different location under normal circumstances,
+                        // so we can use "*"
+                        set_origin(evt_origin.clone());
+                        set_actual_origin(Some(evt_origin.clone()));
+                    } else {
+                        set_actual_origin(Some(
+                            data.actual_origin
+                                .clone()
+                                .expect("No actual_origin sent in V2+"),
+                        ));
+                    }
                     set_loading(false);
                     let has_contract = data.contract_id.as_deref().is_some_and(|v| !v.is_empty());
                     let default_checked = has_contract;
@@ -219,7 +253,7 @@ pub fn Connect() -> impl IntoView {
             };
             let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
             opener()
-                .post_message(&js_value, &origin())
+                .post_message(&js_value, &origin_for_post_message())
                 .expect("Failed to send message");
             return;
         }
@@ -239,7 +273,7 @@ pub fn Connect() -> impl IntoView {
             };
             let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
             opener()
-                .post_message(&js_value, &origin())
+                .post_message(&js_value, &origin_for_post_message())
                 .expect("Failed to send message");
             return;
         }
@@ -256,7 +290,7 @@ pub fn Connect() -> impl IntoView {
             let selected_account_secret_key = selected_account.secret_key.clone();
             let selected_account = selected_account_id.clone();
             let request_data = request_data.clone();
-            let origin = origin();
+            let origin_for_post_message = origin_for_post_message();
             let logout_key = logout_key.clone();
             let add_function_call_key = add_function_call_key();
             async move {
@@ -330,7 +364,7 @@ pub fn Connect() -> impl IntoView {
                         } else {
                             NearToken::from_yoctonear(0)
                         },
-                        origin: origin.clone(),
+                        origin: actual_origin().expect("No actual origin").clone(),
                         connected_at: Utc::now(),
                         autoconfirm_contracts: HashSet::new(),
                         autoconfirm_non_financial: false,
@@ -388,7 +422,7 @@ pub fn Connect() -> impl IntoView {
                                 };
                                 let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
                                 opener()
-                                    .post_message(&js_value, &origin)
+                                    .post_message(&js_value, &origin_for_post_message)
                                     .expect("Failed to send message");
                             } else {
                                 let message = SendMessage::Error {
@@ -396,7 +430,7 @@ pub fn Connect() -> impl IntoView {
                                 };
                                 let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
                                 opener()
-                                    .post_message(&js_value, &origin)
+                                    .post_message(&js_value, &origin_for_post_message)
                                     .expect("Failed to send message");
                             }
                         }
@@ -406,7 +440,7 @@ pub fn Connect() -> impl IntoView {
                             };
                             let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
                             opener()
-                                .post_message(&js_value, &origin)
+                                .post_message(&js_value, &origin_for_post_message)
                                 .expect("Failed to send message");
                         }
                     }
@@ -421,7 +455,7 @@ pub fn Connect() -> impl IntoView {
                     };
                     let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
                     opener()
-                        .post_message(&js_value, &origin)
+                        .post_message(&js_value, &origin_for_post_message)
                         .expect("Failed to send message");
                 }
             }
@@ -434,7 +468,7 @@ pub fn Connect() -> impl IntoView {
         };
         let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
         opener()
-            .post_message(&js_value, &origin())
+            .post_message(&js_value, &origin_for_post_message())
             .expect("Failed to send message");
     };
 
@@ -514,8 +548,9 @@ pub fn Connect() -> impl IntoView {
                                             <p class="text-neutral-400 text-sm">"Connecting to"</p>
                                             <p class="text-white font-medium wrap-anywhere">
                                                 {move || {
-                                                    let origin = origin();
-                                                    let domain = origin
+                                                    let actual_origin = actual_origin()
+                                                        .expect("No actual origin");
+                                                    let domain = actual_origin
                                                         .trim_start_matches("http://")
                                                         .trim_start_matches("https://")
                                                         .split("/")
@@ -530,7 +565,7 @@ pub fn Connect() -> impl IntoView {
                                                     {
                                                         "🛠 Localhost".to_string()
                                                     } else {
-                                                        format!("🔒 {}", origin)
+                                                        format!("🔒 {}", actual_origin)
                                                     }
                                                 }}
                                             </p>
@@ -585,7 +620,8 @@ pub fn Connect() -> impl IntoView {
                                                                 on:change=move |ev| {
                                                                     let checked = event_target_checked(&ev);
                                                                     set_add_function_call_key(checked);
-                                                                    let current_origin = origin();
+                                                                    let current_origin = actual_origin()
+                                                                        .expect("No actual origin");
                                                                     set_config
                                                                         .update(|cfg| {
                                                                             cfg.autoconfirm_preference_by_origin

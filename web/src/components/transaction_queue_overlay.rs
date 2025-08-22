@@ -99,15 +99,20 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
             .into_any()
     };
 
+    Effect::new(move |_| {
+        let queue_len = queue.read().len();
+        let overlay_mode = overlay_mode.get();
+        log::info!("Overlay mode: {:?}, queue len: {}", overlay_mode, queue_len);
+    });
+
     view! {
-        <Show
-            when=move || {
-                overlay_mode.get() == OverlayMode::Background && !queue.read().is_empty()
-            }
-            attr:class="relative top-0 pt-2 w-full lg:rounded-t-3xl bg-neutral-900/90 text-white text-sm font-medium transition-all duration-200 cursor-pointer"
-            on:click=move |_| overlay_mode.set(OverlayMode::Modal)
-        >
-            <div class="w-full pt-2">
+        <Show when=move || {
+            overlay_mode.get() == OverlayMode::Background && !queue.read().is_empty()
+        }>
+            <div
+                class="relative top-0 pt-2 w-full lg:rounded-t-3xl bg-neutral-900/90 text-white text-sm font-medium transition-all duration-200 cursor-pointer"
+                on:click=move |_| overlay_mode.set(OverlayMode::Modal)
+            >
                 <div class="flex items-center justify-between gap-2 px-4">
                     <div class="flex items-center gap-2">
                         <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white transition-colors duration-150" />
@@ -141,12 +146,11 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
             </div>
         </Show>
 
-        <Show
-            when=move || overlay_mode.get() == OverlayMode::Modal && !queue.read().is_empty()
-            attr:class="fixed inset-0 bg-black/50 transition-opacity duration-200 z-100 text-white"
-            on:click=move |_| overlay_mode.set(OverlayMode::Background)
-        >
-            <div>
+        <Show when=move || overlay_mode.get() == OverlayMode::Modal && !queue.read().is_empty()>
+            <div
+                class="fixed inset-0 bg-black/50 transition-opacity duration-200 z-[5000] text-white"
+                on:click=move |_| overlay_mode.set(OverlayMode::Background)
+            >
                 <div
                     class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-2rem)] lg:w-[500px] bg-neutral-900 rounded-xl p-4 shadow-xl"
                     on:click=|ev| ev.stop_propagation()

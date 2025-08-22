@@ -67,7 +67,7 @@ impl AccountCreateParent {
                 {
                     Ok(AccountCreationDetails {
                         subaccount_of,
-                        network: network,
+                        network,
                         account_to_sign_with: Some(account),
                     })
                 } else {

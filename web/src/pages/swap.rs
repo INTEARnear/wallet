@@ -733,6 +733,7 @@ pub fn Swap() -> impl IntoView {
         DexId::MetaPool,
         DexId::Linear,
         DexId::XRhea,
+        DexId::RNear,
     ]);
 
     Effect::new(move |_| {

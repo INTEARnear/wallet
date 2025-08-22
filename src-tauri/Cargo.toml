@@ -24,3 +24,8 @@ keyring = { version = "3.6.3", features = [
 ] }
 rand = "0.8"
 base64 = "0.22.1"
+tauri-plugin-deep-link = "2"
+anyhow = "1"
+
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }

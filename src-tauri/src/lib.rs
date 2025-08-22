@@ -4,10 +4,15 @@ use rand::{RngCore, rngs::OsRng};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::{
-    Manager,
+    AppHandle, Manager, Url, Wry,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
+#[cfg(desktop)]
+use tauri_plugin_deep_link::DeepLinkExt;
+
+const WINDOW_MAIN: &str = "main";
+const WINDOW_CONNECT: &str = "connect";
 
 const SERVICE_NAME: &str = "intearwallet";
 const ENTRY_NAME: &str = "accounts";
@@ -77,6 +82,7 @@ pub fn run() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
     tauri::Builder::default()
+        .plugin(tauri_plugin_deep_link::init())
         .manage(AppState {
             config: Mutex::new(WalletConfig {
                 hide_to_tray: false,
@@ -95,6 +101,33 @@ pub fn run() {
                 )?;
             }
 
+            #[cfg(desktop)]
+            {
+                app.handle()
+                    .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {}))?;
+            }
+
+            app.handle().plugin(tauri_plugin_deep_link::init())?;
+            #[cfg(desktop)]
+            app.deep_link().register_all()?;
+
+            let handle = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                for url in event.urls() {
+                    if let Err(err) = process_deep_link(&handle, &url) {
+                        log::warn!("Failed to process deep link: {err:?}");
+                    }
+                }
+            });
+
+            if let Ok(Some(url)) = app.deep_link().get_current() {
+                for url in url {
+                    if let Err(err) = process_deep_link(app.handle(), &url) {
+                        log::warn!("Failed to process deep link: {err:?}");
+                    }
+                }
+            }
+
             let show_item = MenuItem::with_id(app, "show", "Open", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
@@ -110,7 +143,7 @@ pub fn run() {
                     } => {
                         log::info!("Tray icon left clicked, showing main window");
                         let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
+                        if let Some(window) = app.get_webview_window(WINDOW_MAIN) {
                             let _ = window.unminimize();
                             let _ = window.show();
                             let _ = window.set_focus();
@@ -123,7 +156,7 @@ pub fn run() {
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {
                         log::info!("Show menu item clicked");
-                        if let Some(window) = app.get_webview_window("main") {
+                        if let Some(window) = app.get_webview_window(WINDOW_MAIN) {
                             let _ = window.unminimize();
                             let _ = window.show();
                             let _ = window.set_focus();
@@ -142,8 +175,9 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event
-                && let Some(window) = window.get_webview_window("main")
+            if window.label() == WINDOW_MAIN
+                && let tauri::WindowEvent::CloseRequested { api, .. } = event
+                && let Some(window) = window.get_webview_window(WINDOW_MAIN)
             {
                 let app_handle = window.app_handle();
                 if let Ok(config) = app_handle.state::<AppState>().config.lock()
@@ -158,4 +192,27 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn process_deep_link(app: &AppHandle<Wry>, url: &Url) -> Result<(), anyhow::Error> {
+    if url.scheme() != "intear" {
+        return Err(anyhow::anyhow!("Invalid deep link: {}", url));
+    }
+    match url.path().trim_start_matches('/') {
+        "connect" => {
+            tauri::WebviewWindowBuilder::new(
+                app,
+                WINDOW_CONNECT,
+                tauri::WebviewUrl::App("connect".into()),
+            )
+            .minimizable(false)
+            .inner_size(200.0, 350.0)
+            .title("Connect Wallet")
+            .build()?;
+            Ok(())
+        }
+        _ => {
+            anyhow::bail!("Unknown deep link: {}", url);
+        }
+    }
 }
