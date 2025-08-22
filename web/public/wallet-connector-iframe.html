@@ -485,7 +485,6 @@
                 if (event.data.type === "close") {
                     closedIntentionally = true;
                     popup.close();
-                    window.parent.postMessage(event.data, event.origin);
                 }
                 if (event.data.type === "signIn") {
                     event.data.data.actualOrigin = event.origin;
@@ -504,6 +503,12 @@
                 }
             }, 100);
         }
+
+        window.addEventListener("message", (event) => {
+            if (event.data.type === "close") {
+                window.parent.postMessage(event.data, event.origin);
+            }
+        });
 
         document.addEventListener('DOMContentLoaded', () => {
             reloadCards();
