@@ -598,7 +598,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                 });
                                             check_account(account_name.get_untracked().clone());
                                         }
-                                        initial_value=match parent() {
+                                        initial_value=match parent_untracked() {
                                             AccountCreateParent::Mainnet => "near".to_string(),
                                             AccountCreateParent::Testnet => "testnet".to_string(),
                                             AccountCreateParent::SubAccount(network, subaccount_of) => {

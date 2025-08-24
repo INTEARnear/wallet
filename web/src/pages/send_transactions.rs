@@ -25,6 +25,7 @@ use crate::{
         security_log_context::add_security_log,
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
+    pages::connect::submit_tauri_response,
     utils::{
         is_debug_enabled, WalletSelectorAccessKeyPermission, WalletSelectorAction,
         WalletSelectorTransaction,
@@ -44,7 +45,13 @@ pub struct SendTransactionsRequest {
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ReceiveMessage {
-    SignAndSendTransactions { data: SendTransactionsRequest },
+    SignAndSendTransactions {
+        data: SendTransactionsRequest,
+    },
+    #[serde(rename_all = "camelCase")]
+    TauriWalletSession {
+        session_id: String,
+    },
 }
 
 #[derive(Serialize, Debug)]
@@ -430,6 +437,7 @@ pub fn SendTransactions() -> impl IntoView {
     let (loading, set_loading) = signal(true);
     let (request_data, set_request_data) = signal::<Option<SendTransactionsRequest>>(None);
     let (origin, set_origin) = signal::<String>("*".to_string());
+    let (tauri_session_id, set_tauri_session_id) = signal::<Option<String>>(None);
     let (started_sending, set_started_sending) = signal(false);
     let (is_confirmed, set_is_confirmed) = signal(false);
     let (remember_contract, set_remember_contract) = signal(false);
@@ -461,9 +469,29 @@ pub fn SendTransactions() -> impl IntoView {
 
     let opener = || {
         if let Ok(opener) = window().opener() {
-            opener.unchecked_into::<Window>()
+            let opener = opener.unchecked_into::<Window>();
+            if opener.is_truthy() {
+                if let Ok(Some(top)) = opener.top() {
+                    top.unchecked_into::<Window>()
+                } else {
+                    opener
+                }
+            } else {
+                window()
+            }
         } else {
             window()
+        }
+    };
+
+    let post_to_opener = move |message: SendMessage, close_window: bool| {
+        if let Some(session_id) = tauri_session_id.get_untracked() {
+            spawn_local(submit_tauri_response(session_id, message, close_window));
+        } else {
+            let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
+            opener()
+                .post_message(&js_value, &origin.read_untracked())
+                .expect("Failed to send message");
         }
     };
 
@@ -480,11 +508,70 @@ pub fn SendTransactions() -> impl IntoView {
             if is_debug_enabled() {
                 log::info!("Successfully parsed message: {:?}", message);
             }
+            let process_sign_and_send = move |data: SendTransactionsRequest| {
+                set_origin(event.origin());
+                set_loading(false);
+                set_request_data(Some(data));
+            };
             match message {
                 ReceiveMessage::SignAndSendTransactions { data } => {
-                    set_origin(event.origin());
-                    set_loading(false);
-                    set_request_data(Some(data));
+                    process_sign_and_send(data);
+                }
+                ReceiveMessage::TauriWalletSession { session_id } => {
+                    spawn_local(async move {
+                        let url = dotenvy_macro::dotenv!("SHARED_LOGOUT_BRIDGE_SERVICE_ADDR");
+                        let retrieve_url =
+                            format!("{url}/api/session/{session_id}/retrieve-request");
+
+                        match reqwest::Client::new().get(&retrieve_url).send().await {
+                            Ok(response) if response.status().is_success() => {
+                                match response.json::<serde_json::Value>().await {
+                                    Ok(json) => {
+                                        if let Some(message) = json.get("message") {
+                                            let Some(message) = message.as_str() else {
+                                                log::error!("Bridge: Message is not a string");
+                                                return;
+                                            };
+                                            let Ok(message) =
+                                                serde_json::from_str::<ReceiveMessage>(message)
+                                            else {
+                                                log::error!(
+                                                    "Bridge: Failed to parse message: {message}"
+                                                );
+                                                return;
+                                            };
+                                            log::info!("Bridge: Request data: {:?}", message);
+                                            set_tauri_session_id(Some(session_id.clone()));
+                                            match message {
+                                                ReceiveMessage::SignAndSendTransactions {
+                                                    data,
+                                                } => process_sign_and_send(data),
+                                                other => {
+                                                    log::error!(
+                                                        "Bridge: Unexpected message: {other:?}"
+                                                    );
+                                                }
+                                            }
+                                        } else {
+                                            log::warn!("Bridge: No message field in response");
+                                        }
+                                    }
+                                    Err(e) => {
+                                        log::error!("Bridge: Failed to parse response JSON: {e}");
+                                    }
+                                }
+                            }
+                            Ok(response) => {
+                                log::error!(
+                                    "Bridge: Bridge service responded with status {}",
+                                    response.status()
+                                );
+                            }
+                            Err(e) => {
+                                log::error!("Bridge: Failed to connect to bridge service: {e}");
+                            }
+                        }
+                    });
                 }
             }
         } else if is_debug_enabled() {
@@ -713,20 +800,14 @@ pub fn SendTransactions() -> impl IntoView {
             let message = SendMessage::Error {
                 message: "Failed to deserialize transactions".to_string(),
             };
-            let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
-            opener()
-                .post_message(&js_value, &origin())
-                .expect("Failed to send message");
+            post_to_opener(message, true);
             return;
         };
         if transactions.is_empty() {
             let message = SendMessage::Error {
                 message: "No transactions (an empty array) passed to the wallet".to_string(),
             };
-            let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
-            opener()
-                .post_message(&js_value, &origin())
-                .expect("Failed to send message");
+            post_to_opener(message, true);
             return;
         }
         add_security_log(
@@ -788,10 +869,7 @@ pub fn SendTransactions() -> impl IntoView {
                         }
                         Err(error) => {
                             let message = SendMessage::Error { message: error };
-                            let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
-                            opener()
-                                .post_message(&js_value, &origin())
-                                .expect("Failed to send message");
+                            post_to_opener(message, true);
                             return;
                         }
                     };
@@ -803,20 +881,14 @@ pub fn SendTransactions() -> impl IntoView {
                             })
                             .collect(),
                     };
-                    let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
-                    opener()
-                        .post_message(&js_value, &origin())
-                        .expect("Failed to send message");
+                    post_to_opener(message, true);
                 }
                 Err(_) => {
                     log::error!("Failed to fetch transaction details");
-                    let js_value = serde_wasm_bindgen::to_value(&SendMessage::Error {
+                    let message = SendMessage::Error {
                         message: "Failed to fetch transaction details".to_string(),
-                    })
-                    .unwrap();
-                    opener()
-                        .post_message(&js_value, &origin())
-                        .expect("Failed to send message");
+                    };
+                    post_to_opener(message, true);
                 }
             }
         });
@@ -826,10 +898,7 @@ pub fn SendTransactions() -> impl IntoView {
         let message = SendMessage::Error {
             message: "User rejected the transactions".to_string(),
         };
-        let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
-        opener()
-            .post_message(&js_value, &origin())
-            .expect("Failed to send message");
+        post_to_opener(message, true);
     };
 
     Effect::new(move || {

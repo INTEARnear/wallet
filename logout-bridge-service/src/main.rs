@@ -7,6 +7,7 @@ use axum::{
     Json, Router,
 };
 use futures_util::{SinkExt, StreamExt};
+use nanoid::nanoid;
 use near_min_api::{
     types::{
         near_crypto::{PublicKey, Signature},
@@ -16,6 +17,7 @@ use near_min_api::{
 };
 use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use std::{
     collections::HashMap,
     env,
@@ -131,12 +133,27 @@ type SubscriberKey = (Network, AccountId, PublicKey);
 type LogoutSubscribers =
     Arc<Mutex<HashMap<SubscriberKey, Vec<broadcast::Sender<LogoutNotification>>>>>;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TemporarySession {
+    session_id: String,
+    request_data: Option<String>,
+    created_at: u64,
+    #[serde(skip)]
+    websocket_tx: Option<broadcast::Sender<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SessionResponse {
+    message: String,
+}
+
 #[derive(Clone)]
 struct AppState {
     db: Arc<DB>,
     mainnet_rpc_client: RpcClient,
     testnet_rpc_client: RpcClient,
     subscribers: LogoutSubscribers,
+    temporary_sessions: Arc<Mutex<HashMap<String, TemporarySession>>>,
 }
 
 fn get_db_key(network: &Network, account_id: &AccountId, app_public_key: &PublicKey) -> String {
@@ -461,6 +478,13 @@ async fn handle_check_logout(
     }
 }
 
+async fn handle_session_websocket(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    ws.on_upgrade(|socket| handle_session_websocket_connection(socket, state))
+}
+
 async fn handle_websocket(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
@@ -609,6 +633,155 @@ async fn handle_websocket_connection(socket: WebSocket, state: AppState) {
     }
 }
 
+async fn handle_retrieve_request(
+    Path(session_id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let sessions = state.temporary_sessions.lock().unwrap();
+
+    tracing::info!("All sessions: {:?}", sessions.keys());
+
+    match sessions.get(&session_id) {
+        Some(session) => match &session.request_data {
+            Some(message) => Ok(Json(serde_json::json!({
+                "message": message
+            }))),
+            None => Err((
+                StatusCode::NOT_FOUND,
+                "No message stored for this session".to_string(),
+            )),
+        },
+        None => Err((StatusCode::NOT_FOUND, "Session not found".to_string())),
+    }
+}
+
+async fn handle_submit_response(
+    Path(session_id): Path<String>,
+    State(state): State<AppState>,
+    Json(request): Json<SessionResponse>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let mut sessions = state.temporary_sessions.lock().unwrap();
+
+    match sessions.remove(&session_id) {
+        Some(session) => {
+            if let Some(tx) = session.websocket_tx {
+                let _ = tx.send(request.message.clone());
+            }
+
+            Ok(Json(serde_json::json!({
+                "status": "Response sent and session deleted"
+            })))
+        }
+        None => Err((StatusCode::NOT_FOUND, "Session not found".to_string())),
+    }
+}
+
+async fn cleanup_expired_sessions(
+    temporary_sessions: Arc<Mutex<HashMap<String, TemporarySession>>>,
+) {
+    let mut interval = tokio::time::interval(Duration::from_secs(60 * 60));
+
+    loop {
+        interval.tick().await;
+
+        let mut sessions = temporary_sessions.lock().unwrap();
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+
+        let expiration_time = 24 * 60 * 60 * 1000;
+
+        sessions.retain(|_, session| current_time - session.created_at < expiration_time);
+
+        tracing::info!("Cleaned up expired temporary sessions");
+    }
+}
+
+async fn handle_session_websocket_connection(socket: WebSocket, state: AppState) {
+    let (mut sender, mut websocket_receiver) = socket.split();
+
+    let session_id = nanoid!();
+
+    let (response_tx, mut response_rx) = broadcast::channel(1);
+
+    let session = TemporarySession {
+        session_id: session_id.clone(),
+        request_data: None,
+        created_at: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64,
+        websocket_tx: Some(response_tx),
+    };
+
+    {
+        let mut sessions = state.temporary_sessions.lock().unwrap();
+        tracing::info!("Inserting session: {:?}", session_id);
+        sessions.insert(session_id.clone(), session);
+    }
+
+    // Send session ID as first message
+    if let Ok(session_id_json) = serde_json::to_string(&serde_json::json!({
+        "session_id": session_id
+    })) {
+        let _ = sender.send(Message::Text(session_id_json.into())).await;
+    }
+
+    let session_id_clone = session_id.clone();
+    let state_clone = state.clone();
+
+    loop {
+        tokio::select! {
+            msg = websocket_receiver.next() => {
+                match msg {
+                    Some(msg) => match msg {
+                        Ok(Message::Text(text)) => {
+                            let text_size = text.len();
+                            if text_size > 64 * 1024 {
+                                let error_msg = serde_json::json!({
+                                    "error": "Message too large. Maximum size is 64KB"
+                                });
+                                if let Ok(error_json) = serde_json::to_string(&error_msg) {
+                                    let _ = sender.send(Message::Text(error_json.into())).await;
+                                }
+                                break;
+                            }
+
+                            {
+                                let mut sessions = state_clone.temporary_sessions.lock().unwrap();
+                                if let Some(session) = sessions.get_mut(&session_id_clone) {
+                                    session.request_data = Some(text.to_string());
+                                }
+                            }
+                        }
+                        Ok(Message::Close(_)) => break,
+                        Ok(_) => {}
+                        Err(_) => break,
+                    }
+                    None => break,
+                }
+            }
+            response = response_rx.recv() => {
+                match response {
+                    Ok(response_message) => {
+                        if sender.send(Message::Text(response_message.into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        }
+    }
+
+    {
+        let mut sessions = state.temporary_sessions.lock().unwrap();
+        tracing::info!("Removing session: {:?}", session_id);
+        sessions.remove(&session_id);
+    }
+}
+
 async fn notify_logout(
     state: &AppState,
     network: &Network,
@@ -688,6 +861,7 @@ async fn main() {
         mainnet_rpc_client,
         testnet_rpc_client,
         subscribers: Arc::new(Mutex::new(HashMap::new())),
+        temporary_sessions: Arc::new(Mutex::new(HashMap::new())),
     };
 
     let app = Router::new()
@@ -699,8 +873,21 @@ async fn main() {
             post(handle_check_logout),
         )
         .route("/api/subscribe", get(handle_websocket))
+        .route("/api/session/create", get(handle_session_websocket))
+        .route(
+            "/api/session/{session_id}/retrieve-request",
+            get(handle_retrieve_request),
+        )
+        .route(
+            "/api/session/{session_id}/submit-response",
+            post(handle_submit_response),
+        )
         .layer(CorsLayer::permissive())
-        .with_state(state);
+        .with_state(state.clone());
+
+    tokio::spawn(cleanup_expired_sessions(Arc::clone(
+        &state.temporary_sessions,
+    )));
 
     let addr = env::var("LOGOUT_BRIDGE_SERVICE_BIND")
         .map(|s| {

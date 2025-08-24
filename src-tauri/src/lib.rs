@@ -2,9 +2,9 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use keyring::Entry;
 use rand::{RngCore, rngs::OsRng};
 use serde::{Deserialize, Serialize};
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 use tauri::{
-    AppHandle, Manager, Url, Wry,
+    AppHandle, Manager, Url, WebviewWindow, Wry,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
@@ -13,9 +13,20 @@ use tauri_plugin_deep_link::DeepLinkExt;
 
 const WINDOW_MAIN: &str = "main";
 const WINDOW_CONNECT: &str = "connect";
+const WINDOW_SIGN_MESSAGE: &str = "sign-message";
+const WINDOW_SEND_TRANSACTIONS: &str = "send-transactions";
 
 const SERVICE_NAME: &str = "intearwallet";
 const ENTRY_NAME: &str = "accounts";
+
+#[tauri::command]
+fn close_temporary_window(window: WebviewWindow) {
+    if window.label() == WINDOW_MAIN {
+        log::error!("Cannot close the main window using close_temporary_window");
+        return;
+    }
+    window.close().expect("Failed to close a temporary window");
+}
 
 #[tauri::command]
 async fn get_os_encryption_key() -> Result<String, String> {
@@ -64,17 +75,18 @@ pub struct WalletConfig {
 
 struct AppState {
     config: Mutex<WalletConfig>,
-    handle: OnceLock<AppHandle<Wry>>,
 }
 
 #[tauri::command]
-fn update_config(new_config: WalletConfig, state: tauri::State<AppState>) -> Result<(), String> {
+fn update_config(
+    new_config: WalletConfig,
+    state: tauri::State<AppState>,
+    #[allow(unused)] handle: AppHandle,
+) -> Result<(), String> {
     if let Ok(mut config_guard) = state.config.lock() {
         #[cfg(all(desktop, not(debug_assertions)))]
         {
             use tauri_plugin_autostart::ManagerExt;
-
-            let handle = state.handle.get().unwrap();
 
             let autostart_manager = handle.autolaunch();
             if new_config.autostart {
@@ -104,18 +116,13 @@ pub fn run() {
                 hide_to_tray: false,
                 autostart: false,
             }),
-            handle: OnceLock::new(),
         })
         .invoke_handler(tauri::generate_handler![
             update_config,
-            get_os_encryption_key
+            get_os_encryption_key,
+            close_temporary_window,
         ])
         .setup(|app| {
-            app.state::<AppState>()
-                .handle
-                .set(app.handle().clone())
-                .expect("Failed to set app handle");
-
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
@@ -231,21 +238,135 @@ fn process_deep_link(app: &AppHandle<Wry>, url: &Url) -> Result<(), anyhow::Erro
     if url.scheme() != "intear" {
         return Err(anyhow::anyhow!("Invalid deep link: {}", url));
     }
-    match url.path().trim_start_matches('/') {
+    let Some(host) = url.host() else {
+        return Err(anyhow::anyhow!("Invalid deep link: {}", url));
+    };
+    match host.to_string().as_str() {
         "connect" => {
-            tauri::WebviewWindowBuilder::new(
+            let session_id = url
+                .query_pairs()
+                .find(|(key, _)| key == "session_id")
+                .map(|(_, value)| value.to_string());
+
+            let window = tauri::WebviewWindowBuilder::new(
                 app,
                 WINDOW_CONNECT,
                 tauri::WebviewUrl::App("connect".into()),
             )
             .minimizable(false)
-            .inner_size(200.0, 350.0)
+            .inner_size(400.0, 700.0)
             .title("Connect Wallet")
             .build()?;
+
+            if let Some(session_id) = session_id {
+                let js_code = format!(
+                    r#"
+                        window.addEventListener('message', (event) => {{
+                            console.log('event', event);
+                            if (event.data.type === 'ready') {{
+                                window.postMessage({{
+                                    type: 'tauriWalletSession',
+                                    sessionId: '{session_id}'
+                                }}, '*');
+                            }}
+                        }});
+                    "#
+                );
+
+                if let Err(e) = window.eval(&js_code) {
+                    log::warn!("Failed to send session_id to frontend: {:?}", e);
+                } else {
+                    log::info!("Forwarded session_id {} to connect window", session_id);
+                }
+            }
+
+            Ok(())
+        }
+        "sign-message" => {
+            let session_id = url
+                .query_pairs()
+                .find(|(key, _)| key == "session_id")
+                .map(|(_, value)| value.to_string());
+
+            let window = tauri::WebviewWindowBuilder::new(
+                app,
+                WINDOW_SIGN_MESSAGE,
+                tauri::WebviewUrl::App("sign-message".into()),
+            )
+            .minimizable(false)
+            .inner_size(400.0, 700.0)
+            .title("Sign Message")
+            .build()?;
+
+            if let Some(session_id) = session_id {
+                let js_code = format!(
+                    r#"
+                        window.addEventListener('message', (event) => {{
+                            console.log('event', event);
+                            if (event.data.type === 'ready') {{
+                                window.postMessage({{
+                                    type: 'tauriWalletSession',
+                                    sessionId: '{session_id}'
+                                }}, '*');
+                            }}
+                        }});
+                    "#
+                );
+
+                if let Err(e) = window.eval(&js_code) {
+                    log::warn!("Failed to send session_id to frontend: {:?}", e);
+                } else {
+                    log::info!("Forwarded session_id {} to sign-message window", session_id);
+                }
+            }
+
+            Ok(())
+        }
+        "send-transactions" => {
+            let session_id = url
+                .query_pairs()
+                .find(|(key, _)| key == "session_id")
+                .map(|(_, value)| value.to_string());
+
+            let window = tauri::WebviewWindowBuilder::new(
+                app,
+                WINDOW_SEND_TRANSACTIONS,
+                tauri::WebviewUrl::App("send-transactions".into()),
+            )
+            .minimizable(false)
+            .inner_size(400.0, 700.0)
+            .title("Send Transactions")
+            .build()?;
+
+            if let Some(session_id) = session_id {
+                let js_code = format!(
+                    r#"
+                        window.addEventListener('message', (event) => {{
+                            console.log('event', event);
+                            if (event.data.type === 'ready') {{
+                                window.postMessage({{
+                                    type: 'tauriWalletSession',
+                                    sessionId: '{session_id}'
+                                }}, '*');
+                            }}
+                        }});
+                    "#
+                );
+
+                if let Err(e) = window.eval(&js_code) {
+                    log::warn!("Failed to send session_id to frontend: {:?}", e);
+                } else {
+                    log::info!(
+                        "Forwarded session_id {} to send-transactions window",
+                        session_id
+                    );
+                }
+            }
+
             Ok(())
         }
         _ => {
-            anyhow::bail!("Unknown deep link: {}", url);
+            anyhow::bail!("Unknown deep link with path {:?}", url);
         }
     }
 }

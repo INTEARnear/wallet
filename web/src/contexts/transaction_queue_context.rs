@@ -180,7 +180,6 @@ impl TransactionType {
                 {
                     Ok(key) => key,
                     Err(e) => {
-                        // TODO: Handle revoked / limited access keys better
                         return Err(format!("Failed to get access key: {e}"));
                     }
                 };

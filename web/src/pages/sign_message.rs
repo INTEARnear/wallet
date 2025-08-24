@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsCast;
 use web_sys::{js_sys::Date, Window};
 
-use crate::utils::is_debug_enabled;
 use crate::{
     contexts::{
         accounts_context::{AccountsContext, LedgerSigningState},
@@ -17,6 +16,7 @@ use crate::{
     },
     utils::{sign_nep413, NEP413Payload},
 };
+use crate::{pages::connect::submit_tauri_response, utils::is_debug_enabled};
 use leptos_icons::*;
 
 #[derive(Deserialize, Debug)]
@@ -32,7 +32,13 @@ struct SignMessageRequest {
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "camelCase")]
 enum ReceiveMessage {
-    SignMessage { data: SignMessageRequest },
+    SignMessage {
+        data: SignMessageRequest,
+    },
+    #[serde(rename_all = "camelCase")]
+    TauriWalletSession {
+        session_id: String,
+    },
 }
 
 #[derive(Serialize, Debug)]
@@ -69,15 +75,36 @@ pub fn SignMessage() -> impl IntoView {
     let (loading, set_loading) = signal(true);
     let (request_data, set_request_data) = signal::<Option<SignMessageRequest>>(None);
     let (origin, set_origin) = signal::<String>("*".to_string());
+    let (tauri_session_id, set_tauri_session_id) = signal::<Option<String>>(None);
     let ConnectedAppsContext { apps, .. } = expect_context::<ConnectedAppsContext>();
     let accounts_context = expect_context::<AccountsContext>();
     let ledger_signing_state = accounts_context.ledger_signing_state;
 
     let opener = || {
         if let Ok(opener) = window().opener() {
-            opener.unchecked_into::<Window>()
+            let opener = opener.unchecked_into::<Window>();
+            if opener.is_truthy() {
+                if let Ok(Some(top)) = opener.top() {
+                    top.unchecked_into::<Window>()
+                } else {
+                    opener
+                }
+            } else {
+                window()
+            }
         } else {
             window()
+        }
+    };
+
+    let post_to_opener = move |message: SendMessage, close_window: bool| {
+        if let Some(session_id) = tauri_session_id.get_untracked() {
+            spawn_local(submit_tauri_response(session_id, message, close_window));
+        } else {
+            let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
+            opener()
+                .post_message(&js_value, &origin.read_untracked())
+                .expect("Failed to send message");
         }
     };
 
@@ -94,11 +121,70 @@ pub fn SignMessage() -> impl IntoView {
             if is_debug_enabled() {
                 log::info!("Successfully parsed message: {:?}", message);
             }
+            let process_sign_message = move |data: SignMessageRequest| {
+                set_origin(event.origin());
+                set_loading(false);
+                set_request_data(Some(data));
+            };
             match message {
                 ReceiveMessage::SignMessage { data } => {
-                    set_origin(event.origin());
-                    set_loading(false);
-                    set_request_data(Some(data));
+                    process_sign_message(data);
+                }
+                ReceiveMessage::TauriWalletSession { session_id } => {
+                    spawn_local(async move {
+                        let url = dotenvy_macro::dotenv!("SHARED_LOGOUT_BRIDGE_SERVICE_ADDR");
+                        let retrieve_url =
+                            format!("{url}/api/session/{session_id}/retrieve-request");
+
+                        match reqwest::Client::new().get(&retrieve_url).send().await {
+                            Ok(response) if response.status().is_success() => {
+                                match response.json::<serde_json::Value>().await {
+                                    Ok(json) => {
+                                        if let Some(message) = json.get("message") {
+                                            let Some(message) = message.as_str() else {
+                                                log::error!("Bridge: Message is not a string");
+                                                return;
+                                            };
+                                            let Ok(message) =
+                                                serde_json::from_str::<ReceiveMessage>(message)
+                                            else {
+                                                log::error!(
+                                                    "Bridge: Failed to parse message: {message}"
+                                                );
+                                                return;
+                                            };
+                                            log::info!("Bridge: Request data: {:?}", message);
+                                            set_tauri_session_id(Some(session_id.clone()));
+                                            match message {
+                                                ReceiveMessage::SignMessage { data } => {
+                                                    process_sign_message(data)
+                                                }
+                                                other => {
+                                                    log::error!(
+                                                        "Bridge: Unexpected message: {other:?}"
+                                                    );
+                                                }
+                                            }
+                                        } else {
+                                            log::warn!("Bridge: No message field in response");
+                                        }
+                                    }
+                                    Err(e) => {
+                                        log::error!("Bridge: Failed to parse response JSON: {e}");
+                                    }
+                                }
+                            }
+                            Ok(response) => {
+                                log::error!(
+                                    "Bridge: Bridge service responded with status {}",
+                                    response.status()
+                                );
+                            }
+                            Err(e) => {
+                                log::error!("Bridge: Failed to connect to bridge service: {e}");
+                            }
+                        }
+                    });
                 }
             }
         } else if is_debug_enabled() {
@@ -214,10 +300,7 @@ pub fn SignMessage() -> impl IntoView {
                     state: deserialized_message.state,
                 },
             };
-            let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
-            opener()
-                .post_message(&js_value, &origin())
-                .expect("Failed to send message");
+            post_to_opener(message, true);
         });
     };
 
@@ -225,10 +308,7 @@ pub fn SignMessage() -> impl IntoView {
         let message = SendMessage::Error {
             message: "User rejected the signature".to_string(),
         };
-        let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
-        opener()
-            .post_message(&js_value, &origin())
-            .expect("Failed to send message");
+        post_to_opener(message, true);
     };
 
     view! {
