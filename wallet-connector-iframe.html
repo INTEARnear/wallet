@@ -313,11 +313,82 @@
                 font-size: 12px;
             }
         }
+
+        /* Waiting screen styles */
+        .waiting-screen {
+            display: none;
+            flex-direction: column;
+            text-align: center;
+            padding: 32px;
+            flex: 1;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .waiting-spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid #334155;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 24px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .waiting-title {
+            color: #ffffff;
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .waiting-subtitle {
+            color: #94a3b8;
+            font-size: 14px;
+            margin-bottom: 24px;
+        }
+
+        .retry-btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .retry-btn:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+        }
+
+        .retry-btn:active {
+            transform: translateY(0);
+        }
     </style>
 
     <script>
+        let currentSignInMessage = null;
+        let currentWebSocket = null;
+        let currentSessionId = null;
+        let tauriConnectionRetry = null;
+
         function closeModal() {
-            // Post message to parent window
+            cleanupWebSocket();
+
             window.parent.postMessage({
                 type: "error",
                 message: "User closed the modal"
@@ -374,7 +445,7 @@
                     <div class="card-title">Web (Beta)</div>
                 </div>
 
-                <div class="card" onclick="alert('Desktop wallet is not supported yet')">
+                <div id="desktop-card" class="card" onclick="connectTauriApp()">
                     <div class="card-icon">💻</div>
                     <div class="card-title">Desktop</div>
                 </div>
@@ -470,6 +541,120 @@
             }
         }
 
+        async function connectTauriApp() {
+            // Store the retry function for the retry button
+            tauriConnectionRetry = connectTauriApp;
+
+            try {
+                console.log("Starting tauri wallet connection flow...");
+
+                // Step 1: Create WebSocket session
+                console.log("Creating WebSocket session...");
+                showWaitingScreen();
+
+                const sessionId = await createWebSocketSession();
+                console.log("Session created:", sessionId);
+
+                // Step 2: Send signIn message if we have one
+                let getSignInMessage = new Promise((resolve) => {
+                    setInterval(() => {
+                        if (currentSignInMessage) {
+                            resolve(currentSignInMessage);
+                        }
+                    }, 100);
+                });
+                window.parent.postMessage({
+                    type: "ready",
+                }, "*");
+
+                const signInMessage = await getSignInMessage;
+                console.log("Sending signIn message...");
+                sendSignInMessage(signInMessage);
+
+                // Step 3: Open tauri wallet with session ID
+                const walletAppUrl = `intear://connect?session_id=${sessionId}`;
+                console.log("Opening tauri wallet with URL:", walletAppUrl);
+
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.src = walletAppUrl;
+
+                let timeoutId;
+                let hasOpened = false;
+
+                const cleanup = () => {
+                    iframe.remove();
+                    if (timeoutId) {
+                        clearTimeout(timeoutId);
+                    }
+                };
+
+                const showFallback = () => {
+                    if (hasOpened) return;
+
+                    hideWaitingScreen();
+
+                    const fallbackCard = document.createElement('div');
+                    fallbackCard.className = 'card';
+                    fallbackCard.innerHTML = `
+                        <div class="card-icon">⬇️</div>
+                        <div class="card-title">Download Desktop App</div>
+                    `;
+                    fallbackCard.onclick = () => {
+                        window.open('https://github.com/INTEARnear/wallet/releases', '_blank');
+
+                        const originalDesktopCard = document.createElement('div');
+                        originalDesktopCard.id = 'desktop-card';
+                        originalDesktopCard.className = 'card';
+                        originalDesktopCard.onclick = connectTauriApp;
+                        originalDesktopCard.innerHTML = `
+                            <div class="card-icon">💻</div>
+                            <div class="card-title">Desktop</div>
+                        `;
+
+                        fallbackCard.parentNode.replaceChild(originalDesktopCard, fallbackCard);
+                    };
+
+                    const desktopCard = document.getElementById('desktop-card');
+                    if (desktopCard) {
+                        desktopCard.parentNode.replaceChild(fallbackCard, desktopCard);
+                    }
+
+                    cleanupWebSocket();
+                };
+
+                document.body.appendChild(iframe);
+
+                timeoutId = setTimeout(() => {
+                    cleanup();
+                    showFallback();
+                }, 1500);
+
+                document.addEventListener('visibilitychange', function onVisibilityChange() {
+                    if (document.hidden) {
+                        hasOpened = true;
+                        cleanup();
+                        document.removeEventListener('visibilitychange', onVisibilityChange);
+                    }
+                });
+
+                window.addEventListener('blur', function onBlur() {
+                    hasOpened = true;
+                    cleanup();
+                    window.removeEventListener('blur', onBlur);
+                });
+
+            } catch (error) {
+                console.error("Error in tauri wallet connection flow:", error);
+                hideWaitingScreen();
+
+                // Show error to user
+                alert("Failed to connect to desktop wallet. Please try again.");
+
+                cleanupWebSocket();
+            }
+        }
+
         function connectWebWallet(walletUrl) {
             const popup = window.open(
                 `${walletUrl}/connect`,
@@ -515,7 +700,112 @@
             if (event.data.type === "close") {
                 window.parent.postMessage(event.data, event.origin);
             }
+            if (event.data.type === "signIn") {
+                event.data.data.actualOrigin = event.origin;
+                currentSignInMessage = event.data;
+                console.log("Received signIn message:", event.data);
+            }
         });
+
+        // WebSocket session management functions
+        function createWebSocketSession() {
+            return new Promise((resolve, reject) => {
+                try {
+                    // Use the same origin but connect to logout-bridge-service
+                    const wsUrl = `ws://localhost:3003/api/session/create`;
+                    currentWebSocket = new WebSocket(wsUrl);
+
+                    currentWebSocket.onopen = (event) => {
+                        console.log("WebSocket connected");
+                    };
+
+                    currentWebSocket.onmessage = (event) => {
+                        try {
+                            const data = JSON.parse(event.data);
+                            if (data.session_id) {
+                                currentSessionId = data.session_id;
+                                console.log("Received session ID:", currentSessionId);
+                                resolve(currentSessionId);
+                            } else {
+                                console.log("Received response:", data);
+                                // This is the response from the tauri wallet
+                                handleTauriWalletResponse(data);
+                            }
+                        } catch (e) {
+                            console.error("Error parsing WebSocket message:", e);
+                            reject(e);
+                        }
+                    };
+
+                    currentWebSocket.onerror = (error) => {
+                        console.error("WebSocket error:", error);
+                        reject(error);
+                    };
+
+                    currentWebSocket.onclose = (event) => {
+                        console.log("WebSocket closed");
+                        currentWebSocket = null;
+                        currentSessionId = null;
+                    };
+                } catch (error) {
+                    console.error("Error creating WebSocket:", error);
+                    reject(error);
+                }
+            });
+        }
+
+        function sendSignInMessage(signInMessage) {
+            if (currentWebSocket && currentWebSocket.readyState === WebSocket.OPEN && currentSignInMessage) {
+                const messageStr = JSON.stringify(signInMessage);
+                currentWebSocket.send(messageStr);
+                console.log("Sent signIn message through WebSocket");
+            } else {
+                console.error("WebSocket not ready or no signIn message");
+            }
+        }
+
+        function handleTauriWalletResponse(response) {
+            console.log("Tauri wallet response:", response);
+            // Hide waiting screen and show success or handle the response
+            hideWaitingScreen();
+
+            // Forward the response to the parent window
+            if (window.parent) {
+                window.parent.postMessage(response, "*");
+            }
+        }
+
+        function showWaitingScreen() {
+            const cardsContainer = document.getElementById('cards-container');
+            const waitingScreen = document.getElementById('waiting-screen');
+
+            cardsContainer.style.display = 'none';
+            waitingScreen.style.display = 'flex';
+        }
+
+        function hideWaitingScreen() {
+            const cardsContainer = document.getElementById('cards-container');
+            const waitingScreen = document.getElementById('waiting-screen');
+
+            cardsContainer.style.display = 'grid';
+            waitingScreen.style.display = 'none';
+        }
+
+        function retryTauriConnection() {
+            console.log("Retrying tauri connection");
+            if (tauriConnectionRetry) {
+                tauriConnectionRetry();
+            }
+        }
+
+        function cleanupWebSocket() {
+            if (currentWebSocket) {
+                currentWebSocket.close();
+                currentWebSocket = null;
+            }
+            currentSessionId = null;
+            currentSignInMessage = null;
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
             reloadCards();
@@ -532,6 +822,13 @@
             </div>
 
             <div class="cards-container" id="cards-container">
+            </div>
+
+            <div class="waiting-screen" id="waiting-screen">
+                <div class="waiting-spinner"></div>
+                <div class="waiting-title">Connecting to Desktop Wallet</div>
+                <div class="waiting-subtitle">Please complete the connection in your desktop app</div>
+                <button class="retry-btn" onclick="retryTauriConnection()">Retry</button>
             </div>
 
             <button class="self-hosting-btn" onclick="openSelfHostingPrompt()">Self hosting?</button>
