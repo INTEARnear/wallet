@@ -712,7 +712,7 @@
             return new Promise((resolve, reject) => {
                 try {
                     // Use the same origin but connect to logout-bridge-service
-                    const wsUrl = `ws://localhost:3003/api/session/create`;
+                    const wsUrl = `wss://logout-bridge-service.intear.tech/api/session/create`;
                     currentWebSocket = new WebSocket(wsUrl);
 
                     currentWebSocket.onopen = (event) => {
