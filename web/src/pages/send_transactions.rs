@@ -471,11 +471,7 @@ pub fn SendTransactions() -> impl IntoView {
         if let Ok(opener) = window().opener() {
             let opener = opener.unchecked_into::<Window>();
             if opener.is_truthy() {
-                if let Ok(Some(top)) = opener.top() {
-                    top.unchecked_into::<Window>()
-                } else {
-                    opener
-                }
+                opener
             } else {
                 window()
             }
