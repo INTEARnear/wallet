@@ -670,18 +670,19 @@
             }
             let closedIntentionally = false;
             window.addEventListener("message", (event) => {
-                if (event.source !== window.parent) {
-                    console.log("Ignoring source", event.source);
-                    return;
+                console.log("Received message", event);
+                if (event.source === window.parent) {
+                    if (event.data.type === "close") {
+                        closedIntentionally = true;
+                        popup.close();
+                    }
+                    if (event.data.type === "signIn") {
+                        event.data.data.actualOrigin = event.origin;
+                    }
+                    popup.postMessage(event.data, walletUrl);
+                } else if (event.source === popup) {
+                    window.parent.postMessage(event.data, "*");
                 }
-                if (event.data.type === "close") {
-                    closedIntentionally = true;
-                    popup.close();
-                }
-                if (event.data.type === "signIn") {
-                    event.data.data.actualOrigin = event.origin;
-                }
-                popup.postMessage(event.data, walletUrl);
             });
             const checkPopupClosed = setInterval(() => {
                 if (popup.closed) {
