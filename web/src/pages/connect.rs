@@ -292,10 +292,7 @@ pub fn Connect() -> impl IntoView {
                                                 );
                                                 return;
                                             };
-                                            log::info!(
-                                                "Bridge request data: {:?}",
-                                                message
-                                            );
+                                            log::info!("Bridge request data: {:?}", message);
                                             set_tauri_session_id(Some(session_id.clone()));
                                             match message {
                                                 ReceiveMessage::SignIn { data } => {
@@ -489,7 +486,10 @@ pub fn Connect() -> impl IntoView {
                         } else {
                             NearToken::from_yoctonear(0)
                         },
-                        origin: actual_origin.get_untracked().expect("No actual origin").clone(),
+                        origin: actual_origin
+                            .get_untracked()
+                            .expect("No actual origin")
+                            .clone(),
                         connected_at: Utc::now(),
                         autoconfirm_contracts: HashSet::new(),
                         autoconfirm_non_financial: false,
