@@ -13,6 +13,7 @@
     "@tauri-apps/plugin-window-state": "^2.4.0",
     "buffer": "6.0.3",
     "events": "3.3.0",
+    "fastintear": "github:sliman4/fastintear#hot-connector",
     "posthog-js": "1.254.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",

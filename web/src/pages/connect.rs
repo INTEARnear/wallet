@@ -105,6 +105,7 @@ pub enum SendMessage {
         function_call_key_added: bool,
         logout_key: PublicKey,
         use_bridge: bool,
+        wallet_url: String,
     },
     Error {
         message: String,
@@ -292,7 +293,7 @@ pub fn Connect() -> impl IntoView {
                                                 return;
                                             };
                                             log::info!(
-                                                "TauriWalletSession request data: {:?}",
+                                                "Bridge request data: {:?}",
                                                 message
                                             );
                                             set_tauri_session_id(Some(session_id.clone()));
@@ -488,7 +489,7 @@ pub fn Connect() -> impl IntoView {
                         } else {
                             NearToken::from_yoctonear(0)
                         },
-                        origin: actual_origin().expect("No actual origin").clone(),
+                        origin: actual_origin.get_untracked().expect("No actual origin").clone(),
                         connected_at: Utc::now(),
                         autoconfirm_contracts: HashSet::new(),
                         autoconfirm_non_financial: false,
@@ -544,6 +545,7 @@ pub fn Connect() -> impl IntoView {
                                     function_call_key_added: true,
                                     logout_key: logout_key.public_key(),
                                     use_bridge: tauri_session_id.get_untracked().is_some(),
+                                    wallet_url: location().origin().expect("No origin"),
                                 };
                                 post_to_opener(message, true);
                             } else {
@@ -569,6 +571,7 @@ pub fn Connect() -> impl IntoView {
                         function_call_key_added: false,
                         logout_key: logout_key.public_key(),
                         use_bridge: tauri_session_id.get_untracked().is_some(),
+                        wallet_url: location().origin().expect("No origin"),
                     };
                     post_to_opener(message, true);
                 }
@@ -673,6 +676,7 @@ pub fn Connect() -> impl IntoView {
                                                     if domain == "localhost" || domain == "127.0.0.1"
                                                         || domain.starts_with("192.168.")
                                                         || domain.ends_with(".local")
+                                                        || domain.ends_with(".localhost")
                                                     {
                                                         "🛠 Localhost".to_string()
                                                     } else {
@@ -731,7 +735,7 @@ pub fn Connect() -> impl IntoView {
                                                                 on:change=move |ev| {
                                                                     let checked = event_target_checked(&ev);
                                                                     set_add_function_call_key(checked);
-                                                                    let current_origin = actual_origin()
+                                                                    let current_origin = actual_origin.get_untracked()
                                                                         .expect("No actual origin");
                                                                     set_config
                                                                         .update(|cfg| {

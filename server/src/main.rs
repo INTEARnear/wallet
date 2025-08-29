@@ -14,6 +14,7 @@ use leptos::logging::log;
 use leptos::prelude::*;
 use tower::ServiceExt;
 use tower_http::compression::CompressionLayer;
+use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
@@ -143,6 +144,7 @@ async fn main() {
     let app = Router::new()
         .route("/", get(file_and_error_handler))
         .fallback(file_and_error_handler)
+        .layer(CorsLayer::permissive())
         .layer(CompressionLayer::new())
         .with_state(leptos_options);
 

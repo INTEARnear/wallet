@@ -1,3 +1,6 @@
+import "./near-selector-globals.js";
+import * as near from "fastintear/packages/api";
+
 function toObject(obj) {
     return obj instanceof Map ? Object.fromEntries(
         Array.from(obj, ([key, value]) => [
@@ -9,38 +12,11 @@ function toObject(obj) {
     ) : obj;
 }
 
-Object.defineProperty(window, "localStorage", {
-    value: {
-        getItem: async (key) => {
-            return await window.selector.storage.get(key);
-        },
-        setItem: async (key, value) => {
-            return await window.selector.storage.set(key, value);
-        },
-        removeItem: async (key) => {
-            return await window.selector.storage.remove(key);
-        },
-        clear: async () => {
-            for (const key of await window.selector.storage.keys()) {
-                await window.selector.storage.remove(key);
-            }
-        },
-    },
-});
-Object.defineProperty(window, "open", {
-    value: function (url, newTab, options) {
-        console.log("open", url);
-        return window.selector.open(url, newTab, options);
-    },
-});
-
 async function initialize() {
-    // Fastintear uses window.localStorage, so need to patch it **before** importing
-    const near = await import("https://wallet.intear.tech/near-selector-fastintear-modified.js");
     return {
         async signIn({ network, contractId, methodNames, successUrl, failureUrl }) {
             near.config({ networkId: network });
-            await window.selector.ui.whenApprove({ title: "Sign in", button: "Open wallet" });
+            window.selector.ui.showIframe();
             await near.requestSignIn();
             if (near.accountId() && near.publicKey()) {
                 return [{
@@ -86,7 +62,7 @@ async function initialize() {
                 throw new Error("Network mismatch");
             }
             signerId = signerId ?? near.accountId();
-            const result = await near.adapter.sendTransactions({ transactions: [{ signerId, receiverId, actions }] });
+            const result = await near.state._adapter.sendTransactions({ transactions: [{ signerId, receiverId, actions }] });
             return toObject(result.outcomes[0]);
         },
         async signAndSendTransactions({ network, transactions }) {
@@ -99,7 +75,7 @@ async function initialize() {
                 receiverId: t.receiverId,
                 actions: t.actions,
             }));
-            const result = await near.adapter.sendTransactions({ transactions });
+            const result = await near.state._adapter.sendTransactions({ transactions });
             return result.outcomes.map(toObject);
         },
     };

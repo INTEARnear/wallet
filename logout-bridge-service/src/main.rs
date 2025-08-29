@@ -246,8 +246,9 @@ async fn handle_login(
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_millis() as u64
-                - 60 * 5
+                - 60 * 5 * 1000
     {
+        tracing::error!("Invalid signature!");
         return Err((StatusCode::UNAUTHORIZED, "Invalid signature".to_string()));
     }
 
@@ -314,7 +315,7 @@ async fn handle_logout_app(
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_millis() as u64
-                - 60 * 5
+                - 60 * 5 * 1000
     {
         return Err((StatusCode::UNAUTHORIZED, "Invalid signature".to_string()));
     }
@@ -395,7 +396,7 @@ async fn handle_logout_user(
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_millis() as u64
-                - 60 * 5
+                - 60 * 5 * 1000
     {
         return Err((StatusCode::UNAUTHORIZED, "Invalid signature".to_string()));
     }
@@ -467,7 +468,7 @@ async fn handle_check_logout(
                         .duration_since(UNIX_EPOCH)
                         .unwrap()
                         .as_millis() as u64
-                        - 60 * 5
+                        - 60 * 5 * 1000
             {
                 Err((StatusCode::UNAUTHORIZED, "Invalid signature".to_string()))
             } else {
@@ -533,7 +534,7 @@ async fn handle_websocket_connection(socket: WebSocket, state: AppState) {
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_millis() as u64
-                - 60 * 5
+                - 60 * 5 * 1000
     {
         let error = WsServerMessage::Error {
             message: "Invalid signature".to_string(),
@@ -638,8 +639,6 @@ async fn handle_retrieve_request(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let sessions = state.temporary_sessions.lock().unwrap();
-
-    tracing::info!("All sessions: {:?}", sessions.keys());
 
     match sessions.get(&session_id) {
         Some(session) => match &session.request_data {

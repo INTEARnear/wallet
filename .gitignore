@@ -1,10 +1,12 @@
-target
+/target
 /history-service/transaction_cache
 /logout-bridge-service/sessions
 /password-storage-service/passwords
 .env
-node_modules
+/node_modules
 /web/public/js
 /nft-proxy-service/spam
 /nft-proxy-service/reported
 /dist
+/web/public/near-selector.js
+/web/public/near-selector.js.map
