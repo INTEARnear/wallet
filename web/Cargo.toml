@@ -10,11 +10,11 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 leptos = { version = "0.8.8", features = ["csr", "nightly"] }
-leptos_router = { version = "0.8.5", features = ["nightly"] }
+leptos_router = { version = "0.8.6", features = ["nightly"] }
 console_log = "1.0.0"
 log = "0.4.27"
 console_error_panic_hook = "0.1.7"
-leptos_icons = "0.6.1"
+leptos_icons = "0.7.0"
 icondata = { version = "0.6.0", features = [
     "lucide",
     "simple-icons",
