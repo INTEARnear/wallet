@@ -9,7 +9,7 @@ license = "AGPL-3.0-or-later"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-leptos = { version = "0.8.6", features = ["csr", "nightly"] }
+leptos = { version = "0.8.8", features = ["csr", "nightly"] }
 leptos_router = { version = "0.8.5", features = ["nightly"] }
 console_log = "1.0.0"
 log = "0.4.27"

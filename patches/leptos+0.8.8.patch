@@ -13,11 +13,11 @@ index bcbda8a..ce79aba 100644
 @@ -195,6 +196,7 @@ default-features = true
  
  [dependencies.leptos_config]
- version = "0.8.5"
+ version = "0.8.7"
 +optional = true
  
  [dependencies.leptos_dom]
- version = "0.8.5"
+ version = "0.8.6"
 diff --git a/Cargo.toml.orig b/Cargo.toml.orig
 index 0fb881d..97c453e 100644
 --- a/Cargo.toml.orig
