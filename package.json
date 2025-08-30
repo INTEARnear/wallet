@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@fastnear/utils": "^0.9.7",
     "@ledgerhq/hw-transport-web-ble": "^6.29.7",
     "@ledgerhq/hw-transport-webhid": "6.30.3",
     "@ledgerhq/hw-transport-webusb": "6.29.7",

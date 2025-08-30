@@ -33,7 +33,6 @@ const bundledNearSelectorOptions = {
     outfile: 'web/public/near-selector.js',
     format: 'esm',
     splitting: false,
-    external: ['@fastnear/utils'],
     plugins: [
         polyfillNode({
             polyfills: {
