@@ -142,7 +142,6 @@
                 padding: 0;
                 background: rgba(0, 0, 0, 0.6);
                 align-items: flex-end;
-                animation: backdropFadeIn 0.3s ease-out;
             }
 
             .modal-container {
@@ -157,7 +156,6 @@
                 justify-content: flex-start;
                 margin-bottom: 0;
                 overflow-y: auto;
-                animation: modalSlideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             }
 
             .modal-container-full {
@@ -197,37 +195,9 @@
             }
         }
 
-        /* Backdrop fade-in animation */
-        @keyframes backdropFadeIn {
-            from {
-                background: rgba(0, 0, 0, 0);
-            }
 
-            to {
-                background: rgba(0, 0, 0, 0.6);
-            }
-        }
 
-        /* Modal slide-up animation */
-        @keyframes modalSlideUp {
-            from {
-                opacity: 0;
-                transform: translateY(100px);
-            }
 
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .modal-backdrop {
-            animation: backdropFadeIn 0.3s ease-out;
-        }
-
-        .modal-container {
-            animation: modalSlideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        }
 
         /* Hover effects for cards */
         .card:active {
