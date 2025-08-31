@@ -162,6 +162,7 @@
 
             .modal-container-full {
                 max-height: 100vh;
+                min-height: 100vh;
             }
 
             .header {
@@ -596,7 +597,8 @@
                 const walletAppUrl = `intear://connect?session_id=${sessionId}`;
                 console.log("Opening tauri wallet with URL:", walletAppUrl);
 
-                window.open(walletAppUrl);
+                console.log("Using window.selector.openNativeApp");
+                window.selector.openNativeApp(walletAppUrl);
             } catch (error) {
                 console.error("Error in tauri wallet connection flow:", error);
                 hideWaitingScreen();
@@ -864,6 +866,10 @@
 
             open(url, _, params) {
                 return new ProxyWindow(url, params)
+            },
+
+            openNativeApp(url) {
+                return window.selector.call("open.nativeApp", { url });
             },
         };
 
