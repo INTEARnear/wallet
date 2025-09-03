@@ -147,6 +147,8 @@ pub struct WalletConfig {
     pub hide_to_tray: bool,
     #[serde(default)]
     pub autostart: bool,
+    #[serde(default = "default_true")]
+    pub swap_confirmation_enabled: bool,
 }
 
 fn default_true() -> bool {
@@ -178,6 +180,7 @@ impl Default for WalletConfig {
             autoconfirm_preference_by_origin: HashMap::new(),
             hide_to_tray: true,
             autostart: false,
+            swap_confirmation_enabled: true,
         }
     }
 }

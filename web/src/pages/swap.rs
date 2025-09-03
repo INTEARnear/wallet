@@ -56,16 +56,23 @@ pub struct SwapResult {
     pub amount_out: Balance,
 }
 
-const SHITZU_TOKEN_ID: &str = "token.0xshitzu.near";
+#[derive(Debug, Clone)]
+pub struct SwapConfirmation {
+    pub token_in: TokenInfo,
+    pub token_out: TokenInfo,
+    pub amount_in: Balance,
+    pub estimated_amount_out: Balance,
+    pub worst_case_amount_out: Balance,
+    pub route: Route,
+    pub swap_mode: SwapMode,
+}
 
 #[derive(Debug, Clone)]
 pub enum SwapModalState {
     None,
+    Confirmation(Box<SwapConfirmation>),
     Success(Box<SwapResult>),
     Error,
-    ShitzuConfirm1,
-    ShitzuConfirm2,
-    ShitzuConfirm3,
 }
 
 async fn search_tokens(query: &str, account: Account) -> Result<Vec<TokenInfo>, String> {
@@ -1795,26 +1802,58 @@ pub fn Swap() -> impl IntoView {
                                     }
                             }
                             on:click=move |_| {
-                                let is_selling_shitzu = if let Some(token_in_data) = token_in.get()
-                                {
-                                    match &token_in_data.token.account_id {
-                                        Token::Nep141(account_id) => {
-                                            account_id.as_str() == SHITZU_TOKEN_ID
-                                        }
-                                        Token::Near => false,
-                                    }
-                                } else {
-                                    false
-                                };
-                                if is_selling_shitzu {
-                                    set_swap_modal_state.set(SwapModalState::ShitzuConfirm1);
-                                } else {
-                                    if let Some(Ok(routes)) = get_routes_action
-                                        .value()
-                                        .write()
-                                        .take()
-                                    {
-                                        if let Some(best_route) = routes.routes.into_iter().next() {
+                                if let Some(Ok(routes)) = get_routes_action.value().get() {
+                                    if let Some(best_route) = routes.routes.first() {
+                                        let Some(validated_amount_entered) = validated_amount_entered
+                                            .get() else {
+                                            log::error!(
+                                                "No validated amount entered, yet clicked swap"
+                                            );
+                                            return;
+                                        };
+                                        let Some(token_in) = token_in.get() else {
+                                            log::error!("No token in selected, yet clicked swap");
+                                            return;
+                                        };
+                                        let Some(token_out) = token_out.get() else {
+                                            log::error!("No token out selected, yet clicked swap");
+                                            return;
+                                        };
+                                        if config.get().swap_confirmation_enabled {
+                                            let (estimated_amount_out, worst_case_amount_out) = match swap_mode_memo
+                                                .get()
+                                            {
+                                                SwapMode::ExactIn => {
+                                                    match (
+                                                        best_route.estimated_amount,
+                                                        best_route.worst_case_amount,
+                                                    ) {
+                                                        (
+                                                            Amount::AmountOut(estimated),
+                                                            Amount::AmountOut(worst_case),
+                                                        ) => (estimated, worst_case),
+                                                        _ => {
+                                                            log::error!("Invalid route amounts for ExactIn mode");
+                                                            return;
+                                                        }
+                                                    }
+                                                }
+                                                SwapMode::ExactOut => {
+                                                    (validated_amount_entered, validated_amount_entered)
+                                                }
+                                            };
+                                            let confirmation = SwapConfirmation {
+                                                token_in: token_in.token.clone(),
+                                                token_out: token_out.token.clone(),
+                                                amount_in: validated_amount_entered,
+                                                estimated_amount_out,
+                                                worst_case_amount_out,
+                                                route: best_route.clone(),
+                                                swap_mode: swap_mode_memo.get(),
+                                            };
+                                            set_swap_modal_state
+                                                .set(SwapModalState::Confirmation(Box::new(confirmation)));
+                                        } else {
                                             let Some(selected_account_id) = accounts
                                                 .get_untracked()
                                                 .selected_account_id else {
@@ -1829,28 +1868,13 @@ pub fn Swap() -> impl IntoView {
                                                 return;
                                             };
                                             log::info!("Swapping with route: {best_route:?}");
-                                            let Some(validated_amount_entered) = validated_amount_entered
-                                                .get() else {
-                                                log::error!(
-                                                    "No validated amount entered, yet clicked swap"
-                                                );
-                                                return;
-                                            };
-                                            let Some(token_in) = token_in.get() else {
-                                                log::error!("No token in selected, yet clicked swap");
-                                                return;
-                                            };
-                                            let Some(token_out) = token_out.get() else {
-                                                log::error!("No token out selected, yet clicked swap");
-                                                return;
-                                            };
                                             spawn_local(
                                                 execute_route(
                                                     validated_amount_entered,
                                                     swap_mode_memo.get(),
                                                     token_in.token,
                                                     token_out.token,
-                                                    best_route,
+                                                    best_route.clone(),
                                                     selected_account,
                                                     add_transaction,
                                                     overlay_mode,
@@ -1858,10 +1882,10 @@ pub fn Swap() -> impl IntoView {
                                                     set_swap_modal_state,
                                                 ),
                                             );
+                                            set_swap_mode.set(SwapMode::ExactIn);
+                                            set_amount_entered.set("".to_string());
                                         }
                                     }
-                                    set_swap_mode.set(SwapMode::ExactIn);
-                                    set_amount_entered.set("".to_string());
                                 }
                             }
                         >
@@ -1918,8 +1942,27 @@ pub fn Swap() -> impl IntoView {
                             </button>
 
                             <Show when=move || show_advanced_options.get()>
+                                <div>
+                                    <div class="text-gray-400 text-sm mb-2">"Confirmation"</div>
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            class="w-4 h-4 text-blue-600 bg-neutral-700 border-neutral-600 rounded focus:ring-blue-500 focus:ring-2"
+                                            prop:checked=move || config.get().swap_confirmation_enabled
+                                            on:change=move |ev| {
+                                                let checked = event_target_checked(&ev);
+                                                set_config
+                                                    .update(|config| {
+                                                        config.swap_confirmation_enabled = checked;
+                                                    });
+                                            }
+                                        />
+                                        <span class="text-gray-300 text-sm">
+                                            "Show confirmation modal before swapping"
+                                        </span>
+                                    </label>
+                                </div>
                                 <div class="bg-neutral-800 rounded-lg p-4 space-y-4 mt-2">
-                                    // Minimum received / Maximum spent section
                                     {move || {
                                         if let Some(Ok(routes)) = get_routes_action.value().get() {
                                             if let Some(best_route) = routes.routes.first() {
@@ -2010,8 +2053,7 @@ pub fn Swap() -> impl IntoView {
                                             }
                                                 .into_any()
                                         }
-                                    }} // DEX Selection
-                                    <div>
+                                    }} <div>
                                         <div class="text-gray-400 text-sm mb-2">"Exchanges"</div>
                                         <div class="grid grid-cols-2 gap-2">
                                             {move || {
@@ -2177,6 +2219,19 @@ pub fn Swap() -> impl IntoView {
 
         {move || {
             match swap_modal_state.get() {
+                SwapModalState::Confirmation(confirmation) => {
+                    view! {
+                        <SwapConfirmationModal
+                            confirmation=*confirmation
+                            set_swap_modal_state=set_swap_modal_state
+                            accounts=accounts
+                            add_transaction=add_transaction
+                            overlay_mode=overlay_mode
+                            rpc_client=rpc_client
+                        />
+                    }
+                        .into_any()
+                }
                 SwapModalState::Success(result) => {
                     view! {
                         <SwapSuccessModal
@@ -2188,73 +2243,6 @@ pub fn Swap() -> impl IntoView {
                 }
                 SwapModalState::Error => {
                     view! { <SwapErrorModal set_swap_modal_state=set_swap_modal_state /> }
-                        .into_any()
-                }
-                SwapModalState::ShitzuConfirm1 => {
-                    view! { <ShitzuConfirm1Modal set_swap_modal_state=set_swap_modal_state /> }
-                        .into_any()
-                }
-                SwapModalState::ShitzuConfirm2 => {
-                    view! { <ShitzuConfirm2Modal set_swap_modal_state=set_swap_modal_state /> }
-                        .into_any()
-                }
-                SwapModalState::ShitzuConfirm3 => {
-                    view! {
-                        <ShitzuConfirm3Modal
-                            set_swap_modal_state=set_swap_modal_state
-                            execute_swap=move || {
-                                if let Some(Ok(routes)) = get_routes_action.value().write().take() {
-                                    if let Some(best_route) = routes.routes.into_iter().next() {
-                                        let Some(selected_account_id) = accounts
-                                            .get_untracked()
-                                            .selected_account_id else {
-                                            return;
-                                        };
-                                        let Some(selected_account) = accounts
-                                            .get_untracked()
-                                            .accounts
-                                            .into_iter()
-                                            .find(|account| account.account_id == selected_account_id)
-                                        else {
-                                            return;
-                                        };
-                                        log::info!("Swapping with route: {best_route:?}");
-                                        let Some(validated_amount_entered) = validated_amount_entered
-                                            .get() else {
-                                            log::error!(
-                                                "No validated amount entered, yet clicked swap"
-                                            );
-                                            return;
-                                        };
-                                        let Some(token_in) = token_in.get() else {
-                                            log::error!("No token in selected, yet clicked swap");
-                                            return;
-                                        };
-                                        let Some(token_out) = token_out.get() else {
-                                            log::error!("No token out selected, yet clicked swap");
-                                            return;
-                                        };
-                                        spawn_local(
-                                            execute_route(
-                                                validated_amount_entered,
-                                                swap_mode_memo.get(),
-                                                token_in.token,
-                                                token_out.token,
-                                                best_route,
-                                                selected_account,
-                                                add_transaction,
-                                                overlay_mode,
-                                                rpc_client.get_untracked(),
-                                                set_swap_modal_state,
-                                            ),
-                                        );
-                                    }
-                                }
-                                set_swap_mode.set(SwapMode::ExactIn);
-                                set_amount_entered.set("".to_string());
-                            }
-                        />
-                    }
                         .into_any()
                 }
                 SwapModalState::None => ().into_any(),
@@ -2841,120 +2829,11 @@ impl FromStr for DexId {
     }
 }
 
-#[component]
-fn ShitzuConfirm1Modal(set_swap_modal_state: WriteSignal<SwapModalState>) -> impl IntoView {
-    view! {
-        <div
-            class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
-            on:click=move |_| set_swap_modal_state.set(SwapModalState::None)
-        >
-            <div
-                on:click=|ev| ev.stop_propagation()
-                class="bg-neutral-900 rounded-2xl p-6 max-w-md w-full"
-            >
-                <div class="text-center">
-                    <h3 class="text-white font-bold text-xl mb-4">"Are you sure?"</h3>
-                    <p class="text-gray-400 text-sm mb-6">"$SHITZU is an Intear Wallet partner"</p>
 
-                    <div class="flex gap-3">
-                        <button
-                            class="flex-1 bg-green-600 hover:bg-green-700 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
-                            on:click=move |_| set_swap_modal_state.set(SwapModalState::None)
-                        >
-                            "Go back"
-                        </button>
-                        <button
-                            class="flex-1 bg-neutral-800 hover:bg-neutral-700 border border-neutral-600 hover:border-neutral-500 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
-                            on:click=move |_| {
-                                set_swap_modal_state.set(SwapModalState::ShitzuConfirm2)
-                            }
-                        >
-                            "Proceed"
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    }
-}
 
-#[component]
-fn ShitzuConfirm2Modal(set_swap_modal_state: WriteSignal<SwapModalState>) -> impl IntoView {
-    view! {
-        <div
-            class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
-            on:click=move |_| set_swap_modal_state.set(SwapModalState::None)
-        >
-            <div
-                on:click=|ev| ev.stop_propagation()
-                class="bg-neutral-900 rounded-2xl p-6 max-w-md w-full"
-            >
-                <div class="text-center">
-                    <h3 class="text-white font-bold text-xl mb-4">
-                        "This action cannot be undone"
-                    </h3>
-                    <p class="text-gray-400 text-sm mb-6">
-                        "Unless you buy the token again. Do you want to cancel your action?"
-                    </p>
 
-                    <div class="flex gap-3">
-                        <button
-                            class="flex-1 bg-neutral-800 hover:bg-neutral-700 border border-neutral-600 hover:border-neutral-500 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
-                            on:click=move |_| set_swap_modal_state.set(SwapModalState::None)
-                        >
-                            "Yes"
-                        </button>
-                        <button
-                            class="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
-                            on:click=move |_| {
-                                set_swap_modal_state.set(SwapModalState::ShitzuConfirm3)
-                            }
-                        >
-                            "No"
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    }
-}
 
-#[component]
-fn ShitzuConfirm3Modal(
-    set_swap_modal_state: WriteSignal<SwapModalState>,
-    execute_swap: impl Fn() + 'static + Copy,
-) -> impl IntoView {
-    view! {
-        <div class="fixed inset-0 bg-red-500 flex items-center justify-center z-50 p-4">
-            <div
-                on:click=|ev| ev.stop_propagation()
-                class="bg-red-600 rounded-2xl p-6 max-w-md w-full border border-red-400"
-            >
-                <div class="text-center">
-                    <h3 class="text-white font-bold text-2xl mb-4">"Sell fee"</h3>
-                    <p class="text-red-100 text-sm mb-6">
-                        "Selling this token incurs a one-time fee of $2.00."
-                    </p>
 
-                    <div class="flex gap-3">
-                        <button class="flex-1 bg-blue-600 text-white rounded-xl px-4 py-3 font-medium cursor-not-allowed">
-                            "Pay"
-                        </button>
-                        <button
-                            class="flex-1 bg-red-700 hover:bg-red-600 border border-red-300 hover:border-red-200 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
-                            on:click=move |_| {
-                                set_swap_modal_state.set(SwapModalState::None);
-                                execute_swap();
-                            }
-                        >
-                            "Skip"
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    }
-}
 
 #[component]
 fn SwapSuccessModal(
@@ -3087,6 +2966,382 @@ fn SwapSuccessModal(
                     >
                         "Close"
                     </button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn SwapConfirmationModal(
+    confirmation: SwapConfirmation,
+    set_swap_modal_state: WriteSignal<SwapModalState>,
+    accounts: ReadSignal<crate::contexts::accounts_context::AccountsState>,
+    add_transaction: WriteSignal<Vec<EnqueuedTransaction>>,
+    overlay_mode: RwSignal<OverlayMode>,
+    rpc_client: RwSignal<RpcClient>,
+) -> impl IntoView {
+    // Clone all the values we need to avoid partial moves
+    let token_in = confirmation.token_in.clone();
+    let token_out = confirmation.token_out.clone();
+    let route = confirmation.route.clone();
+    let swap_mode = confirmation.swap_mode;
+    
+    let amount_in_decimal = balance_to_decimal(confirmation.amount_in, token_in.metadata.decimals);
+    let amount_in_formatted = format!(
+        "{} {}",
+        round_precision_or_significant(amount_in_decimal.clone()),
+        token_in.metadata.symbol
+    );
+    let amount_in_usd = if !token_in.price_usd_hardcoded.is_zero() {
+        Some(&amount_in_decimal * &token_in.price_usd_hardcoded)
+    } else {
+        None
+    };
+
+    let estimated_amount_out_decimal = balance_to_decimal(confirmation.estimated_amount_out, token_out.metadata.decimals);
+    let estimated_amount_out_formatted = format!(
+        "{} {}",
+        round_precision_or_significant(estimated_amount_out_decimal.clone()),
+        token_out.metadata.symbol
+    );
+    let estimated_amount_out_usd = if !token_out.price_usd_hardcoded.is_zero() {
+        Some(&estimated_amount_out_decimal * &token_out.price_usd_hardcoded)
+    } else {
+        None
+    };
+
+    let worst_case_amount_out_decimal = balance_to_decimal(confirmation.worst_case_amount_out, token_out.metadata.decimals);
+    let worst_case_amount_out_formatted = format!(
+        "{} {}",
+        round_precision_or_significant(worst_case_amount_out_decimal.clone()),
+        token_out.metadata.symbol
+    );
+
+    // Calculate price impact if possible
+    let price_impact = if !token_in.price_usd_hardcoded.is_zero() && !token_out.price_usd_hardcoded.is_zero() {
+        let input_usd_value = &amount_in_decimal * &token_in.price_usd_hardcoded;
+        let output_usd_value = &estimated_amount_out_decimal * &token_out.price_usd_hardcoded;
+        if !input_usd_value.is_zero() && !output_usd_value.is_zero() {
+            let difference = &input_usd_value - &output_usd_value;
+            if difference.sign() == bigdecimal::num_bigint::Sign::Plus {
+                Some((difference / &input_usd_value) * BigDecimal::from(100))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    view! {
+        <div
+            class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+            on:click=move |_| set_swap_modal_state.set(SwapModalState::None)
+        >
+            <div
+                on:click=|ev| ev.stop_propagation()
+                class="bg-neutral-900 rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
+            >
+                <div class="text-center">
+                    <div class="mb-4">
+                        <h3 class="text-white font-bold text-xl mb-2">"Confirm Swap"</h3>
+                        <p class="text-gray-400 text-sm">
+                            "Review the details below and confirm to proceed with the swap."
+                        </p>
+                    </div>
+
+                    <div class="space-y-4">
+                        // From section
+                        <div class="bg-neutral-800 rounded-lg p-4">
+                            <div class="text-gray-400 text-sm mb-2">"You're swapping"</div>
+                            <div class="flex items-center gap-3">
+                                {match token_in.metadata.icon {
+                                    Some(icon) => {
+                                        view! {
+                                            <img
+                                                src=icon
+                                                alt=token_in.metadata.symbol.clone()
+                                                class="w-8 h-8 rounded-full"
+                                            />
+                                        }
+                                            .into_any()
+                                    }
+                                    None => {
+                                        view! {
+                                            <div class="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white text-sm">
+                                                {token_in.metadata.symbol.chars().next().unwrap_or('?')}
+                                            </div>
+                                        }
+                                            .into_any()
+                                    }
+                                }} <div class="text-left">
+                                    <div class="text-white font-medium text-lg">
+                                        {amount_in_formatted}
+                                    </div>
+                                    <div class="text-gray-400 text-sm">
+                                        {move || {
+                                            if let Some(usd_amount) = &amount_in_usd {
+                                                format_usd_value_no_hide(usd_amount.clone())
+                                            } else {
+                                                String::new()
+                                            }
+                                        }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-center">
+                            <Icon
+                                icon=icondata::LuArrowDown
+                                width="20"
+                                height="20"
+                                attr:class="text-gray-400"
+                            />
+                        </div>
+
+                        // To section
+                        <div class="bg-neutral-800 rounded-lg p-4">
+                            <div class="text-gray-400 text-sm mb-2">"To receive"</div>
+                            <div class="flex items-center gap-3">
+                                {match token_out.metadata.icon {
+                                    Some(icon) => {
+                                        view! {
+                                            <img
+                                                src=icon
+                                                alt=token_out.metadata.symbol.clone()
+                                                class="w-8 h-8 rounded-full"
+                                            />
+                                        }
+                                            .into_any()
+                                    }
+                                    None => {
+                                        view! {
+                                            <div class="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white text-sm">
+                                                {token_out.metadata.symbol.chars().next().unwrap_or('?')}
+                                            </div>
+                                        }
+                                            .into_any()
+                                    }
+                                }} <div class="text-left">
+                                    <div class="text-white font-medium text-lg">
+                                        {estimated_amount_out_formatted}
+                                    </div>
+                                    <div class="text-gray-400 text-sm">
+                                        {move || {
+                                            if let Some(usd_amount) = &estimated_amount_out_usd {
+                                                format_usd_value_no_hide(usd_amount.clone())
+                                            } else {
+                                                String::new()
+                                            }
+                                        }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        // Transaction details
+                        <div class="bg-neutral-800 rounded-lg p-4 space-y-3">
+                            <div class="text-gray-400 text-sm font-medium">
+                                "Transaction Details"
+                            </div>
+
+                            // DEX info
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-400 text-sm">"Exchange"</span>
+                                <div class="flex items-center gap-2">
+                                    {match route.dex_id {
+                                        DexId::Aidols => {
+                                            view! {
+                                                <img src="/aidols.svg" alt="Aidols" class="w-auto h-5" />
+                                            }
+                                                .into_any()
+                                        }
+                                        DexId::GraFun => {
+                                            view! {
+                                                <img src="/grafun.svg" alt="GraFun" class="w-auto h-5" />
+                                            }
+                                                .into_any()
+                                        }
+                                        DexId::NearIntents => {
+                                            view! {
+                                                <img
+                                                    src="/near-intents.svg"
+                                                    alt="Near Intents"
+                                                    class="w-auto h-5"
+                                                />
+                                            }
+                                                .into_any()
+                                        }
+                                        DexId::Rhea => {
+                                            view! {
+                                                <img src="/rhea.svg" alt="Rhea" class="w-auto h-5" />
+                                            }
+                                                .into_any()
+                                        }
+                                        DexId::Veax => {
+                                            view! {
+                                                <img src="/veax.svg" alt="Veax" class="w-auto h-4" />
+                                            }
+                                                .into_any()
+                                        }
+                                        DexId::Jumpdefi => {
+                                            view! {
+                                                <img
+                                                    src="/jumpdefi.svg"
+                                                    alt="Jumpdefi"
+                                                    class="w-auto h-5"
+                                                />
+                                            }
+                                                .into_any()
+                                        }
+                                        DexId::RheaDcl => {
+                                            view! {
+                                                <img src="/rhea.svg" alt="Rhea" class="w-auto h-5" />
+                                            }
+                                                .into_any()
+                                        }
+                                        DexId::Wrap => {
+                                            view! {
+                                                <span class="text-white text-sm">"Wrap Directly"</span>
+                                            }
+                                                .into_any()
+                                        }
+                                        DexId::MetaPool => {
+                                            view! {
+                                                <img
+                                                    src="/metapool.svg"
+                                                    alt="MetaPool"
+                                                    class="w-auto h-5"
+                                                />
+                                            }
+                                                .into_any()
+                                        }
+                                        DexId::Linear => {
+                                            view! {
+                                                <img src="/linear.svg" alt="Linear" class="w-auto h-5" />
+                                            }
+                                                .into_any()
+                                        }
+                                        DexId::XRhea => {
+                                            view! {
+                                                <div class="flex items-center gap-1">
+                                                    <img src="/rhea.svg" alt="XRhea" class="w-auto h-5" />
+                                                    <span class="text-white text-sm">"Stake RHEA"</span>
+                                                </div>
+                                            }
+                                                .into_any()
+                                        }
+                                        DexId::RNear => {
+                                            view! {
+                                                <div class="flex items-center gap-1">
+                                                    <img src="/rhea.svg" alt="XRhea" class="w-auto h-5" />
+                                                    <span class="text-white text-sm">"Stake NEAR"</span>
+                                                </div>
+                                            }
+                                                .into_any()
+                                        }
+                                    }}
+                                </div>
+                            </div>
+
+                            // Minimum received
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-400 text-sm">
+                                    {match swap_mode {
+                                        SwapMode::ExactIn => "Minimum received",
+                                        SwapMode::ExactOut => "Maximum spent",
+                                    }}
+                                </span>
+                                <span class="text-white text-sm">
+                                    {worst_case_amount_out_formatted}
+                                </span>
+                            </div>
+
+                            // Price impact (only show if 5% or above)
+                            {
+                                let price_impact_clone = price_impact.clone();
+                                move || {
+                                    if let Some(impact) = price_impact_clone.as_ref() {
+                                        if impact >= &BigDecimal::from(5) {
+                                            let impact_clone = impact.clone();
+                                            view! {
+                                                <div class="flex justify-between items-center">
+                                                    <span class="text-gray-400 text-sm">"Price Impact"</span>
+                                                    <span class=move || {
+                                                        format!(
+                                                            "text-sm {}",
+                                                            if &impact_clone > &BigDecimal::from(5) {
+                                                                "text-red-400"
+                                                            } else {
+                                                                "text-yellow-400"
+                                                            },
+                                                        )
+                                                    }>{format!("{:.2}%", impact_clone)}</span>
+                                                </div>
+                                            }
+                                                .into_any()
+                                        } else {
+                                            ().into_any()
+                                        }
+                                    } else {
+                                        ().into_any()
+                                    }
+                                }
+                            }
+                        </div>
+                    </div>
+
+                    // Action buttons
+                    <div class="flex gap-3 mt-6">
+                        <button
+                            class="flex-1 bg-neutral-700 hover:bg-neutral-600 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
+                            on:click=move |_| set_swap_modal_state.set(SwapModalState::None)
+                        >
+                            "Cancel"
+                        </button>
+                        <button
+                            class="flex-1 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-xl px-4 py-3 font-medium transition-all cursor-pointer"
+                            on:click={
+                                let confirmation_clone = confirmation.clone();
+                                move |_| {
+                                    let Some(selected_account_id) = accounts
+                                        .get_untracked()
+                                        .selected_account_id else {
+                                        return;
+                                    };
+                                    let Some(selected_account) = accounts
+                                        .get_untracked()
+                                        .accounts
+                                        .into_iter()
+                                        .find(|account| account.account_id == selected_account_id)
+                                    else {
+                                        return;
+                                    };
+                                    let confirmation_exec = confirmation_clone.clone();
+                                    spawn_local(
+                                        execute_route(
+                                            confirmation_exec.amount_in,
+                                            confirmation_exec.swap_mode,
+                                            confirmation_exec.token_in,
+                                            confirmation_exec.token_out,
+                                            confirmation_exec.route,
+                                            selected_account,
+                                            add_transaction,
+                                            overlay_mode,
+                                            rpc_client.get_untracked(),
+                                            set_swap_modal_state,
+                                        ),
+                                    );
+                                }
+                            }
+                        >
+                            "Confirm Swap"
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
