@@ -366,6 +366,7 @@ pub fn Connect() -> impl IntoView {
             .into_iter()
             .find(|a| a.account_id == selected_account_id)
             .expect("Selected account not found");
+        let user_public_key = selected_account.secret_key.public_key();
 
         if !is_public_key_valid() {
             let message = SendMessage::Error {
@@ -460,7 +461,7 @@ pub fn Connect() -> impl IntoView {
                 set_apps.update(|apps| {
                     let app = ConnectedApp {
                         account_id: selected_account.clone(),
-                        public_key: request_data.public_key.clone(),
+                        public_key: user_public_key,
                         requested_contract_id: match request_data.contract_id.as_deref() {
                             None => None,
                             Some("") => None,
