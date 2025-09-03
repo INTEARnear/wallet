@@ -32,6 +32,7 @@ const GAS_ALLOWANCE: NearToken = NearToken::from_millinear(1000); // 1 NEAR
 #[serde(rename_all = "camelCase")]
 pub struct WalletSelectorAccount {
     account_id: AccountId,
+    public_key: PublicKey,
 }
 
 #[derive(Deserialize, Debug)]
@@ -461,7 +462,7 @@ pub fn Connect() -> impl IntoView {
                 set_apps.update(|apps| {
                     let app = ConnectedApp {
                         account_id: selected_account.clone(),
-                        public_key: user_public_key,
+                        public_key: request_data.public_key.clone(),
                         requested_contract_id: match request_data.contract_id.as_deref() {
                             None => None,
                             Some("") => None,
@@ -540,6 +541,7 @@ pub fn Connect() -> impl IntoView {
                             if details.is_ok_and(|d| d.final_execution_outcome.is_some()) {
                                 let accounts = vec![WalletSelectorAccount {
                                     account_id: selected_account,
+                                    public_key: user_public_key,
                                 }];
                                 let message = SendMessage::Connected {
                                     accounts,
@@ -566,6 +568,7 @@ pub fn Connect() -> impl IntoView {
                 } else {
                     let accounts = vec![WalletSelectorAccount {
                         account_id: selected_account,
+                        public_key: user_public_key,
                     }];
                     let message = SendMessage::Connected {
                         accounts,

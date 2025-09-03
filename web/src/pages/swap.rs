@@ -71,6 +71,7 @@ pub struct SwapConfirmation {
 pub enum SwapModalState {
     None,
     Confirmation(Box<SwapConfirmation>),
+    JamboSpecialConfirmation,
     Success(Box<SwapResult>),
     Error,
 }
@@ -1851,8 +1852,34 @@ pub fn Swap() -> impl IntoView {
                                                 route: best_route.clone(),
                                                 swap_mode: swap_mode_memo.get(),
                                             };
-                                            set_swap_modal_state
-                                                .set(SwapModalState::Confirmation(Box::new(confirmation)));
+                                            let is_jambo_special = if let Token::Nep141(account_id) = &token_in
+                                                .token
+                                                .account_id
+                                            {
+                                                account_id.as_str() == "jambo-1679.meme-cooking.near"
+                                            } else {
+                                                false
+                                            };
+                                            let is_over_thousand = if is_jambo_special
+                                                && !token_in.token.price_usd_hardcoded.is_zero()
+                                            {
+                                                let amount_in_decimal = balance_to_decimal(
+                                                    validated_amount_entered,
+                                                    token_in.token.metadata.decimals,
+                                                );
+                                                let usd_value = &amount_in_decimal
+                                                    * &token_in.token.price_usd_hardcoded;
+                                                usd_value >= BigDecimal::from(1000)
+                                            } else {
+                                                false
+                                            };
+                                            if is_jambo_special && is_over_thousand {
+                                                set_swap_modal_state
+                                                    .set(SwapModalState::JamboSpecialConfirmation);
+                                            } else {
+                                                set_swap_modal_state
+                                                    .set(SwapModalState::Confirmation(Box::new(confirmation)));
+                                            }
                                         } else {
                                             let Some(selected_account_id) = accounts
                                                 .get_untracked()
@@ -2231,6 +2258,9 @@ pub fn Swap() -> impl IntoView {
                         />
                     }
                         .into_any()
+                }
+                SwapModalState::JamboSpecialConfirmation => {
+                    view! { <JamboSpecialModal /> }.into_any()
                 }
                 SwapModalState::Success(result) => {
                     view! {
@@ -2829,12 +2859,6 @@ impl FromStr for DexId {
     }
 }
 
-
-
-
-
-
-
 #[component]
 fn SwapSuccessModal(
     result: SwapResult,
@@ -2986,7 +3010,7 @@ fn SwapConfirmationModal(
     let token_out = confirmation.token_out.clone();
     let route = confirmation.route.clone();
     let swap_mode = confirmation.swap_mode;
-    
+
     let amount_in_decimal = balance_to_decimal(confirmation.amount_in, token_in.metadata.decimals);
     let amount_in_formatted = format!(
         "{} {}",
@@ -2999,7 +3023,10 @@ fn SwapConfirmationModal(
         None
     };
 
-    let estimated_amount_out_decimal = balance_to_decimal(confirmation.estimated_amount_out, token_out.metadata.decimals);
+    let estimated_amount_out_decimal = balance_to_decimal(
+        confirmation.estimated_amount_out,
+        token_out.metadata.decimals,
+    );
     let estimated_amount_out_formatted = format!(
         "{} {}",
         round_precision_or_significant(estimated_amount_out_decimal.clone()),
@@ -3011,7 +3038,10 @@ fn SwapConfirmationModal(
         None
     };
 
-    let worst_case_amount_out_decimal = balance_to_decimal(confirmation.worst_case_amount_out, token_out.metadata.decimals);
+    let worst_case_amount_out_decimal = balance_to_decimal(
+        confirmation.worst_case_amount_out,
+        token_out.metadata.decimals,
+    );
     let worst_case_amount_out_formatted = format!(
         "{} {}",
         round_precision_or_significant(worst_case_amount_out_decimal.clone()),
@@ -3019,22 +3049,23 @@ fn SwapConfirmationModal(
     );
 
     // Calculate price impact if possible
-    let price_impact = if !token_in.price_usd_hardcoded.is_zero() && !token_out.price_usd_hardcoded.is_zero() {
-        let input_usd_value = &amount_in_decimal * &token_in.price_usd_hardcoded;
-        let output_usd_value = &estimated_amount_out_decimal * &token_out.price_usd_hardcoded;
-        if !input_usd_value.is_zero() && !output_usd_value.is_zero() {
-            let difference = &input_usd_value - &output_usd_value;
-            if difference.sign() == bigdecimal::num_bigint::Sign::Plus {
-                Some((difference / &input_usd_value) * BigDecimal::from(100))
+    let price_impact =
+        if !token_in.price_usd_hardcoded.is_zero() && !token_out.price_usd_hardcoded.is_zero() {
+            let input_usd_value = &amount_in_decimal * &token_in.price_usd_hardcoded;
+            let output_usd_value = &estimated_amount_out_decimal * &token_out.price_usd_hardcoded;
+            if !input_usd_value.is_zero() && !output_usd_value.is_zero() {
+                let difference = &input_usd_value - &output_usd_value;
+                if difference.sign() == bigdecimal::num_bigint::Sign::Plus {
+                    Some((difference / &input_usd_value) * BigDecimal::from(100))
+                } else {
+                    None
+                }
             } else {
                 None
             }
         } else {
             None
-        }
-    } else {
-        None
-    };
+        };
 
     view! {
         <div
@@ -3274,7 +3305,7 @@ fn SwapConfirmationModal(
                                                     <span class=move || {
                                                         format!(
                                                             "text-sm {}",
-                                                            if &impact_clone > &BigDecimal::from(5) {
+                                                            if impact_clone > BigDecimal::from(5) {
                                                                 "text-red-400"
                                                             } else {
                                                                 "text-yellow-400"
@@ -3383,6 +3414,21 @@ fn SwapErrorModal(set_swap_modal_state: WriteSignal<SwapModalState>) -> impl Int
                     </button>
                 </div>
             </div>
+        </div>
+    }
+}
+
+#[component]
+fn JamboSpecialModal() -> impl IntoView {
+    Effect::new(|_| {
+        if let Ok(audio) = web_sys::HtmlAudioElement::new_with_src("/call.ogg") {
+            let _ = audio.play();
+        }
+    });
+
+    view! {
+        <div class="fixed inset-0 bg-black flex items-center justify-center z-50">
+            <img src="/jambo-1clip.webp" class="cursor-pointer h-full" />
         </div>
     }
 }
