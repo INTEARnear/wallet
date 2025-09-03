@@ -17,12 +17,9 @@ async function initialize() {
         async signIn({ network, contractId, methodNames, successUrl, failureUrl }) {
             near.config({ networkId: network });
             window.selector.ui.showIframe();
-            await near.requestSignIn();
+            const result = await near.requestSignIn();
             if (near.accountId() && near.publicKey()) {
-                return [{
-                    accountId: near.accountId(),
-                    publicKey: near.publicKey(),
-                }]
+                return result.accounts
             } else {
                 throw new Error("Connection failed");
             }
@@ -39,6 +36,12 @@ async function initialize() {
             console.log("getAccounts");
             if (near.config().networkId && near.config().networkId !== network) {
                 throw new Error("Network mismatch");
+            }
+            if (localStorage.getItem("_intear_wallet_connected_account")) {
+                try {
+                    return JSON.parse(localStorage.getItem("_intear_wallet_connected_account")).accounts;
+                } catch {
+                }
             }
             if (near.accountId() && near.publicKey()) {
                 return [{
