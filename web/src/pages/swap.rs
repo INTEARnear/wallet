@@ -3352,6 +3352,7 @@ fn SwapConfirmationModal(
                                     else {
                                         return;
                                     };
+                                    set_swap_modal_state.set(SwapModalState::None);
                                     let confirmation_exec = confirmation_clone.clone();
                                     spawn_local(
                                         execute_route(
