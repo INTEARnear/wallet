@@ -1969,27 +1969,27 @@ pub fn Swap() -> impl IntoView {
                             </button>
 
                             <Show when=move || show_advanced_options.get()>
-                                <div>
-                                    <div class="text-gray-400 text-sm mb-2">"Confirmation"</div>
-                                    <label class="flex items-center gap-2 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            class="w-4 h-4 text-blue-600 bg-neutral-700 border-neutral-600 rounded focus:ring-blue-500 focus:ring-2"
-                                            prop:checked=move || config.get().swap_confirmation_enabled
-                                            on:change=move |ev| {
-                                                let checked = event_target_checked(&ev);
-                                                set_config
-                                                    .update(|config| {
-                                                        config.swap_confirmation_enabled = checked;
-                                                    });
-                                            }
-                                        />
-                                        <span class="text-gray-300 text-sm">
-                                            "Show confirmation modal before swapping"
-                                        </span>
-                                    </label>
-                                </div>
                                 <div class="bg-neutral-800 rounded-lg p-4 space-y-4 mt-2">
+                                    <div>
+                                        <div class="text-gray-400 text-sm mb-2">"Confirmation"</div>
+                                        <label class="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                class="w-4 h-4 text-blue-600 bg-neutral-700 border-neutral-600 rounded focus:ring-blue-500 focus:ring-2"
+                                                prop:checked=move || config.get().swap_confirmation_enabled
+                                                on:change=move |ev| {
+                                                    let checked = event_target_checked(&ev);
+                                                    set_config
+                                                        .update(|config| {
+                                                            config.swap_confirmation_enabled = checked;
+                                                        });
+                                                }
+                                            />
+                                            <span class="text-gray-300 text-sm">
+                                                "Show confirmation modal before swapping"
+                                            </span>
+                                        </label>
+                                    </div>
                                     {move || {
                                         if let Some(Ok(routes)) = get_routes_action.value().get() {
                                             if let Some(best_route) = routes.routes.first() {
@@ -2080,7 +2080,8 @@ pub fn Swap() -> impl IntoView {
                                             }
                                                 .into_any()
                                         }
-                                    }} <div>
+                                    }}
+                                    <div>
                                         <div class="text-gray-400 text-sm mb-2">"Exchanges"</div>
                                         <div class="grid grid-cols-2 gap-2">
                                             {move || {
