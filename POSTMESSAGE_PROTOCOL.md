@@ -107,7 +107,7 @@ Success:
   "signature": {
     "accountId": "connected-user-account.near",
     "publicKey": "ed25519:...", // on-chain user's full access key
-    "signature": "ed25519:...", // signature over NEP-413 payload
+    "signature": "ed25519:...", // signature of the NEP-413 payload. Note that it's keytype-prefixed base58, so if you need to get the NEP-413 standard signature (base64), you need to remove the keytype prefix (remove "ed25519:" or "secp256k1:"), decode the rest using base58, and encode with base64
     "state": "optional string, same as in the request. Not really necessary to use this for popup-based or websocket-based communication, so better to set this as null in the request"
   }
 }
