@@ -923,10 +923,15 @@ struct MetaPoolState {
     st_near_price: NearToken,
 }
 
+#[derive(Deserialize)]
+struct RheaSummary {
+    ft_price: NearToken,
+}
+
 async fn fetch_blocks_for_lst_comparison(
     rpc_client: &RpcClient,
 ) -> Result<(BlockView, BlockView), String> {
-    const TARGET_DELTA: Duration = Duration::from_millis(1000 * 60 * 60 * 24 * 7);
+    const TARGET_DELTA: Duration = Duration::from_millis(1000 * 60 * 60 * 24 * 14);
     const BLOCK_DELTA: BlockHeightDelta =
         ((TARGET_DELTA.as_millis() as f64 / EPOCH_DURATION.as_millis() as f64) as EpochHeight)
             * EPOCH_LENGTH;
@@ -990,9 +995,22 @@ async fn fetch_linear_rate(rpc_client: &RpcClient, height: u64) -> Result<BigDec
     Ok(BigDecimal::from(summary.ft_price.as_yoctonear()))
 }
 
+async fn fetch_rhea_rate(rpc_client: &RpcClient, height: u64) -> Result<BigDecimal, String> {
+    let summary: RheaSummary = rpc_client
+        .call::<RheaSummary>(
+            "lst.rhealab.near".parse().unwrap(),
+            "get_summary",
+            serde_json::json!({}),
+            QueryFinality::BlockId(BlockId::Height(height)),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(BigDecimal::from(summary.ft_price.as_yoctonear()))
+}
+
 async fn compute_liquid_staking_apys(
     rpc_client: &RpcClient,
-) -> Result<(Option<BigDecimal>, Option<BigDecimal>), String> {
+) -> Result<[Option<BigDecimal>; 3], String> {
     const SECONDS_IN_YEAR: u64 = 60 * 60 * 24 * 365;
 
     let (block_now, block_prev) = fetch_blocks_for_lst_comparison(rpc_client).await?;
@@ -1001,11 +1019,20 @@ async fn compute_liquid_staking_apys(
     let timestamp_now = block_now.header.timestamp_nanosec / 1_000_000_000;
     let timestamp_prev = block_prev.header.timestamp_nanosec / 1_000_000_000;
 
-    let (metapool_now_res, metapool_prev_res, linear_now_res, linear_prev_res) = futures_util::join!(
+    let (
+        metapool_now_res,
+        metapool_prev_res,
+        linear_now_res,
+        linear_prev_res,
+        rhea_now_res,
+        rhea_prev_res,
+    ) = futures_util::join!(
         fetch_metapool_rate(rpc_client, height_now),
         fetch_metapool_rate(rpc_client, height_prev),
         fetch_linear_rate(rpc_client, height_now),
-        fetch_linear_rate(rpc_client, height_prev)
+        fetch_linear_rate(rpc_client, height_prev),
+        fetch_rhea_rate(rpc_client, height_now),
+        fetch_rhea_rate(rpc_client, height_prev)
     );
 
     let metapool =
@@ -1039,11 +1066,26 @@ async fn compute_liquid_staking_apys(
         None
     };
 
-    if metapool.is_none() && linear.is_none() {
+    let rhea = if let (Ok(r_now), Ok(r_prev)) = (rhea_now_res, rhea_prev_res) {
+        if r_prev != BigDecimal::from(0u8) {
+            let growth = (&r_now - &r_prev) / &r_prev;
+            Some(
+                growth * BigDecimal::from(SECONDS_IN_YEAR)
+                    / BigDecimal::from(timestamp_now - timestamp_prev)
+                    * BigDecimal::from(100u8),
+            )
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if metapool.is_none() && linear.is_none() && rhea.is_none() {
         return Err("Failed to compute any liquid staking APY".to_string());
     }
 
-    Ok((metapool, linear))
+    Ok([metapool, linear, rhea])
 }
 
 #[derive(Debug, Clone)]
@@ -1051,6 +1093,72 @@ pub enum StakeModalState {
     None,
     Success(String),
     Error(String),
+}
+
+#[component]
+fn LiquidStakingCard(
+    href: &'static str,
+    logo_src: &'static str,
+    logo_alt: &'static str,
+    background_color: &'static str,
+    apy_data: LocalResource<Result<[Option<BigDecimal>; 3], String>>,
+    apy_index: usize,
+) -> impl IntoView {
+    view! {
+        <A
+            href={href}
+            attr:class="rounded-lg flex flex-col hover:opacity-90 transition-opacity cursor-pointer overflow-hidden h-32"
+        >
+            <div
+                class="flex flex-col items-center justify-center flex-1"
+                style={format!("background-color: {}", background_color)}
+            >
+                <img
+                    src={logo_src}
+                    alt={logo_alt}
+                    class="h-12 flex-shrink-0 object-contain mb-2 m-4"
+                />
+                <div class="flex flex-col items-center justify-center bg-black/75 w-full h-full">
+                    {move || {
+                        apy_data
+                            .get()
+                            .map(|res| match res {
+                                Ok(apy_tuple) => {
+                                    let apy = match apy_index {
+                                        0 => apy_tuple[0].as_ref(),
+                                        1 => apy_tuple[1].as_ref(),
+                                        2 => apy_tuple[2].as_ref(),
+                                        _ => None,
+                                    };
+                                    let apy_str = format!(
+                                        "{:.02}%",
+                                        apy.unwrap_or(&BigDecimal::from(0)),
+                                    );
+                                    view! {
+                                        <div class="text-white font-semibold text-lg">
+                                            {apy_str}
+                                        </div>
+                                    }
+                                        .into_any()
+                                }
+                                Err(_) => {
+                                    view! {
+                                        <div class="text-gray-200 font-semibold text-lg">"-"</div>
+                                    }
+                                        .into_any()
+                                }
+                            })
+                            .unwrap_or_else(|| {
+                                view! {
+                                    <div class="text-gray-200 font-semibold text-lg">"Loading"</div>
+                                }
+                                    .into_any()
+                            })
+                    }} <div class="text-gray-300 text-xs">"14-day average APY"</div>
+                </div>
+            </div>
+        </A>
+    }
 }
 
 #[component]
@@ -1514,7 +1622,7 @@ pub fn Stake() -> impl IntoView {
                     view! {
                         <div>
                             <h1 class="text-2xl font-bold">"Stake with a Validator"</h1>
-                            <p class="text-gray-400">
+                            <p class="text-gray-400 mt-2">
                                 "Earn rewards by staking your NEAR with a validator. Validators help secure the network and you get a share of the rewards."
                             </p>
                         </div>
@@ -1531,111 +1639,31 @@ pub fn Stake() -> impl IntoView {
                     view! {
                         <div class="mb-2">
                             <h2 class="text-xl font-semibold mb-4">"Liquid Staking"</h2>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <A
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <LiquidStakingCard
                                     href="/swap?from=near&to=meta-pool.near"
-                                    attr:class="rounded-lg flex items-center hover:opacity-90 transition-opacity cursor-pointer overflow-hidden h-25"
-                                >
-                                    <div
-                                        class="p-4 flex items-center justify-center flex-1 h-full"
-                                        style="background-color: #ceff19"
-                                    >
-                                        <img
-                                            src="/lst-metapool.svg"
-                                            alt="Metapool"
-                                            class="h-full flex-shrink-0 object-contain rounded-l-lg"
-                                        />
-                                    </div>
-                                    <div class="bg-neutral-800 px-4 flex flex-col items-center justify-center h-full min-w-25">
-                                        {move || {
-                                            liquid_apys
-                                                .get()
-                                                .map(|res| match res {
-                                                    Ok((metapool_apy, _)) => {
-                                                        let apy_str = format!(
-                                                            "{:.02}%",
-                                                            metapool_apy.unwrap_or_default(),
-                                                        );
-                                                        view! {
-                                                            <div class="text-white font-semibold text-lg">
-                                                                {apy_str}
-                                                            </div>
-                                                        }
-                                                            .into_any()
-                                                    }
-                                                    Err(_) => {
-                                                        view! {
-                                                            <div class="text-gray-400 font-semibold text-lg">"-"</div>
-                                                        }
-                                                            .into_any()
-                                                    }
-                                                })
-                                                .unwrap_or_else(|| {
-                                                    view! {
-                                                        <div class="text-gray-400 font-semibold text-lg">
-                                                            "Loading"
-                                                        </div>
-                                                    }
-                                                        .into_any()
-                                                })
-                                        }} <div class="text-gray-400 text-xs">"APY"</div>
-                                        <div class="text-gray-500 text-[10px] mt-1">
-                                            "7-day average"
-                                        </div>
-                                    </div>
-                                </A>
-                                <A
+                                    logo_src="/lst-metapool.svg"
+                                    logo_alt="Metapool"
+                                    background_color="#ceff19"
+                                    apy_data={liquid_apys}
+                                    apy_index=0
+                                />
+                                <LiquidStakingCard
                                     href="/swap?from=near&to=linear-protocol.near"
-                                    attr:class="rounded-lg flex items-center hover:opacity-90 transition-opacity cursor-pointer overflow-hidden h-25"
-                                >
-                                    <div
-                                        class="p-4 flex items-center justify-center flex-1 h-full"
-                                        style="background-color: #090811"
-                                    >
-                                        <img
-                                            src="/lst-linear.svg"
-                                            alt="LiNEAR Protocol"
-                                            class="h-full flex-shrink-0 object-contain rounded-l-lg"
-                                        />
-                                    </div>
-                                    <div class="bg-neutral-800 px-4 py-4 flex flex-col items-center justify-center h-full min-w-25">
-                                        {move || {
-                                            liquid_apys
-                                                .get()
-                                                .map(|res| match res {
-                                                    Ok((_, linear_apy)) => {
-                                                        let apy_str = format!(
-                                                            "{:.02}%",
-                                                            linear_apy.unwrap_or_default(),
-                                                        );
-                                                        view! {
-                                                            <div class="text-white font-semibold text-lg">
-                                                                {apy_str}
-                                                            </div>
-                                                        }
-                                                            .into_any()
-                                                    }
-                                                    Err(_) => {
-                                                        view! {
-                                                            <div class="text-gray-400 font-semibold text-lg">"-"</div>
-                                                        }
-                                                            .into_any()
-                                                    }
-                                                })
-                                                .unwrap_or_else(|| {
-                                                    view! {
-                                                        <div class="text-gray-400 font-semibold text-lg">
-                                                            "Loading"
-                                                        </div>
-                                                    }
-                                                        .into_any()
-                                                })
-                                        }} <div class="text-gray-400 text-xs">"APY"</div>
-                                        <div class="text-gray-500 text-[10px] mt-1">
-                                            "7-day average"
-                                        </div>
-                                    </div>
-                                </A>
+                                    logo_src="/lst-linear.svg"
+                                    logo_alt="LiNEAR Protocol"
+                                    background_color="#090811"
+                                    apy_data={liquid_apys}
+                                    apy_index=1
+                                />
+                                <LiquidStakingCard
+                                    href="/swap?from=near&to=lst.rhealab.near"
+                                    logo_src="/rhea.svg"
+                                    logo_alt="Rhea Finance"
+                                    background_color="#16161c"
+                                    apy_data={liquid_apys}
+                                    apy_index=2
+                                />
                             </div>
                         </div>
                     }
