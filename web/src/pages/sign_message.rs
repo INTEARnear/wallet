@@ -1,3 +1,4 @@
+use base64::{prelude::BASE64_STANDARD, Engine};
 use borsh::BorshSerialize;
 use leptos::{prelude::*, task::spawn_local};
 use near_min_api::types::{
@@ -68,6 +69,304 @@ struct SignedMessage {
     signature: Signature,
     #[serde(skip_serializing_if = "Option::is_none")]
     state: Option<String>,
+}
+
+#[component]
+fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
+    let accounts_context = expect_context::<AccountsContext>();
+    let (format_message, set_format_message) = signal(false);
+    let (message_copied, set_message_copied) = signal(false);
+    let (recipient_copied, set_recipient_copied) = signal(false);
+    let (nonce_copied, set_nonce_copied) = signal(false);
+    let (cli_copied, set_cli_copied) = signal(false);
+
+    let is_formattable_message = move || {
+        let Some(deserialized) = message.get() else {
+            return false;
+        };
+        serde_json::from_str::<serde_json::Value>(&deserialized.message).is_ok()
+    };
+
+    let formatted_message = move || {
+        let Some(message) = message.get() else {
+            return String::new();
+        };
+
+        if format_message.get() && is_formattable_message() {
+            match serde_json::from_str::<serde_json::Value>(&message.message) {
+                Ok(json) => serde_json::to_string_pretty(&json).unwrap_or(message.message),
+                Err(_) => message.message,
+            }
+        } else {
+            message.message
+        }
+    };
+
+    let copy_message = move |_| {
+        let Some(message) = message.get() else {
+            return;
+        };
+        let window = web_sys::window().unwrap();
+        let navigator = window.navigator();
+        let _ = navigator.clipboard().write_text(&message.message);
+        set_message_copied(true);
+        set_timeout(
+            move || set_message_copied(false),
+            std::time::Duration::from_millis(2000),
+        );
+    };
+
+    let copy_recipient = move |_| {
+        let Some(deserialized) = message.get() else {
+            return;
+        };
+        let window = web_sys::window().unwrap();
+        let navigator = window.navigator();
+        let _ = navigator.clipboard().write_text(&deserialized.recipient);
+        set_recipient_copied(true);
+        set_timeout(
+            move || set_recipient_copied(false),
+            std::time::Duration::from_millis(2000),
+        );
+    };
+
+    let copy_nonce = move |_| {
+        let Some(deserialized) = message.get() else {
+            return;
+        };
+        let nonce_hex = deserialized
+            .nonce
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
+        let window = web_sys::window().unwrap();
+        let navigator = window.navigator();
+        let _ = navigator.clipboard().write_text(&nonce_hex);
+        set_nonce_copied(true);
+        set_timeout(
+            move || set_nonce_copied(false),
+            std::time::Duration::from_millis(2000),
+        );
+    };
+
+    let copy_cli = move |_| {
+        let Some(message) = message.get() else {
+            return;
+        };
+
+        let nonce_base64 = BASE64_STANDARD.encode(&message.nonce);
+
+        let current_account = accounts_context
+            .accounts
+            .get()
+            .selected_account_id
+            .map(|id| id.to_string())
+            .expect("No selected account");
+
+        let command_parts = vec![
+            "near".to_string(),
+            "message".to_string(),
+            "sign-nep413".to_string(),
+            "utf8".to_string(),
+            message.message,
+            "nonce".to_string(),
+            nonce_base64,
+            "recipient".to_string(),
+            message.recipient,
+            "sign-as".to_string(),
+            current_account,
+        ];
+
+        let command = shell_words::join(&command_parts);
+        let window = web_sys::window().unwrap();
+        let navigator = window.navigator();
+        let _ = navigator.clipboard().write_text(&command);
+        set_cli_copied(true);
+        set_timeout(
+            move || set_cli_copied(false),
+            std::time::Duration::from_millis(2000),
+        );
+    };
+    view! {
+        <div>
+            <div class="flex items-center justify-between mb-2">
+                <p class="text-neutral-300 text-sm font-medium">"Asks you to sign the message:"</p>
+                <div class="flex gap-2">
+                    <button
+                        class="text-xs text-blue-400 hover:text-blue-300 transition-colors p-2 bg-neutral-800 rounded flex items-center justify-center"
+                        on:click=copy_message
+                        title="Copy message"
+                    >
+                        {move || {
+                            if message_copied.get() {
+                                view! {
+                                    <Icon
+                                        icon=icondata::LuCheck
+                                        width="14"
+                                        height="14"
+                                        attr:class="text-green-400"
+                                    />
+                                }
+                                    .into_any()
+                            } else {
+                                view! { <Icon icon=icondata::LuClipboard width="14" height="14" /> }
+                                    .into_any()
+                            }
+                        }}
+                    </button>
+                    <Show when=move || is_formattable_message()>
+                        <button
+                            class=move || {
+                                if format_message.get() {
+                                    "text-xs text-blue-600 hover:text-blue-500 transition-colors p-2 bg-blue-900/30 rounded flex items-center justify-center"
+                                } else {
+                                    "text-xs text-blue-400 hover:text-blue-300 transition-colors p-2 bg-neutral-800 rounded flex items-center justify-center"
+                                }
+                            }
+                            on:click=move |_| {
+                                set_format_message(!format_message.get());
+                            }
+                            title=move || {
+                                if format_message.get() {
+                                    "Show raw message"
+                                } else {
+                                    "Format the message"
+                                }
+                            }
+                        >
+                            {move || {
+                                if format_message.get() {
+                                    view! {
+                                        <Icon icon=icondata::LuFileText width="14" height="14" />
+                                    }
+                                        .into_any()
+                                } else {
+                                    view! { <Icon icon=icondata::LuCode width="14" height="14" /> }
+                                        .into_any()
+                                }
+                            }}
+                        </button>
+                    </Show>
+                </div>
+            </div>
+            <div class="p-4 bg-neutral-900/50 rounded-lg border border-neutral-800">
+                <p class=move || {
+                    if format_message.get() && is_formattable_message() {
+                        "text-neutral-400 text-sm font-mono whitespace-pre-wrap"
+                    } else {
+                        "text-neutral-400 text-sm wrap-anywhere"
+                    }
+                }>{move || formatted_message()}</p>
+            </div>
+
+            <div class="p-3 bg-neutral-800/30 rounded-lg border border-neutral-700/50 mt-3">
+                <div class="flex flex-col gap-2 text-xs">
+                    <div class="flex justify-between items-center">
+                        <span class="text-neutral-500">"Sign For:"</span>
+                        <div class="flex items-center gap-2">
+                            <span class="text-neutral-300 font-mono wrap-anywhere">
+                                {move || {
+                                    message.get().map(|msg| msg.recipient).unwrap_or_default()
+                                }}
+                            </span>
+                            <button
+                                class="text-neutral-400 hover:text-neutral-300 transition-colors p-1 rounded"
+                                on:click=copy_recipient
+                                title="Copy recipient"
+                            >
+                                {move || {
+                                    if recipient_copied.get() {
+                                        view! {
+                                            <Icon
+                                                icon=icondata::LuCheck
+                                                width="12"
+                                                height="12"
+                                                attr:class="text-green-400"
+                                            />
+                                        }
+                                            .into_any()
+                                    } else {
+                                        view! {
+                                            <Icon icon=icondata::LuClipboard width="12" height="12" />
+                                        }
+                                            .into_any()
+                                    }
+                                }}
+                            </button>
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-neutral-500">"Nonce:"</span>
+                        <div class="flex items-center gap-2">
+                            <span class="text-neutral-300 font-mono wrap-anywhere max-w-30">
+                                {move || {
+                                    message
+                                        .get()
+                                        .map(|msg| {
+                                            msg.nonce
+                                                .iter()
+                                                .map(|b| format!("{b:02x}"))
+                                                .collect::<String>()
+                                        })
+                                        .unwrap_or_default()
+                                }}
+                            </span>
+                            <button
+                                class="text-neutral-400 hover:text-neutral-300 transition-colors p-1 rounded"
+                                on:click=copy_nonce
+                                title="Copy nonce"
+                            >
+                                {move || {
+                                    if nonce_copied.get() {
+                                        view! {
+                                            <Icon
+                                                icon=icondata::LuCheck
+                                                width="12"
+                                                height="12"
+                                                attr:class="text-green-400"
+                                            />
+                                        }
+                                            .into_any()
+                                    } else {
+                                        view! {
+                                            <Icon icon=icondata::LuClipboard width="12" height="12" />
+                                        }
+                                            .into_any()
+                                    }
+                                }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-3 flex justify-end">
+                <button
+                    class="text-xs text-blue-400 hover:text-blue-300 transition-colors px-3 py-1.5 bg-neutral-800 rounded flex items-center gap-2"
+                    on:click=copy_cli
+                    title="Copy NEAR CLI command"
+                >
+                    {move || {
+                        if cli_copied.get() {
+                            view! {
+                                <Icon
+                                    icon=icondata::LuCheck
+                                    width="14"
+                                    height="14"
+                                    attr:class="text-green-400"
+                                />
+                            }
+                                .into_any()
+                        } else {
+                            view! { <Icon icon=icondata::LuTerminal width="14" height="14" /> }
+                                .into_any()
+                        }
+                    }}
+                    "Copy CLI"
+                </button>
+            </div>
+        </div>
+    }
 }
 
 #[component]
@@ -347,6 +646,7 @@ pub fn SignMessage() -> impl IntoView {
                                                     if domain == "localhost" || domain == "127.0.0.1"
                                                         || domain.starts_with("192.168.")
                                                         || domain.ends_with(".local")
+                                                        || domain.ends_with(".localhost")
                                                     {
                                                         "🛠 Localhost".to_string()
                                                     } else {
@@ -358,18 +658,7 @@ pub fn SignMessage() -> impl IntoView {
                                             </p>
                                         </div>
                                     </div>
-                                    <p class="text-neutral-300 text-sm font-medium mb-2">
-                                        "Asks you to sign the message to verify your identity:"
-                                    </p>
-                                    <div class="p-4 bg-neutral-900/50 rounded-lg border border-neutral-800">
-                                        <p class="text-neutral-400 text-sm wrap-anywhere">
-                                            {move || {
-                                                deserialized_message()
-                                                    .map(|s| s.message)
-                                                    .unwrap_or_default()
-                                            }}
-                                        </p>
-                                    </div>
+                                    <MessageDisplay message=Signal::derive(deserialized_message) />
                                 </div>
 
                                 <Show when=move || {

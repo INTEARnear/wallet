@@ -235,7 +235,7 @@ fn TransactionAction(
                         let receiver_id_clone = receiver_id.clone();
                         view! {
                             <div class="flex flex-col gap-2">
-                                <pre class="text-xs font-mono bg-neutral-800 text-neutral-300 rounded-lg p-3 overflow-x-auto">
+                                <pre class="text-xs font-mono bg-neutral-800 text-neutral-300 rounded-lg p-3 whitespace-pre-wrap">
                                     {serde_json::to_string_pretty(&args_clone2).unwrap()}
                                 </pre>
                                 <div class="flex gap-2">
@@ -319,7 +319,7 @@ fn TransactionItem<'a>(
                 <div class="flex items-center justify-center w-6 h-6 rounded-full bg-neutral-700/50 text-sm text-neutral-300 font-medium">
                     {(tx_idx + 1).to_string()}
                 </div>
-                <div class="flex-1">
+                <div class="flex-1 max-w-full wrap-anywhere">
                     <p class="text-neutral-200 font-medium mb-1">
                         {"Transaction to "}
                         <code class="px-1.5 py-0.5 bg-neutral-700/50 rounded text-sm font-mono wrap-anywhere">
@@ -465,6 +465,7 @@ pub fn SendTransactions() -> impl IntoView {
             || domain == "127.0.0.1"
             || domain.starts_with("192.168.")
             || domain.ends_with(".local")
+            || domain.ends_with(".localhost")
     };
 
     let opener = || {
