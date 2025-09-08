@@ -9812,6 +9812,7 @@ dependencies = [
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
+ "serde_with",
  "shell-words",
  "slipped10",
  "solana-keypair",

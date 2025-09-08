@@ -30,3 +30,35 @@ pub mod dec_format {
         }
     }
 }
+
+pub mod dec_format_vec {
+    use std::{fmt::Display, str::FromStr};
+
+    use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
+
+    pub fn serialize<S, T>(value: &[T], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+        T: ToString,
+    {
+        let vec_of_strings = value
+            .iter()
+            .map(|item| item.to_string())
+            .collect::<Vec<String>>();
+        vec_of_strings.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D, T, E>(deserializer: D) -> Result<Vec<T>, D::Error>
+    where
+        D: Deserializer<'de>,
+        T: FromStr<Err = E>,
+        E: Display,
+    {
+        let vec_of_strings = Vec::<String>::deserialize(deserializer)?;
+        let vec = vec_of_strings
+            .iter()
+            .map(|item| T::from_str(item).map_err(de::Error::custom))
+            .collect::<Result<Vec<T>, D::Error>>()?;
+        Ok(vec)
+    }
+}

@@ -86,6 +86,7 @@ bigdecimal = { version = "0.4.8", features = ["serde-json"] }
 thaw = { version = "0.5.0-beta", features = ["csr", "nightly"] }
 percent-encoding = "2.3.1"
 wasm-bindgen-futures = "0.4.35"
+serde_with = "3.14"
 
 [dev-dependencies]
 tokio = { version = "1.40.0", features = ["full"] }
