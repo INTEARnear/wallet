@@ -23,7 +23,7 @@ use crate::{pages::connect::submit_tauri_response, utils::is_debug_enabled};
 use leptos_icons::*;
 
 #[derive(Clone, Debug)]
-enum WarningType {
+pub enum WarningType {
     PastDeadline,
     SignerMismatch,
     LongDeadline,
@@ -31,9 +31,9 @@ enum WarningType {
 }
 
 #[derive(Clone, Debug)]
-struct Warning {
-    warning_type: WarningType,
-    message: String,
+pub struct Warning {
+    pub warning_type: WarningType,
+    pub message: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -68,23 +68,23 @@ enum SendMessage {
 
 #[derive(Deserialize, Debug, Clone, BorshSerialize)]
 #[serde(rename_all = "camelCase")]
-struct MessageToSign {
-    message: String,
-    nonce: [u8; 32],
-    recipient: String,
-    callback_url: Option<String>,
+pub struct MessageToSign {
+    pub message: String,
+    pub nonce: [u8; 32],
+    pub recipient: String,
+    pub callback_url: Option<String>,
     #[borsh(skip)]
-    state: Option<String>,
+    pub state: Option<String>,
 }
 
 #[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-struct SignedMessage {
-    account_id: AccountId,
-    public_key: PublicKey,
-    signature: Signature,
+pub struct SignedMessage {
+    pub account_id: AccountId,
+    pub public_key: PublicKey,
+    pub signature: Signature,
     #[serde(skip_serializing_if = "Option::is_none")]
-    state: Option<String>,
+    pub state: Option<String>,
 }
 
 // Only valid if:
@@ -675,7 +675,9 @@ fn TokenAmount(
                                 view! { <span class="text-sm">{formatted}</span> }
                             } else {
                                 // Fallback for non-NEP141 tokens or when fetch fails
-                                view! { <span class="text-sm">{amount} {format!("{token_id:?}")}</span> }
+                                view! {
+                                    <span class="text-sm">{amount} {format!("{token_id:?}")}</span>
+                                }
                             }
                         })
                 }}
@@ -810,12 +812,11 @@ fn IntentItem(intent: intents::Intent, index: usize) -> impl IntoView {
 }
 
 #[component]
-fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
+pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
     let accounts_context = expect_context::<AccountsContext>();
     let (format_message, set_format_message) = signal(true);
     let (message_copied, set_message_copied) = signal(false);
     let (recipient_copied, set_recipient_copied) = signal(false);
-    let (nonce_copied, set_nonce_copied) = signal(false);
     let (cli_copied, set_cli_copied) = signal(false);
 
     let is_intents_message = move || {
@@ -1011,25 +1012,6 @@ fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
         set_recipient_copied(true);
         set_timeout(
             move || set_recipient_copied(false),
-            std::time::Duration::from_millis(2000),
-        );
-    };
-
-    let copy_nonce = move |_| {
-        let Some(deserialized) = message.get() else {
-            return;
-        };
-        let nonce_hex = deserialized
-            .nonce
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect::<String>();
-        let window = web_sys::window().unwrap();
-        let navigator = window.navigator();
-        let _ = navigator.clipboard().write_text(&nonce_hex);
-        set_nonce_copied(true);
-        set_timeout(
-            move || set_nonce_copied(false),
             std::time::Duration::from_millis(2000),
         );
     };
@@ -1236,83 +1218,37 @@ fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
                 }}
             </div>
 
-            <div class="p-3 bg-neutral-800/30 rounded-lg border border-neutral-700/50 mt-3">
-                <div class="flex flex-col gap-2 text-xs">
-                    <div class="flex justify-between items-center">
-                        <span class="text-neutral-500">"Sign For:"</span>
-                        <div class="flex items-center gap-2">
-                            <span class="text-neutral-300 font-mono wrap-anywhere">
-                                {move || {
-                                    message.get().map(|msg| msg.recipient).unwrap_or_default()
-                                }}
-                            </span>
-                            <button
-                                class="text-neutral-400 hover:text-neutral-300 transition-colors p-1 rounded"
-                                on:click=copy_recipient
-                                title="Copy recipient"
-                            >
-                                {move || {
-                                    if recipient_copied.get() {
-                                        view! {
-                                            <Icon
-                                                icon=icondata::LuCheck
-                                                width="12"
-                                                height="12"
-                                                attr:class="text-green-400"
-                                            />
-                                        }
-                                            .into_any()
-                                    } else {
-                                        view! {
-                                            <Icon icon=icondata::LuClipboard width="12" height="12" />
-                                        }
-                                            .into_any()
+            <div class="flex flex-col gap-2 text-xs mt-2">
+                <div class="flex justify-between items-center">
+                    <span class="text-neutral-500">"Sign For:"</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-neutral-300 font-mono wrap-anywhere">
+                            {move || { message.get().map(|msg| msg.recipient).unwrap_or_default() }}
+                        </span>
+                        <button
+                            class="text-neutral-400 hover:text-neutral-300 transition-colors p-1 rounded"
+                            on:click=copy_recipient
+                            title="Copy recipient"
+                        >
+                            {move || {
+                                if recipient_copied.get() {
+                                    view! {
+                                        <Icon
+                                            icon=icondata::LuCheck
+                                            width="12"
+                                            height="12"
+                                            attr:class="text-green-400"
+                                        />
                                     }
-                                }}
-                            </button>
-                        </div>
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span class="text-neutral-500">"Nonce:"</span>
-                        <div class="flex items-center gap-2">
-                            <span class="text-neutral-300 font-mono wrap-anywhere max-w-30">
-                                {move || {
-                                    message
-                                        .get()
-                                        .map(|msg| {
-                                            msg.nonce
-                                                .iter()
-                                                .map(|b| format!("{b:02x}"))
-                                                .collect::<String>()
-                                        })
-                                        .unwrap_or_default()
-                                }}
-                            </span>
-                            <button
-                                class="text-neutral-400 hover:text-neutral-300 transition-colors p-1 rounded"
-                                on:click=copy_nonce
-                                title="Copy nonce"
-                            >
-                                {move || {
-                                    if nonce_copied.get() {
-                                        view! {
-                                            <Icon
-                                                icon=icondata::LuCheck
-                                                width="12"
-                                                height="12"
-                                                attr:class="text-green-400"
-                                            />
-                                        }
-                                            .into_any()
-                                    } else {
-                                        view! {
-                                            <Icon icon=icondata::LuClipboard width="12" height="12" />
-                                        }
-                                            .into_any()
+                                        .into_any()
+                                } else {
+                                    view! {
+                                        <Icon icon=icondata::LuClipboard width="12" height="12" />
                                     }
-                                }}
-                            </button>
-                        </div>
+                                        .into_any()
+                                }
+                            }}
+                        </button>
                     </div>
                 </div>
             </div>

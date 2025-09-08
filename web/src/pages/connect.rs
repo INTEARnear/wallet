@@ -21,9 +21,11 @@ use crate::contexts::{
     security_log_context::add_security_log,
     transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
 };
-use crate::utils::{format_account_id, is_debug_enabled};
+use crate::utils::{format_account_id, is_debug_enabled, sign_nep413, NEP413Payload};
 use crate::{
-    contexts::account_selector_context::AccountSelectorContext, utils::tauri_invoke_no_args,
+    contexts::account_selector_context::AccountSelectorContext,
+    pages::sign_message::{MessageDisplay, MessageToSign, SignedMessage},
+    utils::tauri_invoke_no_args,
 };
 
 const GAS_ALLOWANCE: NearToken = NearToken::from_millinear(1000); // 1 NEAR
@@ -76,8 +78,10 @@ enum Version {
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct SignedOrigin {
+pub struct ConnectMessage {
     origin: String,
+    #[serde(default)]
+    message_to_sign: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -98,6 +102,7 @@ impl From<NetworkLowercase> for Network {
 
 #[derive(Serialize, Debug)]
 #[serde(tag = "type", rename_all = "camelCase")]
+#[allow(clippy::large_enum_variant)]
 pub enum SendMessage {
     Ready,
     #[serde(rename_all = "camelCase")]
@@ -107,6 +112,7 @@ pub enum SendMessage {
         logout_key: PublicKey,
         use_bridge: bool,
         wallet_url: String,
+        signed_message: Option<SignedMessage>,
     },
     Error {
         message: String,
@@ -181,6 +187,21 @@ pub fn Connect() -> impl IntoView {
     let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
     let (tauri_session_id, set_tauri_session_id) = signal::<Option<String>>(None);
 
+    let message_to_sign = move || {
+        let Some(request_data) = &*request_data.read() else {
+            return None;
+        };
+        let Ok(connect_message) = serde_json::from_str::<ConnectMessage>(&request_data.message)
+        else {
+            return None;
+        };
+        if let Some(message_to_sign_str) = &connect_message.message_to_sign {
+            serde_json::from_str::<MessageToSign>(message_to_sign_str).ok()
+        } else {
+            None
+        }
+    };
+
     let opener = || {
         if let Ok(opener) = window().opener() {
             let opener = opener.unchecked_into::<Window>();
@@ -196,7 +217,7 @@ pub fn Connect() -> impl IntoView {
 
     let is_public_key_valid = Memo::new(move |_| {
         if let Some(request_data) = &*request_data.read() {
-            let Ok(message) = serde_json::from_str::<SignedOrigin>(&request_data.message) else {
+            let Ok(message) = serde_json::from_str::<ConnectMessage>(&request_data.message) else {
                 return false;
             };
 
@@ -409,6 +430,38 @@ pub fn Connect() -> impl IntoView {
             let logout_key = logout_key.clone();
             let add_function_call_key = add_function_call_key();
             async move {
+                let signed_message = if let Some(message_to_sign) = message_to_sign() {
+                    let nep413_message = NEP413Payload {
+                        message: message_to_sign.message.clone(),
+                        nonce: message_to_sign.nonce,
+                        recipient: message_to_sign.recipient.clone(),
+                        callback_url: message_to_sign.callback_url.clone(),
+                    };
+
+                    match sign_nep413(
+                        selected_account_secret_key.clone(),
+                        nep413_message,
+                        accounts_context,
+                    )
+                    .await
+                    {
+                        Ok(signature) => Some(SignedMessage {
+                            account_id: selected_account.clone(),
+                            public_key: selected_account_secret_key.public_key(),
+                            signature,
+                            state: message_to_sign.state.clone(),
+                        }),
+                        Err(_) => {
+                            let message = SendMessage::Error {
+                                message: "Failed to sign message".to_string(),
+                            };
+                            post_to_opener(message, true);
+                            return;
+                        }
+                    }
+                } else {
+                    None
+                };
                 let secret_key = match selected_account_secret_key {
                     SecretKeyHolder::SecretKey(secret_key) => secret_key,
                     SecretKeyHolder::Ledger { .. } => {
@@ -549,6 +602,7 @@ pub fn Connect() -> impl IntoView {
                                     logout_key: logout_key.public_key(),
                                     use_bridge: tauri_session_id.get_untracked().is_some(),
                                     wallet_url: location().origin().expect("No origin"),
+                                    signed_message: signed_message.clone(),
                                 };
                                 post_to_opener(message, true);
                             } else {
@@ -576,6 +630,7 @@ pub fn Connect() -> impl IntoView {
                         logout_key: logout_key.public_key(),
                         use_bridge: tauri_session_id.get_untracked().is_some(),
                         wallet_url: location().origin().expect("No origin"),
+                        signed_message: signed_message.clone(),
                     };
                     post_to_opener(message, true);
                 }
@@ -690,28 +745,60 @@ pub fn Connect() -> impl IntoView {
                                             </p>
                                         </div>
                                     </div>
-                                    <p class="text-neutral-300 text-sm font-medium mb-2">
-                                        "This app will be able to:"
-                                    </p>
-                                    <ul class="space-y-2">
-                                        <li class="flex items-center gap-2 text-sm">
-                                            <div class="w-5 h-5 rounded-full bg-blue-500/10 flex items-center justify-center">
-                                                <span class="text-blue-400 text-xs">{"👤"}</span>
-                                            </div>
-                                            <span class="text-neutral-300">
-                                                "View your account name"
-                                            </span>
-                                        </li>
-                                        <li class="flex items-center gap-2 text-sm">
-                                            <div class="w-5 h-5 rounded-full bg-blue-500/10 flex items-center justify-center">
-                                                <span class="text-blue-400 text-xs">{"💰"}</span>
-                                            </div>
-                                            <span class="text-neutral-300">
-                                                "View your account balance"
-                                            </span>
-                                        </li>
-                                    </ul>
+
+                                    <div class="space-y-4">
+                                        <div>
+                                            <p class="text-neutral-300 text-sm font-medium mb-2">
+                                                "This app will be able to:"
+                                            </p>
+                                            <ul class="space-y-2">
+                                                <li class="flex items-center gap-2 text-sm">
+                                                    <div class="w-5 h-5 rounded-full bg-blue-500/10 flex items-center justify-center">
+                                                        <span class="text-blue-400 text-xs">{"👤"}</span>
+                                                    </div>
+                                                    <span class="text-neutral-300">
+                                                        "View your account name"
+                                                    </span>
+                                                </li>
+                                                <li class="flex items-center gap-2 text-sm">
+                                                    <div class="w-5 h-5 rounded-full bg-blue-500/10 flex items-center justify-center">
+                                                        <span class="text-blue-400 text-xs">{"💰"}</span>
+                                                    </div>
+                                                    <span class="text-neutral-300">
+                                                        "View your account balance"
+                                                    </span>
+                                                </li>
+                                            </ul>
+                                        </div>
+
+                                        {move || {
+                                            if message_to_sign().is_some() {
+                                                view! {
+                                                    <div class="border-t border-neutral-700/50 pt-4">
+                                                        <div class="flex items-center gap-3 mb-4">
+                                                            <div class="w-8 h-8 rounded-full bg-neutral-700/50 flex items-center justify-center">
+                                                                <span class="text-neutral-300">{"📝"}</span>
+                                                            </div>
+                                                            <div>
+                                                                <p class="text-neutral-300 text-sm font-medium">
+                                                                    "Message"
+                                                                </p>
+                                                                <p class="text-neutral-400 text-xs">
+                                                                    "This app also asks you to sign a message"
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <MessageDisplay message=Signal::derive(message_to_sign) />
+                                                    </div>
+                                                }
+                                                    .into_any()
+                                            } else {
+                                                ().into_any()
+                                            }
+                                        }}
+                                    </div>
                                 </div>
+
                                 {move || {
                                     let request = request_data().expect("No request data");
                                     match request.contract_id.as_deref() {
@@ -739,7 +826,8 @@ pub fn Connect() -> impl IntoView {
                                                                 on:change=move |ev| {
                                                                     let checked = event_target_checked(&ev);
                                                                     set_add_function_call_key(checked);
-                                                                    let current_origin = actual_origin.get_untracked()
+                                                                    let current_origin = actual_origin
+                                                                        .get_untracked()
                                                                         .expect("No actual origin");
                                                                     set_config
                                                                         .update(|cfg| {

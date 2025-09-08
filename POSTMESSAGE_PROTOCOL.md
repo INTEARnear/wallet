@@ -44,7 +44,7 @@ The same JSON payloads are also used when Intear Wallet runs in a desktop / mobi
     "methodNames": ["storage_deposit", "ft_transfer"], // optional, for the function call key
     "networkId": "mainnet" | "testnet",
     "nonce": 0, // must be a recent timestamp in milliseconds since unix epoch
-    "message": "{\"origin\":\"https://dapp.com\"}", // no longer used in V2+ but currently needs to be present
+    "message": "{\"origin\":\"https://dapp.com\",\"messageToSign\":\"{\\\"message\\\":\\\"Hello\\\",\\\"nonce\\\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\\\"recipient\\\":\\\"app.near\\\",\\\"callback_url\\\":null,\\\"state\\\":\\\"optional string\\\"}\"}", // origin is no longer used in V2+ but currently needs to be present. messageToSign is an optional stringified NEP-413 message to sign during connection, same structure as in sign-message request
     "signature": "ed25519:...", // of sha256("${nonce}|${message}")
     "version": "v1" | "v2", // defaults to v1 if doesn't exist
     "actualOrigin": "https://dapp.com" // required in v2. If you use wallet-connector-iframe.html, the iframe injects this value. This is the value displayed to the user
@@ -67,7 +67,13 @@ Success:
   "functionCallKeyAdded": true | false, // false if not requested or if the user unchecked the checkbox to add a public key
   "logoutKey": "ed25519:...", // public key owned by the wallet that can be used to verify "logged out by user in the wallet" response from logout bridge
   "useBridge": true | false, // `true` when running a native app that requires intear:// + websocket flow
-  "walletUrl": "https://wallet.intear.tech" // currently connected wallet origin. Always use this for subsequent requets, since the user might be running on staging.wallet.intear.tech or a self-hosted instance of the wallet, which should be respected
+  "walletUrl": "https://wallet.intear.tech", // currently connected wallet origin. Always use this for subsequent requets, since the user might be running on staging.wallet.intear.tech or a self-hosted instance of the wallet, which should be respected
+  "signedMessage": { // optional, only present if messageToSign was provided in the request, same structure as in sign-message response
+    "accountId": "connected-user-account.near",
+    "publicKey": "ed25519:...",
+    "signature": "ed25519:...",
+    "state": "optional string"
+  }
 }
 ```
 
