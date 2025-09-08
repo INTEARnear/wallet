@@ -1,4 +1,4 @@
-const CACHE_NAME = 'intear-wallet-6366067';
+const CACHE_NAME = 'intear-wallet-ca0cedb';
 const DOMAIN = self.location.hostname;
 
 self.addEventListener('install', (event) => {
@@ -29,7 +29,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
   // Don't cache API requests, wallet.intear.tech only hosts static files. Also don't cache localhost for development.
-  const isSameOrigin = url.hostname === DOMAIN && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1';
+  const isSameOrigin = url.hostname === DOMAIN && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1' && !url.hostname.endsWith('.localhost');
   const isStaticOrigin = url.hostname.endsWith('.nearcatalog.xyz') || url.hostname.endsWith('.nearcatalog.org') || url.hostname == 'fonts.gstatic.com' || url.hostname == 'fonts.googleapis.com';
   const isNftProxyOrigin = url.hostname == 'nft-proxy-service.intear.tech' && url.pathname.startsWith('/media/');
   const shouldCache = isSameOrigin || isStaticOrigin || isNftProxyOrigin;
