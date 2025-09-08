@@ -486,9 +486,9 @@ fn FtWithdrawView(ft: intents::FtWithdraw) -> impl IntoView {
                             .get()
                             .map(|symbol_opt| {
                                 if let Some(symbol) = symbol_opt {
-                                    view! { <span class="text-white">{symbol}</span> }
+                                    view! { <span class="text-white">{symbol}</span> }.into_any()
                                 } else {
-                                    view! { <span class="text-white">"TOKEN"</span> }
+                                    view! { <span class="text-white">"[error loading ticker]"</span> }.into_any()
                                 }
                             })
                     }}
@@ -608,7 +608,7 @@ fn TokenDiffView(diff: intents::TokenDiff) -> impl IntoView {
                     </div>
                 </div>
             </div>
-        }
+        }.into_any()
     } else {
         view! {
             <div class="space-y-2">
@@ -630,6 +630,7 @@ fn TokenDiffView(diff: intents::TokenDiff) -> impl IntoView {
                     .collect_view()}
             </div>
         }
+        .into_any()
     }
 }
 
@@ -672,12 +673,12 @@ fn TokenAmount(
                                     token_info.metadata.decimals,
                                     &token_info.metadata.symbol,
                                 );
-                                view! { <span class="text-sm">{formatted}</span> }
+                                view! { <span class="text-sm">{formatted}</span> }.into_any()
                             } else {
                                 // Fallback for non-NEP141 tokens or when fetch fails
                                 view! {
                                     <span class="text-sm">{amount} {format!("{token_id:?}")}</span>
-                                }
+                                }.into_any()
                             }
                         })
                 }}
