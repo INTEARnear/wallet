@@ -1,7 +1,7 @@
 {
   "dependencies": {
-    "@fastnear/utils": "^0.9.7",
-    "@ledgerhq/hw-transport-web-ble": "^6.29.7",
+    "@fastnear/utils": "0.9.7",
+    "@ledgerhq/hw-transport-web-ble": "6.29.7",
     "@ledgerhq/hw-transport-webhid": "6.30.3",
     "@ledgerhq/hw-transport-webusb": "6.29.7",
     "@reown/appkit": "1.7.7",
@@ -9,9 +9,9 @@
     "@reown/appkit-adapter-wagmi": "1.7.7",
     "@tailwindcss/cli": "4.1.8",
     "@tanstack/react-query": "5.79.0",
-    "@tauri-apps/plugin-autostart": "^2.5.0",
-    "@tauri-apps/plugin-deep-link": "^2.4.1",
-    "@tauri-apps/plugin-window-state": "^2.4.0",
+    "@tauri-apps/plugin-autostart": "2.5.0",
+    "@tauri-apps/plugin-deep-link": "2.4.1",
+    "@tauri-apps/plugin-window-state": "2.4.0",
     "buffer": "6.0.3",
     "events": "3.3.0",
     "fastintear": "github:sliman4/fastintear#e979fd0d6f3f29445fb9bf82825cdcd4ac291e7f",
