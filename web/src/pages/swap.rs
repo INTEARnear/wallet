@@ -728,10 +728,10 @@ pub fn Swap() -> impl IntoView {
     let (swap_modal_state, set_swap_modal_state) = signal(SwapModalState::None);
     let (show_advanced_options, set_show_advanced_options) = signal(false);
 
-    // DEX selection state - all enabled by default
+    // DEX selection state - all except NearIntents enabled by default
     let (selected_dexes, set_selected_dexes) = signal(vec![
         DexId::Rhea,
-        DexId::NearIntents,
+        // DexId::NearIntents,
         DexId::Veax,
         DexId::Aidols,
         DexId::GraFun,
@@ -1098,30 +1098,32 @@ pub fn Swap() -> impl IntoView {
                     create_swap_request(token_in, token_out, validated_amount, current_mode)
                 {
                     // Request 1: Fast, skip intents. When skipping intents,
-                    // usually the best quote is found in less than 1.5 seconds.
+                    // usually the best quote is found in less than 2 seconds.
                     get_routes_action.dispatch((
                         swap_request.clone(),
                         WaitMode::Fast {
                             skip_intents: true,
-                            duration: Duration::from_millis(1500),
+                            duration: Duration::from_millis(2000),
                         },
                     ));
-                    // Request 2: Fast, include intents. When including intents,
-                    // usually takes nearly 1.5 seconds.
-                    get_routes_action.dispatch((
-                        swap_request.clone(),
-                        WaitMode::Fast {
-                            skip_intents: false,
-                            duration: Duration::from_millis(1500),
-                        },
-                    ));
-                    // Request 3: Full, include intents. Takes nearly 3 seconds.
-                    set_routes_action_handle.set(Some(get_routes_action.dispatch((
-                        swap_request,
-                        WaitMode::Full {
-                            duration: Duration::from_millis(3000),
-                        },
-                    ))));
+                    if selected_dexes.get().contains(&DexId::NearIntents) {
+                        // Request 2: Fast, include intents. When including intents,
+                        // usually takes nearly 2 seconds.
+                        get_routes_action.dispatch((
+                            swap_request.clone(),
+                            WaitMode::Fast {
+                                skip_intents: false,
+                                duration: Duration::from_millis(2000),
+                            },
+                        ));
+                        // Request 3: Full, include intents. Takes nearly 3 seconds.
+                        set_routes_action_handle.set(Some(get_routes_action.dispatch((
+                            swap_request,
+                            WaitMode::Full {
+                                duration: Duration::from_millis(3000),
+                            },
+                        ))));
+                    }
                 }
             }
         }
