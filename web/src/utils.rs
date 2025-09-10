@@ -995,3 +995,18 @@ extern "C" {
     #[wasm_bindgen(js_namespace = ["__TAURI__", "core"], js_name = "invoke")]
     pub fn tauri_invoke_no_args(cmd: &str) -> Promise;
 }
+
+pub enum Resolution {
+    Low,
+    High,
+}
+
+pub fn proxify_url(url: &str, resolution: Resolution) -> String {
+    if url.starts_with("data:") {
+        return url.to_string();
+    }
+    let proxy_base = dotenvy_macro::dotenv!("SHARED_NFT_PROXY_SERVICE_ADDR");
+    let encoded_url =
+        percent_encoding::utf8_percent_encode(url, percent_encoding::NON_ALPHANUMERIC).to_string();
+    format!("{proxy_base}/media/{resolution}/{encoded_url}")
+}

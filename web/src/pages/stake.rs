@@ -19,7 +19,6 @@ use near_min_api::{
     utils::dec_format,
     CallError, Error, QueryFinality, RpcClient,
 };
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use rand::rngs::OsRng;
 use rand::seq::SliceRandom;
 use serde::Deserialize;
@@ -39,7 +38,8 @@ use crate::components::{
 };
 use crate::contexts::tokens_context::TokenInfo;
 use crate::utils::{
-    fetch_token_info, format_usd_value, power_of_10, StorageBalance, USDT_DECIMALS,
+    fetch_token_info, format_usd_value, power_of_10, proxify_url, Resolution, StorageBalance,
+    USDT_DECIMALS,
 };
 use crate::{
     contexts::{
@@ -126,15 +126,6 @@ fn normalize_discord_url(input: &str) -> Option<String> {
     } else {
         None
     }
-}
-
-fn proxify_url(url: &str) -> String {
-    if url.starts_with("data:") {
-        return url.to_string();
-    }
-    let proxy_base = dotenvy_macro::dotenv!("SHARED_NFT_PROXY_SERVICE_ADDR");
-    let encoded_url = utf8_percent_encode(url, NON_ALPHANUMERIC).to_string();
-    format!("{proxy_base}/media/low/{encoded_url}")
 }
 
 fn compute_match_score(query: &str, text: &str) -> i32 {
@@ -325,7 +316,7 @@ fn ValidatorCard(
                     {if let Some(logo_url) = details.as_ref().and_then(|d| d.logo.as_ref()) {
                         view! {
                             <img
-                                src=proxify_url(logo_url)
+                                src=proxify_url(logo_url, Resolution::Low)
                                 class="w-10 h-10 rounded-full flex-shrink-0 object-cover"
                             />
                         }
@@ -2162,7 +2153,7 @@ pub fn StakeValidator() -> impl IntoView {
                                                     {
                                                         view! {
                                                             <img
-                                                                src=proxify_url(logo_url)
+                                                                src=proxify_url(logo_url, Resolution::Low)
                                                                 class="w-12 h-12 rounded-full flex-shrink-0 object-cover"
                                                             />
                                                         }
@@ -2622,7 +2613,7 @@ pub fn UnstakeValidator() -> impl IntoView {
                                                 {
                                                     view! {
                                                         <img
-                                                            src=proxify_url(logo_url)
+                                                            src=proxify_url(logo_url, Resolution::Low)
                                                             class="w-12 h-12 rounded-full flex-shrink-0 object-cover"
                                                         />
                                                     }

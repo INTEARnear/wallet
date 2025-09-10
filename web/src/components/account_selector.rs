@@ -14,6 +14,7 @@ use near_min_api::types::{
     AccountId,
 };
 use near_min_api::{Error, QueryFinality};
+use serde::Deserialize;
 use slipped10::BIP32Path;
 
 use crate::components::account_creation_form::AccountCreationForm;
@@ -24,7 +25,28 @@ use crate::contexts::security_log_context::add_security_log;
 use crate::contexts::{
     account_selector_context::AccountSelectorContext, accounts_context::AccountsContext,
 };
-use crate::utils::is_debug_enabled;
+use crate::utils::{is_debug_enabled, proxify_url, Resolution};
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SocialProfileData {
+    #[serde(flatten)]
+    pub accounts: HashMap<AccountId, SocialAccountProfile>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SocialAccountProfile {
+    pub profile: Option<SocialProfile>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SocialProfile {
+    pub image: Option<SocialImage>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SocialImage {
+    pub ipfs_cid: Option<String>,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ModalState {
@@ -138,6 +160,8 @@ pub fn AccountSelector() -> impl IntoView {
         ..
     } = expect_context::<AccountSelectorContext>();
     let (show_security_alert, set_show_security_alert) = signal(false);
+    let (profile_images, set_profile_images) =
+        signal::<HashMap<AccountId, Option<String>>>(HashMap::new());
     let network = expect_context::<NetworkContext>();
 
     let check_access_keys = move || {
@@ -227,6 +251,71 @@ pub fn AccountSelector() -> impl IntoView {
         });
     };
 
+    let fetch_profile_images = move || {
+        let accounts = accounts_context.accounts.get_untracked();
+        let current_network = network.network.get_untracked();
+
+        if accounts.accounts.is_empty() || !profile_images.get_untracked().is_empty() {
+            return;
+        }
+
+        let account_ids: Vec<AccountId> = accounts
+            .accounts
+            .iter()
+            .filter(|account| account.network == current_network)
+            .map(|account| account.account_id.clone())
+            .collect();
+
+        spawn_local(async move {
+            let keys: Vec<String> = account_ids
+                .iter()
+                .map(|id| format!("{id}/profile/image/ipfs_cid"))
+                .collect();
+
+            let social_contract = match current_network {
+                Network::Mainnet => "social.near".parse::<AccountId>().unwrap(),
+                Network::Testnet => "v1.social08.testnet".parse::<AccountId>().unwrap(),
+            };
+
+            let rpc_client = current_network.default_rpc_client();
+
+            let args = serde_json::json!({
+                "keys": keys
+            });
+
+            if let Ok(response) = rpc_client
+                .call::<SocialProfileData>(
+                    social_contract,
+                    "get",
+                    args,
+                    QueryFinality::Finality(Finality::DoomSlug),
+                )
+                .await
+            {
+                set_profile_images.update(|images| {
+                    for account_id in account_ids {
+                        if let Some(account_data) = response.accounts.get(&account_id) {
+                            if let Some(profile) = &account_data.profile {
+                                if let Some(image) = &profile.image {
+                                    if let Some(ipfs_cid) = &image.ipfs_cid {
+                                        images.insert(
+                                            account_id.clone(),
+                                            Some(format!(
+                                                "https://ipfs.near.social/ipfs/{}",
+                                                ipfs_cid
+                                            )),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        images.entry(account_id).or_insert(None);
+                    }
+                });
+            }
+        });
+    };
+
     let _ = use_interval_fn_with_options(
         check_access_keys,
         60000,
@@ -246,6 +335,12 @@ pub fn AccountSelector() -> impl IntoView {
         {
             check_access_keys();
         }
+    });
+
+    // Fetch profile images when accounts change
+    Effect::new(move |_| {
+        accounts_context.accounts.track();
+        fetch_profile_images();
     });
 
     // Show creation form immediately if there are no accounts
@@ -306,13 +401,11 @@ pub fn AccountSelector() -> impl IntoView {
                 }
                 ModalState::Creating { .. } => {
                     view! {
-                        <AccountCreationForm
-                            show_back_button=!accounts_context
-                                .accounts
-                                .get_untracked()
-                                .accounts
-                                .is_empty()
-                        />
+                        <AccountCreationForm show_back_button=!accounts_context
+                            .accounts
+                            .get_untracked()
+                            .accounts
+                            .is_empty() />
                     }
                         .into_any()
                 }
@@ -354,6 +447,7 @@ pub fn AccountSelector() -> impl IntoView {
                                                         .collect::<String>();
                                                     let account_id_for_class = account_id.clone();
                                                     let account_id_for_color = account_id.clone();
+                                                    let account_id_for_image = account_id.clone();
                                                     let (is_hovered, set_is_hovered) = signal(false);
                                                     let account_id_str = account_id.to_string();
                                                     view! {
@@ -385,7 +479,25 @@ pub fn AccountSelector() -> impl IntoView {
                                                                     }
                                                                 >
                                                                     <div class="relative h-full w-full flex items-center justify-center">
-                                                                        {first_char}
+                                                                        {move || {
+                                                                            let profile_image = profile_images
+                                                                                .get()
+                                                                                .get(&account_id_for_image)
+                                                                                .cloned()
+                                                                                .flatten();
+                                                                            if let Some(image_url) = profile_image {
+                                                                                view! {
+                                                                                    <img
+                                                                                        src=proxify_url(&image_url, Resolution::Low)
+                                                                                        alt="Profile"
+                                                                                        class="w-full h-full object-cover rounded-full"
+                                                                                    />
+                                                                                }
+                                                                                    .into_any()
+                                                                            } else {
+                                                                                view! { {first_char.clone()} }.into_any()
+                                                                            }
+                                                                        }}
                                                                         {move || {
                                                                             if matches!(account_network, Network::Testnet) {
                                                                                 view! {
@@ -422,13 +534,16 @@ pub fn AccountSelector() -> impl IntoView {
                                     <div class="flex gap-2 flex-col bg-neutral-900 mt-2 lg:rounded-bl-3xl transition-all duration-200">
                                         <button
                                             class="w-full aspect-square rounded-lg transition-colors flex flex-col items-center justify-center gap-1 p-1 text-green-500 group hover:bg-green-500/10"
-                                            on:click=move |_| set_modal_state.set(ModalState::Creating {
-                                                parent: match network.network.get() {
-                                                    Network::Mainnet => AccountCreateParent::Mainnet,
-                                                    Network::Testnet => AccountCreateParent::Testnet,
-                                                },
-                                                recovery_method: AccountCreateRecoveryMethod::RecoveryPhrase,
-                                            })
+                                            on:click=move |_| {
+                                                set_modal_state
+                                                    .set(ModalState::Creating {
+                                                        parent: match network.network.get() {
+                                                            Network::Mainnet => AccountCreateParent::Mainnet,
+                                                            Network::Testnet => AccountCreateParent::Testnet,
+                                                        },
+                                                        recovery_method: AccountCreateRecoveryMethod::RecoveryPhrase,
+                                                    })
+                                            }
                                         >
                                             <div class="w-10 h-10 rounded-full flex items-center justify-center bg-green-500/20 group-hover:bg-neutral-300">
                                                 <div class="group-hover:text-black">

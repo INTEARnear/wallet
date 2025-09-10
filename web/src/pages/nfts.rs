@@ -29,7 +29,9 @@ use crate::contexts::{
     transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
 };
 use crate::pages::stake::is_validator_supported;
-use crate::utils::{format_account_id_no_hide, format_token_amount_no_hide};
+use crate::utils::{
+    format_account_id_no_hide, format_token_amount_no_hide, proxify_url, Resolution,
+};
 
 async fn fetch_spam_list() -> Vec<HiddenNft> {
     let proxy_base = dotenvy_macro::dotenv!("SHARED_NFT_PROXY_SERVICE_ADDR");
@@ -42,11 +44,6 @@ async fn fetch_spam_list() -> Vec<HiddenNft> {
     vec![]
 }
 
-enum Resolution {
-    Low,
-    High,
-}
-
 impl Display for Resolution {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -54,16 +51,6 @@ impl Display for Resolution {
             Resolution::High => write!(f, "high"),
         }
     }
-}
-
-fn proxify_url(url: &str, resolution: Resolution) -> String {
-    if url.starts_with("data:") {
-        return url.to_string();
-    }
-    let proxy_base = dotenvy_macro::dotenv!("SHARED_NFT_PROXY_SERVICE_ADDR");
-    let encoded_url =
-        percent_encoding::utf8_percent_encode(url, percent_encoding::NON_ALPHANUMERIC).to_string();
-    format!("{proxy_base}/media/{resolution}/{encoded_url}")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
