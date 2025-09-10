@@ -133,7 +133,6 @@ pub fn SendToken() -> impl IntoView {
 
             if recipient_to_check == recipient.get_untracked() {
                 if account_exists {
-                    // Clone recipient for validator check and futures
                     let recipient_for_validator_check = recipient_to_check.clone();
 
                     let ft_metadata_future = rpc_client.call::<TokenMetadata>(
@@ -715,7 +714,6 @@ fn SendConfirmationModal(
                     </div>
 
                     <div class="space-y-4">
-                        // Token section
                         <div class="bg-neutral-800 rounded-lg p-4">
                             <div class="text-gray-400 text-sm mb-2">"You're sending"</div>
                             <div class="flex items-center gap-3">
