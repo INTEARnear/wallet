@@ -7,6 +7,7 @@ use crate::{
             AccountsContext, PasswordAction, SecretKeyHolder, ENCRYPTION_MEMORY_COST_KB,
         },
         config_context::{ConfigContext, PasswordRememberDuration},
+        network_context::{Network, NetworkContext},
         rpc_context::RpcContext,
         security_log_context::add_security_log,
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
@@ -20,8 +21,8 @@ use leptos_router::components::A;
 use leptos_router::hooks::use_location;
 use near_min_api::{
     types::{
-        AccessKey, AccessKeyPermission, AccessKeyPermissionView, Action, AddKeyAction,
-        DeleteKeyAction, Finality,
+        near_crypto::PublicKey, AccessKey, AccessKeyPermission, AccessKeyPermissionView, Action,
+        AddKeyAction, DeleteKeyAction, Finality, FunctionCallAction, NearGas, NearToken,
     },
     QueryFinality,
 };
@@ -134,6 +135,7 @@ pub fn SecuritySettings() -> impl IntoView {
     let TransactionQueueContext {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
+    let NetworkContext { network } = expect_context::<NetworkContext>();
     let (terminating_sessions, set_terminating_sessions) = signal(false);
     let (show_terminate_dialog, set_show_terminate_dialog) = signal(false);
     let (benchmarking_password, set_benchmarking_password) = signal(false);
@@ -383,6 +385,51 @@ pub fn SecuritySettings() -> impl IntoView {
 
             let mut actions = delete_actions;
 
+            let intents_transactions = match network.get() {
+                Network::Mainnet => {
+                    if let Ok(keys) = rpc_client
+                        .call::<Vec<PublicKey>>(
+                            "intents.near".parse().unwrap(),
+                            "public_keys_of",
+                            serde_json::json!({
+                                "account_id": account_id,
+                            }),
+                            QueryFinality::Finality(Finality::Final),
+                        )
+                        .await
+                    {
+                        // If the user has more than 30 keys, we need to split the actions into
+                        // chunks of 30 because of 300 TGas per-transaction limit
+                        if !keys.is_empty() {
+                            let actions: Vec<Vec<Action>> = keys
+                                .into_iter()
+                                .map(|key| {
+                                    Action::FunctionCall(Box::new(FunctionCallAction {
+                                        method_name: "remove_public_key".to_string(),
+                                        args: serde_json::json!({
+                                            "public_key": key,
+                                        })
+                                        .to_string()
+                                        .into_bytes(),
+                                        gas: NearGas::from_tgas(10).as_gas(),
+                                        deposit: NearToken::from_yoctonear(1),
+                                    }))
+                                })
+                                .collect::<Vec<_>>()
+                                .chunks(30)
+                                .map(|chunk| chunk.to_vec())
+                                .collect();
+                            Some(actions)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                Network::Testnet => None,
+            };
+
             if is_ledger {
                 // For Ledger accounts, just remove other keys, keep current one
                 add_security_log(
@@ -419,13 +466,38 @@ pub fn SecuritySettings() -> impl IntoView {
                 );
             }
 
-            let (details_receiver, transaction) = EnqueuedTransaction::create(
+            let (details_receiver, replace_key_transaction) = EnqueuedTransaction::create(
                 "Terminate other sessions".to_string(),
                 account_id.clone(),
                 account_id.clone(),
                 actions,
             );
-            add_transaction.update(|queue| queue.push(transaction));
+            if let Some(intents_transactions) = intents_transactions {
+                let intents_transactions = intents_transactions
+                    .into_iter()
+                    .map(|intents_actions| {
+                        let (_intents_details_receiver, intents_transaction) =
+                            EnqueuedTransaction::create(
+                                "Remove Near Intents keys".to_string(),
+                                account_id.clone(),
+                                "intents.near".parse().unwrap(),
+                                intents_actions,
+                            );
+
+                        intents_transaction.in_same_queue_as(&replace_key_transaction)
+                    })
+                    .collect::<Vec<_>>();
+                add_transaction.update(|queue| {
+                    queue.extend(
+                        intents_transactions
+                            .into_iter()
+                            .chain(std::iter::once(replace_key_transaction)),
+                    )
+                });
+            } else {
+                add_transaction.update(|queue| queue.push(replace_key_transaction));
+            }
+
             let res = details_receiver.await;
             if matches!(res, Ok(Ok(_))) && !is_ledger {
                 let secret_key = mnemonic_to_key(mnemonic.clone()).unwrap();
@@ -669,7 +741,11 @@ pub fn SecuritySettings() -> impl IntoView {
                                             .update(|c| c.password_remember_duration = duration);
                                     }
                                     class="w-full border rounded-lg border-neutral-700 bg-neutral-900"
-                                    initial_value=config.get_untracked().password_remember_duration.option_value().to_string()
+                                    initial_value=config
+                                        .get_untracked()
+                                        .password_remember_duration
+                                        .option_value()
+                                        .to_string()
                                 />
                             </div>
                         </Show>
