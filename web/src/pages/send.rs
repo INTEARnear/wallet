@@ -3,7 +3,7 @@ use crate::{
         accounts_context::AccountsContext,
         network_context::NetworkContext,
         rpc_context::RpcContext,
-        tokens_context::{Token, TokenMetadata, TokensContext},
+        tokens_context::{Token, TokenData, TokenMetadata, TokensContext},
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
     pages::stake::is_validator_supported,
@@ -12,7 +12,7 @@ use crate::{
         format_token_amount_no_hide, format_usd_value_no_hide, StorageBalance,
     },
 };
-use bigdecimal::{BigDecimal, FromPrimitive};
+use bigdecimal::{BigDecimal, FromPrimitive, Zero};
 use futures_util::join;
 use leptos::prelude::set_timeout_with_handle;
 use leptos::{prelude::*, task::spawn_local};
@@ -30,6 +30,29 @@ use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
 
+#[derive(Debug, Clone)]
+pub struct SendConfirmationData {
+    pub token: TokenData,
+    pub recipient: AccountId,
+    pub amount: Balance,
+    pub needs_storage_deposit: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct SendResult {
+    pub token: TokenData,
+    pub recipient: AccountId,
+    pub amount: Balance,
+}
+
+#[derive(Debug, Clone)]
+pub enum SendModalState {
+    None,
+    Confirmation(Box<SendConfirmationData>),
+    Success(Box<SendResult>),
+    Error,
+}
+
 #[component]
 pub fn SendToken() -> impl IntoView {
     let params = use_params_map();
@@ -40,7 +63,6 @@ pub fn SendToken() -> impl IntoView {
         ..
     } = expect_context::<TokensContext>();
     let RpcContext { client, .. } = expect_context::<RpcContext>();
-    let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let NetworkContext { network, .. } = expect_context::<NetworkContext>();
     let (recipient, set_recipient) = signal("".to_string());
     let (amount, set_amount) = signal("".to_string());
@@ -59,6 +81,7 @@ pub fn SendToken() -> impl IntoView {
     let (recipient_warning, set_recipient_warning) = signal::<Option<RecipientWarning>>(None);
     let (balance_error_count, set_balance_error_count) = signal(0);
     let (balance_error_timeout, set_balance_error_timeout) = signal::<Option<TimeoutHandle>>(None);
+    let (send_modal_state, set_send_modal_state) = signal(SendModalState::None);
 
     let token = move || {
         tokens
@@ -262,21 +285,12 @@ pub fn SendToken() -> impl IntoView {
         }
     };
 
-    let TransactionQueueContext {
-        add_transaction, ..
-    } = expect_context::<TransactionQueueContext>();
     let handle_send = move |_| {
         let rpc_client = client();
         if recipient_balance.get().is_none() || amount_error.get().is_some() {
             return;
         }
 
-        let transaction_description = format!(
-            "Send {} {} to {}",
-            amount.get(),
-            token().unwrap().token.metadata.symbol,
-            recipient.get()
-        );
         let Ok(recipient) = recipient.get().parse::<AccountId>() else {
             panic!(
                 "Recipient '{}' cannot be parsed as AccountId, yet recipient_balance is Some",
@@ -292,82 +306,40 @@ pub fn SendToken() -> impl IntoView {
         let Some(token) = token() else {
             panic!("Token not found, but tried to send it");
         };
-        let amount = decimal_to_balance(amount_decimal, token.token.metadata.decimals);
-        let signer_id = accounts
-            .get_untracked()
-            .selected_account_id
-            .expect("No account selected yet tried to send tokens");
+        let amount_raw = decimal_to_balance(amount_decimal, token.token.metadata.decimals);
+
         spawn_local(async move {
-            let actions = match &token.token.account_id {
-                Token::Near => vec![Action::Transfer(TransferAction {
-                    deposit: NearToken::from_yoctonear(amount),
-                })],
+            let needs_storage_deposit = match &token.token.account_id {
+                Token::Near => false,
                 Token::Nep141(token_id) => {
-                    let transfer = Action::FunctionCall(Box::new(FunctionCallAction {
-                        method_name: "ft_transfer".to_string(),
-                        args: serde_json::to_vec(&serde_json::json!({
-                            "receiver_id": recipient,
-                            "amount": amount.to_string(),
-                        }))
-                        .unwrap(),
-                        gas: NearGas::from_tgas(5).as_gas(),
-                        deposit: NearToken::from_yoctonear(1),
-                    }));
-                    let Ok(storage_balance_of_recipient) = rpc_client
+                    let storage_balance_result = rpc_client
                         .call::<Option<StorageBalance>>(
                             token_id.clone(),
                             "storage_balance_of",
-                            serde_json::json!({"account_id": recipient.clone()}),
+                            serde_json::json!({"account_id": recipient}),
                             QueryFinality::Finality(Finality::DoomSlug),
                         )
-                        .await
-                    else {
-                        return;
-                    };
-                    let needs_storage_deposit = match storage_balance_of_recipient {
-                        Some(storage_balance) => storage_balance.total.is_zero(),
-                        None => true,
-                    };
-                    let mut actions = Vec::new();
-                    if needs_storage_deposit {
-                        actions.push(Action::FunctionCall(Box::new(FunctionCallAction {
-                            method_name: "storage_deposit".to_string(),
-                            args: serde_json::to_vec(&serde_json::json!({
-                                "account_id": recipient.clone(),
-                                "registration_only": true,
-                            }))
-                            .unwrap(),
-                            gas: NearGas::from_tgas(5).as_gas(),
-                            deposit: "0.00125 NEAR".parse().unwrap(),
-                        })));
+                        .await;
+
+                    match storage_balance_result {
+                        Ok(storage_balance) => match storage_balance {
+                            Some(storage_balance) => storage_balance.total.is_zero(),
+                            None => true,
+                        },
+                        Err(_) => false, // If we can't check, assume no deposit needed
                     }
-                    actions.push(transfer);
-                    actions
                 }
             };
-            add_transaction.update(|txs| {
-                txs.push(
-                    EnqueuedTransaction::create(
-                        transaction_description,
-                        signer_id,
-                        match &token.token.account_id {
-                            Token::Near => recipient.clone(),
-                            Token::Nep141(token_id) => token_id.clone(),
-                        },
-                        actions,
-                    )
-                    .1,
-                )
-            });
-        });
 
-        // Clear form fields
-        set_recipient.set("".to_string());
-        set_amount.set("".to_string());
-        set_has_typed_recipient.set(false);
-        set_has_typed_amount.set(false);
-        set_recipient_balance.set(None);
-        set_amount_error.set(None);
+            let confirmation = SendConfirmationData {
+                token,
+                recipient,
+                amount: amount_raw,
+                needs_storage_deposit,
+            };
+
+            set_send_modal_state.set(SendModalState::Confirmation(Box::new(confirmation)));
+        });
     };
 
     view! {
@@ -658,5 +630,413 @@ pub fn SendToken() -> impl IntoView {
                 }
             }}
         </div>
+
+        {move || {
+            match send_modal_state.get() {
+                SendModalState::Confirmation(confirmation_data) => {
+                    view! {
+                        <SendConfirmationModal
+                            confirmation_data=*confirmation_data
+                            set_send_modal_state=set_send_modal_state
+                            clear_fields=move || {
+                                set_recipient.set("".to_string());
+                                set_amount.set("".to_string());
+                                set_has_typed_recipient.set(false);
+                                set_has_typed_amount.set(false);
+                                set_recipient_balance.set(None);
+                                set_amount_error.set(None);
+                            }
+                        />
+                    }
+                        .into_any()
+                }
+                SendModalState::Success(result) => {
+                    view! {
+                        <SendSuccessModal
+                            result=*result
+                            set_send_modal_state=set_send_modal_state
+                        />
+                    }
+                        .into_any()
+                }
+                SendModalState::Error => {
+                    view! { <SendErrorModal set_send_modal_state=set_send_modal_state /> }
+                        .into_any()
+                }
+                SendModalState::None => ().into_any(),
+            }
+        }}
+    }
+}
+
+#[component]
+fn SendConfirmationModal(
+    confirmation_data: SendConfirmationData,
+    set_send_modal_state: WriteSignal<SendModalState>,
+    clear_fields: impl Fn() + Copy + 'static,
+) -> impl IntoView {
+    let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+    let TransactionQueueContext {
+        add_transaction, ..
+    } = expect_context::<TransactionQueueContext>();
+    let confirmation_for_button = confirmation_data.clone();
+    let recipient = confirmation_data.recipient.clone();
+
+    let amount_formatted = format_token_amount_no_hide(
+        confirmation_data.amount,
+        confirmation_data.token.token.metadata.decimals,
+        &confirmation_data.token.token.metadata.symbol,
+    );
+    let amount_decimal = balance_to_decimal(
+        confirmation_data.amount,
+        confirmation_data.token.token.metadata.decimals,
+    );
+    let amount_usd = if !confirmation_data.token.token.price_usd_hardcoded.is_zero() {
+        Some(&amount_decimal * &confirmation_data.token.token.price_usd_hardcoded)
+    } else {
+        None
+    };
+
+    view! {
+        <div
+            class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+            on:click=move |_| set_send_modal_state.set(SendModalState::None)
+        >
+            <div
+                on:click=|ev| ev.stop_propagation()
+                class="bg-neutral-900 rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
+            >
+                <div class="text-center">
+                    <div class="mb-4">
+                        <h3 class="text-white font-bold text-xl mb-2">"Confirm Send"</h3>
+                        <p class="text-gray-400 text-sm">
+                            "Review the details below and confirm to proceed with the transfer."
+                        </p>
+                    </div>
+
+                    <div class="space-y-4">
+                        // Token section
+                        <div class="bg-neutral-800 rounded-lg p-4">
+                            <div class="text-gray-400 text-sm mb-2">"You're sending"</div>
+                            <div class="flex items-center gap-3">
+                                {match confirmation_data.token.token.metadata.icon {
+                                    Some(icon) => {
+                                        view! {
+                                            <img
+                                                src=icon
+                                                alt=confirmation_data.token.token.metadata.symbol.clone()
+                                                class="w-8 h-8 rounded-full"
+                                            />
+                                        }
+                                            .into_any()
+                                    }
+                                    None => {
+                                        view! {
+                                            <div class="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white text-sm">
+                                                {confirmation_data
+                                                    .token
+                                                    .token
+                                                    .metadata
+                                                    .symbol
+                                                    .chars()
+                                                    .next()
+                                                    .unwrap_or('?')}
+                                            </div>
+                                        }
+                                            .into_any()
+                                    }
+                                }} <div class="text-left">
+                                    <div class="text-white font-medium text-lg">
+                                        {amount_formatted}
+                                    </div>
+                                    <div class="text-gray-400 text-sm">
+                                        {move || {
+                                            if let Some(usd_amount) = &amount_usd {
+                                                format_usd_value_no_hide(usd_amount.clone())
+                                            } else {
+                                                String::new()
+                                            }
+                                        }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-center">
+                            <Icon
+                                icon=icondata::LuArrowDown
+                                width="20"
+                                height="20"
+                                attr:class="text-gray-400"
+                            />
+                        </div>
+
+                        <div class="bg-neutral-800 rounded-lg p-4">
+                            <div class="text-gray-400 text-sm mb-2">"To account"</div>
+                            <div class="text-white font-medium text-lg break-all">
+                                {format_account_id_no_hide(&recipient)}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-3 mt-6">
+                        <button
+                            class="flex-1 bg-neutral-700 hover:bg-neutral-600 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
+                            on:click=move |_| set_send_modal_state.set(SendModalState::None)
+                        >
+                            "Cancel"
+                        </button>
+                        <button
+                            class="flex-1 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-xl px-4 py-3 font-medium transition-all cursor-pointer"
+                            on:click={
+                                let confirmation_clone = confirmation_for_button.clone();
+                                move |_| {
+                                    let Some(selected_account_id) = accounts
+                                        .get_untracked()
+                                        .selected_account_id else {
+                                        return;
+                                    };
+                                    set_send_modal_state.set(SendModalState::None);
+                                    let confirmation_exec = confirmation_clone.clone();
+                                    spawn_local(
+                                        execute_send(
+                                            confirmation_exec,
+                                            selected_account_id,
+                                            add_transaction,
+                                            set_send_modal_state,
+                                            clear_fields,
+                                        ),
+                                    );
+                                }
+                            }
+                        >
+                            "Confirm Send"
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn SendSuccessModal(
+    result: SendResult,
+    set_send_modal_state: WriteSignal<SendModalState>,
+) -> impl IntoView {
+    let amount_formatted = format_token_amount_no_hide(
+        result.amount,
+        result.token.token.metadata.decimals,
+        &result.token.token.metadata.symbol,
+    );
+
+    view! {
+        <div
+            class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+            on:click=move |_| set_send_modal_state.set(SendModalState::None)
+        >
+            <div
+                on:click=|ev| ev.stop_propagation()
+                class="bg-neutral-900 rounded-2xl p-6 max-w-md w-full"
+            >
+                <div class="text-center">
+                    <div class="mb-4">
+                        <div class="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <Icon
+                                icon=icondata::LuCheck
+                                width="32"
+                                height="32"
+                                attr:class="text-white"
+                            />
+                        </div>
+                        <h3 class="text-white font-bold text-xl mb-2">"Send Successful!"</h3>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="bg-neutral-800 rounded-lg p-4">
+                            <div class="text-gray-400 text-sm mb-2">"You sent"</div>
+                            <div class="flex items-center gap-3">
+                                {match result.token.token.metadata.icon {
+                                    Some(icon) => {
+                                        view! {
+                                            <img
+                                                src=icon
+                                                alt=result.token.token.metadata.symbol.clone()
+                                                class="w-8 h-8 rounded-full"
+                                            />
+                                        }
+                                            .into_any()
+                                    }
+                                    None => {
+                                        view! {
+                                            <div class="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white text-sm">
+                                                {result
+                                                    .token
+                                                    .token
+                                                    .metadata
+                                                    .symbol
+                                                    .chars()
+                                                    .next()
+                                                    .unwrap_or('?')}
+                                            </div>
+                                        }
+                                            .into_any()
+                                    }
+                                }} <div>
+                                    <div class="text-white font-medium text-lg">
+                                        {amount_formatted}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-center">
+                            <Icon
+                                icon=icondata::LuArrowDown
+                                width="20"
+                                height="20"
+                                attr:class="text-gray-400"
+                            />
+                        </div>
+
+                        <div class="bg-neutral-800 rounded-lg p-4">
+                            <div class="text-gray-400 text-sm mb-2">"To recipient"</div>
+                            <div class="text-white font-medium text-lg break-all">
+                                {format_account_id_no_hide(&result.recipient)}
+                            </div>
+                        </div>
+                    </div>
+
+                    <button
+                        class="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
+                        on:click=move |_| set_send_modal_state.set(SendModalState::None)
+                    >
+                        "Close"
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn SendErrorModal(set_send_modal_state: WriteSignal<SendModalState>) -> impl IntoView {
+    view! {
+        <div
+            class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+            on:click=move |_| set_send_modal_state.set(SendModalState::None)
+        >
+            <div
+                on:click=|ev| ev.stop_propagation()
+                class="bg-neutral-900 rounded-2xl p-6 max-w-md w-full"
+            >
+                <div class="text-center">
+                    <div class="mb-4">
+                        <div class="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <Icon
+                                icon=icondata::LuX
+                                width="32"
+                                height="32"
+                                attr:class="text-white"
+                            />
+                        </div>
+                        <h3 class="text-white font-bold text-xl mb-2">"Send Failed"</h3>
+                        <p class="text-gray-400 text-sm">
+                            "The send transaction was rejected or failed. Please try again."
+                        </p>
+                    </div>
+
+                    <button
+                        class="w-full mt-6 bg-red-600 hover:bg-red-700 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
+                        on:click=move |_| set_send_modal_state.set(SendModalState::None)
+                    >
+                        "Close"
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+async fn execute_send(
+    confirmation: SendConfirmationData,
+    signer_id: AccountId,
+    add_transaction: WriteSignal<Vec<EnqueuedTransaction>>,
+    set_send_modal_state: WriteSignal<SendModalState>,
+    clear_fields: impl Fn(),
+) {
+    let transaction_description = format!(
+        "Send {} to {}",
+        format_token_amount_no_hide(
+            confirmation.amount,
+            confirmation.token.token.metadata.decimals,
+            &confirmation.token.token.metadata.symbol
+        ),
+        confirmation.recipient
+    );
+
+    let actions = match &confirmation.token.token.account_id {
+        Token::Near => vec![Action::Transfer(TransferAction {
+            deposit: NearToken::from_yoctonear(confirmation.amount),
+        })],
+        Token::Nep141(_token_id) => {
+            let transfer = Action::FunctionCall(Box::new(FunctionCallAction {
+                method_name: "ft_transfer".to_string(),
+                args: serde_json::to_vec(&serde_json::json!({
+                    "receiver_id": confirmation.recipient,
+                    "amount": confirmation.amount.to_string(),
+                }))
+                .unwrap(),
+                gas: NearGas::from_tgas(10).as_gas(),
+                deposit: NearToken::from_yoctonear(1),
+            }));
+
+            let mut actions = Vec::new();
+            if confirmation.needs_storage_deposit {
+                actions.push(Action::FunctionCall(Box::new(FunctionCallAction {
+                    method_name: "storage_deposit".to_string(),
+                    args: serde_json::to_vec(&serde_json::json!({
+                        "account_id": confirmation.recipient,
+                        "registration_only": true,
+                    }))
+                    .unwrap(),
+                    gas: NearGas::from_tgas(5).as_gas(),
+                    deposit: "0.00125 NEAR".parse().unwrap(),
+                })));
+            }
+            actions.push(transfer);
+            actions
+        }
+    };
+
+    let (rx, pending_tx) = EnqueuedTransaction::create(
+        transaction_description,
+        signer_id,
+        match &confirmation.token.token.account_id {
+            Token::Near => confirmation.recipient.clone(),
+            Token::Nep141(token_id) => token_id.clone(),
+        },
+        actions,
+    );
+
+    add_transaction.update(|txs| {
+        txs.push(pending_tx);
+    });
+
+    let tx_result = rx.await;
+    match tx_result {
+        Ok(Ok(_)) => {
+            let result = SendResult {
+                token: confirmation.token,
+                recipient: confirmation.recipient,
+                amount: confirmation.amount,
+            };
+            set_send_modal_state.set(SendModalState::Success(Box::new(result)));
+
+            clear_fields();
+        }
+        Ok(Err(_)) | Err(_) => {
+            set_send_modal_state.set(SendModalState::Error);
+        }
     }
 }
