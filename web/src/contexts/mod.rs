@@ -2,6 +2,7 @@ pub mod account_selector_context;
 pub mod accounts_context;
 pub mod config_context;
 pub mod connected_apps_context;
+pub mod modal_context;
 pub mod network_context;
 pub mod nft_cache_context;
 pub mod rpc_context;

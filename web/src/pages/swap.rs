@@ -3406,7 +3406,7 @@ fn SwapErrorModal(set_swap_modal_state: WriteSignal<SwapModalState>) -> impl Int
                         </div>
                         <h3 class="text-white font-bold text-xl mb-2">"Swap Failed"</h3>
                         <p class="text-gray-400 text-sm">
-                            "The swap transaction was rejected or failed. Please try again."
+                            "The swap transaction failed. Please try again."
                         </p>
                     </div>
 

@@ -33,9 +33,8 @@ const EPOCH_DURATION: Duration =
     Duration::from_millis(ESTIMATED_BLOCK_TIME.as_millis() as u64 * EPOCH_LENGTH);
 const NANOSECONDS_IN_YEAR: u64 = 365 * 24 * 60 * 60 * 1_000_000_000;
 
-use crate::components::{
-    ProjectedRevenue, ProjectedRevenueMode, TransactionErrorModal, TransactionSuccessModal,
-};
+use crate::components::projected_revenue::{ProjectedRevenue, ProjectedRevenueMode};
+use crate::components::transaction_modals::{TransactionErrorModal, TransactionSuccessModal};
 use crate::contexts::tokens_context::TokenInfo;
 use crate::utils::{
     fetch_token_info, format_usd_value, power_of_10, proxify_url, Resolution, StorageBalance,

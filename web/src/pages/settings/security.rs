@@ -1,7 +1,11 @@
 use std::time::Duration;
 
 use crate::{
-    components::{account_selector::mnemonic_to_key, DangerConfirmInput, Select, SelectOption},
+    components::{
+        account_selector::mnemonic_to_key,
+        danger_confirm_input::DangerConfirmInput,
+        select::{Select, SelectOption},
+    },
     contexts::{
         accounts_context::{
             AccountsContext, PasswordAction, SecretKeyHolder, ENCRYPTION_MEMORY_COST_KB,

@@ -11,17 +11,20 @@ use rand::{rngs::OsRng, Rng};
 use std::time::Duration;
 use web_sys::TouchEvent;
 
-use crate::contexts::{
-    account_selector_context::AccountSelectorContext, config_context::BackgroundGroup,
+use crate::{
+    components::password_unlock::PasswordUnlockOverlay,
+    contexts::{
+        account_selector_context::AccountSelectorContext, config_context::BackgroundGroup,
+        modal_context::ModalContext,
+    },
+};
+use crate::{
+    components::transaction_queue_overlay::TransactionQueueOverlay,
+    contexts::accounts_context::AccountsContext, contexts::config_context::ConfigContext,
 };
 use crate::{
     components::wallet_header::WalletHeader,
     contexts::network_context::{Network, NetworkContext},
-};
-use crate::{
-    components::{transaction_queue_overlay::TransactionQueueOverlay, PasswordUnlockOverlay},
-    contexts::accounts_context::AccountsContext,
-    contexts::config_context::ConfigContext,
 };
 
 /// Height of the bottom navbar with buttons
@@ -82,6 +85,7 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
     let NetworkContext { network } = expect_context::<NetworkContext>();
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let config_context = expect_context::<ConfigContext>();
+    let ModalContext { modal } = expect_context::<ModalContext>();
 
     let background_group = Memo::new(move |_| config_context.config.get().background_group);
 
@@ -332,6 +336,13 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                 >
                     <PasswordUnlockOverlay />
                     <TransactionQueueOverlay />
+                    {move || {
+                        if let Some(modal) = &*modal.read() {
+                            modal()
+                        } else {
+                            ().into_any()
+                        }
+                    }}
                     <div class="p-2 sm:p-4">
                         <WalletHeader />
                     </div>

@@ -38,6 +38,7 @@ members = [
     "logout-bridge-service",
     "password-storage-service",
     "nft-proxy-service",
+    "ai-tools-service",
     "server",
     "web",
     "src-tauri",

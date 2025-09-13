@@ -16,7 +16,7 @@ use std::fmt::Display;
 use std::time::Duration;
 use web_sys::{window, MouseEvent};
 
-use crate::components::ProgressiveImage;
+use crate::components::progressive_image::ProgressiveImage;
 use crate::contexts::nft_cache_context::NftCacheContext;
 use crate::contexts::nft_cache_context::{NftContractMetadata, NftToken, OwnedCollection};
 use crate::contexts::search_context::SearchContext;

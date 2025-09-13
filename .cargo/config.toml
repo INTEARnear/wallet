@@ -9,15 +9,15 @@ rustflags = [
     "threads=8",
     "--cfg",
     "erase_components",
+    "--cfg",
+    "tokio_unstable",
 ]
 
+[target.'cfg(all(not(debug_assertions), target_os="linux"))']
+rustflags = ["--cfg", "tokio_unstable"]
+
 [target.'cfg(all(debug_assertions, target_arch = "wasm32"))']
-rustflags = [
-    "-Z",
-    "share-generics=y",
-    "-Z",
-    "threads=8"
-]
+rustflags = ["-Z", "share-generics=y", "-Z", "threads=8"]
 
 [unstable]
 build-std = ["std", "panic_abort", "core", "alloc"]

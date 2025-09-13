@@ -19,7 +19,7 @@ use crate::components::account_selector::{
     mnemonic_to_key, AccountCreateParent, AccountCreateRecoveryMethod, ModalState,
 };
 use crate::components::derivation_path_input::DerivationPathInput;
-use crate::components::{Select, SelectOption};
+use crate::components::select::{Select, SelectOption};
 use crate::contexts::account_selector_context::AccountSelectorContext;
 use crate::contexts::accounts_context::{
     format_ledger_error, Account, AccountsContext, SecretKeyHolder,

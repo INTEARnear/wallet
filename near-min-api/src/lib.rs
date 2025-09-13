@@ -546,6 +546,7 @@ impl<'a> PendingTransaction<'a> {
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, thiserror::Error)]
 pub enum WaitError {
     #[error("Timeout")]

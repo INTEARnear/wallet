@@ -15,7 +15,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{js_sys::Date, Window};
 
 use crate::{
-    components::DangerConfirmInput,
+    components::danger_confirm_input::DangerConfirmInput,
     contexts::{
         accounts_context::{Account, AccountsContext},
         config_context::ConfigContext,

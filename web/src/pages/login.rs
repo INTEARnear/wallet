@@ -6,7 +6,7 @@ use near_min_api::types::{
 };
 
 use crate::{
-    components::DangerConfirmInput,
+    components::danger_confirm_input::DangerConfirmInput,
     contexts::{
         accounts_context::AccountsContext,
         security_log_context::add_security_log,

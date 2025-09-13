@@ -1,4 +1,9 @@
-#![feature(closure_track_caller, stmt_expr_attributes, mpmc_channel)]
+#![feature(
+    closure_track_caller,
+    stmt_expr_attributes,
+    mpmc_channel,
+    iter_intersperse
+)]
 #![deny(clippy::float_arithmetic)]
 
 use contexts::account_selector_context::provide_account_selector_context;
@@ -31,18 +36,28 @@ pub fn hydrate() {
     })
 }
 
-use crate::components::Layout;
+use crate::components::layout::Layout;
+use crate::contexts::modal_context::provide_modal_context;
 use crate::contexts::rpc_context::provide_rpc_context;
-use crate::pages::NftCollection;
-use crate::pages::{
-    settings::{
-        AccountSettings, ConnectedAppsSettings, DeveloperSettings, PreferencesSettings,
-        SecurityLogPage, SecuritySettings,
-    },
-    AutoImportSecretKey, Connect, Explore, History, Home, Login, NftTokenDetails, Nfts, SendNft,
-    SendToken, SendTransactions, Settings, SignMessage, Stake, StakeValidator, Swap, TokenDetails,
-    UnstakeValidator,
+use crate::pages::auto_import_secret_key::AutoImportSecretKey;
+use crate::pages::connect::Connect;
+use crate::pages::explore::Explore;
+use crate::pages::history::History;
+use crate::pages::home::Home;
+use crate::pages::login::Login;
+use crate::pages::nfts::{NftCollection, NftTokenDetails, Nfts, SendNft};
+use crate::pages::send::SendMultiToken;
+use crate::pages::send::SendToken;
+use crate::pages::send_transactions::SendTransactions;
+use crate::pages::settings::Settings;
+use crate::pages::settings::{
+    AccountSettings, ConnectedAppsSettings, DeveloperSettings, PreferencesSettings,
+    SecurityLogPage, SecuritySettings,
 };
+use crate::pages::sign_message::SignMessage;
+use crate::pages::stake::{Stake, StakeValidator, UnstakeValidator};
+use crate::pages::swap::Swap;
+use crate::pages::token::TokenDetails;
 
 // macro_rules! bad_waterfall_lazy_route {
 //     ($name:ident) => {
@@ -113,6 +128,7 @@ pub fn App() -> impl IntoView {
     // Don't drop the closure
     warning_closure.forget();
 
+    provide_modal_context();
     provide_config_context();
     provide_accounts_context();
     provide_network_context(); // depends on accounts for selecting the network for the selected account
@@ -142,6 +158,7 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/explore") view=Explore />
                         <Route path=path!("/token/:token_id") view=TokenDetails />
                         <Route path=path!("/send/:token_id") view=SendToken />
+                        <Route path=path!("/multi-send/:token_id") view=SendMultiToken />
                         <Route path=path!("/connect") view=Connect />
                         <Route path=path!("/send-transactions") view=SendTransactions />
                         <Route path=path!("/sign-message") view=SignMessage />
