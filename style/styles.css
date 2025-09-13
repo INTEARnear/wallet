@@ -58,6 +58,13 @@
     scrollbar-width: none;
 }
 
+@supports not (-moz-appearance: none) {
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: #555 transparent;
+    }
+}
+
 a:not(.no-mobile-ripple),
 button:not(.no-mobile-ripple):not(:disabled),
 .mobile-ripple {
