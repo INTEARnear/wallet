@@ -607,7 +607,7 @@ pub fn Connect() -> impl IntoView {
                                 post_to_opener(message, true);
                             } else {
                                 let message = SendMessage::Error {
-                                    message: "Failed to add function call key".to_string(),
+                                    message: "Failed to add function call key. Possibly, you don't have NEAR for gas?".to_string(),
                                 };
                                 post_to_opener(message, true);
                             }
