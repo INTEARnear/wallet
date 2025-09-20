@@ -5,7 +5,7 @@ use crate::{
     },
     pages::send::execute_send,
     utils::{
-        balance_to_decimal, format_account_id_no_hide, format_token_amount_no_hide,
+        balance_to_decimal, format_account_id_no_hide, format_token_amount_full_precision,
         format_usd_value_no_hide,
     },
 };
@@ -54,7 +54,7 @@ pub fn SendConfirmationModal(
         .iter()
         .map(|transfer| transfer.amount)
         .sum::<Balance>();
-    let amount_formatted = format_token_amount_no_hide(
+    let amount_formatted = format_token_amount_full_precision(
         total_amount,
         confirmation_data.token.token.metadata.decimals,
         &confirmation_data.token.token.metadata.symbol,
@@ -170,7 +170,7 @@ pub fn SendConfirmationModal(
                                     .enumerate()
                                     .map(|(index, transfer)| {
                                         let recipient = transfer.recipient.clone();
-                                        let individual_amount_formatted = format_token_amount_no_hide(
+                                        let individual_amount_formatted = format_token_amount_full_precision(
                                             transfer.amount,
                                             confirmation_data.token.token.metadata.decimals,
                                             &confirmation_data.token.token.metadata.symbol,
@@ -305,7 +305,7 @@ pub fn SendConfirmationModal(
 #[component]
 pub fn SendSuccessModal(result: SendResult) -> impl IntoView {
     let ModalContext { modal } = expect_context::<ModalContext>();
-    let amount_formatted = format_token_amount_no_hide(
+    let amount_formatted = format_token_amount_full_precision(
         result.amount,
         result.token.token.metadata.decimals,
         &result.token.token.metadata.symbol,
