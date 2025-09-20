@@ -440,7 +440,7 @@ pub fn Connect() -> impl IntoView {
 
                     match sign_nep413(
                         selected_account_secret_key.clone(),
-                        nep413_message,
+                        &nep413_message,
                         accounts_context,
                     )
                     .await

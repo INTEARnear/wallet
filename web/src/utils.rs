@@ -8,9 +8,9 @@ use near_min_api::{
     types::{
         near_crypto::{PublicKey, Signature},
         AccessKey as NearAccessKey, AccessKeyPermission, AccountId, AccountIdRef,
-        Action as NearAction, AddKeyAction, Balance, CreateAccountAction, DeleteAccountAction,
-        DeleteKeyAction, DeployContractAction, FunctionCallAction, FunctionCallPermission,
-        NearToken, StakeAction, TransferAction,
+        Action as NearAction, AddKeyAction, Balance, CreateAccountAction, DelegateAction,
+        DeleteAccountAction, DeleteKeyAction, DeployContractAction, FunctionCallAction,
+        FunctionCallPermission, NearToken, StakeAction, TransferAction,
     },
     utils::dec_format,
 };
@@ -971,13 +971,29 @@ pub struct NEP413Payload {
 
 pub async fn sign_nep413(
     secret_key: SecretKeyHolder,
-    payload: NEP413Payload,
+    payload: &NEP413Payload,
     context: AccountsContext,
 ) -> Result<Signature, UserCancelledSigning> {
     const NEP413_413_SIGN_MESSAGE_PREFIX: u32 = (1u32 << 31u32) + 413u32;
     let mut bytes = NEP413_413_SIGN_MESSAGE_PREFIX.to_le_bytes().to_vec();
-    borsh::to_writer(&mut bytes, &payload).unwrap();
+    borsh::to_writer(&mut bytes, payload).unwrap();
     log::info!("Signing NEP-413 payload: {:?}", bytes);
+    secret_key.hash_and_sign(&bytes, context).await
+}
+
+pub async fn sign_nep366(
+    secret_key: SecretKeyHolder,
+    payload: &DelegateAction,
+    context: AccountsContext,
+) -> Result<Signature, UserCancelledSigning> {
+    if payload.public_key != secret_key.public_key() {
+        // This should never happen in correct implementations
+        return Err(UserCancelledSigning);
+    }
+    const NEP366_366_SIGN_MESSAGE_PREFIX: u32 = (1u32 << 30u32) + 366u32;
+    let mut bytes = NEP366_366_SIGN_MESSAGE_PREFIX.to_le_bytes().to_vec();
+    borsh::to_writer(&mut bytes, payload).unwrap();
+    log::info!("Signing NEP-366 payload: {:?}", bytes);
     secret_key.hash_and_sign(&bytes, context).await
 }
 

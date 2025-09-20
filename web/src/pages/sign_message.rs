@@ -1494,8 +1494,12 @@ pub fn SignMessage() -> impl IntoView {
             callback_url: deserialized_message.callback_url.clone(),
         };
         spawn_local(async move {
-            let Ok(signature) =
-                sign_nep413(account.secret_key.clone(), nep413_message, accounts_context).await
+            let Ok(signature) = sign_nep413(
+                account.secret_key.clone(),
+                &nep413_message,
+                accounts_context,
+            )
+            .await
             else {
                 // button is still active
                 return;

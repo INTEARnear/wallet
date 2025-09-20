@@ -10,8 +10,9 @@ use dotenv::dotenv;
 use near_min_api::{
     types::{
         near_crypto::{PublicKey, SecretKey},
-        AccountId, Action, FinalExecutionStatus, Finality, FunctionCallAction, NearGas, NearToken,
-        SignedTransaction, Transaction, TransactionV0, TxExecutionStatus,
+        AccountId, Action, BlockReference, CryptoHash, FinalExecutionStatus, Finality,
+        FunctionCallAction, NearGas, NearToken, SignedDelegateAction, SignedTransaction,
+        Transaction, TransactionV0, TxExecutionStatus,
     },
     QueryFinality, RpcClient,
 };
@@ -54,6 +55,17 @@ struct RecoverAccountResponse {
     success: bool,
     message: String,
     transaction_hash: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RelaySignedDelegateActionRequest {
+    signed_delegate_action: SignedDelegateAction,
+}
+
+#[derive(Debug, Serialize)]
+struct RelaySignedDelegateActionResponse {
+    message: String,
+    transaction_hash: Option<CryptoHash>,
 }
 
 #[derive(Clone, Copy)]
@@ -170,6 +182,10 @@ async fn main() {
     let app = Router::new()
         .route("/create", post(create_account))
         .route("/recover", post(recover_account))
+        .route(
+            "/relay-signed-delegate-action",
+            post(relay_signed_delegate_action),
+        )
         .layer(CorsLayer::permissive())
         .with_state(state);
 
@@ -274,8 +290,9 @@ async fn create_account(
         },
         block_hash: state
             .rpc_client
-            .fetch_recent_block_hash()
+            .block(BlockReference::Finality(Finality::Final))
             .await
+            .map(|block| block.header.hash)
             .map_err(|e| {
                 tracing::error!("Failed to fetch block hash: {}", e);
                 (
@@ -438,8 +455,9 @@ async fn recover_account(
         receiver_id: account_id.clone(),
         block_hash: state
             .rpc_client
-            .fetch_recent_block_hash()
+            .block(BlockReference::Finality(Finality::Final))
             .await
+            .map(|block| block.header.hash)
             .map_err(|e| {
                 tracing::error!("Failed to fetch block hash: {}", e);
                 (
@@ -511,6 +529,99 @@ async fn recover_account(
             Ok(Json(RecoverAccountResponse {
                 success: false,
                 message: format!("Failed to fetch transaction details: {e}"),
+                transaction_hash: None,
+            }))
+        }
+    }
+}
+
+#[axum::debug_handler]
+async fn relay_signed_delegate_action(
+    State(state): State<AppState>,
+    Json(payload): Json<RelaySignedDelegateActionRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let signed_delegate_action = payload.signed_delegate_action;
+    let receiver_id = signed_delegate_action.delegate_action.sender_id.clone();
+
+    tracing::info!(
+        "Received relay request for delegate action from {} to {}",
+        signed_delegate_action.delegate_action.sender_id,
+        signed_delegate_action.delegate_action.receiver_id
+    );
+
+    let (relayer_key, queue) = loop {
+        let key = state
+            .relayer_keys
+            .choose(&mut rand::thread_rng())
+            .expect("No private keys available");
+        let public_key = key.public_key();
+        if let Some(queue) = state.key_queues.get(&public_key) {
+            break (key.clone(), queue.clone());
+        }
+    };
+
+    let _guard = queue.lock().await;
+
+    let access_key = state
+        .rpc_client
+        .get_access_key(
+            state.relayer_id.clone(),
+            relayer_key.public_key(),
+            QueryFinality::Finality(Finality::None),
+        )
+        .await;
+
+    let access_key = match access_key {
+        Ok(key) => key,
+        Err(e) => {
+            tracing::error!("Failed to get access key: {}", e);
+            return Ok(Json(RelaySignedDelegateActionResponse {
+                message: format!("Failed to get access key: {}", e),
+                transaction_hash: None,
+            }));
+        }
+    };
+
+    let delegate_action = Action::Delegate(Box::new(signed_delegate_action));
+
+    let block_hash = match state
+        .rpc_client
+        .block(BlockReference::Finality(Finality::Final))
+        .await
+        .map(|block| block.header.hash)
+    {
+        Ok(hash) => hash,
+        Err(e) => {
+            tracing::error!("Failed to fetch block hash: {}", e);
+            return Ok(Json(RelaySignedDelegateActionResponse {
+                message: format!("Failed to fetch block hash: {}", e),
+                transaction_hash: None,
+            }));
+        }
+    };
+
+    let tx = Transaction::V0(TransactionV0 {
+        signer_id: state.relayer_id.clone(),
+        public_key: relayer_key.public_key(),
+        nonce: access_key.nonce + 1,
+        receiver_id: receiver_id.clone(),
+        block_hash,
+        actions: vec![delegate_action],
+    });
+
+    let (tx_hash, _) = tx.get_hash_and_size();
+    let signature = relayer_key.sign(tx_hash.as_ref());
+    let signed_tx = SignedTransaction::new(signature, tx);
+
+    match state.rpc_client.send_tx(signed_tx).await {
+        Ok(_) => Ok(Json(RelaySignedDelegateActionResponse {
+            message: "Transaction sent".to_string(),
+            transaction_hash: Some(tx_hash),
+        })),
+        Err(e) => {
+            tracing::error!("Failed to send transaction: {}", e);
+            Ok(Json(RelaySignedDelegateActionResponse {
+                message: format!("Failed to send transaction: {}", e),
                 transaction_hash: None,
             }))
         }

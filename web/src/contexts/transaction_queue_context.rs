@@ -7,20 +7,23 @@ use futures_util::TryFutureExt;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use near_min_api::types::{
-    AccountId, Action, ActionErrorKind, CryptoHash, Finality, HandlerError, InvalidTxError,
-    NearToken, RpcErrorKind, RpcRequestValidationErrorKind, RpcStatusError, RpcTransactionError,
-    ServerError, SignedTransaction, Transaction, TransactionV0, TxExecutionError,
+    AccountId, Action, ActionErrorKind, BlockReference, CryptoHash, DelegateAction, Finality,
+    HandlerError, InvalidTxError, NearToken, NonDelegateAction, RpcErrorKind,
+    RpcRequestValidationErrorKind, RpcStatusError, RpcTransactionError, ServerError,
+    SignedDelegateAction, SignedTransaction, Transaction, TransactionV0, TxExecutionError,
     TxExecutionStatus,
 };
 use near_min_api::{ExperimentalTxDetails, PendingTransaction, QueryFinality, RpcClient};
 use rand::rngs::OsRng;
 use rand::{Rng, RngCore};
+use serde::Deserialize;
 use std::cell::OnceCell;
 use std::collections::VecDeque;
 use std::time::Duration;
 
 use crate::contexts::accounts_context::Account;
-use crate::utils::{sign_nep413, NEP413Payload};
+use crate::contexts::network_context::Network;
+use crate::utils::{sign_nep366, sign_nep413, NEP413Payload};
 
 use super::accounts_context::AccountsContext;
 use super::rpc_context::RpcContext;
@@ -45,25 +48,31 @@ pub enum TransactionType {
         message_to_sign: String,
         quote_hash: CryptoHash,
     },
+    MetaTransaction {
+        actions: Vec<Action>,
+        receiver_id: AccountId,
+    },
 }
 
 enum TransactionResult<'a> {
     PendingTransaction(PendingTransaction<'a>),
-    PendingIntent {
+    PublishedIntent {
         intent_hash: CryptoHash,
         rpc_client: &'a RpcClient,
         tx_hash: OnceCell<CryptoHash>,
     },
+    PendingMetaTransaction(PendingTransaction<'a>),
 }
 
 impl<'a> TransactionResult<'a> {
     async fn wait_for(&self, status: TxExecutionStatus, timeout: Duration) -> Result<(), String> {
         match self {
-            TransactionResult::PendingTransaction(tx) => tx
+            TransactionResult::PendingTransaction(tx)
+            | TransactionResult::PendingMetaTransaction(tx) => tx
                 .wait_for(status, timeout)
                 .await
                 .map_err(|e| format!("Failed to wait for transaction: {e}")),
-            TransactionResult::PendingIntent {
+            TransactionResult::PublishedIntent {
                 intent_hash,
                 tx_hash,
                 ..
@@ -136,11 +145,12 @@ impl<'a> TransactionResult<'a> {
 
     async fn get_tx_details(&self) -> Result<ExperimentalTxDetails, String> {
         match self {
-            TransactionResult::PendingTransaction(tx) => tx
+            TransactionResult::PendingTransaction(tx)
+            | TransactionResult::PendingMetaTransaction(tx) => tx
                 .EXPERIMENTAL_fetch_details()
                 .await
                 .map_err(|e| format!("Failed to fetch transaction details: {e}")),
-            TransactionResult::PendingIntent {
+            TransactionResult::PublishedIntent {
                 rpc_client,
                 tx_hash,
                 ..
@@ -184,8 +194,11 @@ impl TransactionType {
                     }
                 };
 
-                let block_hash = match rpc_client.fetch_recent_block_hash().await {
-                    Ok(hash) => hash,
+                let block_hash = match rpc_client
+                    .block(BlockReference::Finality(Finality::Final))
+                    .await
+                {
+                    Ok(block) => block.header.hash,
                     Err(e) => {
                         // Should never happen unless all RPCs are unstable, so no
                         // need to handle this gracefully
@@ -214,143 +227,7 @@ impl TransactionType {
                 match rpc_client.send_tx(signed_tx).await {
                     Ok(tx) => Ok(TransactionResult::PendingTransaction(tx)),
                     Err(e) => {
-                        let error = match e {
-                            near_min_api::Error::Reqwest(e) => format!("Failed to connect to RPC: {e}"),
-                            near_min_api::Error::JsonRpc(e) => match e.error_struct {
-                                None => format!("RPC error with code {code}: {message}", code = e.code, message = e.message),
-                                Some(RpcErrorKind::HandlerError(handler_error)) => match handler_error {
-                                    HandlerError::RpcQueryError(_) => unreachable!(),
-                                    HandlerError::RpcReceiptError(_) => unreachable!(),
-                                    HandlerError::RpcStatusError(status_error) => match status_error {
-                                        RpcStatusError::NodeIsSyncing => "RPC node is syncing".to_string(),
-                                        RpcStatusError::NoNewBlocks { elapsed } => format!("No blocks for {elapsed:?}"),
-                                        RpcStatusError::EpochOutOfBounds { epoch_id } => format!("Epoch Out Of Bounds {epoch_id:?}"),
-                                    },
-                                    HandlerError::RpcTransactionError(tx_error) => match tx_error {
-                                        RpcTransactionError::InvalidTransaction {} => {
-                                            if let Some(data) = e.data {
-                                                if let Ok(server_error) = serde_json::from_value::<ServerError>(data) {
-                                                    match server_error {
-                                                        ServerError::Closed => "RPC is closed".to_string(),
-                                                        ServerError::Timeout => "RPC timeout".to_string(),
-                                                        ServerError::TxExecutionError(e) => match e {
-                                                            TxExecutionError::ActionError(action_error) => format!("Action error in action #{}: {}", action_error.index.map(|n| n.to_string()).unwrap_or("unknown".to_string()), match action_error.kind {
-                                                                ActionErrorKind::AccountAlreadyExists { account_id } =>
-                                                                    format!("Cannot create account {account_id}, because it already exists"),
-                                                                ActionErrorKind::AccountDoesNotExist { account_id } =>
-                                                                    format!("Account {account_id} doesn't exist"),
-                                                                ActionErrorKind::CreateAccountOnlyByRegistrar { account_id, registrar_account_id, predecessor_id } =>
-                                                                    format!("Account {account_id} can only be created by {registrar_account_id}, not by {predecessor_id}"),
-                                                                ActionErrorKind::CreateAccountNotAllowed { account_id, predecessor_id } =>
-                                                                    format!("Account {predecessor_id} cannot create account {account_id}"),
-                                                                ActionErrorKind::ActorNoPermission { account_id, actor_id } =>
-                                                                    format!("Account {actor_id} has no permission to act on {account_id}"),
-                                                                ActionErrorKind::DeleteKeyDoesNotExist { account_id, public_key } =>
-                                                                    format!("Cannot delete key {public_key} from account {account_id} - key doesn't exist"),
-                                                                ActionErrorKind::AddKeyAlreadyExists { account_id, public_key } =>
-                                                                    format!("Cannot add key {public_key} to account {account_id} - key already exists"),
-                                                                ActionErrorKind::DeleteAccountStaking { account_id } =>
-                                                                    format!("Cannot delete account {account_id} because it is staking"),
-                                                                ActionErrorKind::LackBalanceForState { account_id, amount } =>
-                                                                    format!("Account {account_id} needs {amount} more yoctoNEAR to cover storage"),
-                                                                ActionErrorKind::TriesToUnstake { account_id } =>
-                                                                    format!("Account {account_id} is trying to unstake but isn't staking"),
-                                                                ActionErrorKind::TriesToStake { account_id, stake, locked, balance } =>
-                                                                    format!("Account {account_id} cannot stake {stake} - has {locked} staked and {balance} balance"),
-                                                                ActionErrorKind::InsufficientStake { account_id, stake, minimum_stake } =>
-                                                                    format!("Account {account_id} tried to stake {stake} but minimum stake is {minimum_stake}"),
-                                                                ActionErrorKind::FunctionCallError(e) =>
-                                                                    format!("Function call error: {e:?}"),
-                                                                ActionErrorKind::NewReceiptValidationError(e) =>
-                                                                    format!("Receipt validation error: {e}"),
-                                                                ActionErrorKind::OnlyImplicitAccountCreationAllowed { account_id } =>
-                                                                    format!("Cannot explicitly create account {account_id} - only implicit creation allowed"),
-                                                                ActionErrorKind::DeleteAccountWithLargeState { account_id } =>
-                                                                    format!("Cannot delete account {account_id} - state is too large"),
-                                                                ActionErrorKind::DelegateActionInvalidSignature =>
-                                                                    "Invalid delegate action signature".to_string(),
-                                                                ActionErrorKind::DelegateActionSenderDoesNotMatchTxReceiver { sender_id, receiver_id } =>
-                                                                    format!("Delegate action sender {sender_id} doesn't match transaction receiver {receiver_id}"),
-                                                                ActionErrorKind::DelegateActionExpired =>
-                                                                    "Delegate action has expired".to_string(),
-                                                                ActionErrorKind::DelegateActionAccessKeyError(e) =>
-                                                                    format!("Delegate action access key error: {e}"),
-                                                                ActionErrorKind::DelegateActionInvalidNonce { delegate_nonce, ak_nonce } =>
-                                                                    format!("Invalid delegate action nonce {delegate_nonce} - must be greater than {ak_nonce}"),
-                                                                ActionErrorKind::DelegateActionNonceTooLarge { delegate_nonce, upper_bound } =>
-                                                                    format!("Delegate action nonce {delegate_nonce} is too large - must be less than {upper_bound}"),
-                                                                ActionErrorKind::GlobalContractDoesNotExist { identifier } =>
-                                                                    format!("Global contract not found: {identifier:?}"),
-                                                            }),
-                                                            TxExecutionError::InvalidTxError(e) => match e {
-                                                                InvalidTxError::InvalidAccessKeyError(access_key_error) =>
-                                                                    format!("Access key error: {access_key_error}"),
-                                                                InvalidTxError::InvalidSignerId { signer_id } =>
-                                                                    format!("Invalid signer account ID: {signer_id}"),
-                                                                InvalidTxError::SignerDoesNotExist { signer_id } =>
-                                                                    format!("Signer account {signer_id} does not exist"),
-                                                                InvalidTxError::InvalidNonce { tx_nonce, ak_nonce } =>
-                                                                    format!("Invalid nonce {tx_nonce} - must be greater than {ak_nonce}"),
-                                                                InvalidTxError::NonceTooLarge { tx_nonce, upper_bound } =>
-                                                                    format!("Nonce {tx_nonce} is too large - must be less than {upper_bound}"),
-                                                                InvalidTxError::InvalidReceiverId { receiver_id } =>
-                                                                    format!("Invalid receiver account ID: {receiver_id}"),
-                                                                InvalidTxError::InvalidSignature =>
-                                                                    "Invalid transaction signature".to_string(),
-                                                                InvalidTxError::NotEnoughBalance { signer_id, balance, cost } =>
-                                                                    format!("Not enough balance: {signer_id} has {balance} but needs {cost}{is_difference_small}", is_difference_small = if cost.checked_sub(balance).expect("Invalid NotEnoughBalance error received from RPC, unable to display the error") < NearToken::from_millinear(1) { " (difference is less than 0.001 NEAR)" } else { "" }),
-                                                                InvalidTxError::LackBalanceForState { signer_id, amount } =>
-                                                                    format!("Account {signer_id} needs {amount} more to cover state"),
-                                                                InvalidTxError::CostOverflow =>
-                                                                    "Transaction cost overflow".to_string(),
-                                                                InvalidTxError::InvalidChain =>
-                                                                    "Invalid chain - transaction was created for a different chain".to_string(),
-                                                                InvalidTxError::Expired =>
-                                                                    "Transaction expired".to_string(),
-                                                                InvalidTxError::ActionsValidation(e) =>
-                                                                    format!("Actions validation error: {e}"),
-                                                                InvalidTxError::TransactionSizeExceeded { size, limit } =>
-                                                                    format!("Transaction size {size} exceeds limit {limit}"),
-                                                                InvalidTxError::InvalidTransactionVersion =>
-                                                                    "Invalid transaction version".to_string(),
-                                                                InvalidTxError::StorageError(e) =>
-                                                                    format!("Storage error: {e}"),
-                                                                InvalidTxError::ShardCongested { shard_id, congestion_level: _ } =>
-                                                                    format!("Shard {shard_id} is congested"),
-                                                                InvalidTxError::ShardStuck { shard_id, missed_chunks: _ } =>
-                                                                    format!("Shard {shard_id} is stuck"),
-                                                            },
-                                                        },
-                                                    }
-                                                } else {
-                                                    "An error happened during transaction execution".to_string()
-                                                }
-                                            } else {
-                                                "An error happened during transaction execution".to_string()
-                                            }
-                                        },
-                                        RpcTransactionError::DoesNotTrackShard => "RPC node doesn't track this shard. The RPC is probably not working properly".to_string(),
-                                        RpcTransactionError::RequestRouted { transaction_hash } =>
-                                            format!("Transaction with hash {transaction_hash} was routed"),
-                                        RpcTransactionError::UnknownTransaction { requested_transaction_hash } =>
-                                            format!("Transaction {requested_transaction_hash} doesn't exist"),
-                                        RpcTransactionError::TimeoutError => "Timeout".to_string(),
-                                    },
-                                    HandlerError::RpcLightClientProofError(_) => unreachable!(),
-                                    HandlerError::Other(value) => format!("Other handler error: {value}"),
-                                },
-                                Some(RpcErrorKind::RequestValidationError(validation_error)) => match validation_error {
-                                    RpcRequestValidationErrorKind::MethodNotFound { method_name } =>
-                                        format!("Method not found: {method_name}"),
-                                    RpcRequestValidationErrorKind::ParseError { error_message } =>
-                                        format!("Parse error: {error_message}"),
-                                },
-                                Some(RpcErrorKind::InternalError(error)) => format!("Internal error: {error}"),
-                            },
-                            near_min_api::Error::JsonRpcDeserialization(e, res) => format!("Failed to parse JSON RPC response: {e}\n\nResponse: {}", serde_json::to_string_pretty(&res).unwrap()),
-                            near_min_api::Error::NoRpcUrls => "RPC configuration error: No working RPCs found. Please add more RPCs in settings".to_string(),
-                            near_min_api::Error::OtherQueryError(s) => format!("Unhandled execution error: {s}"),
-                        };
+                        let error = format_tx_error(&e);
                         log::error!("Failed to send transaction: {error}");
                         Err(error)
                     }
@@ -365,7 +242,7 @@ impl TransactionType {
 
                 let Ok(signature) = sign_nep413(
                     signer.secret_key.clone(),
-                    NEP413Payload {
+                    &NEP413Payload {
                         message: message_to_sign.clone(),
                         nonce,
                         recipient: "intents.near".parse().unwrap(),
@@ -410,7 +287,7 @@ impl TransactionType {
                 if let Some(result) = response_value.get("result") {
                     if let Some(intent_hash) = result.get("intent_hash").and_then(|h| h.as_str()) {
                         if let Ok(intent_hash) = intent_hash.parse::<CryptoHash>() {
-                            Ok(TransactionResult::PendingIntent {
+                            Ok(TransactionResult::PublishedIntent {
                                 intent_hash,
                                 rpc_client,
                                 tx_hash: OnceCell::new(),
@@ -425,7 +302,241 @@ impl TransactionType {
                     Err("Result not found in response".to_string())
                 }
             }
+            TransactionType::MetaTransaction {
+                actions,
+                receiver_id,
+            } => {
+                let access_key = match rpc_client
+                    .get_access_key(
+                        signer.account_id.clone(),
+                        signer.secret_key.public_key(),
+                        QueryFinality::Finality(Finality::None),
+                    )
+                    .await
+                {
+                    Ok(key) => key,
+                    Err(e) => {
+                        return Err(format!("Failed to get access key: {e}"));
+                    }
+                };
+
+                let block_height = match rpc_client
+                    .block(BlockReference::Finality(Finality::Final))
+                    .await
+                {
+                    Ok(block) => block.header.height,
+                    Err(e) => {
+                        // Should never happen unless all RPCs are unstable, so no
+                        // need to handle this gracefully
+                        return Err(format!("Failed to fetch block hash: {e}"));
+                    }
+                };
+
+                let delegate_action = DelegateAction {
+                    sender_id: signer.account_id.clone(),
+                    receiver_id: receiver_id.clone(),
+                    actions: actions
+                        .iter()
+                        .map(|a| NonDelegateAction::try_from(a.clone()))
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(|e| {
+                            format!("Failed to convert action to non-delegate action: {e}")
+                        })?,
+                    nonce: access_key.nonce + 1,
+                    max_block_height: block_height + 100,
+                    public_key: signer.secret_key.public_key(),
+                };
+                let Ok(signature) =
+                    sign_nep366(signer.secret_key, &delegate_action, accounts_context).await
+                else {
+                    return Err("User cancelled signing".to_string());
+                };
+                let signed = SignedDelegateAction {
+                    delegate_action,
+                    signature,
+                };
+
+                let account_creation_service_addr = match signer.network {
+                    Network::Mainnet => {
+                        dotenvy_macro::dotenv!("MAINNET_ACCOUNT_CREATION_SERVICE_ADDR")
+                    }
+                    Network::Testnet => {
+                        dotenvy_macro::dotenv!("TESTNET_ACCOUNT_CREATION_SERVICE_ADDR")
+                    }
+                };
+                let Ok(response) = reqwest::Client::new()
+                    .post(format!(
+                        "{account_creation_service_addr}/relay-signed-delegate-action"
+                    ))
+                    .json(&serde_json::json!({
+                        "signed_delegate_action": signed,
+                    }))
+                    .send()
+                    .await
+                else {
+                    return Err("Failed to relay signed delegate action".to_string());
+                };
+
+                #[derive(Debug, Deserialize)]
+                struct RelaySignedDelegateActionResponse {
+                    message: String,
+                    transaction_hash: Option<CryptoHash>,
+                }
+
+                let Ok(response) = response.json::<RelaySignedDelegateActionResponse>().await
+                else {
+                    return Err("Failed to parse relay response".to_string());
+                };
+
+                if let Some(tx_hash) = response.transaction_hash {
+                    Ok(TransactionResult::PendingMetaTransaction(
+                        PendingTransaction::from_parts(rpc_client, tx_hash),
+                    ))
+                } else {
+                    Err(response.message)
+                }
+            }
         }
+    }
+}
+
+fn format_tx_error(error: &near_min_api::Error) -> String {
+    match error {
+        near_min_api::Error::Reqwest(e) => format!("Failed to connect to RPC: {e}"),
+        near_min_api::Error::JsonRpc(e) => match &e.error_struct {
+            None => format!("RPC error with code {code}: {message}", code = e.code, message = e.message),
+            Some(RpcErrorKind::HandlerError(handler_error)) => match handler_error {
+                HandlerError::RpcQueryError(_) => unreachable!(),
+                HandlerError::RpcReceiptError(_) => unreachable!(),
+                HandlerError::RpcStatusError(status_error) => match status_error {
+                    RpcStatusError::NodeIsSyncing => "RPC node is syncing".to_string(),
+                    RpcStatusError::NoNewBlocks { elapsed } => format!("No blocks for {elapsed:?}"),
+                    RpcStatusError::EpochOutOfBounds { epoch_id } => format!("Epoch Out Of Bounds {epoch_id:?}"),
+                },
+                HandlerError::RpcTransactionError(tx_error) => match tx_error {
+                    RpcTransactionError::InvalidTransaction {} => {
+                        if let Some(data) = &e.data {
+                            if let Ok(server_error) = serde_json::from_value::<ServerError>(data.clone()) {
+                                match server_error {
+                                    ServerError::Closed => "RPC is closed".to_string(),
+                                    ServerError::Timeout => "RPC timeout".to_string(),
+                                    ServerError::TxExecutionError(e) => match e {
+                                        TxExecutionError::ActionError(action_error) => format!("Action error in action #{}: {}", action_error.index.map(|n| n.to_string()).unwrap_or("unknown".to_string()), match action_error.kind {
+                                            ActionErrorKind::AccountAlreadyExists { account_id } =>
+                                                format!("Cannot create account {account_id}, because it already exists"),
+                                            ActionErrorKind::AccountDoesNotExist { account_id } =>
+                                                format!("Account {account_id} doesn't exist"),
+                                            ActionErrorKind::CreateAccountOnlyByRegistrar { account_id, registrar_account_id, predecessor_id } =>
+                                                format!("Account {account_id} can only be created by {registrar_account_id}, not by {predecessor_id}"),
+                                            ActionErrorKind::CreateAccountNotAllowed { account_id, predecessor_id } =>
+                                                format!("Account {predecessor_id} cannot create account {account_id}"),
+                                            ActionErrorKind::ActorNoPermission { account_id, actor_id } =>
+                                                format!("Account {actor_id} has no permission to act on {account_id}"),
+                                            ActionErrorKind::DeleteKeyDoesNotExist { account_id, public_key } =>
+                                                format!("Cannot delete key {public_key} from account {account_id} - key doesn't exist"),
+                                            ActionErrorKind::AddKeyAlreadyExists { account_id, public_key } =>
+                                                format!("Cannot add key {public_key} to account {account_id} - key already exists"),
+                                            ActionErrorKind::DeleteAccountStaking { account_id } =>
+                                                format!("Cannot delete account {account_id} because it is staking"),
+                                            ActionErrorKind::LackBalanceForState { account_id, amount } =>
+                                                format!("Account {account_id} needs {amount} more yoctoNEAR to cover storage"),
+                                            ActionErrorKind::TriesToUnstake { account_id } =>
+                                                format!("Account {account_id} is trying to unstake but isn't staking"),
+                                            ActionErrorKind::TriesToStake { account_id, stake, locked, balance } =>
+                                                format!("Account {account_id} cannot stake {stake} - has {locked} staked and {balance} balance"),
+                                            ActionErrorKind::InsufficientStake { account_id, stake, minimum_stake } =>
+                                                format!("Account {account_id} tried to stake {stake} but minimum stake is {minimum_stake}"),
+                                            ActionErrorKind::FunctionCallError(e) =>
+                                                format!("Function call error: {e:?}"),
+                                            ActionErrorKind::NewReceiptValidationError(e) =>
+                                                format!("Receipt validation error: {e}"),
+                                            ActionErrorKind::OnlyImplicitAccountCreationAllowed { account_id } =>
+                                                format!("Cannot explicitly create account {account_id} - only implicit creation allowed"),
+                                            ActionErrorKind::DeleteAccountWithLargeState { account_id } =>
+                                                format!("Cannot delete account {account_id} - state is too large"),
+                                            ActionErrorKind::DelegateActionInvalidSignature =>
+                                                "Invalid delegate action signature".to_string(),
+                                            ActionErrorKind::DelegateActionSenderDoesNotMatchTxReceiver { sender_id, receiver_id } =>
+                                                format!("Delegate action sender {sender_id} doesn't match transaction receiver {receiver_id}"),
+                                            ActionErrorKind::DelegateActionExpired =>
+                                                "Delegate action has expired".to_string(),
+                                            ActionErrorKind::DelegateActionAccessKeyError(e) =>
+                                                format!("Delegate action access key error: {e}"),
+                                            ActionErrorKind::DelegateActionInvalidNonce { delegate_nonce, ak_nonce } =>
+                                                format!("Invalid delegate action nonce {delegate_nonce} - must be greater than {ak_nonce}"),
+                                            ActionErrorKind::DelegateActionNonceTooLarge { delegate_nonce, upper_bound } =>
+                                                format!("Delegate action nonce {delegate_nonce} is too large - must be less than {upper_bound}"),
+                                            ActionErrorKind::GlobalContractDoesNotExist { identifier } =>
+                                                format!("Global contract not found: {identifier:?}"),
+                                        }),
+                                        TxExecutionError::InvalidTxError(e) => match e {
+                                            InvalidTxError::InvalidAccessKeyError(access_key_error) =>
+                                                format!("Access key error: {access_key_error}"),
+                                            InvalidTxError::InvalidSignerId { signer_id } =>
+                                                format!("Invalid signer account ID: {signer_id}"),
+                                            InvalidTxError::SignerDoesNotExist { signer_id } =>
+                                                format!("Signer account {signer_id} does not exist"),
+                                            InvalidTxError::InvalidNonce { tx_nonce, ak_nonce } =>
+                                                format!("Invalid nonce {tx_nonce} - must be greater than {ak_nonce}"),
+                                            InvalidTxError::NonceTooLarge { tx_nonce, upper_bound } =>
+                                                format!("Nonce {tx_nonce} is too large - must be less than {upper_bound}"),
+                                            InvalidTxError::InvalidReceiverId { receiver_id } =>
+                                                format!("Invalid receiver account ID: {receiver_id}"),
+                                            InvalidTxError::InvalidSignature =>
+                                                "Invalid transaction signature".to_string(),
+                                            InvalidTxError::NotEnoughBalance { signer_id, balance, cost } =>
+                                                format!("Not enough balance: {signer_id} has {balance} but needs {cost}{is_difference_small}", is_difference_small = if cost.checked_sub(balance).expect("Invalid NotEnoughBalance error received from RPC, unable to display the error") < NearToken::from_millinear(1) { " (difference is less than 0.001 NEAR)" } else { "" }),
+                                            InvalidTxError::LackBalanceForState { signer_id, amount } =>
+                                                format!("Account {signer_id} needs {amount} more to cover state"),
+                                            InvalidTxError::CostOverflow =>
+                                                "Transaction cost overflow".to_string(),
+                                            InvalidTxError::InvalidChain =>
+                                                "Invalid chain - transaction was created for a different chain".to_string(),
+                                            InvalidTxError::Expired =>
+                                                "Transaction expired".to_string(),
+                                            InvalidTxError::ActionsValidation(e) =>
+                                                format!("Actions validation error: {e}"),
+                                            InvalidTxError::TransactionSizeExceeded { size, limit } =>
+                                                format!("Transaction size {size} exceeds limit {limit}"),
+                                            InvalidTxError::InvalidTransactionVersion =>
+                                                "Invalid transaction version".to_string(),
+                                            InvalidTxError::StorageError(e) =>
+                                                format!("Storage error: {e}"),
+                                            InvalidTxError::ShardCongested { shard_id, congestion_level: _ } =>
+                                                format!("Shard {shard_id} is congested"),
+                                            InvalidTxError::ShardStuck { shard_id, missed_chunks: _ } =>
+                                                format!("Shard {shard_id} is stuck"),
+                                        },
+                                    },
+                                }
+                            } else {
+                                "An error happened during transaction execution".to_string()
+                            }
+                        } else {
+                            "An error happened during transaction execution".to_string()
+                        }
+                    },
+                    RpcTransactionError::DoesNotTrackShard => "RPC node doesn't track this shard. The RPC is probably not working properly".to_string(),
+                    RpcTransactionError::RequestRouted { transaction_hash } =>
+                        format!("Transaction with hash {transaction_hash} was routed"),
+                    RpcTransactionError::UnknownTransaction { requested_transaction_hash } =>
+                        format!("Transaction {requested_transaction_hash} doesn't exist"),
+                    RpcTransactionError::TimeoutError => "Timeout".to_string(),
+                },
+                HandlerError::RpcLightClientProofError(_) => unreachable!(),
+                HandlerError::Other(value) => format!("Other handler error: {value}"),
+            },
+            Some(RpcErrorKind::RequestValidationError(validation_error)) => match validation_error {
+                RpcRequestValidationErrorKind::MethodNotFound { method_name } =>
+                    format!("Method not found: {method_name}"),
+                RpcRequestValidationErrorKind::ParseError { error_message } =>
+                    format!("Parse error: {error_message}"),
+            },
+            Some(RpcErrorKind::InternalError(error)) => format!("Internal error: {error}"),
+        },
+        near_min_api::Error::JsonRpcDeserialization(e, res) => format!("Failed to parse JSON RPC response: {e}\n\nResponse: {}", serde_json::to_string_pretty(&res).unwrap()),
+        near_min_api::Error::NoRpcUrls => "RPC configuration error: No working RPCs found. Please add more RPCs in settings".to_string(),
+        near_min_api::Error::OtherQueryError(s) => format!("Unhandled execution error: {s}"),
     }
 }
 

@@ -26,7 +26,9 @@ use crate::contexts::accounts_context::{
 };
 use crate::contexts::network_context::Network;
 use crate::contexts::security_log_context::add_security_log;
-use crate::contexts::transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext};
+use crate::contexts::transaction_queue_context::{
+    EnqueuedTransaction, TransactionQueueContext, TransactionType,
+};
 use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
 use bs58;
 use leptos_use::{use_event_listener, use_window};
@@ -252,11 +254,13 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                     ];
 
                     let transaction_description = format!("Create account {account_id}");
-                    let (tx_details_rx, tx) = EnqueuedTransaction::create(
+                    let (tx_details_rx, tx) = EnqueuedTransaction::create_with_type(
                         transaction_description,
                         account_to_sign_with.account_id.clone(),
-                        account_id.clone(),
-                        actions,
+                        TransactionType::MetaTransaction {
+                            actions,
+                            receiver_id: account_id.clone(),
+                        },
                     );
                     add_transaction.update(|txs| {
                         txs.push(tx);

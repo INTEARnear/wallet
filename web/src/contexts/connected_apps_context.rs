@@ -70,7 +70,7 @@ impl ConnectedApp {
 
                 false
             }
-            TransactionType::NearIntents { .. } => false,
+            TransactionType::NearIntents { .. } | TransactionType::MetaTransaction { .. } => false,
         }
     }
 }

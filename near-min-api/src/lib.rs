@@ -322,12 +322,6 @@ impl RpcClient {
         self.request(rpc_method, rpc_params).await
     }
 
-    pub async fn fetch_recent_block_hash(&self) -> Result<CryptoHash, Error> {
-        self.block(BlockReference::Finality(Finality::Final))
-            .await
-            .map(|block| block.header.hash)
-    }
-
     pub async fn view_access_key_list(
         &self,
         account_id: AccountId,
@@ -543,6 +537,10 @@ impl<'a> PendingTransaction<'a> {
     #[allow(non_snake_case)]
     pub async fn EXPERIMENTAL_fetch_details(&self) -> Result<ExperimentalTxDetails, Error> {
         self.0.EXPERIMENTAL_tx_status(self.1).await
+    }
+
+    pub fn from_parts(rpc_client: &'a RpcClient, tx_hash: CryptoHash) -> Self {
+        Self(rpc_client, tx_hash)
     }
 }
 
