@@ -888,7 +888,13 @@ pub fn SendToken() -> impl IntoView {
                                                 let final_amount_decimal = (&max_amount_decimal
                                                     - &gas_cost_decimal)
                                                     .max(BigDecimal::from(0));
-                                                let max_amount_str = final_amount_decimal.to_string();
+                                                let mut max_amount_str = final_amount_decimal.to_string();
+                                                if max_amount_str.contains('.') {
+                                                    max_amount_str = max_amount_str
+                                                        .trim_end_matches('0')
+                                                        .trim_end_matches('.')
+                                                        .to_string();
+                                                }
                                                 set_amount.set(max_amount_str.clone());
                                                 check_amount(max_amount_str);
                                             }
@@ -926,8 +932,7 @@ pub fn SendToken() -> impl IntoView {
                                     disabled=move || {
                                         recipient_balance.get().is_none()
                                             || amount_error.get().is_some()
-                                            || is_loading_recipient.get()
-                                            || !has_typed_amount.get()
+                                            || is_loading_recipient.get() || !has_typed_amount.get()
                                     }
                                     on:click=handle_send
                                 >
