@@ -1260,23 +1260,11 @@ pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
                     on:click=copy_cli
                     title="Copy NEAR CLI command"
                 >
-                    {move || {
-                        if cli_copied.get() {
-                            view! {
-                                <Icon
-                                    icon=icondata::LuCheck
-                                    width="14"
-                                    height="14"
-                                    attr:class="text-green-400"
-                                />
-                            }
-                                .into_any()
-                        } else {
-                            view! { <Icon icon=icondata::LuTerminal width="14" height="14" /> }
-                                .into_any()
-                        }
+                    {if cli_copied.get() {
+                        "Copied!"
+                    } else {
+                        "Copy CLI"
                     }}
-                    "Copy CLI"
                 </button>
             </div>
         </div>

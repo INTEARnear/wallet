@@ -1,20 +1,20 @@
 use alloy_primitives::Signature;
 use axum::{
+    Router,
     extract::{Json, State},
     http::StatusCode,
     response::IntoResponse,
     routing::post,
-    Router,
 };
 use dotenv::dotenv;
 use near_min_api::{
-    types::{
-        near_crypto::{PublicKey, SecretKey},
-        AccountId, Action, BlockReference, CryptoHash, FinalExecutionStatus, Finality,
-        FunctionCallAction, NearGas, NearToken, SignedDelegateAction, SignedTransaction,
-        Transaction, TransactionV0, TxExecutionStatus,
-    },
     QueryFinality, RpcClient,
+    types::{
+        AccountId, Action, BlockReference, CreateAccountAction, CryptoHash, FinalExecutionStatus,
+        Finality, FunctionCallAction, NearGas, NearToken, SignedDelegateAction, SignedTransaction,
+        Transaction, TransactionV0, TxExecutionStatus,
+        near_crypto::{PublicKey, SecretKey},
+    },
 };
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
@@ -540,6 +540,8 @@ async fn relay_signed_delegate_action(
     State(state): State<AppState>,
     Json(payload): Json<RelaySignedDelegateActionRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    validate_signed_delegate_action(state.clone(), &payload.signed_delegate_action).await?;
+
     let signed_delegate_action = payload.signed_delegate_action;
     let receiver_id = signed_delegate_action.delegate_action.sender_id.clone();
 
@@ -626,4 +628,45 @@ async fn relay_signed_delegate_action(
             }))
         }
     }
+}
+
+async fn validate_signed_delegate_action(
+    #[allow(unused)] state: AppState,
+    signed_delegate_action: &SignedDelegateAction,
+) -> Result<(), (StatusCode, String)> {
+    if !signed_delegate_action.verify() {
+        return Err((StatusCode::BAD_REQUEST, "Invalid signature".to_string()));
+    }
+    let is_subaccount_creation = {
+        if !signed_delegate_action
+            .delegate_action
+            .receiver_id
+            .is_sub_account_of(&signed_delegate_action.delegate_action.sender_id)
+        {
+            tracing::error!("Receiver ID is not a subaccount of sender ID");
+            false
+        } else if signed_delegate_action.delegate_action.actions.len() != 2 {
+            tracing::error!("Actions length is not 1");
+            false
+        } else if let Action::CreateAccount(CreateAccountAction {}) =
+            signed_delegate_action.delegate_action.actions[0]
+                .clone()
+                .into()
+            && let Action::AddKey(_) = signed_delegate_action.delegate_action.actions[1]
+                .clone()
+                .into()
+        {
+            true
+        } else {
+            tracing::error!("Actions is not a CreateAccount and AddKey action");
+            false
+        }
+    };
+    if !is_subaccount_creation {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Not a supported transaction".to_string(),
+        ));
+    }
+    Ok(())
 }

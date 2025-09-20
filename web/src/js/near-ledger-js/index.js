@@ -21,6 +21,7 @@ const networkId = 'W'.charCodeAt(0);
 
 const SIGN_TRANSACTION = 2;
 const SIGN_MESSAGE = 7;
+const SIGN_META_TRANSACTION = 8;
 
 const DEFAULT_PATH = "44'/397'/0'/0'/1'";
 export async function createClient(transport) {
@@ -40,15 +41,24 @@ export async function createClient(transport) {
             return Buffer.from(response.subarray(0, -2));
         },
         async sign(transactionData, path) {
-            const isMessage = transactionData.length >= 4 &&
+            console.log("sign", transactionData.map(b => b.toString(16).padStart(2, '0')).join(' '))
+            const isNep413 = transactionData.length >= 4 &&
                 transactionData[0] === 0x9D &&
                 transactionData[1] === 0x01 &&
                 transactionData[2] === 0x00 &&
                 transactionData[3] === 0x80;
-            if (isMessage) {
+            if (isNep413) {
                 transactionData.splice(0, 4);
             }
-            console.log("isMessage", isMessage)
+            const isNep366 = transactionData.length >= 4 &&
+                transactionData[0] === 0x6e &&
+                transactionData[1] === 0x01 &&
+                transactionData[2] === 0x00 &&
+                transactionData[3] === 0x40;
+            if (isNep366) {
+                transactionData.splice(0, 4);
+            }
+            console.log("detected special messages", isNep413, isNep366)
 
             // NOTE: getVersion call allows to reset state to avoid starting from partially filled buffer
             const version = await this.getVersion();
@@ -63,7 +73,13 @@ export async function createClient(transport) {
             for (let offset = 0; offset < allData.length; offset += CHUNK_SIZE) {
                 const chunk = Buffer.from(allData.subarray(offset, offset + CHUNK_SIZE));
                 const isLastChunk = offset + CHUNK_SIZE >= allData.length;
-                const response = await this.transport.send(0x80, isMessage ? SIGN_MESSAGE : SIGN_TRANSACTION, isLastChunk ? 0x80 : 0, networkId, chunk);
+                let code = SIGN_TRANSACTION;
+                if (isNep413) {
+                    code = SIGN_MESSAGE;
+                } else if (isNep366) {
+                    code = SIGN_META_TRANSACTION;
+                }
+                const response = await this.transport.send(0x80, code, isLastChunk ? 0x80 : 0, networkId, chunk);
                 if (isLastChunk) {
                     return Buffer.from(response.subarray(0, -2));
                 }

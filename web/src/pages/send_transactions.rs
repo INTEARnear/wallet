@@ -109,6 +109,17 @@ fn TransactionAction(
                                  signer: Account| {
         let minified_args = serde_json::to_string(args).unwrap_or_default();
 
+        fn exact_gas_display(gas: u64) -> String {
+            const ONE_TERA_GAS: u64 = 10u64.pow(12);
+            const ONE_GIGA_GAS: u64 = 10u64.pow(9);
+            if gas.is_multiple_of(ONE_TERA_GAS) {
+                format!("{} TGas", gas / ONE_TERA_GAS)
+            } else if gas.is_multiple_of(ONE_GIGA_GAS) {
+                format!("{}.{} TGas", gas / ONE_TERA_GAS, gas % 1000)
+            } else {
+                format!("{} Gas", gas)
+            }
+        }
         let command_parts = vec![
             "near".to_string(),
             "contract".to_string(),
@@ -119,9 +130,9 @@ fn TransactionAction(
             "json-args".to_string(),
             minified_args,
             "prepaid-gas".to_string(),
-            format!("{gas}"),
+            format!("{}", exact_gas_display(gas.as_gas())),
             "attached-deposit".to_string(),
-            format!("{deposit}"),
+            format!("{}", deposit.exact_amount_display()),
             "sign-as".to_string(),
             signer.account_id.to_string(),
             "network-config".to_string(),
@@ -244,18 +255,8 @@ fn TransactionAction(
                                         on:click=move |_| copy_args_json(&args_clone2)
                                     >
                                         <Icon icon=LuClipboard width="14" height="14" />
-                                        "Copy JSON"
                                         {move || {
-                                            if json_copied.get() {
-                                                view! {
-                                                    <div class="absolute -top-6 left-1/2 -translate-x-1/2 bg-neutral-700 text-white text-xs px-2 py-1 rounded">
-                                                        "Copied!"
-                                                    </div>
-                                                }
-                                                    .into_any()
-                                            } else {
-                                                ().into_any()
-                                            }
+                                            if json_copied.get() { "Copied!" } else { "Copy JSON" }
                                         }}
                                     </button>
                                     <button
@@ -277,18 +278,8 @@ fn TransactionAction(
                                         )
                                     >
                                         <Icon icon=LuTerminal width="14" height="14" />
-                                        "Copy CLI Command"
                                         {move || {
-                                            if cli_copied.get() {
-                                                view! {
-                                                    <div class="absolute -top-6 left-1/2 -translate-x-1/2 bg-neutral-700 text-white text-xs px-2 py-1 rounded">
-                                                        "Copied!"
-                                                    </div>
-                                                }
-                                                    .into_any()
-                                            } else {
-                                                ().into_any()
-                                            }
+                                            if cli_copied.get() { "Copied!" } else { "Copy CLI" }
                                         }}
                                     </button>
                                 </div>
@@ -662,8 +653,22 @@ pub fn SendTransactions() -> impl IntoView {
             .unwrap_or(false)
     });
 
+    let has_signer_mismatch = move || {
+        let Some(app) = connected_app() else {
+            return false;
+        };
+        let Some(txs) = transactions.get() else {
+            return false;
+        };
+
+        txs.iter().any(|tx| tx.signer_id != app.account_id)
+    };
+
     let is_approve_enabled = Memo::new(move |_| {
         if started_sending.get() {
+            return false;
+        }
+        if has_signer_mismatch() {
             return false;
         }
         if has_dangerous_actions.get() {
@@ -1021,7 +1026,27 @@ pub fn SendTransactions() -> impl IntoView {
                                     }
                                 }}
                                 {move || {
-                                    if has_dangerous_actions.get() {
+                                    if has_signer_mismatch() {
+                                        view! {
+                                            <div class="p-4 bg-red-500/20 backdrop-blur-sm rounded-xl border border-red-400">
+                                                <div class="flex items-center gap-2 text-red-400">
+                                                    <Icon
+                                                        icon=LuTriangleAlert
+                                                        width="20"
+                                                        height="20"
+                                                        attr:class="min-w-5 min-h-5"
+                                                    />
+                                                    <div>
+                                                        <p class="font-medium">"Account Mismatch Error"</p>
+                                                        <p class="text-red-400 text-sm">
+                                                            "The transaction signer does not match the connected account. This is probably a bug in the app that requested the transaction. Please report this to the app developer."
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+                                            .into_any()
+                                    } else if has_dangerous_actions.get() {
                                         view! {
                                             <DangerConfirmInput
                                                 set_is_confirmed=set_is_confirmed

@@ -786,10 +786,9 @@ pub fn AccountSettings() -> impl IntoView {
                                                                 <span>
                                                                     {move || {
                                                                         if copied_seed.get() {
-                                                                            view! { <span class="text-green-500">"Copied!"</span> }
-                                                                                .into_any()
+                                                                            "Copied!"
                                                                         } else {
-                                                                            view! { <span>"Copy"</span> }.into_any()
+                                                                            "Copy"
                                                                         }
                                                                     }}
                                                                 </span>
@@ -824,10 +823,9 @@ pub fn AccountSettings() -> impl IntoView {
                                                             <span>
                                                                 {move || {
                                                                     if copied_key.get() {
-                                                                        view! { <span class="text-green-500">"Copied!"</span> }
-                                                                            .into_any()
+                                                                        "Copied!"
                                                                     } else {
-                                                                        view! { <span>"Copy"</span> }.into_any()
+                                                                        "Copy"
                                                                     }
                                                                 }}
                                                             </span>
