@@ -80,6 +80,18 @@ pub fn format_token_amount_no_hide(amount: Balance, decimals: u32, symbol: &str)
     format!("{formatted_balance} {symbol}")
 }
 
+pub fn format_token_amount_full_precision(amount: Balance, decimals: u32, symbol: &str) -> String {
+    let normalized_decimal = balance_to_decimal(amount, decimals);
+    let mut amount = normalized_decimal.to_string();
+    if amount.contains('.') {
+        amount = amount
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_string();
+    }
+    format!("{amount} {symbol}")
+}
+
 pub fn format_usd_value(value: BigDecimal) -> String {
     let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     if config().amounts_hidden {

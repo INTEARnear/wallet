@@ -13,7 +13,8 @@ use crate::{
     pages::stake::is_validator_supported,
     utils::{
         balance_to_decimal, decimal_to_balance, format_account_id_no_hide, format_token_amount,
-        format_token_amount_no_hide, format_usd_value_no_hide, StorageBalance,
+        format_token_amount_full_precision, format_token_amount_no_hide, format_usd_value_no_hide,
+        StorageBalance,
     },
 };
 use bigdecimal::{BigDecimal, FromPrimitive};
@@ -221,7 +222,7 @@ fn ImportModal(
                                                         {account_id.to_string()}
                                                     </td>
                                                     <td class="py-2 px-3 whitespace-nowrap">
-                                                        {format_token_amount_no_hide(
+                                                        {format_token_amount_full_precision(
                                                             decimal_to_balance(amount, decimals),
                                                             decimals,
                                                             &symbol,
@@ -1814,7 +1815,7 @@ pub fn SendMultiToken() -> impl IntoView {
                     </div>
                     {move || {
                         if let Some(t) = token() {
-                            let total_str = format_token_amount_no_hide(
+                            let total_str = format_token_amount_full_precision(
                                 decimal_to_balance(total_amount_dec(), t.token.metadata.decimals),
                                 t.token.metadata.decimals,
                                 &t.token.metadata.symbol,
@@ -1864,7 +1865,7 @@ pub async fn execute_send(
             .map(|transfer| {
                 let description = format!(
                     "Send {} to {}",
-                    format_token_amount_no_hide(transfer.amount, decimals, &symbol),
+                    format_token_amount_full_precision(transfer.amount, decimals, &symbol),
                     transfer.recipient
                 );
 
@@ -1968,7 +1969,7 @@ pub async fn execute_send(
                     EnqueuedTransaction::create(
                         format!(
                             "Send {} to {}",
-                            format_token_amount_no_hide(
+                            format_token_amount_full_precision(
                                 transfers.iter().map(|t| t.amount).sum(),
                                 decimals,
                                 &symbol
