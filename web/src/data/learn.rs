@@ -94,4 +94,54 @@ pub const ARTICLES: &[(&str, &str, &str)] = &[
         "https://learnnear.club/understanding-omni-bridge/",
         "/learn-omnibridge-guide.webp"
     ),
+    (
+        "What is PublicAI?",
+        "https://learnnear.club/what-is-publicai/",
+        "/learn-publicai.png"
+    ),
+    (
+        "NEAR Protocol: Making AI Transparent and Verifiable",
+        "https://learnnear.club/near-protocol-making-ai-transparent-and-verifiable/",
+        "/learn-ai-transparent-verifiable.png"
+    ),
+    (
+        "Bitte AI: Chatting Your Way Through NEAR dApps",
+        "https://learnnear.club/bitte-ai-chatting-your-way-through-near-dapps/",
+        "/learn-bitte-ai.jpg"
+    ),
+    (
+        "Introduction to Intear Wallet",
+        "https://learnnear.club/introduction-to-intear-wallet/",
+        "/learn-intear-wallet.jpg"
+    ),
+    (
+        "NEAR in 2025",
+        "https://learnnear.club/courses/near-2025/",
+        "/learn-near-2025.png"
+    ),
+    (
+        "Trusted Execution Environments (TEEs): Your Digital Safe Room",
+        "https://learnnear.club/trusted-execution-environments-tees-your-digital-safe-room/",
+        "/learn-tees-digital-safe.png"
+    ),
+    (
+        "Unlocking the Next Revolution of DeFi: Rhea x NEAR Intent",
+        "https://learnnear.club/unlocking-the-next-revolution-of-defi-rhea-x-near-intent/",
+        "/learn-rhea-near-intent.webp"
+    ),
+    (
+        "HotCraft: The Cross-Chain NFT Marketplace on NEAR",
+        "https://learnnear.club/hotcraft-the-cross-chain-nft-marketplace-on-near/",
+        "/learn-hotcraft-nft.jpg"
+    ),
+    (
+        "How to Read Any NEAR Intents Transaction Step by Step",
+        "https://learnnear.club/how-to-read-any-near-intents-transaction-step-by-step/",
+        "/learn-intents-transaction.jpg"
+    ),
+    (
+        "NEAR Q3 2025 Incentive Opportunities",
+        "https://learnnear.club/near-q3-2025-incentive-opportunities/",
+        "/learn-near-q3-incentives.jpg"
+    ),
 ];
