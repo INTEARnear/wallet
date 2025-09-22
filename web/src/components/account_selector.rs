@@ -78,6 +78,7 @@ pub enum AccountCreateRecoveryMethod {
 pub enum LoginMethod {
     NotSelected,
     SeedPhrase,
+    PrivateKey,
     EthereumWallet,
     SolanaWallet,
     Ledger,

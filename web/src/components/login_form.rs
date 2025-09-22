@@ -14,6 +14,7 @@ use crate::components::account_selector::{
     seed_phrase_to_key, AccountCreateParent, AccountCreateRecoveryMethod, LoginMethod, ModalState,
 };
 use crate::components::derivation_path_input::DerivationPathInput;
+use crate::components::seed_phrase_input::SeedPhraseInput;
 use crate::contexts::account_selector_context::AccountSelectorContext;
 use crate::contexts::accounts_context::{
     format_ledger_error, Account, AccountsContext, SecretKeyHolder,
@@ -660,16 +661,14 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
         },
     );
 
-    let check_private_key = move |key: String| {
+    let check_seed_phrase = move |seed_phrase: String| {
         set_error.set(None);
-        if key.is_empty() {
+        if seed_phrase.is_empty() {
             set_is_valid.set(None);
             return;
         }
 
-        let secret_key = if let (Ok(secret_key), _) | (_, Some(secret_key)) =
-            (key.parse::<SecretKey>(), seed_phrase_to_key(&key))
-        {
+        let secret_key = if let Some(secret_key) = seed_phrase_to_key(&seed_phrase) {
             secret_key
         } else {
             set_error.set(Some("Invalid seed phrase".to_string()));
@@ -684,7 +683,37 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
             set_available_accounts.set(all_accounts.clone());
             set_selected_accounts.set(vec![]);
             if all_accounts.is_empty() {
-                set_error.set(Some("No accounts found for this key".to_string()));
+                set_error.set(Some("No accounts found for this seed phrase".to_string()));
+                set_is_valid.set(None);
+            } else {
+                set_is_valid.set(Some(secret_key));
+            }
+        });
+    };
+
+    let check_private_key = move |private_key: String| {
+        set_error.set(None);
+        if private_key.is_empty() {
+            set_is_valid.set(None);
+            return;
+        }
+
+        let secret_key = if let Ok(secret_key) = private_key.parse::<SecretKey>() {
+            secret_key
+        } else {
+            set_error.set(Some("Invalid private key".to_string()));
+            set_is_valid.set(None);
+            return;
+        };
+        let public_key = secret_key.public_key();
+
+        spawn_local(async move {
+            let all_accounts = find_accounts_by_public_key(public_key, &accounts_context).await;
+
+            set_available_accounts.set(all_accounts.clone());
+            set_selected_accounts.set(vec![]);
+            if all_accounts.is_empty() {
+                set_error.set(Some("No accounts found for this private key".to_string()));
                 set_is_valid.set(None);
             } else {
                 set_is_valid.set(Some(secret_key));
@@ -868,6 +897,37 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                         <button
                             class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
                             style=move || {
+                                if login_method.get() == LoginMethod::PrivateKey {
+                                    "border-color: rgb(22 163 74); background-color: rgb(22 163 74 / 0.1);"
+                                } else {
+                                    "border-color: rgb(55 65 81); background-color: transparent;"
+                                }
+                            }
+                            on:click=move |_| {
+                                set_login_method.set(LoginMethod::PrivateKey);
+                                set_error.set(None);
+                                set_is_valid.set(None);
+                                set_available_accounts.set(vec![]);
+                                set_selected_accounts.set(vec![]);
+                                set_private_key.set("".to_string());
+                            }
+                        >
+                            <div class="flex flex-col items-center gap-2">
+                                <div class="w-8 h-8 rounded-full bg-green-600/20 flex items-center justify-center">
+                                    <Icon
+                                        icon=icondata::LuKeyRound
+                                        width="16"
+                                        height="16"
+                                        attr:class="text-green-500"
+                                    />
+                                </div>
+                                <div class="text-white text-sm font-medium">Private Key</div>
+                            </div>
+                        </button>
+
+                        <button
+                            class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
+                            style=move || {
                                 if login_method.get() == LoginMethod::EthereumWallet {
                                     "border-color: rgb(129 140 248); background-color: rgb(99 102 241 / 0.1);"
                                 } else {
@@ -983,47 +1043,24 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                         LoginMethod::SeedPhrase => {
                             view! {
                                 <div class="space-y-6">
-                                    <div>
-                                        <label class="block text-neutral-400 text-sm font-medium mb-2">
-                                            Seed Phrase
-                                        </label>
-                                        <div class="relative">
-                                            <input
-                                                type="text"
-                                                class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 text-base"
-                                                style=move || {
-                                                    if is_valid.get().is_some() {
-                                                        "border: 2px solid rgb(34 197 94)"
-                                                    } else {
-                                                        "border: 2px solid rgb(55 65 81)"
-                                                    }
-                                                }
-                                                prop:value=private_key
-                                                on:input=move |ev| {
-                                                    let value = event_target_value(&ev);
-                                                    set_private_key.set(value.clone());
-                                                    set_available_accounts.set(vec![]);
-                                                    set_selected_accounts.set(vec![]);
-                                                    check_private_key(value);
-                                                }
-                                            />
-                                        </div>
-                                        {move || {
-                                            if let Some(err) = error.get() {
-                                                view! {
-                                                    <p class="text-red-500 text-sm mt-2 font-medium">{err}</p>
-                                                }
-                                                    .into_any()
-                                            } else {
-                                                view! {
-                                                    <p class="text-neutral-400 text-sm mt-2 font-medium">
-                                                        Enter your seed phrase or private key
-                                                    </p>
-                                                }
-                                                    .into_any()
+                                    <SeedPhraseInput
+                                        on_change=Callback::new(move |phrase: String| {
+                                            set_private_key.set(phrase.clone());
+                                            set_available_accounts.set(vec![]);
+                                            set_selected_accounts.set(vec![]);
+                                            check_seed_phrase(phrase);
+                                        })
+                                    />
+                                    {move || {
+                                        if let Some(err) = error.get() {
+                                            view! {
+                                                <p class="text-red-500 text-sm mt-2 font-medium">{err}</p>
                                             }
-                                        }}
-                                    </div>
+                                                .into_any()
+                                        } else {
+                                            ().into_any()
+                                        }
+                                    }}
                                     {move || {
                                         if !available_accounts.get().is_empty() {
                                             view! {
@@ -1121,6 +1158,175 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                         "background: linear-gradient(90deg, #2563eb 0%, #7c3aed 100%); opacity: 1"
                                                     } else {
                                                         "background: linear-gradient(90deg, #2563eb 0%, #7c3aed 100%); opacity: 0"
+                                                    }
+                                                }
+                                            ></div>
+                                            <span class="relative flex items-center justify-center gap-2">
+                                                {move || {
+                                                    if import_in_progress.get() {
+                                                        view! {
+                                                            <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                        }
+                                                            .into_any()
+                                                    } else {
+                                                        ().into_any()
+                                                    }
+                                                }}
+                                                {move || {
+                                                    if import_in_progress.get() {
+                                                        "Importing...".to_string()
+                                                    } else {
+                                                        "Import Account".to_string()
+                                                    }
+                                                }}
+                                            </span>
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                                .into_any()
+                        }
+                        LoginMethod::PrivateKey => {
+                            view! {
+                                <div class="space-y-6">
+                                    <div>
+                                        <label class="block text-neutral-400 text-sm font-medium mb-2">
+                                            Private Key
+                                        </label>
+                                        <div class="relative">
+                                            <input
+                                                type="text"
+                                                class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 text-base"
+                                                style=move || {
+                                                    if is_valid.get().is_some() {
+                                                        "border: 2px solid rgb(22 163 74)"
+                                                    } else {
+                                                        "border: 2px solid rgb(55 65 81)"
+                                                    }
+                                                }
+                                                prop:value=private_key
+                                                on:input=move |ev| {
+                                                    let value = event_target_value(&ev);
+                                                    set_private_key.set(value.clone());
+                                                    set_available_accounts.set(vec![]);
+                                                    set_selected_accounts.set(vec![]);
+                                                    check_private_key(value);
+                                                }
+                                            />
+                                        </div>
+                                        {move || {
+                                            if let Some(err) = error.get() {
+                                                view! {
+                                                    <p class="text-red-500 text-sm mt-2 font-medium">{err}</p>
+                                                }
+                                                    .into_any()
+                                            } else {
+                                                view! {
+                                                    <p class="text-neutral-400 text-sm mt-2 font-medium">
+                                                        Enter your private key
+                                                    </p>
+                                                }
+                                                    .into_any()
+                                            }
+                                        }}
+                                    </div>
+                                    {move || {
+                                        if !available_accounts.get().is_empty() {
+                                            view! {
+                                                <div class="space-y-2">
+                                                    <label class="block text-neutral-400 text-sm font-medium">
+                                                        "Select Accounts to Import"
+                                                    </label>
+                                                    <div class="space-y-2 max-h-48 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                                                        {available_accounts
+                                                            .get()
+                                                            .into_iter()
+                                                            .map(|(account_id, network)| {
+                                                                let account_id_str = account_id.to_string();
+                                                                let account_id2 = account_id.clone();
+                                                                view! {
+                                                                    <button
+                                                                        class="w-full p-3 rounded-lg transition-all duration-200 text-left border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900/50 cursor-pointer group"
+                                                                        style=move || {
+                                                                            if selected_accounts
+                                                                                .get()
+                                                                                .contains(&(account_id.clone(), network))
+                                                                            {
+                                                                                "background-color: rgb(38 38 38); border-color: rgb(59 130 246);"
+                                                                            } else {
+                                                                                "background-color: rgb(23 23 23 / 0.5);"
+                                                                            }
+                                                                        }
+                                                                        on:click=move |_| {
+                                                                            let mut list = selected_accounts.get_untracked();
+                                                                            if list.contains(&(account_id2.clone(), network)) {
+                                                                                list.retain(|pair| pair != &(account_id2.clone(), network));
+                                                                            } else {
+                                                                                list.push((account_id2.clone(), network));
+                                                                            }
+                                                                            set_selected_accounts.set(list);
+                                                                        }
+                                                                    >
+                                                                        <div class="text-white font-medium transition-colors duration-200">
+                                                                            {account_id_str}
+                                                                        </div>
+                                                                        {move || {
+                                                                            if network == Network::Testnet {
+                                                                                view! {
+                                                                                    <p class="text-yellow-500 text-sm mt-1 font-medium">
+                                                                                        This is a <b>testnet</b>
+                                                                                        account. Tokens sent to this account are not real and hold no value
+                                                                                    </p>
+                                                                                }
+                                                                                    .into_any()
+                                                                            } else {
+                                                                                ().into_any()
+                                                                            }
+                                                                        }}
+                                                                    </button>
+                                                                }
+                                                            })
+                                                            .collect::<Vec<_>>()}
+                                                    </div>
+                                                </div>
+                                            }
+                                                .into_any()
+                                        } else {
+                                            ().into_any()
+                                        }
+                                    }}
+                                    <div class="flex gap-2">
+                                        <button
+                                            class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden"
+                                            style=move || {
+                                                if is_valid.get().is_some()
+                                                    && !selected_accounts.get().is_empty()
+                                                    && !import_in_progress.get()
+                                                {
+                                                    "background: linear-gradient(90deg, #16a34a 0%, #15803d 100%); cursor: pointer;"
+                                                } else {
+                                                    "background: rgb(55 65 81); cursor: not-allowed;"
+                                                }
+                                            }
+                                            disabled=move || {
+                                                is_valid.get().is_none()
+                                                    || selected_accounts.get().is_empty()
+                                                    || import_in_progress.get()
+                                            }
+                                            on:click=move |_| import_account()
+                                            on:mouseenter=move |_| set_is_hovered.set(true)
+                                            on:mouseleave=move |_| set_is_hovered.set(false)
+                                        >
+                                            <div
+                                                class="absolute inset-0 transition-opacity duration-200"
+                                                style=move || {
+                                                    if is_valid.get().is_some()
+                                                        && !selected_accounts.get().is_empty() && is_hovered.get()
+                                                        && !import_in_progress.get()
+                                                    {
+                                                        "background: linear-gradient(90deg, #15803d 0%, #14532d 100%); opacity: 1"
+                                                    } else {
+                                                        "background: linear-gradient(90deg, #15803d 0%, #14532d 100%); opacity: 0"
                                                     }
                                                 }
                                             ></div>

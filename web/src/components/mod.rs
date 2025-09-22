@@ -8,6 +8,7 @@ pub mod login_form;
 pub mod password_unlock;
 pub mod progressive_image;
 pub mod projected_revenue;
+pub mod seed_phrase_input;
 pub mod select;
 pub mod send_modals;
 pub mod social_link;
