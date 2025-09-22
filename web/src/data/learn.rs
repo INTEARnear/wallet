@@ -115,7 +115,7 @@ pub const ARTICLES: &[(&str, &str, &str)] = &[
         "/learn-intear-wallet.jpg"
     ),
     (
-        "NEAR in 2025",
+        "Course: NEAR in 2025",
         "https://learnnear.club/courses/near-2025/",
         "/learn-near-2025.png"
     ),
