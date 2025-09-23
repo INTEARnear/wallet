@@ -1131,6 +1131,10 @@ pub enum ValidatorKickoutReason {
         produced: NumBlocks,
         expected: NumBlocks,
     },
+    ProtocolVersionTooOld {
+        version: ProtocolVersion,
+        network_version: ProtocolVersion,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
