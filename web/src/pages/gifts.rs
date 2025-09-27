@@ -247,8 +247,8 @@ pub fn Gifts() -> impl IntoView {
         let base_fee = BigDecimal::from_str("0.05").unwrap();
         let num_ft_tokens = selected_fungible_tokens.get().len() as i32;
         let num_nfts = selected_nfts.get().len() as i32;
-        let ft_fee = BigDecimal::from_str("0.01").unwrap() * BigDecimal::from(num_ft_tokens);
-        let nft_fee = BigDecimal::from_str("0.01").unwrap() * BigDecimal::from(num_nfts);
+        let ft_fee = BigDecimal::from_str("0.005").unwrap() * BigDecimal::from(num_ft_tokens);
+        let nft_fee = BigDecimal::from_str("0.005").unwrap() * BigDecimal::from(num_nfts);
         base_fee + ft_fee + nft_fee
     };
 
