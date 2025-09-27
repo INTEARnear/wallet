@@ -838,14 +838,14 @@ pub fn GiftSuccessModal(result: GiftResult) -> impl IntoView {
                                             <Icon icon=icondata::LuCheck attr:class="w-4 h-4" />
                                             "Copied!"
                                         </div>
-                                    }
+                                    }.into_any()
                                 } else {
                                     view! {
                                         <div class="flex items-center justify-center gap-2">
                                             <Icon icon=icondata::LuCopy attr:class="w-4 h-4" />
                                             "Copy Link"
                                         </div>
-                                    }
+                                    }.into_any()
                                 }
                             }}
                         </button>
