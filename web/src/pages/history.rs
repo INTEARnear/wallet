@@ -6,6 +6,7 @@ use crate::{
         accounts_context::AccountsContext,
         config_context::{ConfigContext, TimestampFormat},
         network_context::Network,
+        rpc_context::RpcContext,
     },
     utils::{
         format_account_id, format_duration, format_token_amount, get_ft_metadata,
@@ -23,7 +24,7 @@ use near_min_api::{
         AccessKeyPermissionView, AccountId, AccountIdRef, ActionView, Balance,
         FinalExecutionOutcomeWithReceiptView, NearToken, ReceiptEnumView,
     },
-    ExperimentalTxDetails,
+    ExperimentalTxDetails, RpcClient,
 };
 use serde::Deserialize;
 
@@ -321,6 +322,7 @@ fn display_transaction(
     tx_type: TransactionType,
 ) -> impl IntoAny {
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+    let RpcContext { client, .. } = expect_context::<RpcContext>();
     let Some(me) = accounts().selected_account_id else {
         return view! { <div>No selected account</div> }.into_any();
     };
@@ -343,11 +345,23 @@ fn display_transaction(
             ];
             // First pass: build actions config
             for f in fns {
-                f(&mut Vec::new(), transaction, &me, &mut actions_config);
+                f(
+                    &mut Vec::new(),
+                    transaction,
+                    &me,
+                    &mut actions_config,
+                    client.get_untracked(),
+                );
             }
             // Second pass: build actions
             for f in fns {
-                f(&mut actions, transaction, &me, &mut actions_config.clone());
+                f(
+                    &mut actions,
+                    transaction,
+                    &me,
+                    &mut actions_config.clone(),
+                    client.get_untracked(),
+                );
             }
             if actions.is_empty() {
                 if transaction.final_outcome.transaction.actions.is_empty() {
@@ -392,6 +406,7 @@ fn add_account_actions(
     transaction: &FinalExecutionOutcomeWithReceiptView,
     _me: &AccountIdRef,
     _actions_config: &mut ActionsConfig,
+    _rpc_client: RpcClient,
 ) {
     for action in transaction.final_outcome.transaction.actions.iter() {
         match action {
@@ -452,6 +467,7 @@ fn add_key_actions(
     transaction: &FinalExecutionOutcomeWithReceiptView,
     me: &AccountIdRef,
     _actions_config: &mut ActionsConfig,
+    _rpc_client: RpcClient,
 ) {
     if transaction.final_outcome.transaction.receiver_id != me {
         return;
@@ -561,6 +577,7 @@ fn add_staking_actions(
     transaction: &FinalExecutionOutcomeWithReceiptView,
     me: &AccountIdRef,
     actions_config: &mut ActionsConfig,
+    _rpc_client: RpcClient,
 ) {
     for receipt in transaction.receipts.iter() {
         if !receipt.receiver_id.as_str().ends_with(".pool.near")
@@ -653,6 +670,7 @@ fn add_near_actions(
     transaction: &FinalExecutionOutcomeWithReceiptView,
     me: &AccountIdRef,
     actions_config: &mut ActionsConfig,
+    _rpc_client: RpcClient,
 ) {
     for receipt in transaction.receipts.iter() {
         if let ReceiptEnumView::Action {
@@ -754,6 +772,7 @@ fn add_storage_actions(
     transaction: &FinalExecutionOutcomeWithReceiptView,
     me: &AccountIdRef,
     actions_config: &mut ActionsConfig,
+    _rpc_client: RpcClient,
 ) {
     for receipt in transaction.receipts.iter() {
         if let ReceiptEnumView::Action {
@@ -812,6 +831,7 @@ fn add_wrap_actions(
     transaction: &FinalExecutionOutcomeWithReceiptView,
     me: &AccountIdRef,
     _actions_config: &mut ActionsConfig,
+    _rpc_client: RpcClient,
 ) {
     for receipt in transaction.receipts.iter() {
         if receipt.receiver_id != "wrap.near" && receipt.receiver_id != "wrap.testnet" {
@@ -881,6 +901,7 @@ fn add_dex_actions(
     transaction: &FinalExecutionOutcomeWithReceiptView,
     me: &AccountIdRef,
     actions_config: &mut ActionsConfig,
+    rpc_client: RpcClient,
 ) {
     let mut swap_exchange_logo = None;
 
@@ -968,11 +989,13 @@ fn add_dex_actions(
 
             let token_in_metadata = LocalResource::new({
                 let token_id = token_in_event.token_id.clone();
-                move || get_ft_metadata(token_id.clone())
+                let rpc_client = rpc_client.clone();
+                move || get_ft_metadata(token_id.clone(), rpc_client.clone())
             });
             let token_out_metadata = LocalResource::new({
                 let token_id = token_out_event.token_id.clone();
-                move || get_ft_metadata(token_id.clone())
+                let rpc_client = rpc_client.clone();
+                move || get_ft_metadata(token_id.clone(), rpc_client.clone())
             });
 
             actions.push(
@@ -1067,6 +1090,7 @@ fn add_ft_actions(
     transaction: &FinalExecutionOutcomeWithReceiptView,
     me: &AccountIdRef,
     actions_config: &mut ActionsConfig,
+    rpc_client: RpcClient,
 ) {
     for receipt in transaction.receipts.iter() {
         for log in transaction
@@ -1089,7 +1113,10 @@ fn add_ft_actions(
                 }),
             ) {
                 let executor_id = receipt.receiver_id.clone();
-                let metadata = LocalResource::new(move || get_ft_metadata(executor_id.clone()));
+                let rpc_client = rpc_client.clone();
+                let metadata = LocalResource::new(move || {
+                    get_ft_metadata(executor_id.clone(), rpc_client.clone())
+                });
                 if log.validate() {
                     actions_config
                         .ft_events
@@ -1240,7 +1267,10 @@ fn add_ft_actions(
             }
             if let Ok(log) = EventLogData::<FtMintLog>::deserialize(log) {
                 let executor_id = receipt.receiver_id.clone();
-                let metadata = LocalResource::new(move || get_ft_metadata(executor_id.clone()));
+                let rpc_client = rpc_client.clone();
+                let metadata = LocalResource::new(move || {
+                    get_ft_metadata(executor_id.clone(), rpc_client.clone())
+                });
                 if log.validate() {
                     actions_config
                         .ft_events
@@ -1322,7 +1352,10 @@ fn add_ft_actions(
             }
             if let Ok(log) = EventLogData::<FtBurnLog>::deserialize(log) {
                 let executor_id = receipt.receiver_id.clone();
-                let metadata = LocalResource::new(move || get_ft_metadata(executor_id.clone()));
+                let rpc_client = rpc_client.clone();
+                let metadata = LocalResource::new(move || {
+                    get_ft_metadata(executor_id.clone(), rpc_client.clone())
+                });
                 if log.validate() {
                     actions_config
                         .ft_events
@@ -1411,6 +1444,7 @@ fn add_nft_actions(
     transaction: &FinalExecutionOutcomeWithReceiptView,
     me: &AccountIdRef,
     actions_config: &mut ActionsConfig,
+    _rpc_client: RpcClient,
 ) {
     for receipt in transaction.receipts.iter() {
         for log in transaction
@@ -1698,6 +1732,7 @@ fn add_harvestmoon_actions(
     transaction: &FinalExecutionOutcomeWithReceiptView,
     me: &AccountIdRef,
     actions_config: &mut ActionsConfig,
+    _rpc_client: RpcClient,
 ) {
     for receipt in transaction.receipts.iter() {
         if receipt.receiver_id == "aa-harvest-moon.near" && receipt.predecessor_id == me {
@@ -1837,6 +1872,7 @@ fn add_lnc_actions(
     transaction: &FinalExecutionOutcomeWithReceiptView,
     _me: &AccountIdRef,
     _actions_config: &mut ActionsConfig,
+    _rpc_client: RpcClient,
 ) {
     for receipt in transaction.receipts.iter() {
         if receipt.receiver_id != "login.learnclub.near" {

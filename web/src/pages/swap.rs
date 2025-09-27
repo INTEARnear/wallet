@@ -1343,8 +1343,8 @@ pub fn Swap() -> impl IntoView {
                                                         if let Ok(percentage) = value.parse::<BigDecimal>() {
                                                             let percentage = percentage
                                                                 .clamp(
-                                                                    BigDecimal::from_f64(0.01).unwrap(),
-                                                                    BigDecimal::from_f64(100.0).unwrap(),
+                                                                    BigDecimal::from_str("0.01").unwrap(),
+                                                                    BigDecimal::from(100),
                                                                 );
                                                             set_config
                                                                 .update(|config| {
@@ -1444,7 +1444,7 @@ pub fn Swap() -> impl IntoView {
                                                         token.token.metadata.decimals,
                                                     );
                                                     let gas_cost_decimal = match token.token.account_id {
-                                                        Token::Near => BigDecimal::from_f64(0.05).unwrap(),
+                                                        Token::Near => BigDecimal::from_str("0.05").unwrap(),
                                                         Token::Nep141(_) => BigDecimal::from_u32(0).unwrap(),
                                                     };
                                                     let final_amount = (max_amount_decimal - gas_cost_decimal)

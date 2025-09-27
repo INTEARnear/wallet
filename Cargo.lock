@@ -11372,6 +11372,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.2.16",
  "icondata",
+ "itertools 0.13.0",
  "json-filter",
  "lazy_static",
  "leptos",

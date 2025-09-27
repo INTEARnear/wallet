@@ -16,6 +16,7 @@
     "events": "3.3.0",
     "fastintear": "github:sliman4/fastintear#e979fd0d6f3f29445fb9bf82825cdcd4ac291e7f",
     "posthog-js": "1.254.0",
+    "qr-code-styling": "^1.9.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "tailwindcss": "4.1.8",

@@ -474,11 +474,15 @@ fn ValidatorCard(
                                                                                                     Box::new(FunctionCallAction {
                                                                                                         method_name: "storage_deposit".to_string(),
                                                                                                         args: serde_json::to_vec(
-                                                                                                                &serde_json::json!({"registration_only":true}),
+                                                                                                                &serde_json::json!(
+                                                                                                                    {
+                                                                                                                    "registration_only": true
+                                                                                                                }
+                                                                                                                ),
                                                                                                             )
                                                                                                             .unwrap(),
                                                                                                         gas: NearGas::from_tgas(5).as_gas(),
-                                                                                                        deposit: "0.00125 NEAR".parse().unwrap(),
+                                                                                                        deposit: "0.002 NEAR".parse().unwrap(),
                                                                                                     }),
                                                                                                 ),
                                                                                             ];
@@ -1175,7 +1179,7 @@ pub fn Stake() -> impl IntoView {
                             v.account_id.clone(),
                             "get_reward_fee_fraction",
                             serde_json::json!({}),
-                            QueryFinality::Finality(Finality::Final),
+                            QueryFinality::Finality(Finality::DoomSlug),
                         )
                     })
                     .collect();
@@ -1195,7 +1199,7 @@ pub fn Stake() -> impl IntoView {
                                     pool_details_contract.clone(),
                                     "get_fields_by_pool",
                                     serde_json::json!({ "pool_id": v.account_id.clone() }),
-                                    QueryFinality::Finality(Finality::Final),
+                                    QueryFinality::Finality(Finality::DoomSlug),
                                 )
                             })
                             .collect();
@@ -1246,7 +1250,7 @@ pub fn Stake() -> impl IntoView {
                                 v.account_id.clone(),
                                 "get_active_farms",
                                 serde_json::json!({}),
-                                QueryFinality::Finality(Finality::Final),
+                                QueryFinality::Finality(Finality::DoomSlug),
                             )
                         })
                         .collect();
@@ -1365,7 +1369,7 @@ pub fn Stake() -> impl IntoView {
                                 pool.clone(),
                                 "get_account",
                                 serde_json::json!({ "account_id": user_account_id }),
-                                QueryFinality::Finality(Finality::Final),
+                                QueryFinality::Finality(Finality::DoomSlug),
                             )
                         })
                         .collect();
@@ -1410,7 +1414,7 @@ pub fn Stake() -> impl IntoView {
                                                 pool_id.clone(),
                                                 "get_reward_fee_fraction",
                                                 serde_json::json!({}),
-                                                QueryFinality::Finality(Finality::Final),
+                                                QueryFinality::Finality(Finality::DoomSlug),
                                             )
                                             .await;
 
@@ -1419,7 +1423,7 @@ pub fn Stake() -> impl IntoView {
                                                 pool_id.clone(),
                                                 "get_total_staked_balance",
                                                 serde_json::json!({}),
-                                                QueryFinality::Finality(Finality::Final),
+                                                QueryFinality::Finality(Finality::DoomSlug),
                                             )
                                             .await;
 
@@ -1484,7 +1488,7 @@ pub fn Stake() -> impl IntoView {
                                                 "account_id": user_account_id,
                                                 "farm_id": farm.farm_id
                                             }),
-                                            QueryFinality::Finality(Finality::Final),
+                                            QueryFinality::Finality(Finality::DoomSlug),
                                         ));
                                     }
                                 }
@@ -1908,7 +1912,7 @@ pub fn StakeValidator() -> impl IntoView {
                     validator_account_id.clone(),
                     "get_reward_fee_fraction",
                     serde_json::json!({}),
-                    QueryFinality::Finality(Finality::Final),
+                    QueryFinality::Finality(Finality::DoomSlug),
                 ),
                 async {
                     if let Some(pool_details_contract) = match network {
@@ -1920,7 +1924,7 @@ pub fn StakeValidator() -> impl IntoView {
                                 pool_details_contract,
                                 "get_fields_by_pool",
                                 serde_json::json!({ "pool_id": validator_account_id }),
-                                QueryFinality::Finality(Finality::Final),
+                                QueryFinality::Finality(Finality::DoomSlug),
                             )
                             .await
                     } else {
@@ -1997,7 +2001,7 @@ pub fn StakeValidator() -> impl IntoView {
                     validator_account_id,
                     "get_account_staked_balance",
                     serde_json::json!({ "account_id": user_account_id }),
-                    QueryFinality::Finality(Finality::Final),
+                    QueryFinality::Finality(Finality::DoomSlug),
                 )
                 .await
                 .ok()
@@ -2375,7 +2379,7 @@ pub fn UnstakeValidator() -> impl IntoView {
                     validator_account_id.clone(),
                     "get_reward_fee_fraction",
                     serde_json::json!({}),
-                    QueryFinality::Finality(Finality::Final),
+                    QueryFinality::Finality(Finality::DoomSlug),
                 ),
                 async {
                     if let Some(pool_details_contract) = match network {
@@ -2387,7 +2391,7 @@ pub fn UnstakeValidator() -> impl IntoView {
                                 pool_details_contract,
                                 "get_fields_by_pool",
                                 serde_json::json!({ "pool_id": validator_account_id }),
-                                QueryFinality::Finality(Finality::Final),
+                                QueryFinality::Finality(Finality::DoomSlug),
                             )
                             .await
                     } else {
@@ -2464,7 +2468,7 @@ pub fn UnstakeValidator() -> impl IntoView {
                     validator_account_id,
                     "get_account_staked_balance",
                     serde_json::json!({ "account_id": user_account_id }),
-                    QueryFinality::Finality(Finality::Final),
+                    QueryFinality::Finality(Finality::DoomSlug),
                 )
                 .await
                 .ok()
@@ -2856,7 +2860,7 @@ pub async fn get_unstake_available_epoch_pool_near(
         .view_state(
             validator_account_id.clone(),
             &key,
-            QueryFinality::Finality(Finality::Final),
+            QueryFinality::Finality(Finality::DoomSlug),
         )
         .await
     {
@@ -2873,7 +2877,7 @@ pub async fn get_unstake_available_epoch_pool_near(
         .view_state(
             validator_account_id.clone(),
             &unordered_map_value_key,
-            QueryFinality::Finality(Finality::Final),
+            QueryFinality::Finality(Finality::DoomSlug),
         )
         .await
     {
@@ -2919,7 +2923,7 @@ pub async fn get_unstake_available_epoch_poolv1_near(
         .view_state(
             validator_account_id.clone(),
             &key,
-            QueryFinality::Finality(Finality::Final),
+            QueryFinality::Finality(Finality::DoomSlug),
         )
         .await
     {
@@ -2936,7 +2940,7 @@ pub async fn get_unstake_available_epoch_poolv1_near(
         .view_state(
             validator_account_id.clone(),
             &unordered_map_value_key,
-            QueryFinality::Finality(Finality::Final),
+            QueryFinality::Finality(Finality::DoomSlug),
         )
         .await
     {

@@ -662,7 +662,23 @@ async fn validate_signed_delegate_action(
             false
         }
     };
-    if !is_subaccount_creation {
+    let is_gift_claim = {
+        if signed_delegate_action.delegate_action.actions.len() != 1 {
+            tracing::error!("Actions length is not 1");
+            false
+        } else if let Action::FunctionCall(f) = signed_delegate_action.delegate_action.actions[0]
+            .clone()
+            .into()
+        {
+            const SLIMEDROP_CONTRACT_MAINNET: &str = "slimedrop.intear.near";
+            f.method_name == "claim"
+                && signed_delegate_action.delegate_action.receiver_id == SLIMEDROP_CONTRACT_MAINNET
+        } else {
+            tracing::error!("Actions is not a FunctionCall action");
+            false
+        }
+    };
+    if !is_subaccount_creation && !is_gift_claim {
         return Err((
             StatusCode::BAD_REQUEST,
             "Not a supported transaction".to_string(),

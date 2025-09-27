@@ -1,3 +1,4 @@
+use cached::proc_macro::cached;
 use futures_util::join;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -17,7 +18,7 @@ use std::time::Duration;
 use web_sys::{window, MouseEvent};
 
 use crate::components::progressive_image::ProgressiveImage;
-use crate::contexts::nft_cache_context::NftCacheContext;
+use crate::contexts::nft_cache_context::{NftCacheContext, NftTokenMetadata};
 use crate::contexts::nft_cache_context::{NftContractMetadata, NftToken, OwnedCollection};
 use crate::contexts::search_context::SearchContext;
 use crate::contexts::tokens_context::TokenMetadata;
@@ -30,7 +31,7 @@ use crate::contexts::{
 };
 use crate::pages::stake::is_validator_supported;
 use crate::utils::{
-    format_account_id_no_hide, format_token_amount_no_hide, proxify_url, Resolution,
+    format_account_id_no_hide, format_token_amount_no_hide, proxify_url, Resolution, StorageBalance,
 };
 
 async fn fetch_spam_list() -> Vec<HiddenNft> {
@@ -66,13 +67,8 @@ struct FastnearNftResponseToken {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct NftTokenResponse {
-    pub metadata: NftTokenResponseMetadata,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct NftTokenResponseMetadata {
-    pub reference: Option<String>,
+pub struct NftTokenResponse {
+    pub metadata: NftTokenMetadata,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,13 +82,22 @@ struct NftTokenReference {
     pub attributes: Option<Vec<NftTokenAttribute>>,
 }
 
-async fn fetch_nft_metadata(
+#[cached(
+    time = 60,
+    option = true,
+    key = "AccountId",
+    convert = "{ contract_id.clone() }"
+)]
+pub async fn fetch_nft_metadata(
     contract_id: AccountId,
     rpc_client: RpcClient,
+    check_context: bool,
 ) -> Option<NftContractMetadata> {
-    let nfts_context = expect_context::<NftCacheContext>();
-    if let Some(cached) = nfts_context.cache.read().get(&contract_id) {
-        return cached.metadata.clone();
+    if check_context {
+        let nfts_context = expect_context::<NftCacheContext>();
+        if let Some(cached) = nfts_context.cache.read().get(&contract_id) {
+            return cached.metadata.clone();
+        }
     }
     (rpc_client
         .call::<NftContractMetadata>(
@@ -105,7 +110,13 @@ async fn fetch_nft_metadata(
         .ok()
 }
 
-async fn fetch_nft_token(
+#[cached(
+    time = 60,
+    option = true,
+    key = "(AccountId, String)",
+    convert = "{ (contract_id.clone(), token_id.clone()) }"
+)]
+pub async fn fetch_nft_token(
     contract_id: AccountId,
     token_id: String,
     rpc_client: RpcClient,
@@ -145,7 +156,7 @@ async fn fetch_nft_traits(base_uri: String, reference: String) -> Option<Vec<Nft
 /// previous batch still contained 100 items, it will fetch the next 10 pages, repeating until
 /// either less than 100 tokens are returned on the last page or the hard cap of 12 000 items
 /// is reached.
-async fn fetch_nfts_for_owner(
+pub async fn fetch_nfts_for_owner(
     contract_id: AccountId,
     account_id: AccountId,
     rpc_client: RpcClient,
@@ -214,7 +225,7 @@ async fn fetch_nfts_for_owner(
 /// 2. If the first page for a collection is exactly 100 tokens, `fetch_nfts_for_owner` is invoked
 ///    to load the remaining pages (up to the 12 000-token hard cap).  Collections whose first page
 ///    is smaller than 100 tokens are kept as-is.
-async fn fetch_nfts(
+pub async fn fetch_nfts(
     account_id: AccountId,
     network: Network,
     cache: RwSignal<HashMap<AccountId, OwnedCollection>>,
@@ -375,7 +386,7 @@ pub fn NftCollection() -> impl IntoView {
             let Ok(contract_id) = contract_id().parse() else {
                 return None;
             };
-            fetch_nft_metadata(contract_id, rpc_client).await
+            fetch_nft_metadata(contract_id, rpc_client, true).await
         }
     });
 
@@ -1513,7 +1524,7 @@ pub fn SendNft() -> impl IntoView {
             let Ok(cid) = contract_id().parse() else {
                 return None;
             };
-            fetch_nft_metadata(cid, rpc_client).await
+            fetch_nft_metadata(cid, rpc_client, true).await
         }
     });
 
@@ -1671,7 +1682,47 @@ pub fn SendNft() -> impl IntoView {
             .selected_account_id
             .expect("No account selected yet tried to send NFT");
         spawn_local(async move {
-            let actions = vec![Action::FunctionCall(Box::new(FunctionCallAction {
+            let rpc_client = client.get().clone();
+
+            // Check if storage deposit is needed
+            let storage_result = rpc_client
+                .call::<Option<StorageBalance>>(
+                    contract_id.clone(),
+                    "storage_balance_of",
+                    serde_json::json!({
+                        "account_id": recipient
+                    }),
+                    QueryFinality::Finality(Finality::DoomSlug),
+                )
+                .await;
+
+            let needs_storage_deposit = match storage_result {
+                Ok(storage_balance) => match storage_balance {
+                    Some(storage_balance) => storage_balance.available <= "0.01".parse().unwrap(),
+                    None => true,
+                },
+                Err(_) => false,
+            };
+
+            let mut actions = Vec::new();
+
+            // Add storage deposit if needed
+            if needs_storage_deposit {
+                let storage_action = Action::FunctionCall(Box::new(FunctionCallAction {
+                    method_name: "storage_deposit".to_string(),
+                    args: serde_json::to_vec(&serde_json::json!({
+                        "account_id": recipient,
+                        "registration_only": true,
+                    }))
+                    .unwrap(),
+                    gas: NearGas::from_tgas(5).as_gas(),
+                    deposit: "0.01 NEAR".parse().unwrap(),
+                }));
+                actions.push(storage_action);
+            }
+
+            // Add NFT transfer
+            let nft_action = Action::FunctionCall(Box::new(FunctionCallAction {
                 method_name: "nft_transfer".to_string(),
                 args: serde_json::to_vec(&serde_json::json!({
                     "receiver_id": recipient,
@@ -1680,7 +1731,9 @@ pub fn SendNft() -> impl IntoView {
                 .unwrap(),
                 gas: NearGas::from_tgas(5).as_gas(),
                 deposit: NearToken::from_yoctonear(1),
-            }))];
+            }));
+            actions.push(nft_action);
+
             let (rx, transaction) = EnqueuedTransaction::create(
                 transaction_description,
                 signer_id,
@@ -1967,7 +2020,7 @@ pub fn NftTokenDetails() -> impl IntoView {
             let Ok(cid) = contract_id().parse() else {
                 return None;
             };
-            fetch_nft_metadata(cid, rpc_client).await
+            fetch_nft_metadata(cid, rpc_client, true).await
         }
     });
 

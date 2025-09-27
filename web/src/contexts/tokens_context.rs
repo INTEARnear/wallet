@@ -1,11 +1,11 @@
 use std::{collections::HashSet, str::FromStr};
 
 use base64::{prelude::BASE64_STANDARD, Engine};
-use bigdecimal::{BigDecimal, FromPrimitive};
+use bigdecimal::BigDecimal;
 use codee::string::FromToStringCodec;
 use futures_util::future::join;
 use json_filter::{Filter, Operator};
-use leptos::prelude::*;
+use leptos::{prelude::*, task::spawn_local};
 use leptos_use::{core::ConnectionReadyState, use_websocket};
 use near_min_api::{
     types::{AccountId, Balance, BlockHeight, CryptoHash, Finality, U128},
@@ -15,7 +15,7 @@ use near_min_api::{
 use serde::{Deserialize, Serialize};
 use web_sys::HtmlAudioElement;
 
-use crate::utils::{power_of_10, USDT_DECIMALS};
+use crate::utils::{power_of_10, TOKEN_CACHE, USDT_DECIMALS};
 
 use super::{
     accounts_context::AccountsContext,
@@ -43,7 +43,7 @@ impl FromStr for Token {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub enum TokenScore {
     Spam,
     Unknown,
@@ -51,7 +51,7 @@ pub enum TokenScore {
     Reputable,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct TokenInfo {
     pub account_id: Token,
     pub metadata: TokenMetadata,
@@ -68,7 +68,7 @@ pub struct TokenInfo {
     pub reputation: TokenScore,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct TokenMetadata {
     pub name: String,
     pub symbol: String,
@@ -76,7 +76,7 @@ pub struct TokenMetadata {
     pub icon: Option<String>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct TokenData {
     #[serde(with = "dec_format")]
     pub balance: Balance,
@@ -462,12 +462,11 @@ pub fn provide_token_context() {
                         if let Some(token) = tokens.iter_mut().find(|t| {
                             matches!(&t.token.account_id, Token::Nep141(id) if *id == update.token)
                         }) {
-                            if let Ok(raw_price) = update.price_usd.parse::<f64>() {
+                            if let Ok(raw_price) = update.price_usd.parse::<BigDecimal>() {
                                 let decimals = token.token.metadata.decimals;
-                                let raw_price_decimal = BigDecimal::from_f64(raw_price).unwrap_or_default();
                                 let multiplier = power_of_10(decimals) / power_of_10(USDT_DECIMALS);
-                                let normalized_price = &raw_price_decimal * &multiplier;
-                                token.token.price_usd_raw = raw_price_decimal.clone();
+                                let normalized_price = &raw_price * &multiplier;
+                                token.token.price_usd_raw = raw_price.clone();
                                 token.token.price_usd = normalized_price.clone();
                                 if token.token.price_usd_hardcoded != BigDecimal::from(1) {
                                     // Don't update stablecoin prices in realtime. They're unlikely
@@ -697,6 +696,14 @@ pub fn provide_token_context() {
                 *tokens = new_tokens;
             }
             has_changed
+        });
+    });
+
+    // Provide updates to token cache
+    Effect::new(move |_| {
+        let tokens = tokens.get();
+        spawn_local(async move {
+            *TOKEN_CACHE.lock().await = tokens.clone();
         });
     });
 

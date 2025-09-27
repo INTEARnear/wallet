@@ -1,18 +1,38 @@
 use leptos::{html::Div, prelude::*};
 use leptos_icons::*;
+use std::{fmt, fmt::Debug, sync::Arc};
 
-#[derive(Clone, Debug, PartialEq)]
+pub trait AnyViewCopy: Fn() -> AnyView + Send + Sync + 'static {}
+
+impl<F> AnyViewCopy for F where F: Fn() -> AnyView + Send + Sync + 'static {}
+
+#[derive(Clone)]
 pub struct SelectOption {
-    pub value: String,
-    pub label: String,
-    pub disabled: bool,
+    value: String,
+    label: Arc<dyn AnyViewCopy>,
+    disabled: bool,
+}
+
+impl Debug for SelectOption {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SelectOption")
+            .field("value", &self.value)
+            .field("disabled", &self.disabled)
+            .finish()
+    }
+}
+
+impl PartialEq for SelectOption {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
 }
 
 impl SelectOption {
-    pub fn new(value: String, label: String) -> Self {
+    pub fn new(value: String, label: impl AnyViewCopy) -> Self {
         Self {
             value,
-            label,
+            label: Arc::new(label),
             disabled: false,
         }
     }
@@ -25,12 +45,13 @@ impl SelectOption {
 
 #[component]
 pub fn Select(
-    options: impl Fn() -> Vec<SelectOption> + Copy + Send + Sync + 'static,
-    #[prop(optional)] placeholder: Option<String>,
+    options: Signal<Vec<SelectOption>>,
+    #[prop(optional, into)] placeholder: Option<String>,
     #[prop(optional)] disabled: Option<Signal<bool>>,
-    #[prop(optional)] class: Option<&'static str>,
-    #[prop(optional)] initial_value: Option<String>,
-    on_change: impl Fn(String) + Copy + Send + Sync + 'static,
+    #[prop(optional, into)] class: Option<&'static str>,
+    #[prop(optional, into)] initial_value: Option<String>,
+    #[prop(optional, into)] width: Option<String>,
+    #[prop(into)] on_change: Callback<String>,
 ) -> impl IntoView {
     let (is_open, set_is_open) = signal(false);
     let container_ref = NodeRef::<Div>::new();
@@ -54,7 +75,7 @@ pub fn Select(
     let handle_option_click = move |option: SelectOption| {
         if !option.disabled {
             set_value.set(option.value.clone());
-            on_change(option.value.clone());
+            on_change.run(option.value.clone());
             set_is_open.set(false);
         }
     };
@@ -75,18 +96,20 @@ pub fn Select(
                         }
                     }
                 >
-                    <span class="text-left truncate">
-                        {move || {
-                            current_option
-                                .get()
-                                .map(|opt| opt.label)
-                                .unwrap_or_else(|| {
-                                    placeholder
+                    {move || {
+                        if let Some(current) = current_option.get() {
+                            (current.label)()
+                        } else {
+                            view! {
+                                <span class="truncate text-gray-400">
+                                    {placeholder
                                         .clone()
-                                        .unwrap_or_else(|| "Select an option".to_string())
-                                })
-                        }}
-                    </span>
+                                        .unwrap_or_else(|| "Select an option".to_string())}
+                                </span>
+                            }
+                                .into_any()
+                        }
+                    }}
                     <Icon
                         icon=icondata::LuChevronDown
                         width="16"
@@ -99,7 +122,17 @@ pub fn Select(
                 </button>
 
                 <Show when=is_open>
-                    <div class="absolute top-full left-0 right-0 z-[50000] mt-1 max-h-60 overflow-auto rounded-lg bg-neutral-800 border border-neutral-700 shadow-lg">
+                    <div
+                        class="absolute top-full right-0 z-[50000] mt-1 max-h-60 overflow-auto rounded-lg bg-neutral-800 border border-neutral-700 shadow-lg"
+                        style=format!(
+                            "width: {}",
+                            if let Some(width) = width.as_ref() {
+                                width
+                            } else {
+                                "100%"
+                            },
+                        )
+                    >
                         {move || {
                             options()
                                 .into_iter()
@@ -112,17 +145,18 @@ pub fn Select(
                                         <button
                                             type="button"
                                             class="w-full text-left px-3 py-2 hover:bg-neutral-700 focus:bg-neutral-700 focus:outline-none cursor-pointer text-base disabled:opacity-50 disabled:cursor-not-allowed text-white"
-                                            style=move || if is_selected() {
-                                                "background-color: rgb(3 105 161);"
-                                            } else {
-                                                ""
+                                            style=move || {
+                                                if is_selected() {
+                                                    "background-color: rgb(3 105 161);"
+                                                } else {
+                                                    ""
+                                                }
                                             }
                                             disabled=option.disabled
                                             on:click=move |_| handle_option_click(option_clone.clone())
                                         >
                                             <div class="flex items-center justify-between">
-                                                <span class="truncate">{option.label.clone()}</span>
-                                                <Show when=is_selected2>
+                                                {(option.label)()} <Show when=is_selected2>
                                                     <Icon
                                                         icon=icondata::LuCheck
                                                         width="16"

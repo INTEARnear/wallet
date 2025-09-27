@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::contexts::config_context::{BackgroundGroup, ConfigContext, HiddenNft};
 use crate::utils::is_tauri;
 use bigdecimal::{BigDecimal, FromPrimitive};
@@ -238,8 +240,8 @@ pub fn PreferencesSettings() -> impl IntoView {
                                     if let Ok(percentage) = value.parse::<BigDecimal>() {
                                         let percentage = percentage
                                             .clamp(
-                                                BigDecimal::from_f64(0.01).unwrap(),
-                                                BigDecimal::from_f64(100.0).unwrap(),
+                                                BigDecimal::from_str("0.01").unwrap(),
+                                                BigDecimal::from(100),
                                             );
                                         config_context
                                             .set_config

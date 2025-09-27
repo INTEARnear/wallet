@@ -726,24 +726,24 @@ pub fn SecuritySettings() -> impl IntoView {
                             <div class="flex flex-col gap-3">
                                 <div class="text-lg font-medium">Remember Password</div>
                                 <Select
-                                    options=move || {
+                                    options=Signal::derive(move || {
                                         PasswordRememberDuration::all_variants()
                                             .iter()
                                             .map(|variant| {
                                                 SelectOption::new(
                                                     variant.option_value().to_string(),
-                                                    variant.display_name().to_string(),
+                                                    move || variant.display_name().to_string().into_any(),
                                                 )
                                             })
                                             .collect()
-                                    }
-                                    on_change=move |value: String| {
+                                    })
+                                    on_change=Callback::new(move |value: String| {
                                         let duration = PasswordRememberDuration::from_option_value(
                                             &value,
                                         );
                                         set_config
                                             .update(|c| c.password_remember_duration = duration);
-                                    }
+                                    })
                                     class="w-full border rounded-lg border-neutral-700 bg-neutral-900"
                                     initial_value=config
                                         .get_untracked()

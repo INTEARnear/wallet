@@ -1,6 +1,7 @@
 use crate::contexts::accounts_context::AccountsContext;
 use crate::contexts::config_context::ConfigContext;
 use crate::contexts::network_context::{Network, NetworkContext};
+use crate::contexts::rpc_context::RpcContext;
 use crate::contexts::tokens_context::TokensContext;
 use crate::utils::{
     balance_to_decimal, format_token_amount, format_usd_value, get_ft_metadata, power_of_10,
@@ -55,15 +56,18 @@ fn AirdropButton(
         .unwrap_or("Unknown Airdrop");
 
     let accounts_context = expect_context::<AccountsContext>();
+    let RpcContext { client, .. } = expect_context::<RpcContext>();
     let (is_claiming, set_is_claiming) = signal(false);
 
     let tokens_for_resource = tokens.clone();
     let tokens_metadata = LocalResource::new(move || {
         let tokens = tokens_for_resource.clone();
         async move {
-            let metadata_futures = tokens
-                .into_iter()
-                .map(|token| async { get_ft_metadata(token.token_addr).await.ok() });
+            let metadata_futures = tokens.into_iter().map(|token| async {
+                get_ft_metadata(token.token_addr, client.get_untracked())
+                    .await
+                    .ok()
+            });
 
             join_all(metadata_futures).await
         }

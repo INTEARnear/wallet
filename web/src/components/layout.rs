@@ -120,6 +120,10 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
         path: "/explore",
         icon: icondata::LuCompass,
     };
+    const GIFTS_ITEM: &NavItem = &NavItem {
+        path: "/gifts",
+        icon: icondata::LuGift,
+    };
     let nav_items = move || match network.get() {
         Network::Mainnet => {
             vec![
@@ -127,6 +131,7 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                 NFTS_ITEM,
                 STAKE_ITEM,
                 SWAP_ITEM,
+                GIFTS_ITEM,
                 HISTORY_ITEM,
                 EXPLORE_ITEM,
             ]
@@ -337,11 +342,7 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                     <PasswordUnlockOverlay />
                     <TransactionQueueOverlay />
                     {move || {
-                        if let Some(modal) = &*modal.read() {
-                            modal()
-                        } else {
-                            ().into_any()
-                        }
+                        if let Some(modal) = &*modal.read() { modal() } else { ().into_any() }
                     }}
                     <div class="p-2 sm:p-4">
                         <WalletHeader />

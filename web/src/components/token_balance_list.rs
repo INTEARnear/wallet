@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::{
     contexts::{
         config_context::ConfigContext,
@@ -9,7 +11,7 @@ use crate::{
         balance_to_decimal, format_token_amount, format_usd_value, power_of_10, USDT_DECIMALS,
     },
 };
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
+use bigdecimal::{BigDecimal, ToPrimitive};
 use leptos::prelude::*;
 use leptos_icons::Icon;
 use leptos_router::components::A;
@@ -66,9 +68,9 @@ pub fn TokenBalanceList() -> impl IntoView {
                                 return false;
                             }
                             let market_cap_is_abnormal = &token.token.price_usd_raw
-                            * &BigDecimal::from(token.token.circulating_supply)
-                            / power_of_10(USDT_DECIMALS)
-                            >= BigDecimal::from(100_000_000_000_000u128);
+                                * &BigDecimal::from(token.token.circulating_supply)
+                                / power_of_10(USDT_DECIMALS)
+                                >= BigDecimal::from(100_000_000_000_000u128);
                             if market_cap_is_abnormal && network.get() != Network::Testnet {
                                 log::warn!(
                                     "Hiding token {:?} as it has abnormal market cap",
@@ -83,7 +85,7 @@ pub fn TokenBalanceList() -> impl IntoView {
                                 let decimals = token.token.metadata.decimals;
                                 let price = &token.token.price_usd;
                                 let normalized_balance = balance_to_decimal(balance, decimals);
-                                let threshold = BigDecimal::from_f64(0.01).unwrap_or_default();
+                                let threshold = BigDecimal::from_str("0.01").unwrap_or_default();
                                 return (price * &normalized_balance) >= threshold;
                             }
                             true

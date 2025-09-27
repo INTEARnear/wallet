@@ -1,6 +1,8 @@
 pub mod auto_import_secret_key;
 pub mod connect;
 pub mod explore;
+pub mod gift_claim;
+pub mod gifts;
 pub mod history;
 pub mod home;
 pub mod login;

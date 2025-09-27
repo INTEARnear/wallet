@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import Overlays from "./Overlays";
 import { createClient as createLedgerClient, getSupportedTransport as getSupportedLedgerTransport } from "./near-ledger-js";
 import { toObject } from "./utils";
+import "./qr-generator.js";
 
 // Analytics
 

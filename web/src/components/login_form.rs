@@ -925,73 +925,73 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                             </div>
                         </button>
 
-                        <button
-                            class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
-                            style=move || {
-                                if login_method.get() == LoginMethod::EthereumWallet {
-                                    "border-color: rgb(129 140 248); background-color: rgb(99 102 241 / 0.1);"
-                                } else {
-                                    "border-color: rgb(55 65 81); background-color: transparent;"
-                                }
-                            }
-                            on:click=move |_| {
-                                set_login_method.set(LoginMethod::EthereumWallet);
-                                set_error.set(None);
-                                set_is_valid.set(None);
-                                set_available_accounts.set(vec![]);
-                                set_selected_accounts.set(vec![]);
-                                set_private_key.set("".to_string());
-                                let mnemonic = bip39::Mnemonic::generate(12).unwrap();
-                                set_generated_mnemonic.set(Some(mnemonic));
-                                request_ethereum_connection();
-                            }
-                        >
-                            <div class="flex flex-col items-center gap-2">
-                                <div class="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center">
-                                    <Icon
-                                        icon=icondata::SiEthereum
-                                        width="16"
-                                        height="16"
-                                        attr:class="text-indigo-400"
-                                    />
-                                </div>
-                                <div class="text-white text-sm font-medium">Ethereum</div>
-                            </div>
-                        </button>
+                        // <button
+                        //     class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
+                        //     style=move || {
+                        //         if login_method.get() == LoginMethod::EthereumWallet {
+                        //             "border-color: rgb(129 140 248); background-color: rgb(99 102 241 / 0.1);"
+                        //         } else {
+                        //             "border-color: rgb(55 65 81); background-color: transparent;"
+                        //         }
+                        //     }
+                        //     on:click=move |_| {
+                        //         set_login_method.set(LoginMethod::EthereumWallet);
+                        //         set_error.set(None);
+                        //         set_is_valid.set(None);
+                        //         set_available_accounts.set(vec![]);
+                        //         set_selected_accounts.set(vec![]);
+                        //         set_private_key.set("".to_string());
+                        //         let mnemonic = bip39::Mnemonic::generate(12).unwrap();
+                        //         set_generated_mnemonic.set(Some(mnemonic));
+                        //         request_ethereum_connection();
+                        //     }
+                        // >
+                        //     <div class="flex flex-col items-center gap-2">
+                        //         <div class="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center">
+                        //             <Icon
+                        //                 icon=icondata::SiEthereum
+                        //                 width="16"
+                        //                 height="16"
+                        //                 attr:class="text-indigo-400"
+                        //             />
+                        //         </div>
+                        //         <div class="text-white text-sm font-medium">Ethereum</div>
+                        //     </div>
+                        // </button>
 
-                        <button
-                            class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
-                            style=move || {
-                                if login_method.get() == LoginMethod::SolanaWallet {
-                                    "border-color: rgb(196 181 253); background-color: rgb(147 51 234 / 0.1);"
-                                } else {
-                                    "border-color: rgb(55 65 81); background-color: transparent;"
-                                }
-                            }
-                            on:click=move |_| {
-                                set_login_method.set(LoginMethod::SolanaWallet);
-                                set_error.set(None);
-                                set_is_valid.set(None);
-                                set_available_accounts.set(vec![]);
-                                set_selected_accounts.set(vec![]);
-                                set_private_key.set("".to_string());
-                                let mnemonic = bip39::Mnemonic::generate(12).unwrap();
-                                set_generated_mnemonic.set(Some(mnemonic));
-                                request_solana_connection();
-                            }
-                        >
-                            <div class="flex flex-col items-center gap-2">
-                                <div class="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
-                                    <Icon
-                                        icon=icondata::SiSolana
-                                        width="16"
-                                        height="16"
-                                        attr:class="text-purple-400"
-                                    />
-                                </div>
-                                <div class="text-white text-sm font-medium">Solana</div>
-                            </div>
-                        </button>
+                        // <button
+                        //     class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
+                        //     style=move || {
+                        //         if login_method.get() == LoginMethod::SolanaWallet {
+                        //             "border-color: rgb(196 181 253); background-color: rgb(147 51 234 / 0.1);"
+                        //         } else {
+                        //             "border-color: rgb(55 65 81); background-color: transparent;"
+                        //         }
+                        //     }
+                        //     on:click=move |_| {
+                        //         set_login_method.set(LoginMethod::SolanaWallet);
+                        //         set_error.set(None);
+                        //         set_is_valid.set(None);
+                        //         set_available_accounts.set(vec![]);
+                        //         set_selected_accounts.set(vec![]);
+                        //         set_private_key.set("".to_string());
+                        //         let mnemonic = bip39::Mnemonic::generate(12).unwrap();
+                        //         set_generated_mnemonic.set(Some(mnemonic));
+                        //         request_solana_connection();
+                        //     }
+                        // >
+                        //     <div class="flex flex-col items-center gap-2">
+                        //         <div class="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                        //             <Icon
+                        //                 icon=icondata::SiSolana
+                        //                 width="16"
+                        //                 height="16"
+                        //                 attr:class="text-purple-400"
+                        //             />
+                        //         </div>
+                        //         <div class="text-white text-sm font-medium">Solana</div>
+                        //     </div>
+                        // </button>
 
                         <button
                             class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"

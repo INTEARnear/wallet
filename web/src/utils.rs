@@ -1,8 +1,9 @@
 use base64::{prelude::BASE64_STANDARD, Engine};
-use bigdecimal::{num_bigint::BigInt, BigDecimal, FromPrimitive, One, ToPrimitive, Zero};
+use bigdecimal::{num_bigint::BigInt, BigDecimal, One, ToPrimitive, Zero};
 use borsh::BorshSerialize;
 use cached::proc_macro::cached;
 use chrono::{DateTime, Utc};
+use futures_util::lock::Mutex;
 use leptos::prelude::*;
 use near_min_api::{
     types::{
@@ -13,9 +14,10 @@ use near_min_api::{
         FunctionCallPermission, NearToken, StakeAction, TransferAction,
     },
     utils::dec_format,
+    RpcClient,
 };
 use serde::Deserialize;
-use std::{fmt::Display, ops::Deref, time::Duration};
+use std::{fmt::Display, ops::Deref, str::FromStr, time::Duration};
 use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
 use web_sys::{
     js_sys::{Promise, Reflect},
@@ -27,7 +29,7 @@ use crate::contexts::{
     config_context::ConfigContext,
     network_context::Network,
     rpc_context::RpcContext,
-    tokens_context::{Token, TokenInfo, TokenMetadata, TokensContext},
+    tokens_context::{Token, TokenData, TokenInfo, TokenMetadata},
 };
 
 pub const USDT_DECIMALS: u32 = 6;
@@ -65,14 +67,18 @@ pub fn format_token_amount_no_hide(amount: Balance, decimals: u32, symbol: &str)
 
     let formatted_balance = match &normalized_decimal {
         x if x.is_integer() => format!("{normalized_decimal:.0}"),
-        x if x.abs() >= BigDecimal::from_f64(0.1).unwrap() => format!("{normalized_decimal:.2}"),
-        x if x.abs() >= BigDecimal::from_f64(0.01).unwrap() => format!("{normalized_decimal:.3}"),
-        x if x.abs() >= BigDecimal::from_f64(0.001).unwrap() => format!("{normalized_decimal:.4}"),
-        x if x.abs() >= BigDecimal::from_f64(0.0001).unwrap() => format!("{normalized_decimal:.5}"),
-        x if x.abs() >= BigDecimal::from_f64(0.00001).unwrap() => {
+        x if x.abs() >= BigDecimal::from_str("0.1").unwrap() => format!("{normalized_decimal:.2}"),
+        x if x.abs() >= BigDecimal::from_str("0.01").unwrap() => format!("{normalized_decimal:.3}"),
+        x if x.abs() >= BigDecimal::from_str("0.001").unwrap() => {
+            format!("{normalized_decimal:.4}")
+        }
+        x if x.abs() >= BigDecimal::from_str("0.0001").unwrap() => {
+            format!("{normalized_decimal:.5}")
+        }
+        x if x.abs() >= BigDecimal::from_str("0.00001").unwrap() => {
             format!("{normalized_decimal:.6}")
         }
-        x if x.abs() >= BigDecimal::from_f64(0.000001).unwrap() => {
+        x if x.abs() >= BigDecimal::from_str("0.000001").unwrap() => {
             format!("{normalized_decimal:.7}")
         }
         _ => "0".to_string(),
@@ -108,9 +114,9 @@ pub fn format_usd_value_no_hide(value: BigDecimal) -> String {
         let abs_value = value.abs();
         return match &abs_value {
             x if x.is_zero() => "$0".to_string(),
-            x if x.gt(&BigDecimal::from_f64(0.1).unwrap()) => format!("{sign}${abs_value:.2}"),
-            x if x.gt(&BigDecimal::from_f64(0.01).unwrap()) => format!("{sign}${abs_value:.3}"),
-            x if x.gt(&BigDecimal::from_f64(0.001).unwrap()) => format!("{sign}${abs_value:.4}"),
+            x if x.gt(&BigDecimal::from_str("0.1").unwrap()) => format!("{sign}${abs_value:.2}"),
+            x if x.gt(&BigDecimal::from_str("0.01").unwrap()) => format!("{sign}${abs_value:.3}"),
+            x if x.gt(&BigDecimal::from_str("0.001").unwrap()) => format!("{sign}${abs_value:.4}"),
             _ => format!("{sign}$0"),
         };
     }
@@ -599,18 +605,28 @@ impl EventLogData<NftContractMetadataUpdateLog> {
     }
 }
 
-#[cached(result = true)]
-pub async fn get_ft_metadata(ft_contract_id: AccountId) -> Result<TokenMetadata, String> {
-    let RpcContext { client, .. } = expect_context::<RpcContext>();
-    let TokensContext { tokens, .. } = expect_context::<TokensContext>();
-    if let Some(token) = tokens
-        .get()
+lazy_static::lazy_static! {
+    pub static ref TOKEN_CACHE: Mutex<Vec<TokenData>> = Mutex::new(Vec::new());
+}
+
+#[cached(
+    result = true,
+    key = "AccountId",
+    convert = "{ ft_contract_id.clone() }"
+)]
+pub async fn get_ft_metadata(
+    ft_contract_id: AccountId,
+    rpc_client: RpcClient,
+) -> Result<TokenMetadata, String> {
+    if let Some(token) = TOKEN_CACHE
+        .lock()
+        .await
         .iter()
         .find(|t| t.token.account_id == Token::Nep141(ft_contract_id.clone()))
     {
         return Ok(token.token.metadata.clone());
     }
-    let mut metadata = client()
+    let mut metadata = rpc_client
         .call::<TokenMetadata>(
             ft_contract_id.clone(),
             "ft_metadata",
@@ -1037,4 +1053,19 @@ pub fn proxify_url(url: &str, resolution: Resolution) -> String {
     let encoded_url =
         percent_encoding::utf8_percent_encode(url, percent_encoding::NON_ALPHANUMERIC).to_string();
     format!("{proxy_base}/media/{resolution}/{encoded_url}")
+}
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_name = generateQRCode)]
+    async fn generate_qr_code_js(data: &str) -> JsValue;
+}
+
+pub async fn generate_qr_code(data: &str) -> Result<String, JsValue> {
+    let result = generate_qr_code_js(data).await;
+    if result.is_string() {
+        Ok(result.as_string().unwrap())
+    } else {
+        Err(result)
+    }
 }

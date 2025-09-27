@@ -3,6 +3,8 @@ pub mod account_selector;
 pub mod danger_confirm_input;
 pub mod derivation_path_input;
 pub mod explore_components;
+pub mod gift_amount_display;
+pub mod gift_modals;
 pub mod layout;
 pub mod login_form;
 pub mod password_unlock;

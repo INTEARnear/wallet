@@ -6,6 +6,7 @@ use futures_channel::oneshot::Canceled;
 use futures_timer::Delay;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
+use leptos_router::hooks::use_location;
 use near_min_api::types::{
     AccessKey, AccessKeyPermission, Action, AddKeyAction, CreateAccountAction, FinalExecutionStatus,
 };
@@ -19,6 +20,7 @@ use crate::components::account_selector::{
     mnemonic_to_key, AccountCreateParent, AccountCreateRecoveryMethod, ModalState,
 };
 use crate::components::derivation_path_input::DerivationPathInput;
+use crate::components::gift_amount_display::GiftAmountDisplay;
 use crate::components::select::{Select, SelectOption};
 use crate::contexts::account_selector_context::AccountSelectorContext;
 use crate::contexts::accounts_context::{
@@ -111,24 +113,27 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
     let (ledger_change_number, set_ledger_change_number) = signal(0u32);
     let (ledger_address_number, set_ledger_address_number) = signal(1u32);
 
+    let location = use_location();
+    let is_on_gift_page = Memo::new(move |_| location.pathname.get().starts_with("/gifts/"));
+
     let on_path_change = move || {
         set_ledger_current_key_data.set(None);
     };
 
-    let parent = move || match modal_state.get() {
+    let parent = Memo::new(move |_| match modal_state.get() {
         ModalState::Creating { parent, .. } => parent,
         _ => unreachable!(),
-    };
+    });
     let parent_untracked = move || match modal_state.get_untracked() {
         ModalState::Creating { parent, .. } => parent,
         _ => unreachable!(),
     };
-    let recovery_method = move || match modal_state.get() {
+    let recovery_method = Memo::new(move |_| match modal_state.get() {
         ModalState::Creating {
             recovery_method, ..
         } => recovery_method,
         _ => unreachable!(),
-    };
+    });
     let recovery_method_untracked = move || match modal_state.get_untracked() {
         ModalState::Creating {
             recovery_method, ..
@@ -348,7 +353,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                             .get_access_key(
                                 account_id.clone(),
                                 secret_key.public_key(),
-                                QueryFinality::Finality(Finality::Final),
+                                QueryFinality::Finality(Finality::DoomSlug),
                             )
                             .await
                         {
@@ -514,9 +519,30 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                     ().into_any()
                 }
             }} <div class="absolute inset-0 flex items-center justify-center">
-                <div class="bg-neutral-950 p-8 rounded-xl w-full max-w-md">
-                    <h2 class="text-white text-2xl font-semibold mb-6">Create New Account</h2>
-                    <div class="space-y-6">
+                <div class="bg-neutral-950 p-8 rounded-xl w-full max-w-md max-h-full overflow-y-auto">
+                    {move || {
+                        if is_on_gift_page() {
+                            view! {
+                                <div class="mb-6">
+                                    <h2 class="text-white text-2xl font-semibold mb-4">
+                                        "Claim Your Gift"
+                                    </h2>
+                                    <p class="text-gray-400 text-sm mb-4">
+                                        "Create an account to claim this gift"
+                                    </p>
+                                    <GiftAmountDisplay />
+                                </div>
+                            }
+                                .into_any()
+                        } else {
+                            view! {
+                                <h2 class="text-white text-2xl font-semibold mb-6">
+                                    "Create New Account"
+                                </h2>
+                            }
+                                .into_any()
+                        }
+                    }} <div class="space-y-6">
                         <div>
                             <label class="block text-neutral-400 text-sm font-medium mb-2">
                                 Account Name
@@ -550,67 +576,88 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                     disabled=move || is_creating.get()
                                 />
                                 <div class="absolute top-1/2 right-2 -translate-y-1/2 max-w-40 z-10">
-                                    <Select
-                                        options=move || {
-                                            let mut options = vec![
-                                                SelectOption::new("near".to_string(), ".near".to_string()),
-                                                SelectOption::new(
-                                                    "testnet".to_string(),
-                                                    ".testnet".to_string(),
-                                                ),
-                                            ];
-                                            for account in accounts_context
-                                                .accounts
-                                                .get_untracked()
-                                                .accounts
-                                                .iter()
-                                            {
-                                                let id = account.account_id.to_string();
-                                                let network = account.network.to_string();
-                                                options
-                                                    .push(
-                                                        SelectOption::new(
-                                                            format!("{network}:{id}"),
-                                                            format!(".{id}"),
-                                                        ),
-                                                    );
+                                    {move || {
+                                        if is_on_gift_page() {
+                                            view! {
+                                                <div class="text-right min-w-25 px-3 py-2 text-gray-400 text-sm">
+                                                    ".near"
+                                                </div>
                                             }
-                                            options
-                                        }
-                                        on_change=move |value: String| {
-                                            let parent_val = match value.as_str() {
-                                                "near" => AccountCreateParent::Mainnet,
-                                                "testnet" => AccountCreateParent::Testnet,
-                                                other => {
-                                                    if let Some((network, id)) = other.split_once(':') {
-                                                        AccountCreateParent::SubAccount(
-                                                            network.parse().unwrap(),
-                                                            id.parse().unwrap(),
-                                                        )
-                                                    } else {
-                                                        unreachable!()
+                                                .into_any()
+                                        } else {
+                                            log::info!("Select");
+                                            view! {
+                                                <Select
+                                                    options=Signal::derive(move || {
+                                                        log::info!("options");
+                                                        let mut options = vec![
+                                                            SelectOption::new(
+                                                                "near".to_string(),
+                                                                move || ".near".into_any(),
+                                                            ),
+                                                            SelectOption::new(
+                                                                "testnet".to_string(),
+                                                                move || ".testnet".into_any(),
+                                                            ),
+                                                        ];
+                                                        for account in accounts_context
+                                                            .accounts
+                                                            .get_untracked()
+                                                            .accounts
+                                                            .iter()
+                                                        {
+                                                            let id = account.account_id.to_string();
+                                                            let network = account.network.to_string();
+                                                            options
+                                                                .push(
+                                                                    SelectOption::new(
+                                                                        format!("{network}:{id}"),
+                                                                        move || format!(".{id}").into_any(),
+                                                                    ),
+                                                                );
+                                                        }
+                                                        options
+                                                    })
+                                                    on_change=Callback::new(move |value: String| {
+                                                        let parent_val = match value.as_str() {
+                                                            "near" => AccountCreateParent::Mainnet,
+                                                            "testnet" => AccountCreateParent::Testnet,
+                                                            other => {
+                                                                if let Some((network, id)) = other.split_once(':') {
+                                                                    AccountCreateParent::SubAccount(
+                                                                        network.parse().unwrap(),
+                                                                        id.parse().unwrap(),
+                                                                    )
+                                                                } else {
+                                                                    unreachable!()
+                                                                }
+                                                            }
+                                                        };
+                                                        set_modal_state
+                                                            .update(|state| {
+                                                                if let ModalState::Creating { parent, .. } = state {
+                                                                    *parent = parent_val;
+                                                                } else {
+                                                                    unreachable!()
+                                                                }
+                                                            });
+                                                        check_account(account_name.get_untracked().clone());
+                                                    })
+                                                    // Select can be re-rendered, so supply current "initial" value
+                                                    initial_value=match parent_untracked() {
+                                                        AccountCreateParent::Mainnet => "near".to_string(),
+                                                        AccountCreateParent::Testnet => "testnet".to_string(),
+                                                        AccountCreateParent::SubAccount(network, id) => {
+                                                            format!("{network}:{id}")
+                                                        }
                                                     }
-                                                }
-                                            };
-                                            set_modal_state
-                                                .update(|state| {
-                                                    if let ModalState::Creating { parent, .. } = state {
-                                                        *parent = parent_val;
-                                                    } else {
-                                                        unreachable!()
-                                                    }
-                                                });
-                                            check_account(account_name.get_untracked().clone());
-                                        }
-                                        initial_value=match parent_untracked() {
-                                            AccountCreateParent::Mainnet => "near".to_string(),
-                                            AccountCreateParent::Testnet => "testnet".to_string(),
-                                            AccountCreateParent::SubAccount(network, subaccount_of) => {
-                                                format!("{network}:{subaccount_of}")
+                                                    width="220px"
+                                                    class="text-right min-w-25"
+                                                />
                                             }
+                                                .into_any()
                                         }
-                                        class="text-right min-w-25"
-                                    />
+                                    }}
                                 </div>
                             </div>
                             {move || {
@@ -706,89 +753,89 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                     </div>
                                 </button>
 
-                                <button
-                                    class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
-                                    style=move || {
-                                        if recovery_method()
-                                            == AccountCreateRecoveryMethod::EthereumWallet
-                                        {
-                                            "border-color: rgb(129 140 248); background-color: rgb(99 102 241 / 0.1);"
-                                        } else {
-                                            "border-color: rgb(55 65 81); background-color: transparent;"
-                                        }
-                                    }
-                                    on:click=move |_| {
-                                        set_modal_state
-                                            .update(|state| {
-                                                if let ModalState::Creating { recovery_method, .. } = state {
-                                                    *recovery_method = AccountCreateRecoveryMethod::EthereumWallet;
-                                                } else {
-                                                    unreachable!()
-                                                }
-                                            });
-                                        set_error.set(None);
-                                        web_sys::window()
-                                            .unwrap()
-                                            .alert_with_message(
-                                                "Come back in a few days for Ethereum support",
-                                            )
-                                            .unwrap();
-                                    }
-                                >
-                                    <div class="flex flex-col items-center gap-2">
-                                        <div class="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center">
-                                            <Icon
-                                                icon=icondata::SiEthereum
-                                                width="16"
-                                                height="16"
-                                                attr:class="text-indigo-400"
-                                            />
-                                        </div>
-                                        <div class="text-white text-sm font-medium">Ethereum</div>
-                                    </div>
-                                </button>
+                                // <button
+                                // class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
+                                // style=move || {
+                                // if recovery_method()
+                                // == AccountCreateRecoveryMethod::EthereumWallet
+                                // {
+                                // "border-color: rgb(129 140 248); background-color: rgb(99 102 241 / 0.1);"
+                                // } else {
+                                // "border-color: rgb(55 65 81); background-color: transparent;"
+                                // }
+                                // }
+                                // on:click=move |_| {
+                                // set_modal_state
+                                // .update(|state| {
+                                // if let ModalState::Creating { recovery_method, .. } = state {
+                                // *recovery_method = AccountCreateRecoveryMethod::EthereumWallet;
+                                // } else {
+                                // unreachable!()
+                                // }
+                                // });
+                                // set_error.set(None);
+                                // web_sys::window()
+                                // .unwrap()
+                                // .alert_with_message(
+                                // "Come back in a few days for Ethereum support",
+                                // )
+                                // .unwrap();
+                                // }
+                                // >
+                                // <div class="flex flex-col items-center gap-2">
+                                // <div class="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center">
+                                // <Icon
+                                // icon=icondata::SiEthereum
+                                // width="16"
+                                // height="16"
+                                // attr:class="text-indigo-400"
+                                // />
+                                // </div>
+                                // <div class="text-white text-sm font-medium">Ethereum</div>
+                                // </div>
+                                // </button>
 
-                                <button
-                                    class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
-                                    style=move || {
-                                        if recovery_method()
-                                            == AccountCreateRecoveryMethod::SolanaWallet
-                                        {
-                                            "border-color: rgb(196 181 253); background-color: rgb(147 51 234 / 0.1);"
-                                        } else {
-                                            "border-color: rgb(55 65 81); background-color: transparent;"
-                                        }
-                                    }
-                                    on:click=move |_| {
-                                        set_modal_state
-                                            .update(|state| {
-                                                if let ModalState::Creating { recovery_method, .. } = state {
-                                                    *recovery_method = AccountCreateRecoveryMethod::SolanaWallet;
-                                                } else {
-                                                    unreachable!()
-                                                }
-                                            });
-                                        set_error.set(None);
-                                        web_sys::window()
-                                            .unwrap()
-                                            .alert_with_message(
-                                                "Come back in a few days for Solana support",
-                                            )
-                                            .unwrap();
-                                    }
-                                >
-                                    <div class="flex flex-col items-center gap-2">
-                                        <div class="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
-                                            <Icon
-                                                icon=icondata::SiSolana
-                                                width="16"
-                                                height="16"
-                                                attr:class="text-purple-400"
-                                            />
-                                        </div>
-                                        <div class="text-white text-sm font-medium">Solana</div>
-                                    </div>
-                                </button>
+                                // <button
+                                // class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
+                                // style=move || {
+                                // if recovery_method()
+                                // == AccountCreateRecoveryMethod::SolanaWallet
+                                // {
+                                // "border-color: rgb(196 181 253); background-color: rgb(147 51 234 / 0.1);"
+                                // } else {
+                                // "border-color: rgb(55 65 81); background-color: transparent;"
+                                // }
+                                // }
+                                // on:click=move |_| {
+                                // set_modal_state
+                                // .update(|state| {
+                                // if let ModalState::Creating { recovery_method, .. } = state {
+                                // *recovery_method = AccountCreateRecoveryMethod::SolanaWallet;
+                                // } else {
+                                // unreachable!()
+                                // }
+                                // });
+                                // set_error.set(None);
+                                // web_sys::window()
+                                // .unwrap()
+                                // .alert_with_message(
+                                // "Come back in a few days for Solana support",
+                                // )
+                                // .unwrap();
+                                // }
+                                // >
+                                // <div class="flex flex-col items-center gap-2">
+                                // <div class="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                                // <Icon
+                                // icon=icondata::SiSolana
+                                // width="16"
+                                // height="16"
+                                // attr:class="text-purple-400"
+                                // />
+                                // </div>
+                                // <div class="text-white text-sm font-medium">Solana</div>
+                                // </div>
+                                // </button>
 
                                 <button
                                     class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
@@ -1030,7 +1077,14 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                         } else {
                                             ().into_any()
                                         }
-                                    }}Create Account
+                                    }}
+                                    {move || {
+                                        if is_on_gift_page() {
+                                            "Create Account & Claim Gift"
+                                        } else {
+                                            "Create Account"
+                                        }
+                                    }}
                                 </span>
                             </button>
                         </div>
@@ -1047,7 +1101,15 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                             on:click=move |_| set_modal_state.set(ModalState::LoggingIn)
                             disabled=move || is_creating.get()
                         >
-                            <span class="relative">Log in with Existing Account</span>
+                            <span class="relative">
+                                {move || {
+                                    if is_on_gift_page() {
+                                        "Log in & Claim Gift"
+                                    } else {
+                                        "Log in with Existing Account"
+                                    }
+                                }}
+                            </span>
                         </button>
                     </div>
                 </div>

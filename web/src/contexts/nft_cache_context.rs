@@ -19,6 +19,7 @@ pub struct NftTokenMetadata {
     pub title: Option<String>,
     pub description: Option<String>,
     pub media: Option<String>,
+    pub reference: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

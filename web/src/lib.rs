@@ -42,6 +42,8 @@ use crate::contexts::rpc_context::provide_rpc_context;
 use crate::pages::auto_import_secret_key::AutoImportSecretKey;
 use crate::pages::connect::Connect;
 use crate::pages::explore::Explore;
+use crate::pages::gift_claim::GiftClaim;
+use crate::pages::gifts::Gifts;
 use crate::pages::history::History;
 use crate::pages::home::Home;
 use crate::pages::login::Login;
@@ -154,6 +156,8 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/stake") view=Stake />
                         <Route path=path!("/stake/:validator_pool/stake") view=StakeValidator />
                         <Route path=path!("/stake/:validator_pool/unstake") view=UnstakeValidator />
+                        <Route path=path!("/gifts") view=Gifts />
+                        <Route path=path!("/gifts/*private_key") view=GiftClaim />
                         <Route path=path!("/history") view=History />
                         <Route path=path!("/explore") view=Explore />
                         <Route path=path!("/token/:token_id") view=TokenDetails />
