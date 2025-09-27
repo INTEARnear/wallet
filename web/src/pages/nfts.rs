@@ -1712,7 +1712,7 @@ pub fn SendNft() -> impl IntoView {
                     method_name: "storage_deposit".to_string(),
                     args: serde_json::to_vec(&serde_json::json!({
                         "account_id": recipient,
-                        "registration_only": true,
+                        "registration_only": false,
                     }))
                     .unwrap(),
                     gas: NearGas::from_tgas(5).as_gas(),
@@ -1729,7 +1729,7 @@ pub fn SendNft() -> impl IntoView {
                     "token_id": token_id,
                 }))
                 .unwrap(),
-                gas: NearGas::from_tgas(5).as_gas(),
+                gas: NearGas::from_tgas(10).as_gas(),
                 deposit: NearToken::from_yoctonear(1),
             }));
             actions.push(nft_action);
