@@ -838,14 +838,16 @@ pub fn GiftSuccessModal(result: GiftResult) -> impl IntoView {
                                             <Icon icon=icondata::LuCheck attr:class="w-4 h-4" />
                                             "Copied!"
                                         </div>
-                                    }.into_any()
+                                    }
+                                        .into_any()
                                 } else {
                                     view! {
                                         <div class="flex items-center justify-center gap-2">
                                             <Icon icon=icondata::LuCopy attr:class="w-4 h-4" />
                                             "Copy Link"
                                         </div>
-                                    }.into_any()
+                                    }
+                                        .into_any()
                                 }
                             }}
                         </button>
@@ -1166,7 +1168,9 @@ fn create_gift(
         let (details_receivers, transactions): (Vec<_>, Vec<_>) = transactions.into_iter().unzip();
         add_transaction.update(|queue| queue.extend(transactions));
 
-        let private_key_base58 = bs58::encode(&secret_key.unwrap_as_ed25519().0).into_string();
+        let private_key_base58 =
+            bs58::encode(&secret_key.unwrap_as_ed25519().0[..ed25519_dalek::SECRET_KEY_LENGTH])
+                .into_string();
         let gift_url = format!("{WALLET_PRIMARY_URL}/gifts/{}", private_key_base58);
 
         let mut all_successful = true;
