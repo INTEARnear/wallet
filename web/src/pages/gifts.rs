@@ -256,6 +256,11 @@ pub fn Gifts() -> impl IntoView {
         selected_nfts.get().contains(&(contract_id, token_id))
     };
 
+    let total_tokens_count =
+        move || selected_fungible_tokens.get().len() + selected_nfts.get().len();
+
+    let can_add_more_tokens = move || total_tokens_count() < 10;
+
     let get_available_collections = move || -> Vec<AccountId> {
         let collections = nft_collections.get();
         if let Some(Ok(collections)) = collections {
@@ -668,7 +673,8 @@ pub fn Gifts() -> impl IntoView {
                         <div class="flex items-center justify-between">
                             <h3 class="text-white font-medium">"Tokens"</h3>
                             <button
-                                class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors"
+                                class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors"
+                                disabled=move || !can_add_more_tokens()
                                 on:click=move |_| {
                                     let nep141_list = nep141_tokens();
                                     let selected_account_ids: std::collections::HashSet<_> = selected_fungible_tokens
@@ -899,10 +905,9 @@ pub fn Gifts() -> impl IntoView {
                             <button
                                 class="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors"
                                 disabled=move || {
-                                    let collections = get_available_collections();
-                                    collections.is_empty()
-                                        || collections
-                                            .iter()
+                                    !can_add_more_tokens()
+                                        || get_available_collections()
+                                            .into_iter()
                                             .all(|contract_id| {
                                                 get_available_tokens_for_collection(contract_id.clone())
                                                     .is_empty()
@@ -1183,6 +1188,27 @@ pub fn Gifts() -> impl IntoView {
                             }}
                         </Suspense>
                     </div>
+
+                    {move || {
+                        if total_tokens_count() >= 10 {
+                            view! {
+                                <div class="bg-yellow-900/20 border border-yellow-500/30 rounded-xl p-3 text-center mb-4">
+                                    <div class="flex items-center justify-center gap-2">
+                                        <Icon
+                                            icon=icondata::LuInfo
+                                            attr:class="w-4 h-4 text-yellow-400"
+                                        />
+                                        <p class="text-yellow-400 text-sm font-medium">
+                                            "Maximum of 10 tokens (FT + NFT) allowed per gift"
+                                        </p>
+                                    </div>
+                                </div>
+                            }
+                                .into_any()
+                        } else {
+                            ().into_any()
+                        }
+                    }}
 
                     <button
                         class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-xl transition-colors duration-200 cursor-pointer text-base"
