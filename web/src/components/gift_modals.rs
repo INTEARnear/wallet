@@ -36,7 +36,7 @@ use crate::{
 };
 
 const SLIMEDROP_CONTRACT_MAINNET: &str = "slimedrop.intear.near";
-const WALLET_PRIMARY_URL: &str = "https://staging.wallet.intear.tech";
+const WALLET_PRIMARY_URL: &str = "https://wallet.intear.tech";
 
 #[derive(Debug, Clone)]
 pub enum GiftToken {
@@ -679,6 +679,18 @@ pub fn GiftConfirmationModal(
                         } else {
                             ().into_any()
                         }}
+
+                        <div class="mt-3 p-3 bg-yellow-900/20 border border-yellow-500/30 rounded-lg">
+                            <div class="flex items-center gap-2">
+                                <Icon
+                                    icon=icondata::LuTriangleAlert
+                                    attr:class="w-4 h-4 text-yellow-400 shrink-0"
+                                />
+                                <p class="text-yellow-200 text-xs">
+                                    "Gifts functionality has not been audited. It's ok to use for small gifts, but we don't recommend transferring large amounts through Gifts."
+                                </p>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="flex gap-3 mt-6">
