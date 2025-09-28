@@ -641,7 +641,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                                     unreachable!()
                                                                 }
                                                             });
-                                                        check_account(account_name.get_untracked().clone());
+                                                        check_account(account_name.get_untracked());
                                                     })
                                                     // Select can be re-rendered, so supply current "initial" value
                                                     initial_value=match parent_untracked() {

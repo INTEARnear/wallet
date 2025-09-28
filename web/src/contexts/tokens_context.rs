@@ -586,7 +586,7 @@ pub fn provide_token_context() {
                     })
                     .collect();
 
-                let rpc_client = rpc_client.client.get_untracked().clone();
+                let rpc_client = rpc_client.client.get_untracked();
 
                 leptos::task::spawn_local(async move {
                     let near_balance_future = rpc_client.view_account(

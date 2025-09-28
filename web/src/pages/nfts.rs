@@ -249,7 +249,7 @@ pub async fn fetch_nfts(
         return vec![];
     };
 
-    let rpc_client = expect_context::<RpcContext>().client.get().clone();
+    let rpc_client = expect_context::<RpcContext>().client.get();
 
     let metadata_requests: Vec<_> = nft_data
         .tokens
@@ -381,7 +381,7 @@ pub fn NftCollection() -> impl IntoView {
     let NftCacheContext { cache } = expect_context::<NftCacheContext>();
 
     let collection_metadata = LocalResource::new(move || {
-        let rpc_client = client.get().clone();
+        let rpc_client = client.get();
         async move {
             let Ok(contract_id) = contract_id().parse() else {
                 return None;
@@ -1519,7 +1519,7 @@ pub fn SendNft() -> impl IntoView {
     let (recipient_warning, set_recipient_warning) = signal::<Option<RecipientWarning>>(None);
 
     let collection_metadata = LocalResource::new(move || {
-        let rpc_client = client.get().clone();
+        let rpc_client = client.get();
         async move {
             let Ok(cid) = contract_id().parse() else {
                 return None;
@@ -1529,7 +1529,7 @@ pub fn SendNft() -> impl IntoView {
     });
 
     let nft_token = LocalResource::new(move || {
-        let rpc_client = client.get().clone();
+        let rpc_client = client.get();
         async move {
             let selected_account_id = accounts().selected_account_id?;
             let Ok(cid) = contract_id().parse() else {
@@ -1551,7 +1551,7 @@ pub fn SendNft() -> impl IntoView {
             return;
         };
         set_is_loading_recipient.set(true);
-        let rpc_client = client.get().clone();
+        let rpc_client = client.get();
         spawn_local(async move {
             let recipient_is_implicit = recipient_to_check
                 .as_str()
@@ -1682,7 +1682,7 @@ pub fn SendNft() -> impl IntoView {
             .selected_account_id
             .expect("No account selected yet tried to send NFT");
         spawn_local(async move {
-            let rpc_client = client.get().clone();
+            let rpc_client = client.get_untracked();
 
             // Check if storage deposit is needed
             let storage_result = rpc_client
@@ -1697,10 +1697,8 @@ pub fn SendNft() -> impl IntoView {
                 .await;
 
             let needs_storage_deposit = match storage_result {
-                Ok(storage_balance) => match storage_balance {
-                    Some(storage_balance) => storage_balance.available <= "0.01".parse().unwrap(),
-                    None => true,
-                },
+                Ok(Some(storage_balance)) => storage_balance.available <= "0.01".parse().unwrap(),
+                Ok(None) => true,
                 Err(_) => false,
             };
 
@@ -2015,7 +2013,7 @@ pub fn NftTokenDetails() -> impl IntoView {
     let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
 
     let collection_metadata = LocalResource::new(move || {
-        let rpc_client = client.get().clone();
+        let rpc_client = client.get();
         async move {
             let Ok(cid) = contract_id().parse() else {
                 return None;
@@ -2028,7 +2026,7 @@ pub fn NftTokenDetails() -> impl IntoView {
     let (is_reported, set_is_reported) = signal(false);
 
     let nft_token = LocalResource::new(move || {
-        let rpc_client = client.get().clone();
+        let rpc_client = client.get();
         async move {
             let selected_account_id = accounts().selected_account_id?;
             let Ok(cid) = contract_id().parse() else {
@@ -2041,7 +2039,7 @@ pub fn NftTokenDetails() -> impl IntoView {
     });
 
     let nft_traits = LocalResource::new(move || {
-        let rpc_client = client.get().clone();
+        let rpc_client = client.get();
         async move {
             let Ok(cid) = contract_id().parse::<AccountId>() else {
                 return None;
