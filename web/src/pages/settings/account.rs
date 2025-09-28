@@ -69,6 +69,9 @@ const MIGRATIONS_ADDED_VERSION: CryptoHash = CryptoHash(
         .into_array_const_unwrap::<32>(),
 );
 
+const BETTEAR_BOT_ACCOUNT_SUFFIX: &str = ".user.intear.near";
+const BETTEAR_BOT_PUBLIC_KEY: &str = "ed25519:3NhAUPmuSHbXoqzsvbsNzLiyWwm3LSWkCTpNB1RkxN7X";
+
 fn supports_feature(
     current_version: CryptoHash,
     feature_introduced_in_version: CryptoHash,
@@ -264,6 +267,8 @@ pub fn AccountSettings() -> impl IntoView {
 
     let (recovery_change_in_progress, set_recovery_change_in_progress) = signal(false);
 
+    let (bettear_bot_change_in_progress, set_bettear_bot_change_in_progress) = signal(false);
+
     let (ledger_connection_in_progress, set_ledger_connection_in_progress) = signal(false);
     let (ledger_connected, set_ledger_connected) = signal(false);
     let (ledger_getting_public_key, set_ledger_getting_public_key) = signal(false);
@@ -457,6 +462,32 @@ pub fn AccountSettings() -> impl IntoView {
                     Err(err.to_string())
                 }
             }
+        }
+    });
+
+    let bettear_bot_key_status = LocalResource::new(move || {
+        let rpc_client = rpc_context.client.get();
+        let selected_account_id = accounts_context.accounts.get().selected_account_id;
+        async move {
+            let Some(selected_account_id) = selected_account_id else {
+                return false;
+            };
+
+            if !selected_account_id
+                .as_str()
+                .ends_with(BETTEAR_BOT_ACCOUNT_SUFFIX)
+            {
+                return false;
+            }
+
+            rpc_client
+                .get_access_key(
+                    selected_account_id.clone(),
+                    BETTEAR_BOT_PUBLIC_KEY.parse().unwrap(),
+                    QueryFinality::Finality(Finality::None),
+                )
+                .await
+                .is_ok()
         }
     });
 
@@ -785,11 +816,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                 <Icon icon=icondata::LuCopy width="16" height="16" />
                                                                 <span>
                                                                     {move || {
-                                                                        if copied_seed.get() {
-                                                                            "Copied!"
-                                                                        } else {
-                                                                            "Copy"
-                                                                        }
+                                                                        if copied_seed.get() { "Copied!" } else { "Copy" }
                                                                     }}
                                                                 </span>
                                                             </button>
@@ -822,11 +849,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                             <Icon icon=icondata::LuCopy width="16" height="16" />
                                                             <span>
                                                                 {move || {
-                                                                    if copied_key.get() {
-                                                                        "Copied!"
-                                                                    } else {
-                                                                        "Copy"
-                                                                    }
+                                                                    if copied_key.get() { "Copied!" } else { "Copy" }
                                                                 }}
                                                             </span>
                                                         </button>
@@ -1880,6 +1903,177 @@ pub fn AccountSettings() -> impl IntoView {
                     })
                     .unwrap_or_else(|| ().into_any())
             }}
+
+            // Bettear Bot section
+            <Show when=move || {
+                network.get() == Network::Mainnet
+                    && accounts_context
+                        .accounts
+                        .get()
+                        .selected_account_id
+                        .as_ref()
+                        .map(|id| id.as_str().ends_with(BETTEAR_BOT_ACCOUNT_SUFFIX))
+                        .unwrap_or(false)
+            }>
+                <Suspense fallback=move || {
+                    view! {
+                        <div class="flex flex-col gap-4">
+                            <div class="flex flex-col gap-2">
+                                <div class="flex items-center justify-between">
+                                    <div class="text-lg font-medium">"Bettear Bot"</div>
+                                    <img
+                                        src="/bettearbot-small.webp"
+                                        alt="BettearBot"
+                                        class="w-16 h-16 shrink-0"
+                                    />
+                                </div>
+                                <div class="text-sm text-neutral-400">
+                                    "Control whether your account is accessible to BettearBot, or take full custody of it to use as a normal wallet"
+                                </div>
+                            </div>
+
+                            <button
+                                class="flex items-center justify-center gap-2 p-4 rounded-lg transition-colors font-medium opacity-50 cursor-not-allowed bg-neutral-800"
+                                disabled=move || bettear_bot_change_in_progress.get()
+                            >
+                                <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-current"></div>
+                                <span>"Loading..."</span>
+                            </button>
+                        </div>
+                    }
+                }>
+                    {move || {
+                        bettear_bot_key_status
+                            .get()
+                            .map(|has_key| {
+                                view! {
+                                    <div class="flex flex-col gap-4">
+                                        <div class="flex flex-col gap-2">
+                                            <div class="flex items-center justify-between">
+                                                <div class="text-lg font-medium">"Bettear Bot"</div>
+                                                <img
+                                                    src="/bettearbot-small.webp"
+                                                    alt="BettearBot"
+                                                    class="w-16 h-16 shrink-0"
+                                                />
+                                            </div>
+                                            <div class="text-sm text-neutral-400">
+                                                "Control whether your account is accessible to BettearBot, or take full custody of it to use as a normal wallet"
+                                            </div>
+                                        </div>
+
+                                        <button
+                                            on:click=move |_| {
+                                                if bettear_bot_change_in_progress.get_untracked() {
+                                                    return;
+                                                }
+                                                let Some(selected_account_id) = accounts_context
+                                                    .accounts
+                                                    .get_untracked()
+                                                    .selected_account_id else {
+                                                    return;
+                                                };
+                                                set_bettear_bot_change_in_progress(true);
+                                                spawn_local(async move {
+                                                    let actions = if has_key {
+                                                        vec![
+                                                            Action::DeleteKey(
+                                                                Box::new(DeleteKeyAction {
+                                                                    public_key: BETTEAR_BOT_PUBLIC_KEY.parse().unwrap(),
+                                                                }),
+                                                            ),
+                                                        ]
+                                                    } else {
+                                                        vec![
+                                                            Action::AddKey(
+                                                                Box::new(AddKeyAction {
+                                                                    public_key: BETTEAR_BOT_PUBLIC_KEY.parse().unwrap(),
+                                                                    access_key: AccessKey {
+                                                                        nonce: 0,
+                                                                        permission: AccessKeyPermission::FullAccess,
+                                                                    },
+                                                                }),
+                                                            ),
+                                                        ]
+                                                    };
+                                                    let (receiver, transaction) = EnqueuedTransaction::create(
+                                                        if has_key {
+                                                            "Unlink Bettear Bot".to_string()
+                                                        } else {
+                                                            "Link Bettear Bot".to_string()
+                                                        },
+                                                        selected_account_id.clone(),
+                                                        selected_account_id.clone(),
+                                                        actions,
+                                                    );
+                                                    add_transaction.update(|queue| queue.push(transaction));
+                                                    match receiver.await {
+                                                        Ok(Ok(_details)) => {
+                                                            add_security_log(
+                                                                if has_key {
+                                                                    "Unlinked Bettear Bot".to_string()
+                                                                } else {
+                                                                    "Linked Bettear Bot".to_string()
+                                                                },
+                                                                selected_account_id.clone(),
+                                                                accounts_context,
+                                                            );
+                                                            log::info!(
+                                                                "Successfully {} Bettear Bot", if has_key { "unlinked" } else { "linked" }
+                                                            );
+                                                            bettear_bot_key_status.refetch();
+                                                            set_bettear_bot_change_in_progress(false);
+                                                        }
+                                                        Ok(Err(err)) => {
+                                                            log::error!(
+                                                                "Failed to {} Bettear Bot: {}", if has_key { "unlink" } else { "link" }, err
+                                                            );
+                                                            set_bettear_bot_change_in_progress(false);
+                                                        }
+                                                        Err(_) => {
+                                                            log::error!("Failed to receive transaction result");
+                                                            set_bettear_bot_change_in_progress(false);
+                                                        }
+                                                    }
+                                                });
+                                            }
+                                            class=move || {
+                                                let in_progress = bettear_bot_change_in_progress.get();
+                                                format!(
+                                                    "flex items-center justify-center gap-2 p-4 rounded-lg transition-colors font-medium cursor-pointer {}",
+                                                    if in_progress {
+                                                        "opacity-50 cursor-not-allowed bg-neutral-800"
+                                                    } else if has_key {
+                                                        "bg-red-500/10 hover:bg-red-500/20 text-red-400"
+                                                    } else {
+                                                        "bg-green-500/10 hover:bg-green-500/20 text-green-400"
+                                                    },
+                                                )
+                                            }
+                                            disabled=move || bettear_bot_change_in_progress.get()
+                                        >
+                                            <Show when=move || bettear_bot_change_in_progress.get()>
+                                                <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-current"></div>
+                                                <span>"Processing..."</span>
+                                            </Show>
+                                            <Show when=move || !bettear_bot_change_in_progress.get()>
+                                                <Show when=move || has_key>
+                                                    <Icon icon=icondata::LuUnlink width="20" height="20" />
+                                                    <span>"Unlink"</span>
+                                                </Show>
+                                                <Show when=move || !has_key>
+                                                    <Icon icon=icondata::LuLink width="20" height="20" />
+                                                    <span>"Link"</span>
+                                                </Show>
+                                            </Show>
+                                        </button>
+                                    </div>
+                                }
+                                    .into_any()
+                            })
+                    }}
+                </Suspense>
+            </Show>
         </div>
 
         // Create Subaccount section
