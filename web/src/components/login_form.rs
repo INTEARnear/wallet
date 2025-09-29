@@ -64,7 +64,7 @@ async fn find_accounts_by_public_key(
                         .filter_map(|id| {
                             id.as_str()
                                 .and_then(|s| s.parse::<AccountId>().ok())
-                                .map(|id| (id, network))
+                                .map(|id| (id, network.clone()))
                         })
                         .filter(|(id, _)| {
                             !accounts_context
@@ -172,8 +172,10 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                 .iter()
                                                                 .any(|a| a.account_id == account_id)
                                                             {
-                                                                all_accounts
-                                                                    .push((account_id, network));
+                                                                all_accounts.push((
+                                                                    account_id,
+                                                                    network.clone(),
+                                                                ));
                                                             }
                                                         }
                                                     }
@@ -398,8 +400,10 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                 .iter()
                                                                 .any(|a| a.account_id == account_id)
                                                             {
-                                                                all_accounts
-                                                                    .push((account_id, network));
+                                                                all_accounts.push((
+                                                                    account_id,
+                                                                    network.clone(),
+                                                                ));
                                                             }
                                                         }
                                                     }
@@ -752,7 +756,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                     account_id: account_id.clone(),
                     secret_key: SecretKeyHolder::SecretKey(secret_key.clone()),
                     seed_phrase: seed_phrase.clone(),
-                    network: *network,
+                    network: network.clone(),
                 });
                 last_account_id = Some(account_id.clone());
             }
@@ -926,71 +930,71 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                         </button>
 
                         // <button
-                        //     class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
-                        //     style=move || {
-                        //         if login_method.get() == LoginMethod::EthereumWallet {
-                        //             "border-color: rgb(129 140 248); background-color: rgb(99 102 241 / 0.1);"
-                        //         } else {
-                        //             "border-color: rgb(55 65 81); background-color: transparent;"
-                        //         }
-                        //     }
-                        //     on:click=move |_| {
-                        //         set_login_method.set(LoginMethod::EthereumWallet);
-                        //         set_error.set(None);
-                        //         set_is_valid.set(None);
-                        //         set_available_accounts.set(vec![]);
-                        //         set_selected_accounts.set(vec![]);
-                        //         set_private_key.set("".to_string());
-                        //         let mnemonic = bip39::Mnemonic::generate(12).unwrap();
-                        //         set_generated_mnemonic.set(Some(mnemonic));
-                        //         request_ethereum_connection();
-                        //     }
+                        // class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
+                        // style=move || {
+                        // if login_method.get() == LoginMethod::EthereumWallet {
+                        // "border-color: rgb(129 140 248); background-color: rgb(99 102 241 / 0.1);"
+                        // } else {
+                        // "border-color: rgb(55 65 81); background-color: transparent;"
+                        // }
+                        // }
+                        // on:click=move |_| {
+                        // set_login_method.set(LoginMethod::EthereumWallet);
+                        // set_error.set(None);
+                        // set_is_valid.set(None);
+                        // set_available_accounts.set(vec![]);
+                        // set_selected_accounts.set(vec![]);
+                        // set_private_key.set("".to_string());
+                        // let mnemonic = bip39::Mnemonic::generate(12).unwrap();
+                        // set_generated_mnemonic.set(Some(mnemonic));
+                        // request_ethereum_connection();
+                        // }
                         // >
-                        //     <div class="flex flex-col items-center gap-2">
-                        //         <div class="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center">
-                        //             <Icon
-                        //                 icon=icondata::SiEthereum
-                        //                 width="16"
-                        //                 height="16"
-                        //                 attr:class="text-indigo-400"
-                        //             />
-                        //         </div>
-                        //         <div class="text-white text-sm font-medium">Ethereum</div>
-                        //     </div>
+                        // <div class="flex flex-col items-center gap-2">
+                        // <div class="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center">
+                        // <Icon
+                        // icon=icondata::SiEthereum
+                        // width="16"
+                        // height="16"
+                        // attr:class="text-indigo-400"
+                        // />
+                        // </div>
+                        // <div class="text-white text-sm font-medium">Ethereum</div>
+                        // </div>
                         // </button>
 
                         // <button
-                        //     class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
-                        //     style=move || {
-                        //         if login_method.get() == LoginMethod::SolanaWallet {
-                        //             "border-color: rgb(196 181 253); background-color: rgb(147 51 234 / 0.1);"
-                        //         } else {
-                        //             "border-color: rgb(55 65 81); background-color: transparent;"
-                        //         }
-                        //     }
-                        //     on:click=move |_| {
-                        //         set_login_method.set(LoginMethod::SolanaWallet);
-                        //         set_error.set(None);
-                        //         set_is_valid.set(None);
-                        //         set_available_accounts.set(vec![]);
-                        //         set_selected_accounts.set(vec![]);
-                        //         set_private_key.set("".to_string());
-                        //         let mnemonic = bip39::Mnemonic::generate(12).unwrap();
-                        //         set_generated_mnemonic.set(Some(mnemonic));
-                        //         request_solana_connection();
-                        //     }
+                        // class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
+                        // style=move || {
+                        // if login_method.get() == LoginMethod::SolanaWallet {
+                        // "border-color: rgb(196 181 253); background-color: rgb(147 51 234 / 0.1);"
+                        // } else {
+                        // "border-color: rgb(55 65 81); background-color: transparent;"
+                        // }
+                        // }
+                        // on:click=move |_| {
+                        // set_login_method.set(LoginMethod::SolanaWallet);
+                        // set_error.set(None);
+                        // set_is_valid.set(None);
+                        // set_available_accounts.set(vec![]);
+                        // set_selected_accounts.set(vec![]);
+                        // set_private_key.set("".to_string());
+                        // let mnemonic = bip39::Mnemonic::generate(12).unwrap();
+                        // set_generated_mnemonic.set(Some(mnemonic));
+                        // request_solana_connection();
+                        // }
                         // >
-                        //     <div class="flex flex-col items-center gap-2">
-                        //         <div class="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
-                        //             <Icon
-                        //                 icon=icondata::SiSolana
-                        //                 width="16"
-                        //                 height="16"
-                        //                 attr:class="text-purple-400"
-                        //             />
-                        //         </div>
-                        //         <div class="text-white text-sm font-medium">Solana</div>
-                        //     </div>
+                        // <div class="flex flex-col items-center gap-2">
+                        // <div class="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                        // <Icon
+                        // icon=icondata::SiSolana
+                        // width="16"
+                        // height="16"
+                        // attr:class="text-purple-400"
+                        // />
+                        // </div>
+                        // <div class="text-white text-sm font-medium">Solana</div>
+                        // </div>
                         // </button>
 
                         <button
@@ -1043,14 +1047,12 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                         LoginMethod::SeedPhrase => {
                             view! {
                                 <div class="space-y-6">
-                                    <SeedPhraseInput
-                                        on_change=Callback::new(move |phrase: String| {
-                                            set_private_key.set(phrase.clone());
-                                            set_available_accounts.set(vec![]);
-                                            set_selected_accounts.set(vec![]);
-                                            check_seed_phrase(phrase);
-                                        })
-                                    />
+                                    <SeedPhraseInput on_change=Callback::new(move |phrase: String| {
+                                        set_private_key.set(phrase.clone());
+                                        set_available_accounts.set(vec![]);
+                                        set_selected_accounts.set(vec![]);
+                                        check_seed_phrase(phrase);
+                                    }) />
                                     {move || {
                                         if let Some(err) = error.get() {
                                             view! {
@@ -1078,22 +1080,27 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                 view! {
                                                                     <button
                                                                         class="w-full p-3 rounded-lg transition-all duration-200 text-left border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900/50 cursor-pointer group"
-                                                                        style=move || {
-                                                                            if selected_accounts
-                                                                                .get()
-                                                                                .contains(&(account_id.clone(), network))
-                                                                            {
-                                                                                "background-color: rgb(38 38 38); border-color: rgb(59 130 246);"
-                                                                            } else {
-                                                                                "background-color: rgb(23 23 23 / 0.5);"
+                                                                        style={
+                                                                            let network = network.clone();
+                                                                            move || {
+                                                                                if selected_accounts
+                                                                                    .get()
+                                                                                    .contains(&(account_id.clone(), network.clone()))
+                                                                                {
+                                                                                    "background-color: rgb(38 38 38); border-color: rgb(59 130 246);"
+                                                                                } else {
+                                                                                    "background-color: rgb(23 23 23 / 0.5);"
+                                                                                }
                                                                             }
                                                                         }
                                                                         on:click=move |_| {
                                                                             let mut list = selected_accounts.get_untracked();
-                                                                            if list.contains(&(account_id2.clone(), network)) {
-                                                                                list.retain(|pair| pair != &(account_id2.clone(), network));
+                                                                            if list.contains(&(account_id2.clone(), network.clone())) {
+                                                                                list.retain(|pair| {
+                                                                                    pair != &(account_id2.clone(), network.clone())
+                                                                                });
                                                                             } else {
-                                                                                list.push((account_id2.clone(), network));
+                                                                                list.push((account_id2.clone(), network.clone()));
                                                                             }
                                                                             set_selected_accounts.set(list);
                                                                         }
@@ -1101,19 +1108,22 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                         <div class="text-white font-medium transition-colors duration-200">
                                                                             {account_id_str}
                                                                         </div>
-                                                                        {move || {
-                                                                            if network == Network::Testnet {
-                                                                                view! {
-                                                                                    <p class="text-yellow-500 text-sm mt-1 font-medium">
-                                                                                        This is a <b>testnet</b>
-                                                                                        account. Tokens sent to this account are not real and hold no value
-                                                                                    </p>
+                                                                        {
+                                                                            let network = network.clone();
+                                                                            move || {
+                                                                                if network == Network::Testnet {
+                                                                                    view! {
+                                                                                        <p class="text-yellow-500 text-sm mt-1 font-medium">
+                                                                                            This is a <b>testnet</b>
+                                                                                            account. Tokens sent to this account are not real and hold no value
+                                                                                        </p>
+                                                                                    }
+                                                                                        .into_any()
+                                                                                } else {
+                                                                                    ().into_any()
                                                                                 }
-                                                                                    .into_any()
-                                                                            } else {
-                                                                                ().into_any()
                                                                             }
-                                                                        }}
+                                                                        }
                                                                     </button>
                                                                 }
                                                             })
@@ -1247,34 +1257,44 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                 view! {
                                                                     <button
                                                                         class="w-full p-3 rounded-lg transition-all duration-200 text-left border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900/50 cursor-pointer group"
-                                                                        style=move || {
-                                                                            if selected_accounts
-                                                                                .get()
-                                                                                .contains(&(account_id.clone(), network))
-                                                                            {
-                                                                                "background-color: rgb(38 38 38); border-color: rgb(59 130 246);"
-                                                                            } else {
-                                                                                "background-color: rgb(23 23 23 / 0.5);"
+                                                                        style={
+                                                                            let network = network.clone();
+                                                                            move || {
+                                                                                if selected_accounts
+                                                                                    .get()
+                                                                                    .contains(&(account_id.clone(), network.clone()))
+                                                                                {
+                                                                                    "background-color: rgb(38 38 38); border-color: rgb(59 130 246);"
+                                                                                } else {
+                                                                                    "background-color: rgb(23 23 23 / 0.5);"
+                                                                                }
                                                                             }
                                                                         }
-                                                                        on:click=move |_| {
-                                                                            let mut list = selected_accounts.get_untracked();
-                                                                            if list.contains(&(account_id2.clone(), network)) {
-                                                                                list.retain(|pair| pair != &(account_id2.clone(), network));
-                                                                            } else {
-                                                                                list.push((account_id2.clone(), network));
+                                                                        on:click={
+                                                                            let network = network.clone();
+                                                                            move |_| {
+                                                                                let mut list = selected_accounts.get_untracked();
+                                                                                if list.contains(&(account_id2.clone(), network.clone())) {
+                                                                                    list.retain(|pair| {
+                                                                                        pair != &(account_id2.clone(), network.clone())
+                                                                                    });
+                                                                                } else {
+                                                                                    list.push((account_id2.clone(), network.clone()));
+                                                                                }
+                                                                                set_selected_accounts.set(list);
                                                                             }
-                                                                            set_selected_accounts.set(list);
                                                                         }
                                                                     >
                                                                         <div class="text-white font-medium transition-colors duration-200">
                                                                             {account_id_str}
                                                                         </div>
-                                                                        {move || {
+                                                                        {
+                                                                            let network = network.clone();
+                                                                            move || {
                                                                             if network == Network::Testnet {
                                                                                 view! {
                                                                                     <p class="text-yellow-500 text-sm mt-1 font-medium">
-                                                                                        This is a <b>testnet</b>
+                                                                                        "This is a "<b>"testnet"</b>
                                                                                         account. Tokens sent to this account are not real and hold no value
                                                                                     </p>
                                                                                 }
@@ -1443,19 +1463,21 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                 view! {
                                                                     <button
                                                                         class="w-full p-3 rounded-lg transition-all duration-200 text-left border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900/50 cursor-pointer group"
-                                                                        style=move || {
+                                                                        style={
+                                                                            let network = network.clone();
+                                                                            move || {
                                                                             if selected_accounts
                                                                                 .get()
-                                                                                .contains(&(account_id.clone(), network))
+                                                                                .contains(&(account_id.clone(), network.clone()))
                                                                             {
                                                                                 "background-color: rgb(38 38 38); border-color: rgb(59 130 246);"
                                                                             } else {
                                                                                 "background-color: rgb(23 23 23 / 0.5);"
                                                                             }
-                                                                        }
+                                                                        }}
                                                                         on:click=move |_| {
                                                                             set_selected_accounts
-                                                                                .set(vec![(account_id2.clone(), network)]);
+                                                                                .set(vec![(account_id2.clone(), network.clone())]);
                                                                         }
                                                                     >
                                                                         <div class="text-white font-medium transition-colors duration-200">
@@ -1464,7 +1486,9 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                         <div class="text-indigo-400 text-sm mt-1 font-medium">
                                                                             "Connected via Ethereum wallet"
                                                                         </div>
-                                                                        {move || {
+                                                                        {
+                                                                            let network = network.clone();
+                                                                            move || {
                                                                             if network == Network::Testnet {
                                                                                 view! {
                                                                                     <p class="text-yellow-500 text-sm mt-1 font-medium">
@@ -1678,19 +1702,21 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                 view! {
                                                                     <button
                                                                         class="w-full p-3 rounded-lg transition-all duration-200 text-left border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900/50 cursor-pointer group"
-                                                                        style=move || {
+                                                                        style={
+                                                                            let network = network.clone();
+                                                                            move || {
                                                                             if selected_accounts
                                                                                 .get()
-                                                                                .contains(&(account_id.clone(), network))
+                                                                                .contains(&(account_id.clone(), network.clone()))
                                                                             {
                                                                                 "background-color: rgb(38 38 38); border-color: rgb(59 130 246);"
                                                                             } else {
                                                                                 "background-color: rgb(23 23 23 / 0.5);"
                                                                             }
-                                                                        }
+                                                                        }}
                                                                         on:click=move |_| {
                                                                             set_selected_accounts
-                                                                                .set(vec![(account_id2.clone(), network)]);
+                                                                                .set(vec![(account_id2.clone(), network.clone())]);
                                                                         }
                                                                     >
                                                                         <div class="text-white font-medium transition-colors duration-200">
@@ -1699,7 +1725,9 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                         <div class="text-purple-400 text-sm mt-1 font-medium">
                                                                             "Connected via Solana wallet"
                                                                         </div>
-                                                                        {move || {
+                                                                        {
+                                                                            let network = network.clone();
+                                                                            move || {
                                                                             if network == Network::Testnet {
                                                                                 view! {
                                                                                     <p class="text-yellow-500 text-sm mt-1 font-medium">
@@ -1948,33 +1976,38 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                 view! {
                                                                     <button
                                                                         class="w-full p-3 rounded-lg transition-all duration-200 text-left border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900/50 cursor-pointer group"
-                                                                        style=move || {
+                                                                        style={
+                                                                            let network = network.clone();
+                                                                            move || {
                                                                             if selected_accounts
                                                                                 .get()
-                                                                                .contains(&(account_id.clone(), network))
+                                                                                .contains(&(account_id.clone(), network.clone()))
                                                                             {
                                                                                 "background-color: rgb(38 38 38); border-color: rgb(59 130 246);"
                                                                             } else {
                                                                                 "background-color: rgb(23 23 23 / 0.5);"
                                                                             }
-                                                                        }
-                                                                        on:click=move |_| {
+                                                                        }}
+                                                                        on:click={
+                                                                            let network = network.clone();
+                                                                            move |_| {
                                                                             if selected_accounts
                                                                                 .get()
-                                                                                .contains(&(account_id2.clone(), network))
+                                                                                .contains(&(account_id2.clone(), network.clone()))
                                                                             {
                                                                                 set_selected_accounts
                                                                                     .update(|accounts| {
                                                                                         accounts
-                                                                                            .retain(|pair| pair != &(account_id2.clone(), network));
+                                                                                            .retain(|pair| pair != &(account_id2.clone(), network.clone()));
                                                                                     });
                                                                             } else {
                                                                                 set_selected_accounts
                                                                                     .update(|accounts| {
-                                                                                        accounts.push((account_id2.clone(), network));
+                                                                                        accounts.push((account_id2.clone(), network.clone()));
                                                                                     });
                                                                             }
                                                                         }
+                                                                    }
                                                                     >
                                                                         <div class="text-white font-medium transition-colors duration-200">
                                                                             {account_id_str}
@@ -1982,7 +2015,9 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                         <div class="text-purple-400 text-sm mt-1 font-medium">
                                                                             "Connected via Ledger"
                                                                         </div>
-                                                                        {move || {
+                                                                        {
+                                                                            let network = network.clone();
+                                                                            move || {
                                                                             if network == Network::Testnet {
                                                                                 view! {
                                                                                     <p class="text-yellow-500 text-sm mt-1 font-medium">
@@ -2050,7 +2085,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                                     public_key: public_key.clone(),
                                                                                 },
                                                                                 seed_phrase: None,
-                                                                                network: *network,
+                                                                                network: network.clone(),
                                                                             });
                                                                         last_account_id = Some(account_id.clone());
                                                                     }

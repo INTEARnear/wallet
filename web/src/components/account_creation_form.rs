@@ -244,6 +244,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
         spawn_local(async move {
             set_is_creating.set(true);
             set_error.set(None);
+            let network_clone = network.clone();
 
             let creation_future: Pin<Box<dyn Future<Output = Result<(), String>>>> =
                 if let Some(account_to_sign_with) = account_to_sign_with {
@@ -298,7 +299,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                     });
                     Box::pin(async move {
                         let client = reqwest::Client::new();
-                        let account_creation_service_addr = match network {
+                        let account_creation_service_addr = match network_clone {
                             Network::Mainnet => {
                                 dotenvy_macro::dotenv!("MAINNET_ACCOUNT_CREATION_SERVICE_ADDR")
                             }
@@ -371,7 +372,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                     account_id: account_id.clone(),
                                     seed_phrase,
                                     secret_key,
-                                    network,
+                                    network: network.clone(),
                                 });
                                 accounts.selected_account_id = Some(account_id);
                                 accounts_context.set_accounts.set(accounts);
@@ -607,7 +608,10 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                             .iter()
                                                         {
                                                             let id = account.account_id.to_string();
-                                                            let network = account.network.to_string();
+                                                            let network = match account.network {
+                                                                Network::Mainnet => "mainnet",
+                                                                Network::Testnet => "testnet",
+                                                            };
                                                             options
                                                                 .push(
                                                                     SelectOption::new(
@@ -625,7 +629,11 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                             other => {
                                                                 if let Some((network, id)) = other.split_once(':') {
                                                                     AccountCreateParent::SubAccount(
-                                                                        network.parse().unwrap(),
+                                                                        match network {
+                                                                            "mainnet" => Network::Mainnet,
+                                                                            "testnet" => Network::Testnet,
+                                                                            _ => unreachable!(),
+                                                                        },
                                                                         id.parse().unwrap(),
                                                                     )
                                                                 } else {
@@ -648,7 +656,13 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                         AccountCreateParent::Mainnet => "near".to_string(),
                                                         AccountCreateParent::Testnet => "testnet".to_string(),
                                                         AccountCreateParent::SubAccount(network, id) => {
-                                                            format!("{network}:{id}")
+                                                            format!(
+                                                                "{network}:{id}",
+                                                                network = match network {
+                                                                    Network::Mainnet => "mainnet",
+                                                                    Network::Testnet => "testnet",
+                                                                },
+                                                            )
                                                         }
                                                     }
                                                     width="220px"

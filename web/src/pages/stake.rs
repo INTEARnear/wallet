@@ -1816,7 +1816,7 @@ pub fn Stake() -> impl IntoView {
                                                     base_apy=calculated_apy.clone()
                                                     total_supply=near_total_supply
                                                     near_price=near_price
-                                                    network=current_network
+                                                    network=current_network.clone()
                                                     refresh=move || {
                                                         validators_resource.refetch();
                                                     }
@@ -1901,7 +1901,7 @@ pub fn StakeValidator() -> impl IntoView {
 
             let active_info = if validator_info_opt.is_some() {
                 validator_info_opt
-            } else if is_validator_supported(&validator_account_id, network) {
+            } else if is_validator_supported(&validator_account_id, network.clone()) {
                 None
             } else {
                 return Err("Validator not found or not supported".to_string());
@@ -1915,7 +1915,7 @@ pub fn StakeValidator() -> impl IntoView {
                     QueryFinality::Finality(Finality::DoomSlug),
                 ),
                 async {
-                    if let Some(pool_details_contract) = match network {
+                    if let Some(pool_details_contract) = match &network {
                         Network::Mainnet => Some("pool-details.near".parse::<AccountId>().unwrap()),
                         Network::Testnet => None,
                     } {
@@ -2368,7 +2368,7 @@ pub fn UnstakeValidator() -> impl IntoView {
 
             let active_info = if validator_info_opt.is_some() {
                 validator_info_opt
-            } else if is_validator_supported(&validator_account_id, network) {
+            } else if is_validator_supported(&validator_account_id, network.clone()) {
                 None
             } else {
                 return Err("Validator not found or not supported".to_string());
@@ -2382,7 +2382,7 @@ pub fn UnstakeValidator() -> impl IntoView {
                     QueryFinality::Finality(Finality::DoomSlug),
                 ),
                 async {
-                    if let Some(pool_details_contract) = match network {
+                    if let Some(pool_details_contract) = match &network {
                         Network::Mainnet => Some("pool-details.near".parse::<AccountId>().unwrap()),
                         Network::Testnet => None,
                     } {

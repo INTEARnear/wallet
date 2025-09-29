@@ -22,6 +22,7 @@ use crate::{
         connected_apps_context::{
             action_attaches_deposit, is_dangerous_action, ConnectedAppsContext,
         },
+        network_context::Network,
         security_log_context::add_security_log,
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
@@ -136,7 +137,11 @@ fn TransactionAction(
             "sign-as".to_string(),
             signer.account_id.to_string(),
             "network-config".to_string(),
-            signer.network.to_string().to_lowercase(),
+            match signer.network {
+                Network::Mainnet => "mainnet",
+                Network::Testnet => "testnet",
+            }
+            .to_string(),
         ];
 
         let command = shell_words::join(&command_parts);

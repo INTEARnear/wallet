@@ -12,6 +12,7 @@ use web_sys::js_sys::Date;
 use crate::contexts::{
     accounts_context::AccountsContext,
     connected_apps_context::{ConnectedApp, ConnectedAppsContext},
+    network_context::Network,
     security_log_context::add_security_log,
     transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
 };
@@ -119,7 +120,10 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                     let nonce = Date::now() as u64;
                     let request = reqwest::Client::new().post(format!(
                         "{url}/api/logout_user/{network}",
-                        network = account.network
+                        network = match account.network {
+                            Network::Mainnet => "mainnet",
+                            Network::Testnet => "testnet",
+                        }
                     ))
                     .json(&serde_json::json!({
                         "account_id": account_id,
@@ -180,7 +184,10 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
             spawn_local(async move {
                 for app in active_apps {
                     let url = dotenvy_macro::dotenv!("SHARED_LOGOUT_BRIDGE_SERVICE_ADDR");
-                    let network = account.network.to_string().to_lowercase();
+                    let network = match account.network {
+                        Network::Mainnet => "mainnet",
+                        Network::Testnet => "testnet",
+                    };
                     let nonce = Date::now() as u64;
                     let message = format!("check|{nonce}");
                     let check_signature = app.logout_key.sign(message.as_bytes());

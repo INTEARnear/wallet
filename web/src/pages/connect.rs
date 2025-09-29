@@ -668,7 +668,7 @@ pub fn Connect() -> impl IntoView {
                         .iter()
                         .find(|a| a.account_id == selected_account_id)
                         .expect("Selected account not found")
-                        .network;
+                        .network.clone();
                     let request_network: Network = request_data()
                         .expect("No request data")
                         .network_id
@@ -857,10 +857,16 @@ pub fn Connect() -> impl IntoView {
                                                     </div>
                                                     <p class="text-yellow-500 text-sm">
                                                         "Network mismatch: The app is requesting to connect on "
-                                                        <b class="text-yellow-400">{request_network.to_string()}</b>
+                                                        <b class="text-yellow-400">{match request_network {
+                                                            Network::Mainnet => "mainnet",
+                                                            Network::Testnet => "testnet",
+                                                        }}</b>
                                                         " but your selected account is on "
                                                         <b class="text-yellow-400">
-                                                            {selected_account_network.to_string()}
+                                                            {match selected_account_network {
+                                                                Network::Mainnet => "mainnet",
+                                                                Network::Testnet => "testnet",
+                                                            }}
                                                         </b> ". Please select a different account."
                                                     </p>
                                                 </div>

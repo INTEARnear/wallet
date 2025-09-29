@@ -454,12 +454,14 @@ fn FtWithdrawView(ft: intents::FtWithdraw) -> impl IntoView {
         .get()
         .accounts
         .first()
-        .map(|a| a.network);
+        .map(|a| a.network.clone());
 
     let token_symbol_resource = LocalResource::new({
         let ft_token = ft.token.clone();
+        let network = network.clone();
         move || {
             let ft_token = ft_token.clone();
+            let network = network.clone();
             async move {
                 if let Some(network) = network {
                     if let Some(token_info) = fetch_token_info(ft_token, network).await {
@@ -499,7 +501,7 @@ fn FtWithdrawView(ft: intents::FtWithdraw) -> impl IntoView {
                     contract_id: ft.token,
                 })
                 amount=ft.amount
-                network=network
+                network=network.clone()
             />
 
             {if let Some(storage_deposit) = ft.storage_deposit {
@@ -534,7 +536,7 @@ fn TransferTokensView(transfer: intents::Transfer) -> impl IntoView {
         .get()
         .accounts
         .first()
-        .map(|a| a.network);
+        .map(|a| a.network.clone());
 
     view! {
         <div class="space-y-2">
@@ -545,7 +547,7 @@ fn TransferTokensView(transfer: intents::Transfer) -> impl IntoView {
                     .map(|(token, amount)| {
                         let abs_amount = amount.unsigned_abs();
                         view! {
-                            <TokenAmount token_id=token.clone() amount=abs_amount network=network />
+                            <TokenAmount token_id=token.clone() amount=abs_amount network=network.clone() />
                         }
                     })
                     .collect_view()}
@@ -562,7 +564,7 @@ fn TokenDiffView(diff: intents::TokenDiff) -> impl IntoView {
         .get()
         .accounts
         .first()
-        .map(|a| a.network);
+        .map(|a| a.network.clone());
 
     let simple_swap = if diff.diff.len() == 2 {
         if let Some(token_in) = diff.diff.iter().find(|(_, &amount)| amount > 0) {
@@ -590,7 +592,7 @@ fn TokenDiffView(diff: intents::TokenDiff) -> impl IntoView {
                         <TokenAmount
                             token_id=(token_out.0).clone()
                             amount={token_out.1}
-                            network=network
+                            network=network.clone()
                         />
                     </div>
                     <Icon
@@ -603,7 +605,7 @@ fn TokenDiffView(diff: intents::TokenDiff) -> impl IntoView {
                         <TokenAmount
                             token_id=(token_in.0).clone()
                             amount={token_in.1}
-                            network=network
+                            network=network.clone()
                         />
                     </div>
                 </div>
@@ -622,7 +624,7 @@ fn TokenDiffView(diff: intents::TokenDiff) -> impl IntoView {
                                 <TokenAmount
                                     token_id=token.clone()
                                     amount=abs_amount
-                                    network=network
+                                    network=network.clone()
                                 />
                             </div>
                         }
@@ -647,6 +649,7 @@ fn TokenAmount(
 
     let token_info_resource = LocalResource::new({
         move || {
+            let network = network.clone();
             let contract_id = contract_id.clone();
             async move {
                 if let (Some(contract_id), Some(network)) = (contract_id, network) {

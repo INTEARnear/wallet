@@ -178,7 +178,10 @@ pub fn AccountSelector() -> impl IntoView {
             let mut grouped: HashMap<Network, Vec<&Account>> = HashMap::new();
 
             for account in accounts.accounts.iter() {
-                grouped.entry(account.network).or_default().push(account);
+                grouped
+                    .entry(account.network.clone())
+                    .or_default()
+                    .push(account);
             }
 
             for (network, accs) in grouped {
@@ -437,7 +440,7 @@ pub fn AccountSelector() -> impl IntoView {
                                                 .accounts
                                                 .iter()
                                                 .map(|account| {
-                                                    let account_network = account.network;
+                                                    let account_network = account.network.clone();
                                                     let account_id = account.account_id.clone();
                                                     let first_char = account_id
                                                         .as_str()

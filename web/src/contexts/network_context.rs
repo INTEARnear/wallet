@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use leptos::prelude::*;
 use near_min_api::RpcClient;
 use serde::{Deserialize, Serialize};
@@ -11,30 +9,10 @@ pub struct NetworkContext {
     pub network: RwSignal<Network>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum Network {
     Mainnet,
     Testnet,
-}
-
-impl std::fmt::Display for Network {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Network::Mainnet => write!(f, "mainnet"),
-            Network::Testnet => write!(f, "testnet"),
-        }
-    }
-}
-
-impl FromStr for Network {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "mainnet" => Ok(Network::Mainnet),
-            "testnet" => Ok(Network::Testnet),
-            _ => Err(format!("Invalid network: {}", s)),
-        }
-    }
 }
 
 impl Network {
@@ -63,6 +41,7 @@ pub fn provide_network_context() {
                 .find(|a| a.account_id == selected_account)
                 .expect("Selected account not found")
                 .network
+                .clone()
         } else {
             Network::Mainnet
         },
@@ -77,7 +56,7 @@ pub fn provide_network_context() {
                 .find(|a| a.account_id == selected_account_id)
             {
                 if account.network != network.get() {
-                    network.set(account.network);
+                    network.set(account.network.clone());
                 }
             }
         }
