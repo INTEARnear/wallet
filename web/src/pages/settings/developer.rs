@@ -450,7 +450,7 @@ pub fn DeveloperSettings() -> impl IntoView {
                                                                             }
                                                                             class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded cursor-pointer"
                                                                         >
-                                                                            "Sandbox"
+                                                                            "Control"
                                                                         </button>
                                                                     }
                                                                         .into_any()

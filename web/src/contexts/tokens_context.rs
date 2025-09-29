@@ -503,6 +503,8 @@ pub fn provide_token_context() {
         let network = expect_context::<NetworkContext>().network.get();
 
         spawn_local(async move {
+            set_loading(true);
+            set_tokens(vec![]);
             let api_url: Either<String, Vec<AccountId>> = match &network {
                 Network::Mainnet => Either::Left("https://prices.intear.tech".to_string()),
                 Network::Testnet => Either::Left("https://prices-testnet.intear.tech".to_string()),
@@ -525,12 +527,11 @@ pub fn provide_token_context() {
                     if let Some(contract) = &network.wrap_contract {
                         contract.clone()
                     } else {
+                        set_loading(false);
                         return;
                     }
                 }
             };
-            set_loading(true);
-            set_tokens(vec![]);
             if let Some(account_id) = current_account {
                 let account_id_clone = account_id.clone();
                 let (token_response, account_response) = join(
