@@ -2,7 +2,7 @@ use leptos::prelude::*;
 use near_min_api::types::AccountId;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     hash::{Hash, Hasher},
 };
 
@@ -167,11 +167,10 @@ pub struct CustomNetwork {
     pub wrap_contract: Option<AccountId>,
     pub explorer_url: Option<String>,
     pub fastnear_api_url: Option<String>,
-    pub staking_pools: Vec<AccountId>,
+    pub staking_pools: HashSet<AccountId>,
     pub pool_details_contract: Option<AccountId>,
     pub charts_api_url: Option<String>,
-    #[serde(default)]
-    pub tokens: Vec<AccountId>,
+    pub tokens: HashSet<AccountId>,
 }
 
 impl PartialEq for CustomNetwork {

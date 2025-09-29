@@ -13,16 +13,18 @@ use near_min_api::{
 use reqwest::Url;
 use std::time::Duration;
 
-use crate::contexts::{
-    accounts_context::{Account, AccountsContext, SecretKeyHolder},
-    config_context::ConfigContext,
-    network_context::{Network, NetworkContext},
-    security_log_context::add_security_log,
-    transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
+use crate::{
+    contexts::{
+        accounts_context::{Account, AccountsContext, SecretKeyHolder},
+        config_context::ConfigContext,
+        network_context::Network,
+        security_log_context::add_security_log,
+        transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
+    },
+    utils::get_ft_metadata,
 };
 
 const WRAP_CONTRACT_ID: &str = "wrap.local";
-// const POOL_CONTRACT_ID: &str = "pool.local";
 
 #[component]
 pub fn DeveloperSandbox() -> impl IntoView {
@@ -41,13 +43,11 @@ pub fn DeveloperSandbox() -> impl IntoView {
     let ConfigContext {
         config, set_config, ..
     } = expect_context::<ConfigContext>();
-    let _network_context = expect_context::<NetworkContext>();
     let accounts_context = expect_context::<AccountsContext>();
     let accounts = accounts_context.accounts;
     let set_accounts = accounts_context.set_accounts;
 
     let (is_deploying_wrap, set_is_deploying_wrap) = signal(false);
-    // let (is_deploying_pool, set_is_deploying_pool) = signal(false);
     let (is_creating_account, set_is_creating_account) = signal(false);
     let (new_account_name, set_new_account_name) = signal(String::new());
 
@@ -55,10 +55,12 @@ pub fn DeveloperSandbox() -> impl IntoView {
     let (is_fast_forwarding, set_is_fast_forwarding) = signal(false);
     let (is_height_copied, set_is_height_copied) = signal(false);
 
+    let (new_token_input, set_new_token_input) = signal(String::new());
+
     let network = move || {
         let id = network_id();
         config
-            .get_untracked()
+            .get()
             .custom_networks
             .into_iter()
             .find(|n| n.id == id)
@@ -114,30 +116,6 @@ pub fn DeveloperSandbox() -> impl IntoView {
         }
     });
 
-    // let pool_status_resource = LocalResource::new(move || {
-    //     let network = network();
-    //     async move {
-    //         let Some(network) = network else {
-    //             return Err("Network not found".to_string());
-    //         };
-
-    //         let Ok(url) = network.rpc_url.parse::<Url>() else {
-    //             return Err("Invalid RPC URL".to_string());
-    //         };
-
-    //         let rpc_client = RpcClient::new(vec![url]);
-    //         let account_id: AccountId = POOL_CONTRACT_ID.parse().unwrap();
-
-    //         match rpc_client
-    //             .view_account(account_id, QueryFinality::Finality(Finality::None))
-    //             .await
-    //         {
-    //             Ok(_) => Ok(true),
-    //             Err(_) => Ok(false),
-    //         }
-    //     }
-    // });
-
     let network_accounts = move || {
         let all_accounts = accounts.get();
 
@@ -192,6 +170,42 @@ pub fn DeveloperSandbox() -> impl IntoView {
         account_existence_resource.refetch();
     });
 
+    let token_validation_resource = LocalResource::new(move || {
+        let network = network();
+        let token_input = new_token_input.get().trim().to_string();
+
+        async move {
+            if token_input.is_empty() {
+                return Ok(None);
+            }
+
+            let account_id = match token_input.parse::<AccountId>() {
+                Ok(id) => id,
+                Err(_) => return Err("Invalid token contract address format".to_string()),
+            };
+
+            let Some(network) = network else {
+                return Err("Network not found".to_string());
+            };
+
+            let Ok(url) = network.rpc_url.parse::<Url>() else {
+                return Err("Invalid RPC URL".to_string());
+            };
+
+            let rpc_client = RpcClient::new(vec![url]);
+            match get_ft_metadata(account_id.clone(), rpc_client).await {
+                Ok(metadata) => Ok(Some((account_id, metadata))),
+                Err(e) => Err(format!("Failed to fetch token metadata: {}", e)),
+            }
+        }
+    });
+
+    Effect::new(move |_| {
+        let _token_input = new_token_input.get();
+        let _network = network();
+        token_validation_resource.refetch();
+    });
+
     let validate_account_name = move || {
         let name = new_account_name.get().trim().to_string();
         if name.is_empty() {
@@ -217,6 +231,74 @@ pub fn DeveloperSandbox() -> impl IntoView {
             }
             Err(_) => (false, false, "Invalid account name format".to_string()),
         }
+    };
+
+    let validate_token_input = move || {
+        let token_input = new_token_input.get().trim().to_string();
+        if token_input.is_empty() {
+            return (false, false, "Enter a token contract address".to_string());
+        }
+
+        let account_id_result = token_input.parse::<AccountId>();
+
+        match account_id_result {
+            Ok(account_id) => {
+                // Check if token already exists in the list
+                let current_tokens = network().map(|n| n.tokens.clone()).unwrap_or_default();
+
+                if current_tokens.contains(&account_id) {
+                    return (false, true, format!("Token {} already in list", account_id));
+                }
+
+                match token_validation_resource.get() {
+                    Some(Ok(Some((checked_id, metadata)))) if checked_id == account_id => (
+                        true,
+                        false,
+                        format!("{} ({})", metadata.name, metadata.symbol),
+                    ),
+                    Some(Err(err)) => (false, false, err),
+                    _ => (false, false, "Validating token...".to_string()),
+                }
+            }
+            Err(_) => (false, false, "Invalid contract address format".to_string()),
+        }
+    };
+
+    let add_token = move || {
+        let Some(network) = network() else {
+            return;
+        };
+        let token_input = new_token_input.get().trim().to_string();
+        let Ok(account_id) = token_input.parse::<AccountId>() else {
+            return;
+        };
+
+        set_config.update(|config| {
+            if let Some(net) = config
+                .custom_networks
+                .iter_mut()
+                .find(|n| n.id == network.id)
+            {
+                net.tokens.insert(account_id);
+            }
+        });
+        set_new_token_input.set(String::new());
+    };
+
+    let remove_token = move |token_id: AccountId| {
+        let Some(network) = network() else {
+            return;
+        };
+
+        set_config.update(|config| {
+            if let Some(net) = config
+                .custom_networks
+                .iter_mut()
+                .find(|n| n.id == network.id)
+            {
+                net.tokens.retain(|t| t != &token_id);
+            }
+        });
     };
 
     let delete_account = move |account_id: AccountId| {
@@ -602,149 +684,6 @@ pub fn DeveloperSandbox() -> impl IntoView {
                                         }}
                                     </button>
                                 </div>
-
-                                // // Staking Pool contract
-                                // <div class="flex items-center justify-between">
-                                //     <div class="flex items-center gap-2">
-                                //         {move || {
-                                //             match pool_status_resource.get() {
-                                //                 Some(Ok(true)) => {
-                                //                     view! {
-                                //                         <Icon
-                                //                             icon=icondata::LuCheck
-                                //                             style="color: #10b981"
-                                //                             width="16"
-                                //                             height="16"
-                                //                         />
-                                //                     }
-                                //                         .into_any()
-                                //                 }
-                                //                 Some(Ok(false)) => {
-                                //                     view! {
-                                //                         <Icon
-                                //                             icon=icondata::LuX
-                                //                             style="color: #ef4444"
-                                //                             width="16"
-                                //                             height="16"
-                                //                         />
-                                //                     }
-                                //                         .into_any()
-                                //                 }
-                                //                 Some(Err(_)) => {
-                                //                     view! {
-                                //                         <Icon
-                                //                             icon=icondata::LuX
-                                //                             style="color: #ef4444"
-                                //                             width="16"
-                                //                             height="16"
-                                //                         />
-                                //                     }
-                                //                         .into_any()
-                                //                 }
-                                //                 None => {
-                                //                     view! {
-                                //                         <div class="w-4 h-4 bg-blue-400 rounded-full animate-pulse"></div>
-                                //                     }
-                                //                         .into_any()
-                                //                 }
-                                //             }
-                                //         }}
-                                //         <span class="text-sm">
-                                //             {move || {
-                                //                 match pool_status_resource.get() {
-                                //                     Some(Ok(true)) => {
-                                //                         format!("Staking Pool Contract: {}", POOL_CONTRACT_ID)
-                                //                     }
-                                //                     Some(Ok(false)) => {
-                                //                         "Staking Pool Contract: not deployed".to_string()
-                                //                     }
-                                //                     Some(Err(_)) => {
-                                //                         "Staking Pool Contract: error checking".to_string()
-                                //                     }
-                                //                     None => "Staking Pool Contract: checking...".to_string(),
-                                //                 }
-                                //             }}
-                                //         </span>
-                                //     </div>
-                                //     <button
-                                //         on:click=move |_| {
-                                //             let Some(network) = network() else {
-                                //                 return;
-                                //             };
-                                //             set_is_deploying_pool.set(true);
-                                //             let rpc_client_mainnet = Network::Mainnet
-                                //                 .default_rpc_client();
-                                //             let rpc_client = RpcClient::new(
-                                //                 vec![network.rpc_url.parse::<Url>().unwrap()],
-                                //             );
-                                //             spawn_local(async move {
-                                //                 let pool_code = rpc_client_mainnet
-                                //                     .view_code(
-                                //                         "pool.near".parse().unwrap(),
-                                //                         QueryFinality::Finality(Finality::None),
-                                //                     )
-                                //                     .await
-                                //                     .unwrap()
-                                //                     .code;
-                                //                 let account_id: AccountId = POOL_CONTRACT_ID
-                                //                     .parse()
-                                //                     .unwrap();
-                                //                 let records = vec![
-                                //                     StateRecord::Account {
-                                //                         account_id: account_id.clone(),
-                                //                         account: near_min_api::types::Account::new(
-                                //                             NearToken::from_near(1000),
-                                //                             NearToken::from_near(0),
-                                //                             AccountContract::Local(CryptoHash::hash_bytes(&pool_code)),
-                                //                             0,
-                                //                         ),
-                                //                     },
-                                //                     StateRecord::Contract {
-                                //                         account_id: account_id.clone(),
-                                //                         code: pool_code,
-                                //                     },
-                                //                 ];
-                                //                 match rpc_client.sandbox_patch_state(records).await {
-                                //                     Ok(()) => {
-                                //                         pool_status_resource.refetch();
-                                //                         set_config
-                                //                             .update(|config| {
-                                //                                 config
-                                //                                     .custom_networks
-                                //                                     .iter_mut()
-                                //                                     .find(|n| n.id == network.id)
-                                //                                     .unwrap()
-                                //                                     .staking_pools = vec![account_id];
-                                //                             });
-                                //                     }
-                                //                     Err(e) => {
-                                //                         log::error!(
-                                //                             "Failed to deploy {} contract: {e}", POOL_CONTRACT_ID
-                                //                         );
-                                //                     }
-                                //                 }
-                                //                 set_is_deploying_pool.set(false);
-                                //             });
-                                //         }
-                                //         disabled=move || is_deploying_pool.get()
-                                //         class="px-3 py-1 text-white text-sm rounded cursor-pointer transition-colors min-w-30 text-center"
-                                //         class:bg-blue-600=move || !is_deploying_pool.get()
-                                //         class:bg-blue-700=move || !is_deploying_pool.get()
-                                //         class:bg-neutral-600=move || is_deploying_pool.get()
-                                //         class:cursor-not-allowed=move || is_deploying_pool.get()
-                                //     >
-                                //         {move || {
-                                //             if is_deploying_pool.get() {
-                                //                 "Deploying..."
-                                //             } else {
-                                //                 match pool_status_resource.get() {
-                                //                     Some(Ok(true)) => "Redeploy",
-                                //                     _ => "Deploy",
-                                //                 }
-                                //             }
-                                //         }}
-                                //     </button>
-                                // </div>
                             </div>
                         </div>
 
@@ -931,6 +870,110 @@ pub fn DeveloperSandbox() -> impl IntoView {
                                 }
                             }}
                         </div>
+
+                        // Token list editor section
+                        <div class="bg-neutral-800 rounded-lg p-4 border border-neutral-700">
+                            <div class="text-lg font-semibold mb-3">"Token List"</div>
+
+                            <div class="text-sm text-gray-400 mb-3">
+                                "Since there is no token detection API on localnet, you need to add each token contract address manually."
+                            </div>
+
+                            // Token addition form
+                            <div class="flex flex-col gap-3 mb-4 p-3 bg-neutral-900 rounded-lg">
+                                <div class="text-sm font-medium">"Add Token Contract"</div>
+                                <div class="flex gap-2">
+                                    <input
+                                        type="text"
+                                        placeholder="token.local"
+                                        value=move || new_token_input.get()
+                                        on:input=move |ev| {
+                                            set_new_token_input.set(event_target_value(&ev))
+                                        }
+                                        class="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-600 rounded text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                    <button
+                                        on:click=move |_| {
+                                            add_token();
+                                        }
+                                        disabled=move || { !validate_token_input().0 }
+                                        class="px-4 py-2 text-sm rounded transition-colors min-w-30 text-center"
+                                        class:bg-green-600=move || {
+                                            let (can_add, is_warning, _) = validate_token_input();
+                                            can_add && !is_warning
+                                        }
+                                        class:bg-green-700=move || {
+                                            let (can_add, is_warning, _) = validate_token_input();
+                                            can_add && !is_warning
+                                        }
+                                        class:bg-neutral-600=move || {
+                                            let (can_add, _, _) = validate_token_input();
+                                            !can_add
+                                        }
+                                        class:cursor-not-allowed=move || {
+                                            let (can_add, _, _) = validate_token_input();
+                                            !can_add
+                                        }
+                                        class:cursor-pointer=move || {
+                                            let (can_add, _, _) = validate_token_input();
+                                            can_add
+                                        }
+                                        class:text-white=move || true
+                                    >
+                                        "Add Token"
+                                    </button>
+                                </div>
+                                <div class="text-xs">
+                                    {move || {
+                                        let (can_add, is_warning, message) = validate_token_input();
+                                        let color_class = if can_add && !is_warning {
+                                            "text-green-400"
+                                        } else if can_add && is_warning {
+                                            "text-yellow-400"
+                                        } else if new_token_input.get().trim().is_empty() {
+                                            "text-gray-400"
+                                        } else {
+                                            "text-red-400"
+                                        };
+
+                                        view! { <span class=color_class>{message}</span> }
+                                    }}
+                                </div>
+                            </div>
+
+                            // Token list display
+                            {move || {
+                                let current_tokens = network()
+                                    .map(|n| n.tokens.clone())
+                                    .unwrap_or_default();
+                                if current_tokens.is_empty() {
+                                    view! {
+                                        <div class="text-gray-400 text-sm p-4 bg-neutral-900 rounded-lg">
+                                            "No tokens configured for this network"
+                                        </div>
+                                    }
+                                        .into_any()
+                                } else {
+                                    view! {
+                                        <div class="flex flex-col gap-2">
+                                            {current_tokens
+                                                .into_iter()
+                                                .map(|token_id| {
+                                                    view! {
+                                                        <TokenListItem
+                                                            token_id=token_id.clone()
+                                                            network=network()
+                                                            on_remove=move |id| remove_token(id)
+                                                        />
+                                                    }
+                                                })
+                                                .collect::<Vec<_>>()}
+                                        </div>
+                                    }
+                                        .into_any()
+                                }
+                            }}
+                        </div>
                     </div>
                 }
                     .into_any()
@@ -940,5 +983,65 @@ pub fn DeveloperSandbox() -> impl IntoView {
                     .into_any()
             }
         }}
+    }
+}
+
+#[component]
+fn TokenListItem(
+    token_id: AccountId,
+    network: Option<crate::contexts::config_context::CustomNetwork>,
+    on_remove: impl Fn(AccountId) + 'static + Copy,
+) -> impl IntoView {
+    let token_id_display = token_id.to_string();
+    let token_id_for_remove = token_id.clone();
+
+    let metadata_resource = LocalResource::new(move || {
+        let token_id = token_id.clone();
+        let network = network.clone();
+
+        async move {
+            let Some(network) = network else {
+                return Err("Network not found".to_string());
+            };
+
+            let Ok(url) = network.rpc_url.parse::<Url>() else {
+                return Err("Invalid RPC URL".to_string());
+            };
+
+            let rpc_client = RpcClient::new(vec![url]);
+            get_ft_metadata(token_id, rpc_client).await
+        }
+    });
+
+    view! {
+        <div class="flex items-center justify-between p-3 bg-neutral-900 rounded-lg">
+            <div class="flex flex-col flex-1">
+                <div class="font-medium text-sm">{token_id_display}</div>
+                <div class="text-xs text-gray-400">
+                    {move || {
+                        match metadata_resource.get() {
+                            Some(Ok(metadata)) => {
+                                format!(
+                                    "{} ({}) - {} decimals",
+                                    metadata.name,
+                                    metadata.symbol,
+                                    metadata.decimals,
+                                )
+                            }
+                            Some(Err(e)) => format!("Error: {}", e),
+                            None => "Loading metadata...".to_string(),
+                        }
+                    }}
+                </div>
+            </div>
+            <button
+                on:click=move |_| {
+                    on_remove(token_id_for_remove.clone());
+                }
+                class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded cursor-pointer transition-colors min-w-20 text-center"
+            >
+                "Remove"
+            </button>
+        </div>
     }
 }

@@ -51,10 +51,10 @@ impl From<&CustomNetwork> for NetworkForm {
             wrap_contract: network.wrap_contract.clone(),
             explorer_url: network.explorer_url.clone(),
             fastnear_api_url: network.fastnear_api_url.clone(),
-            staking_pools: network.staking_pools.clone(),
+            staking_pools: network.staking_pools.iter().cloned().collect(),
             pool_details_contract: network.pool_details_contract.clone(),
             charts_api_url: network.charts_api_url.clone(),
-            tokens: network.tokens.clone(),
+            tokens: network.tokens.iter().cloned().collect(),
         }
     }
 }
@@ -71,10 +71,10 @@ impl From<NetworkForm> for CustomNetwork {
             wrap_contract: form.wrap_contract,
             explorer_url: form.explorer_url,
             fastnear_api_url: form.fastnear_api_url,
-            staking_pools: form.staking_pools,
+            staking_pools: form.staking_pools.into_iter().collect(),
             pool_details_contract: form.pool_details_contract,
             charts_api_url: form.charts_api_url,
-            tokens: form.tokens,
+            tokens: form.tokens.into_iter().collect(),
         }
     }
 }

@@ -54,10 +54,14 @@ use crate::{
     },
 };
 
-fn get_supported_staking_farms(network: Network) -> Vec<AccountId> {
+fn get_supported_staking_farms(network: Network) -> HashSet<AccountId> {
     match network {
-        Network::Mainnet => vec!["poolv1.near".parse().unwrap(), "pool.near".parse().unwrap()],
-        Network::Testnet => vec!["pool.f863973.m0".parse().unwrap()],
+        Network::Mainnet => vec!["poolv1.near".parse().unwrap(), "pool.near".parse().unwrap()]
+            .into_iter()
+            .collect(),
+        Network::Testnet => vec!["pool.f863973.m0".parse().unwrap()]
+            .into_iter()
+            .collect(),
         Network::Localnet(network) => network.staking_pools,
     }
 }

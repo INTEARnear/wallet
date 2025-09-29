@@ -512,11 +512,9 @@ pub fn provide_token_context() {
                     } else {
                         let mut tokens = network.tokens.clone();
                         if let Some(wrapped_near) = &network.wrap_contract {
-                            if !tokens.contains(wrapped_near) {
-                                tokens.push(wrapped_near.clone())
-                            }
+                            tokens.insert(wrapped_near.clone());
                         }
-                        Either::Right(tokens)
+                        Either::Right(tokens.into_iter().collect())
                     }
                 }
             };
