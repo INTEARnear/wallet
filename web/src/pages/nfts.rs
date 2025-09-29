@@ -1133,8 +1133,13 @@ pub fn Nfts() -> impl IntoView {
                                                                                                 .into_any()
                                                                                         } else {
                                                                                             view! {
-                                                                                                <div class="aspect-square bg-neutral-700 rounded-t-lg flex items-center justify-center">
-                                                                                                    <Icon icon=icondata::LuImage width="32" height="32" />
+                                                                                                <div class="aspect-square rounded-t-lg overflow-hidden">
+                                                                                                    <ProgressiveImage
+                                                                                                        alt=metadata.name.clone()
+                                                                                                        attr:class="w-full h-full object-cover"
+                                                                                                        low_res_src=proxify_url(icon, Resolution::Low)
+                                                                                                        high_res_src=proxify_url(icon, Resolution::High)
+                                                                                                    />
                                                                                                 </div>
                                                                                             }
                                                                                                 .into_any()
