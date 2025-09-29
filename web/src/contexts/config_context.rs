@@ -1,7 +1,10 @@
 use leptos::prelude::*;
 use near_min_api::types::AccountId;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    hash::{Hash, Hasher},
+};
 
 use crate::{
     pages::swap::Slippage,
@@ -149,6 +152,40 @@ pub struct WalletConfig {
     pub autostart: bool,
     #[serde(default = "default_true")]
     pub swap_confirmation_enabled: bool,
+    #[serde(default)]
+    pub custom_networks: Vec<CustomNetwork>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct CustomNetwork {
+    pub id: String,
+    pub rpc_url: String,
+    pub history_service_url: Option<String>,
+    pub social_contract: Option<AccountId>,
+    pub prices_api_url: Option<String>,
+    pub realtime_events_api_url: Option<String>,
+    pub wrap_contract: Option<AccountId>,
+    pub explorer_url: Option<String>,
+    pub fastnear_api_url: Option<String>,
+    pub staking_pools: Vec<AccountId>,
+    pub pool_details_contract: Option<AccountId>,
+    pub charts_api_url: Option<String>,
+    #[serde(default)]
+    pub tokens: Vec<AccountId>,
+}
+
+impl PartialEq for CustomNetwork {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for CustomNetwork {}
+
+impl Hash for CustomNetwork {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
 }
 
 fn default_true() -> bool {
@@ -181,6 +218,7 @@ impl Default for WalletConfig {
             hide_to_tray: true,
             autostart: false,
             swap_confirmation_enabled: true,
+            custom_networks: vec![],
         }
     }
 }

@@ -58,6 +58,7 @@ fn get_supported_staking_farms(network: Network) -> Vec<AccountId> {
     match network {
         Network::Mainnet => vec!["poolv1.near".parse().unwrap(), "pool.near".parse().unwrap()],
         Network::Testnet => vec!["pool.f863973.m0".parse().unwrap()],
+        Network::Localnet(network) => network.staking_pools,
     }
 }
 
@@ -1188,6 +1189,7 @@ pub fn Stake() -> impl IntoView {
                 let pool_details_contract = match network_context.network.get() {
                     Network::Mainnet => Some("pool-details.near".parse::<AccountId>().unwrap()),
                     Network::Testnet => None,
+                    Network::Localnet(network) => network.pool_details_contract,
                 };
 
                 let details_batch_future =
@@ -1342,14 +1344,20 @@ pub fn Stake() -> impl IntoView {
                         validators.iter().map(|v| v.account_id.clone()).collect();
 
                     let network = network_context.network.get();
-                    let api_host = match network {
-                        Network::Mainnet => "api.fastnear.com",
-                        Network::Testnet => "test.api.fastnear.com",
+                    let api_url = match network {
+                        Network::Mainnet => "https://api.fastnear.com".to_string(),
+                        Network::Testnet => "https://test.api.fastnear.com".to_string(),
+                        Network::Localnet(network) => {
+                            if let Some(host) = &network.fastnear_api_url {
+                                host.clone()
+                            } else {
+                                return Err(
+                                    "No Fastnear API configured for this localnet".to_string()
+                                );
+                            }
+                        }
                     };
-                    let fastnear_url = format!(
-                        "https://{}/v1/account/{}/staking",
-                        api_host, user_account_id
-                    );
+                    let fastnear_url = format!("{api_url}/v1/account/{user_account_id}/staking");
                     if let Ok(resp) = reqwest::get(&fastnear_url).await {
                         if let Ok(json_raw) = resp.json::<FastNearResponseRaw>().await {
                             for p in json_raw.pools {
@@ -1918,6 +1926,7 @@ pub fn StakeValidator() -> impl IntoView {
                     if let Some(pool_details_contract) = match &network {
                         Network::Mainnet => Some("pool-details.near".parse::<AccountId>().unwrap()),
                         Network::Testnet => None,
+                        Network::Localnet(network) => network.pool_details_contract.clone(),
                     } {
                         rpc_client
                             .call::<PoolDetails>(
@@ -2385,6 +2394,7 @@ pub fn UnstakeValidator() -> impl IntoView {
                     if let Some(pool_details_contract) = match &network {
                         Network::Mainnet => Some("pool-details.near".parse::<AccountId>().unwrap()),
                         Network::Testnet => None,
+                        Network::Localnet(network) => network.pool_details_contract.clone(),
                     } {
                         rpc_client
                             .call::<PoolDetails>(

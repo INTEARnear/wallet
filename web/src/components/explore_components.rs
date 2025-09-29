@@ -33,8 +33,15 @@ pub struct Article {
 
 async fn fetch_trending_tokens(network: Network) -> Vec<TrendingToken> {
     let api_url = match network {
-        Network::Mainnet => "https://prices.intear.tech",
-        Network::Testnet => "https://prices-testnet.intear.tech",
+        Network::Mainnet => "https://prices.intear.tech".to_string(),
+        Network::Testnet => "https://prices-testnet.intear.tech".to_string(),
+        Network::Localnet(network) => {
+            if let Some(url) = &network.prices_api_url {
+                url.clone()
+            } else {
+                return vec![];
+            }
+        }
     };
     let response = reqwest::get(format!("{api_url}/tokens"))
         .await

@@ -276,9 +276,16 @@ pub fn AccountSelector() -> impl IntoView {
                 .map(|id| format!("{id}/profile/image/ipfs_cid"))
                 .collect();
 
-            let social_contract = match current_network {
+            let social_contract = match &current_network {
                 Network::Mainnet => "social.near".parse::<AccountId>().unwrap(),
                 Network::Testnet => "v1.social08.testnet".parse::<AccountId>().unwrap(),
+                Network::Localnet(network) => {
+                    if let Some(social_contract) = &network.social_contract {
+                        social_contract.clone()
+                    } else {
+                        return;
+                    }
+                }
             };
 
             let rpc_client = current_network.default_rpc_client();
@@ -357,6 +364,7 @@ pub fn AccountSelector() -> impl IntoView {
                 parent: match network.network.get() {
                     Network::Mainnet => AccountCreateParent::Mainnet,
                     Network::Testnet => AccountCreateParent::Testnet,
+                    Network::Localnet { .. } => AccountCreateParent::Mainnet,
                 },
                 recovery_method: AccountCreateRecoveryMethod::RecoveryPhrase,
             });
@@ -544,6 +552,7 @@ pub fn AccountSelector() -> impl IntoView {
                                                         parent: match network.network.get() {
                                                             Network::Mainnet => AccountCreateParent::Mainnet,
                                                             Network::Testnet => AccountCreateParent::Testnet,
+                                                            Network::Localnet { .. } => AccountCreateParent::Mainnet,
                                                         },
                                                         recovery_method: AccountCreateRecoveryMethod::RecoveryPhrase,
                                                     })

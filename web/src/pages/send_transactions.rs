@@ -10,7 +10,10 @@ use near_min_api::{
     ExperimentalTxDetails,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
 use wasm_bindgen::JsCast;
 use web_sys::{js_sys::Date, Window};
 
@@ -92,14 +95,10 @@ fn TransactionAction(
 
     let copy_args_json = move |args: &serde_json::Value| {
         let minified = serde_json::to_string(args).unwrap_or_default();
-        let window = web_sys::window().unwrap();
-        let navigator = window.navigator();
+        let navigator = window().navigator();
         let _ = navigator.clipboard().write_text(&minified);
         set_json_copied(true);
-        set_timeout(
-            move || set_json_copied(false),
-            std::time::Duration::from_millis(2000),
-        );
+        set_timeout(move || set_json_copied(false), Duration::from_millis(2000));
     };
 
     let copy_cli_command = move |contract_id: &AccountId,
@@ -138,21 +137,19 @@ fn TransactionAction(
             signer.account_id.to_string(),
             "network-config".to_string(),
             match signer.network {
-                Network::Mainnet => "mainnet",
-                Network::Testnet => "testnet",
+                Network::Mainnet => "mainnet".to_string(),
+                Network::Testnet => "testnet".to_string(),
+                Network::Localnet(network) => network.id.clone(),
             }
             .to_string(),
         ];
 
         let command = shell_words::join(&command_parts);
-        let window = web_sys::window().unwrap();
+        let window = window();
         let navigator = window.navigator();
         let _ = navigator.clipboard().write_text(&command);
         set_cli_copied(true);
-        set_timeout(
-            move || set_cli_copied(false),
-            std::time::Duration::from_millis(2000),
-        );
+        set_timeout(move || set_cli_copied(false), Duration::from_millis(2000));
     };
 
     let format_action = move |action: &WalletSelectorAction| -> String {
@@ -721,7 +718,7 @@ pub fn SendTransactions() -> impl IntoView {
         transactions
             .get()
             .map(|txs| {
-                let mut seen_receivers = std::collections::HashMap::new();
+                let mut seen_receivers = HashMap::new();
                 for tx in txs.iter() {
                     *seen_receivers.entry(tx.receiver_id.clone()).or_insert(0) += 1;
                 }

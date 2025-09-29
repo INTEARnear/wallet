@@ -19,7 +19,10 @@ use types::{
     SignedTransaction, TxExecutionStatus,
 };
 
-use crate::types::{EpochReference, EpochValidatorInfo, StatusResponse, ViewStateResult};
+use crate::types::{
+    BlockHeightDelta, ContractCodeView, EpochReference, EpochValidatorInfo, StateRecord,
+    StatusResponse, ViewStateResult,
+};
 
 #[derive(Clone, Debug)]
 pub struct RpcClient {
@@ -63,7 +66,7 @@ impl RpcClient {
         self
     }
 
-    pub fn with_max_retries(&mut self, max_retries: usize) -> &mut Self {
+    pub fn with_max_retries(mut self, max_retries: usize) -> Self {
         self.max_retries = max_retries;
         self
     }
@@ -244,6 +247,19 @@ impl RpcClient {
         let rpc_method = "query";
         let rpc_params = Query {
             request: QueryRequest::ViewAccount { account_id },
+            finality,
+        };
+        self.request(rpc_method, rpc_params).await
+    }
+
+    pub async fn view_code(
+        &self,
+        account_id: AccountId,
+        finality: QueryFinality,
+    ) -> Result<ContractCodeView, Error> {
+        let rpc_method = "query";
+        let rpc_params = Query {
+            request: QueryRequest::ViewCode { account_id },
             finality,
         };
         self.request(rpc_method, rpc_params).await
@@ -500,6 +516,22 @@ impl RpcClient {
             QueryResponseKind::ViewState(view_state_result) => Ok(view_state_result),
             _ => unreachable!("Unexpected query response kind: {:?}", response.kind),
         }
+    }
+
+    pub async fn sandbox_fast_forward(&self, delta_height: BlockHeightDelta) -> Result<(), Error> {
+        let rpc_method = "sandbox_fast_forward";
+        let rpc_params = serde_json::json!({
+            "delta_height": delta_height,
+        });
+        self.request(rpc_method, rpc_params).await
+    }
+
+    pub async fn sandbox_patch_state(&self, records: Vec<StateRecord>) -> Result<(), Error> {
+        let rpc_method = "sandbox_patch_state";
+        let rpc_params = serde_json::json!({
+            "records": records,
+        });
+        self.request(rpc_method, rpc_params).await
     }
 }
 

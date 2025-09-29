@@ -4043,6 +4043,35 @@ impl From<AccessKey> for AccessKeyView {
     }
 }
 
+#[serde_as]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Eq, PartialEq)]
+pub enum StateRecord {
+    /// Account information.
+    Account {
+        account_id: AccountId,
+        account: Account,
+    },
+    /// Data records inside the contract, encoded in base64.
+    Data {
+        account_id: AccountId,
+        data_key: StoreKey,
+        value: StoreValue,
+    },
+    /// Contract code encoded in base64.
+    Contract {
+        account_id: AccountId,
+        #[serde_as(as = "Base64")]
+        code: Vec<u8>,
+    },
+    /// Access key associated with some account.
+    AccessKey {
+        account_id: AccountId,
+        public_key: PublicKey,
+        access_key: AccessKey,
+    },
+    // ... and others
+}
+
 impl From<AccessKeyView> for AccessKey {
     fn from(view: AccessKeyView) -> Self {
         Self {

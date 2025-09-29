@@ -831,8 +831,7 @@ pub fn GiftSuccessModal(result: GiftResult) -> impl IntoView {
                             class="w-full mt-3 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-200 cursor-pointer text-sm"
                             on:click=move |_| {
                                 let link = result.gift_link.clone();
-                                if let Some(window) = web_sys::window() {
-                                    let navigator = window.navigator();
+                                    let navigator = window().navigator();
                                     let clipboard = navigator.clipboard();
                                     let _ = clipboard.write_text(&link);
                                     set_is_copied.set(true);
@@ -841,7 +840,6 @@ pub fn GiftSuccessModal(result: GiftResult) -> impl IntoView {
                                         Duration::from_secs(2),
                                     );
                                 }
-                            }
                         >
                             {move || {
                                 if is_copied.get() {

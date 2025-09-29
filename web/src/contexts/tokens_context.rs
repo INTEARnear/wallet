@@ -1,14 +1,15 @@
-use std::{collections::HashSet, str::FromStr};
+use std::{collections::HashSet, future::Future, str::FromStr};
 
 use base64::{prelude::BASE64_STANDARD, Engine};
 use bigdecimal::BigDecimal;
 use codee::string::FromToStringCodec;
-use futures_util::future::join;
+use futures_util::{future::join, TryFutureExt};
+use itertools::Either;
 use json_filter::{Filter, Operator};
 use leptos::{prelude::*, task::spawn_local};
 use leptos_use::{core::ConnectionReadyState, use_websocket};
 use near_min_api::{
-    types::{AccountId, Balance, BlockHeight, CryptoHash, Finality, U128},
+    types::{AccountId, Balance, BlockHeight, BlockReference, CryptoHash, Finality, U128},
     utils::dec_format,
     QueryFinality,
 };
@@ -178,8 +179,15 @@ pub fn provide_token_context() {
                     .network
             });
         let ws_url = match network {
-            Some(Network::Mainnet) => "ws-events-v3.intear.tech",
-            Some(Network::Testnet) => "ws-events-v3-testnet.intear.tech",
+            Some(Network::Mainnet) => "ws-events-v3.intear.tech".to_string(),
+            Some(Network::Testnet) => "ws-events-v3-testnet.intear.tech".to_string(),
+            Some(Network::Localnet(network)) => {
+                if let Some(url) = &network.realtime_events_api_url {
+                    url.clone()
+                } else {
+                    return;
+                }
+            }
             None => return,
         };
         set_transfer_ws(if realtime_balance_updates() {
@@ -228,8 +236,15 @@ pub fn provide_token_context() {
                     .network
             });
         let ws_url = match network {
-            Some(Network::Mainnet) => "ws-events-v3.intear.tech",
-            Some(Network::Testnet) => "ws-events-v3-testnet.intear.tech",
+            Some(Network::Mainnet) => "ws-events-v3.intear.tech".to_string(),
+            Some(Network::Testnet) => "ws-events-v3-testnet.intear.tech".to_string(),
+            Some(Network::Localnet(network)) => {
+                if let Some(url) = &network.realtime_events_api_url {
+                    url.clone()
+                } else {
+                    return;
+                }
+            }
             None => return,
         };
         set_price_ws(if realtime_price_updates() {
@@ -487,20 +502,186 @@ pub fn provide_token_context() {
         let current_account = accounts_context.accounts.get().selected_account_id;
         let network = expect_context::<NetworkContext>().network.get();
 
-        leptos::task::spawn_local(async move {
-            let api_url = match network {
-                Network::Mainnet => "https://prices.intear.tech",
-                Network::Testnet => "https://prices-testnet.intear.tech",
+        spawn_local(async move {
+            let api_url: Either<String, Vec<AccountId>> = match &network {
+                Network::Mainnet => Either::Left("https://prices.intear.tech".to_string()),
+                Network::Testnet => Either::Left("https://prices-testnet.intear.tech".to_string()),
+                Network::Localnet(network) => {
+                    if let Some(url) = &network.prices_api_url {
+                        Either::Left(url.clone())
+                    } else {
+                        let mut tokens = network.tokens.clone();
+                        if let Some(wrapped_near) = &network.wrap_contract {
+                            if !tokens.contains(wrapped_near) {
+                                tokens.push(wrapped_near.clone())
+                            }
+                        }
+                        Either::Right(tokens)
+                    }
+                }
             };
-            let wrapped_near: AccountId = match network {
+            let wrapped_near: AccountId = match &network {
                 Network::Mainnet => "wrap.near".parse().unwrap(),
                 Network::Testnet => "wrap.testnet".parse().unwrap(),
+                Network::Localnet(network) => {
+                    if let Some(contract) = &network.wrap_contract {
+                        contract.clone()
+                    } else {
+                        return;
+                    }
+                }
             };
             set_loading(true);
             set_tokens(vec![]);
             if let Some(account_id) = current_account {
+                let account_id_clone = account_id.clone();
                 let (token_response, account_response) = join(
-                    reqwest::get(format!("{api_url}/get-user-tokens?account_id={account_id}")),
+                    match api_url {
+                        Either::Left(url) => Box::pin(
+                            reqwest::get(format!("{url}/get-user-tokens?account_id={account_id}"))
+                                .and_then(|r| r.json::<Vec<TokenData>>())
+                                .map_err(|e| e.to_string()),
+                        )
+                            as std::pin::Pin<
+                                Box<dyn Future<Output = Result<Vec<TokenData>, String>>>,
+                            >,
+                        Either::Right(tokens) => Box::pin(async move {
+                            let near_supply = rpc_client
+                                .client
+                                .get_untracked()
+                                .block(BlockReference::Finality(Finality::None))
+                                .await
+                                .map(|a| a.header.total_supply)
+                                .unwrap_or(0);
+                            let near = TokenData {
+                                balance: rpc_client
+                                    .client
+                                    .get_untracked()
+                                    .view_account(account_id_clone.clone(), QueryFinality::Finality(Finality::None))
+                                    .await
+                                    .map(|a| a.amount.as_yoctonear())
+                                    .unwrap_or(0),
+                                token: TokenInfo {
+                                    account_id: Token::Near,
+                                    metadata: TokenMetadata {
+                                        name: "NEAR".to_string(),
+                                        symbol: "NEAR".to_string(),
+                                        decimals: 24,
+                                        icon: Some(format!(
+                                            "data:image/svg+xml;base64,{}",
+                                            BASE64_STANDARD.encode(include_bytes!("../data/near.svg"))
+                                        )),
+                                    },
+                                    price_usd: Default::default(),
+                                    price_usd_hardcoded: Default::default(),
+                                    price_usd_raw: Default::default(),
+                                    price_usd_raw_24h_ago: Default::default(),
+                                    volume_usd_24h: Default::default(),
+                                    liquidity_usd: Default::default(),
+                                    circulating_supply: near_supply,
+                                    total_supply: near_supply,
+                                    reputation: TokenScore::Reputable,
+                                },
+                            };
+
+                            let balance_queries = tokens
+                                .iter()
+                                .map(|token| {
+                                    (
+                                        token.clone(),
+                                        "ft_balance_of",
+                                        serde_json::json!({
+                                            "account_id": account_id_clone,
+                                        }),
+                                        QueryFinality::Finality(Finality::None),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            let metadata_queries = tokens
+                                .iter()
+                                .map(|token| {
+                                    (
+                                        token.clone(),
+                                        "ft_metadata",
+                                        serde_json::json!({}),
+                                        QueryFinality::Finality(Finality::None),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            let total_supply_queries = tokens
+                                .iter()
+                                .map(|token| {
+                                    (
+                                        token.clone(),
+                                        "ft_total_supply",
+                                        serde_json::json!({}),
+                                        QueryFinality::Finality(Finality::None),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            if let Ok(response) = rpc_client
+                                .client
+                                .get_untracked()
+                                .batch_call::<U128>(balance_queries)
+                                .await
+                            {
+                                if let Ok(metadata_response) = rpc_client
+                                    .client
+                                    .get_untracked()
+                                    .batch_call::<TokenMetadata>(metadata_queries)
+                                    .await
+                                {
+                                    if let Ok(total_supply_response) = rpc_client
+                                        .client
+                                        .get_untracked()
+                                        .batch_call::<U128>(total_supply_queries)
+                                        .await
+                                    {
+                                        let token_data = response
+                                            .into_iter()
+                                            .zip(tokens.iter())
+                                            .zip(metadata_response.into_iter())
+                                            .zip(total_supply_response.into_iter())
+                                            .filter_map(
+                                                |(((balance_result, token), metadata_result), supply_result)| {
+                                                    if let (Ok(balance), Ok(metadata), Ok(supply)) =
+                                                        (balance_result, metadata_result, supply_result)
+                                                    {
+                                                        Some((balance, token, metadata, supply))
+                                                    } else {
+                                                        None
+                                                    }
+                                                },
+                                            )
+                                            .map(|(balance, token, metadata, supply)| TokenData {
+                                                balance: *balance,
+                                                token: TokenInfo {
+                                                    account_id: Token::Nep141(token.clone()),
+                                                    metadata,
+                                                    price_usd: Default::default(),
+                                                    price_usd_hardcoded: Default::default(),
+                                                    price_usd_raw: Default::default(),
+                                                    price_usd_raw_24h_ago: Default::default(),
+                                                    volume_usd_24h: Default::default(),
+                                                    liquidity_usd: Default::default(),
+                                                    circulating_supply: *supply,
+                                                    total_supply: *supply,
+                                                    reputation: TokenScore::NotFake,
+                                                },
+                                            })
+                                            .collect::<Vec<_>>();
+                                        Ok(token_data)
+                                    } else {
+                                        Ok(vec![near])
+                                    }
+                                } else {
+                                    Ok(vec![near])
+                                }
+                            } else {
+                                Ok(vec![near])
+                            }
+                        }),
+                    },
                     rpc_client.client.get_untracked().view_account(
                         account_id.clone(),
                         QueryFinality::Finality(Finality::DoomSlug),
@@ -508,19 +689,10 @@ pub fn provide_token_context() {
                 )
                 .await;
 
-                let Ok(token_response) = token_response else {
+                let Ok(token_data) = token_response else {
                     log::error!("Failed to fetch token data");
                     set_loading(false);
                     return;
-                };
-
-                let token_data = match token_response.json::<Vec<TokenData>>().await {
-                    Ok(token_data) => token_data,
-                    Err(err) => {
-                        log::error!("Failed to parse token data: {err:?}");
-                        set_loading(false);
-                        return;
-                    }
                 };
 
                 // Process and validate icons

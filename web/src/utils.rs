@@ -957,19 +957,17 @@ pub fn decimal_to_balance(decimal: BigDecimal, decimals: u32) -> Balance {
 }
 
 pub fn is_debug_enabled() -> bool {
-    if let Some(window) = web_sys::window() {
-        if let Ok(debug_value) = Reflect::get(&window, &"DEBUG".into()) {
-            if debug_value.as_bool().unwrap_or(false) {
-                return true;
-            }
+    if let Ok(debug_value) = Reflect::get(&window(), &"DEBUG".into()) {
+        if debug_value.as_bool().unwrap_or(false) {
+            return true;
         }
+    }
 
-        if let Ok(Some(local_storage)) = window.local_storage() {
-            if let Ok(Some(debug_value)) = local_storage.get_item("DEBUG") {
-                let debug_str = debug_value.trim().to_lowercase();
-                if !debug_str.is_empty() {
-                    return true;
-                }
+    if let Ok(Some(local_storage)) = window().local_storage() {
+        if let Ok(Some(debug_value)) = local_storage.get_item("DEBUG") {
+            let debug_str = debug_value.trim().to_lowercase();
+            if !debug_str.is_empty() {
+                return true;
             }
         }
     }
@@ -979,8 +977,15 @@ pub fn is_debug_enabled() -> bool {
 #[cached(time = 5, option = true)]
 pub async fn fetch_token_info(token_id: AccountId, network: Network) -> Option<TokenInfo> {
     let api_url = match network {
-        Network::Mainnet => "https://prices.intear.tech",
-        Network::Testnet => "https://prices-testnet.intear.tech",
+        Network::Mainnet => "https://prices.intear.tech".to_string(),
+        Network::Testnet => "https://prices-testnet.intear.tech".to_string(),
+        Network::Localnet(network) => {
+            if let Some(url) = &network.prices_api_url {
+                url.clone()
+            } else {
+                return None;
+            }
+        }
     };
     let response = reqwest::get(format!("{api_url}/token?token_id={token_id}"))
         .await

@@ -234,14 +234,19 @@ pub async fn fetch_nfts(
         return cache.read_untracked().values().cloned().collect();
     }
 
-    let api_host = match network {
-        Network::Mainnet => "api.fastnear.com",
-        Network::Testnet => "test.api.fastnear.com",
+    let api_url = match &network {
+        Network::Mainnet => "https://api.fastnear.com".to_string(),
+        Network::Testnet => "https://test.api.fastnear.com".to_string(),
+        Network::Localnet(network) => {
+            if let Some(host) = &network.fastnear_api_url {
+                host.clone()
+            } else {
+                return vec![];
+            }
+        }
     };
 
-    let Ok(response) =
-        reqwest::get(format!("https://{api_host}/v1/account/{account_id}/nft")).await
-    else {
+    let Ok(response) = reqwest::get(format!("{api_url}/v1/account/{account_id}/nft")).await else {
         return vec![];
     };
 

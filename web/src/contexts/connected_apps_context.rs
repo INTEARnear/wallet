@@ -7,7 +7,6 @@ use near_min_api::types::{
     AccountId, Action, NearToken, TransferAction,
 };
 use serde::{Deserialize, Serialize};
-use web_sys::window;
 
 use crate::contexts::transaction_queue_context::TransactionType;
 
@@ -110,7 +109,7 @@ pub struct ConnectedAppsContext {
 const CONNECTED_APPS_KEY: &str = "connected_apps";
 
 fn get_local_storage() -> Option<web_sys::Storage> {
-    window().and_then(|w| w.local_storage().ok()).flatten()
+    window().local_storage().ok().flatten()
 }
 
 fn load_apps() -> ConnectedAppsState {

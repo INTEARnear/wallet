@@ -363,6 +363,11 @@ impl TransactionType {
                     Network::Testnet => {
                         dotenvy_macro::dotenv!("TESTNET_ACCOUNT_CREATION_SERVICE_ADDR")
                     }
+                    Network::Localnet { .. } => {
+                        return Err(
+                            "Sponsored transactions on localnet are not supported".to_string()
+                        )
+                    }
                 };
                 let Ok(response) = reqwest::Client::new()
                     .post(format!(

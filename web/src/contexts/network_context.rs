@@ -2,6 +2,8 @@ use leptos::prelude::*;
 use near_min_api::RpcClient;
 use serde::{Deserialize, Serialize};
 
+use crate::contexts::config_context::CustomNetwork;
+
 use super::accounts_context::AccountsContext;
 
 #[derive(Clone, Copy)]
@@ -13,6 +15,7 @@ pub struct NetworkContext {
 pub enum Network {
     Mainnet,
     Testnet,
+    Localnet(Box<CustomNetwork>),
 }
 
 impl Network {
@@ -26,6 +29,7 @@ impl Network {
                 .split(',')
                 .map(String::from)
                 .collect::<Vec<_>>(),
+            Network::Localnet(network) => vec![network.rpc_url.clone()],
         })
     }
 }

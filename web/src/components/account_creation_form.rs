@@ -302,10 +302,13 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                         let account_creation_service_addr = match network_clone {
                             Network::Mainnet => {
                                 dotenvy_macro::dotenv!("MAINNET_ACCOUNT_CREATION_SERVICE_ADDR")
+                                    .to_string()
                             }
                             Network::Testnet => {
                                 dotenvy_macro::dotenv!("TESTNET_ACCOUNT_CREATION_SERVICE_ADDR")
+                                    .to_string()
                             }
+                            Network::Localnet { .. } => unreachable!(),
                         };
                         let response = client
                             .post(format!("{account_creation_service_addr}/create"))
@@ -482,16 +485,11 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
         set_ledger_connection_in_progress(true);
         let request = JsWalletRequest::LedgerConnect;
         if let Ok(js_value) = serde_wasm_bindgen::to_value(&request) {
-            let origin = web_sys::window()
-                .unwrap()
+            let origin = window()
                 .location()
                 .origin()
                 .unwrap_or_else(|_| "*".to_string());
-            if web_sys::window()
-                .unwrap()
-                .post_message(&js_value, &origin)
-                .is_err()
-            {
+            if window().post_message(&js_value, &origin).is_err() {
                 log::error!("Failed to send Ledger connection request");
                 set_ledger_connection_in_progress(false);
             }
@@ -611,6 +609,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                             let network = match account.network {
                                                                 Network::Mainnet => "mainnet",
                                                                 Network::Testnet => "testnet",
+                                                                Network::Localnet { .. } => continue,
                                                             };
                                                             options
                                                                 .push(
@@ -661,6 +660,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                                 network = match network {
                                                                     Network::Mainnet => "mainnet",
                                                                     Network::Testnet => "testnet",
+                                                                    Network::Localnet { .. } => unreachable!(),
                                                                 },
                                                             )
                                                         }
@@ -788,8 +788,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                 // }
                                 // });
                                 // set_error.set(None);
-                                // web_sys::window()
-                                // .unwrap()
+                                // window()
                                 // .alert_with_message(
                                 // "Come back in a few days for Ethereum support",
                                 // )
@@ -830,8 +829,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                 // }
                                 // });
                                 // set_error.set(None);
-                                // web_sys::window()
-                                // .unwrap()
+                                // window()
                                 // .alert_with_message(
                                 // "Come back in a few days for Solana support",
                                 // )
@@ -977,13 +975,11 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                                         if let Ok(js_value) = serde_wasm_bindgen::to_value(
                                                                             &request,
                                                                         ) {
-                                                                            let origin = web_sys::window()
-                                                                                .unwrap()
+                                                                            let origin = window()
                                                                                 .location()
                                                                                 .origin()
                                                                                 .unwrap_or_else(|_| "*".to_string());
-                                                                            if web_sys::window()
-                                                                                .unwrap()
+                                                                            if window()
                                                                                 .post_message(&js_value, &origin)
                                                                                 .is_err()
                                                                             {

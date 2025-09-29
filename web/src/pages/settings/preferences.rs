@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
 use crate::contexts::config_context::{BackgroundGroup, ConfigContext, HiddenNft};
+use crate::pages::swap::Slippage;
 use crate::utils::is_tauri;
 use bigdecimal::{BigDecimal, FromPrimitive};
 use leptos::prelude::*;
@@ -211,7 +212,7 @@ pub fn PreferencesSettings() -> impl IntoView {
                                             config_context
                                                 .set_config
                                                 .update(|config| {
-                                                    config.slippage = crate::pages::swap::Slippage::Fixed {
+                                                    config.slippage = Slippage::Fixed {
                                                         slippage: BigDecimal::from_f64(percentage).unwrap()
                                                             / BigDecimal::from(100),
                                                     };
@@ -246,7 +247,7 @@ pub fn PreferencesSettings() -> impl IntoView {
                                         config_context
                                             .set_config
                                             .update(|config| {
-                                                config.slippage = crate::pages::swap::Slippage::Fixed {
+                                                config.slippage = Slippage::Fixed {
                                                     slippage: percentage / BigDecimal::from(100),
                                                 };
                                             });
@@ -261,7 +262,7 @@ pub fn PreferencesSettings() -> impl IntoView {
                                 style=move || {
                                     if matches!(
                                         config_context.config.get().slippage,
-                                        crate::pages::swap::Slippage::Auto { .. }
+                                        Slippage::Auto { .. }
                                     ) {
                                         "background-color: rgb(59 130 246); color: white;"
                                     } else {
@@ -272,7 +273,7 @@ pub fn PreferencesSettings() -> impl IntoView {
                                     config_context
                                         .set_config
                                         .update(|config| {
-                                            config.slippage = crate::pages::swap::Slippage::default();
+                                            config.slippage = Slippage::default();
                                         });
                                     set_custom_slippage_input.set("".to_string());
                                 }

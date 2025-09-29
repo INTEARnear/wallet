@@ -93,8 +93,15 @@ async fn search_tokens(query: &str, account: Account) -> Result<Vec<TokenInfo>, 
     };
 
     let api_url = match account.network {
-        Network::Mainnet => "https://prices.intear.tech",
-        Network::Testnet => "https://prices-testnet.intear.tech",
+        Network::Mainnet => "https://prices.intear.tech".to_string(),
+        Network::Testnet => "https://prices-testnet.intear.tech".to_string(),
+        Network::Localnet(network) => {
+            if let Some(url) = &network.prices_api_url {
+                url.clone()
+            } else {
+                return Ok(vec![]);
+            }
+        }
     };
     let response = reqwest::Client::new()
         .get(format!("{api_url}/token-search"))
@@ -815,14 +822,21 @@ pub fn Swap() -> impl IntoView {
 
             // Set default output token (USDC)
             if token_out.get_untracked().is_none() {
-                let default_token_id = match account.network {
+                let default_token_id = Token::Nep141(match &account.network {
                     Network::Mainnet => {
                         "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
+                            .parse()
+                            .unwrap()
                     }
-                    Network::Testnet => "usdc.fakes.testnet",
-                }
-                .parse()
-                .unwrap();
+                    Network::Testnet => "usdc.fakes.testnet".parse().unwrap(),
+                    Network::Localnet(network) => {
+                        if let Some(contract) = &network.wrap_contract {
+                            contract.clone()
+                        } else {
+                            return;
+                        }
+                    }
+                });
 
                 let initial_token_out: Token = if let Some(to) = query.get().get("to") {
                     to.parse().unwrap_or(default_token_id)

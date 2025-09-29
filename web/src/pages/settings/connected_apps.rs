@@ -120,9 +120,10 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                     let nonce = Date::now() as u64;
                     let request = reqwest::Client::new().post(format!(
                         "{url}/api/logout_user/{network}",
-                        network = match account.network {
-                            Network::Mainnet => "mainnet",
-                            Network::Testnet => "testnet",
+                        network = match &account.network {
+                            Network::Mainnet => "mainnet".to_string(),
+                            Network::Testnet => "testnet".to_string(),
+                            Network::Localnet(network) => network.id.clone(),
                         }
                     ))
                     .json(&serde_json::json!({
@@ -184,9 +185,10 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
             spawn_local(async move {
                 for app in active_apps {
                     let url = dotenvy_macro::dotenv!("SHARED_LOGOUT_BRIDGE_SERVICE_ADDR");
-                    let network = match account.network {
-                        Network::Mainnet => "mainnet",
-                        Network::Testnet => "testnet",
+                    let network = match &account.network {
+                        Network::Mainnet => "mainnet".to_string(),
+                        Network::Testnet => "testnet".to_string(),
+                        Network::Localnet(network) => network.id.clone(),
                     };
                     let nonce = Date::now() as u64;
                     let message = format!("check|{nonce}");

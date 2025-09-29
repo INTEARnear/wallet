@@ -272,6 +272,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                             "TESTNET_ACCOUNT_CREATION_SERVICE_ADDR"
                                         )
                                     }
+                                    Network::Localnet { .. } => return,
                                 };
 
                                 let payload = RecoverRequest::EthereumSignature {
@@ -499,6 +500,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                             "TESTNET_ACCOUNT_CREATION_SERVICE_ADDR"
                                         )
                                     }
+                                    Network::Localnet { .. } => return,
                                 };
 
                                 let payload = RecoverRequest::SolanaSignature {

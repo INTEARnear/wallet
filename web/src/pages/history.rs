@@ -60,8 +60,15 @@ async fn fetch_transactions() -> Vec<TransactionResponse> {
         .expect("Selected account not found");
 
     let history_service_addr = match selected_account.network {
-        Network::Mainnet => dotenvy_macro::dotenv!("MAINNET_HISTORY_SERVICE_ADDR"),
-        Network::Testnet => dotenvy_macro::dotenv!("TESTNET_HISTORY_SERVICE_ADDR"),
+        Network::Mainnet => dotenvy_macro::dotenv!("MAINNET_HISTORY_SERVICE_ADDR").to_string(),
+        Network::Testnet => dotenvy_macro::dotenv!("TESTNET_HISTORY_SERVICE_ADDR").to_string(),
+        Network::Localnet(network) => {
+            if let Some(url) = &network.history_service_url {
+                url.clone()
+            } else {
+                return vec![];
+            }
+        }
     };
     if let Ok(response) = reqwest::get(format!(
         "{history_service_addr}/api/transactions/{selected_account_id}"
@@ -245,8 +252,7 @@ pub fn History() -> impl IntoView {
                                                                 <div
                                                                     on:click=move |_| {
                                                                         if !has_hash {
-                                                                            web_sys::window()
-                                                                                .unwrap()
+                                                                            window()
                                                                                 .alert_with_message(
                                                                                     "Transaction not found. This is a bug, please report it.",
                                                                                 )
@@ -271,9 +277,14 @@ pub fn History() -> impl IntoView {
                                                                                                             .expect("No selected account")
                                                                                                 })
                                                                                                 .expect("Selected account not found");
-                                                                                            let explorer_url = match selected_account.network {
-                                                                                                Network::Mainnet => "https://nearblocks.io",
-                                                                                                Network::Testnet => "https://testnet.nearblocks.io",
+                                                                                            let explorer_url = match &selected_account.network {
+                                                                                                Network::Mainnet => "https://nearblocks.io".to_string(),
+                                                                                                Network::Testnet => "https://testnet.nearblocks.io".to_string(),
+                                                                                                Network::Localnet(network) => if let Some(url) = &network.explorer_url {
+                                                                                                    url.clone()
+                                                                                                } else {
+                                                                                                    return "#".to_string();
+                                                                                                },
                                                                                             };
                                                                                             format!("{explorer_url}/txns/{hash}")
                                                                                         }

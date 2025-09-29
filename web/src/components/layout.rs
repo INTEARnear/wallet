@@ -35,12 +35,7 @@ const SWIPE_Y_THRESHOLD_PX: f64 = 75.0;
 const SWIPE_X_THRESHOLD_PX: f64 = 75.0;
 /// Distance from left edge to trigger account selector - scales with viewport width up to a maximum
 fn left_edge_threshold() -> f64 {
-    let viewport_width = web_sys::window()
-        .unwrap()
-        .inner_width()
-        .unwrap()
-        .as_f64()
-        .unwrap();
+    let viewport_width = window().inner_width().unwrap().as_f64().unwrap();
     (viewport_width * 0.25).min(120.0)
 }
 
@@ -137,7 +132,21 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
             ]
         }
         Network::Testnet => {
-            vec![HOME_ITEM, NFTS_ITEM, STAKE_ITEM, HISTORY_ITEM, EXPLORE_ITEM]
+            vec![HOME_ITEM, NFTS_ITEM, STAKE_ITEM, HISTORY_ITEM]
+        }
+        Network::Localnet(network) => {
+            let mut items = vec![HOME_ITEM, NFTS_ITEM, STAKE_ITEM, HISTORY_ITEM];
+            if network.staking_pools.is_empty() {
+                items.retain(|item| item.path != STAKE_ITEM.path);
+            }
+            if network.history_service_url.is_none() {
+                items.retain(|item| item.path != HISTORY_ITEM.path);
+            }
+            if network.fastnear_api_url.is_none() {
+                items.retain(|item| item.path != NFTS_ITEM.path);
+                items.retain(|item| item.path != STAKE_ITEM.path);
+            }
+            items
         }
     };
 

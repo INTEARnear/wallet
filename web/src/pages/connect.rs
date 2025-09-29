@@ -9,11 +9,11 @@ use near_min_api::types::{
     AccessKey, AccessKeyPermission, AccountId, Action, AddKeyAction, CryptoHash,
     FunctionCallPermission, NearToken,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use wasm_bindgen::JsCast;
 use web_sys::{js_sys::Date, Window};
 
-use crate::contexts::config_context::ConfigContext;
+use crate::contexts::config_context::{ConfigContext, WalletConfig};
 use crate::contexts::{
     accounts_context::{AccountsContext, SecretKeyHolder},
     connected_apps_context::{ConnectedApp, ConnectedAppsContext},
@@ -84,18 +84,39 @@ pub struct ConnectMessage {
     message_to_sign: Option<String>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone)]
 pub enum NetworkLowercase {
     Mainnet,
     Testnet,
+    Local(String),
 }
 
-impl From<NetworkLowercase> for Network {
-    fn from(network: NetworkLowercase) -> Self {
+impl<'de> Deserialize<'de> for NetworkLowercase {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Ok(match s.to_lowercase().as_str() {
+            "mainnet" => NetworkLowercase::Mainnet,
+            "testnet" => NetworkLowercase::Testnet,
+            _ => NetworkLowercase::Local(s),
+        })
+    }
+}
+
+impl Network {
+    fn from_lowecase(network: NetworkLowercase, config: &WalletConfig) -> Self {
         match network {
             NetworkLowercase::Mainnet => Network::Mainnet,
             NetworkLowercase::Testnet => Network::Testnet,
+            NetworkLowercase::Local(network) => {
+                if let Some(network) = config.custom_networks.iter().find(|n| n.id == network) {
+                    Network::Localnet(Box::new(network.clone()))
+                } else {
+                    panic!("Network not found");
+                }
+            }
         }
     }
 }
@@ -383,7 +404,7 @@ pub fn Connect() -> impl IntoView {
         };
         let selected_account = accounts_context
             .accounts
-            .get()
+            .get_untracked()
             .accounts
             .into_iter()
             .find(|a| a.account_id == selected_account_id)
@@ -472,16 +493,7 @@ pub fn Connect() -> impl IntoView {
                         ))
                     }
                 };
-                let secret_key_bytes = secret_key.unwrap_as_ed25519().0;
-                let (_secret_key, verifying_key) = secret_key_bytes.split_at(SECRET_KEY_LENGTH);
-                let _signing_key = ed25519_dalek::SigningKey::try_from(_secret_key)
-                    .expect("Failed to create signing key");
-                let _verifying_key = ed25519_dalek::VerifyingKey::try_from(verifying_key)
-                    .expect("Failed to create verifying key");
-                log::info!("Equal: {}", _signing_key.verifying_key() == _verifying_key);
-                log::info!("Signing message: {message}");
                 let signature = secret_key.sign(message.as_bytes());
-                log::info!("Signature: {signature}");
 
                 let login_request = LoginBridgeRequest {
                     account_id: selected_account_id.clone(),
@@ -494,8 +506,9 @@ pub fn Connect() -> impl IntoView {
 
                 let url = dotenvy_macro::dotenv!("SHARED_LOGOUT_BRIDGE_SERVICE_ADDR");
                 let network = match request_data.network_id {
-                    NetworkLowercase::Mainnet => "mainnet",
-                    NetworkLowercase::Testnet => "testnet",
+                    NetworkLowercase::Mainnet => "mainnet".to_string(),
+                    NetworkLowercase::Testnet => "testnet".to_string(),
+                    NetworkLowercase::Local(network) => network,
                 };
 
                 match reqwest::Client::new()
@@ -668,11 +681,12 @@ pub fn Connect() -> impl IntoView {
                         .iter()
                         .find(|a| a.account_id == selected_account_id)
                         .expect("Selected account not found")
-                        .network.clone();
-                    let request_network: Network = request_data()
-                        .expect("No request data")
-                        .network_id
-                        .into();
+                        .network
+                        .clone();
+                    let request_network = Network::from_lowecase(
+                        request_data().expect("No request data").network_id,
+                        &config.read(),
+                    );
                     let network_mismatch = selected_account_network != request_network;
 
                     view! {
@@ -857,15 +871,18 @@ pub fn Connect() -> impl IntoView {
                                                     </div>
                                                     <p class="text-yellow-500 text-sm">
                                                         "Network mismatch: The app is requesting to connect on "
-                                                        <b class="text-yellow-400">{match request_network {
-                                                            Network::Mainnet => "mainnet",
-                                                            Network::Testnet => "testnet",
-                                                        }}</b>
-                                                        " but your selected account is on "
                                                         <b class="text-yellow-400">
-                                                            {match selected_account_network {
-                                                                Network::Mainnet => "mainnet",
-                                                                Network::Testnet => "testnet",
+                                                            {match &request_network {
+                                                                Network::Mainnet => "mainnet".to_string(),
+                                                                Network::Testnet => "testnet".to_string(),
+                                                                Network::Localnet(network) => network.id.clone(),
+                                                            }}
+                                                        </b> " but your selected account is on "
+                                                        <b class="text-yellow-400">
+                                                            {match &selected_account_network {
+                                                                Network::Mainnet => "mainnet".to_string(),
+                                                                Network::Testnet => "testnet".to_string(),
+                                                                Network::Localnet(network) => network.id.clone(),
                                                             }}
                                                         </b> ". Please select a different account."
                                                     </p>

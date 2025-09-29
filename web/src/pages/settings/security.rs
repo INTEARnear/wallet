@@ -432,6 +432,7 @@ pub fn SecuritySettings() -> impl IntoView {
                     }
                 }
                 Network::Testnet => None,
+                Network::Localnet { .. } => None,
             };
 
             if is_ledger {

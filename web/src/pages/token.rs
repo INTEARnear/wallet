@@ -99,7 +99,7 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                     </A>
 
                     {move || {
-                        if network.get() != Network::Testnet {
+                        if matches!(network.get(), Network::Mainnet) {
                             let token_account_id = token_account_id4.clone();
                             view! {
                                 <A href=move || {
@@ -117,7 +117,8 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                                                         "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
                                                             .to_string()
                                                     }
-                                                    Network::Testnet => "usdc.fakes.testnet".to_string(),
+                                                    Network::Testnet => unreachable!(),
+                                                    Network::Localnet { .. } => unreachable!(),
                                                 }
                                             }
                                         },
@@ -308,16 +309,30 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
             <iframe
                 src=move || {
                     format!(
-                        "https://{}/?token={}&interval=15m",
+                        "{}/?token={}&interval=15m",
                         match network.get() {
-                            Network::Mainnet => "chart.intear.tech",
-                            Network::Testnet => "chart-testnet.intear.tech",
+                            Network::Mainnet => "https://chart.intear.tech".to_string(),
+                            Network::Testnet => "https://chart-testnet.intear.tech".to_string(),
+                            Network::Localnet(network) => {
+                                if let Some(url) = &network.charts_api_url {
+                                    url.clone()
+                                } else {
+                                    return "https://charts-api-not-configured".to_string();
+                                }
+                            }
                         },
                         match &token_account_id2 {
                             Token::Near => {
                                 match network.get() {
                                     Network::Mainnet => "wrap.near".to_string(),
                                     Network::Testnet => "wrap.testnet".to_string(),
+                                    Network::Localnet(network) => {
+                                        if let Some(contract) = &network.wrap_contract {
+                                            contract.to_string()
+                                        } else {
+                                            return "https://wrap-contract-not-configured".to_string();
+                                        }
+                                    }
                                 }
                             }
                             Token::Nep141(account_id) => account_id.to_string(),

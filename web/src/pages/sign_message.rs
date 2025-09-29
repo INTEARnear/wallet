@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use base64::{prelude::BASE64_STANDARD, Engine};
 use borsh::BorshSerialize;
 use chrono::{DateTime, Utc};
@@ -996,13 +998,12 @@ pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
         let Some(message) = message.get() else {
             return;
         };
-        let window = web_sys::window().unwrap();
-        let navigator = window.navigator();
+        let navigator = window().navigator();
         let _ = navigator.clipboard().write_text(&message.message);
         set_message_copied(true);
         set_timeout(
             move || set_message_copied(false),
-            std::time::Duration::from_millis(2000),
+            Duration::from_millis(2000),
         );
     };
 
@@ -1010,13 +1011,12 @@ pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
         let Some(deserialized) = message.get() else {
             return;
         };
-        let window = web_sys::window().unwrap();
-        let navigator = window.navigator();
+        let navigator = window().navigator();
         let _ = navigator.clipboard().write_text(&deserialized.recipient);
         set_recipient_copied(true);
         set_timeout(
             move || set_recipient_copied(false),
-            std::time::Duration::from_millis(2000),
+            Duration::from_millis(2000),
         );
     };
 
@@ -1049,14 +1049,10 @@ pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
         ];
 
         let command = shell_words::join(&command_parts);
-        let window = web_sys::window().unwrap();
-        let navigator = window.navigator();
+        let navigator = window().navigator();
         let _ = navigator.clipboard().write_text(&command);
         set_cli_copied(true);
-        set_timeout(
-            move || set_cli_copied(false),
-            std::time::Duration::from_millis(2000),
-        );
+        set_timeout(move || set_cli_copied(false), Duration::from_millis(2000));
     };
     view! {
         <div>

@@ -677,7 +677,7 @@ pub fn Gifts() -> impl IntoView {
                                 disabled=move || !can_add_more_tokens()
                                 on:click=move |_| {
                                     let nep141_list = nep141_tokens();
-                                    let selected_account_ids: std::collections::HashSet<_> = selected_fungible_tokens
+                                    let selected_account_ids: HashSet<_> = selected_fungible_tokens
                                         .get()
                                         .iter()
                                         .map(|(account_id, _, _)| account_id.clone())
