@@ -209,7 +209,7 @@ pub fn DeveloperSandbox() -> impl IntoView {
     let validate_account_name = move || {
         let name = new_account_name.get().trim().to_string();
         if name.is_empty() {
-            return (false, false, "Enter an account name".to_string());
+            return (false, false, "Enter an account name. You can't create an account on localnet as you do on mainnet, you can only do it on this page.".to_string());
         }
 
         let account_id_result = name.parse::<AccountId>();
