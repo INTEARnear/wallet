@@ -686,12 +686,12 @@ pub fn AccountSelector() -> impl IntoView {
                         if let Some(account_data) = response.accounts.get(&account_id) {
                             if let Some(profile) = &account_data.profile {
                                 if let Some(image) = &profile.image {
-                                    if let Some(ipfs_cid) = &image.ipfs_cid {
+                                    if let Some(_ipfs_cid) = &image.ipfs_cid {
                                         images.insert(
                                             account_id.clone(),
                                             Some(format!(
-                                                "https://ipfs.near.social/ipfs/{}",
-                                                ipfs_cid
+                                                "https://i.near.social/magic/large/https://near.social/magic/img/account/{}",
+                                                account_id
                                             )),
                                         );
                                     }
