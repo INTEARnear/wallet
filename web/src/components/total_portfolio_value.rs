@@ -73,6 +73,9 @@ fn AirdropButton(
         }
     });
 
+    let selected_account_id_memo =
+        Memo::new(move |_| accounts_context.accounts.get().selected_account_id);
+
     view! {
         <button
             class=move || {
@@ -87,8 +90,7 @@ fn AirdropButton(
                 if is_claiming.get() {
                     return;
                 }
-                let accounts = accounts_context.accounts.get();
-                if let Some(account_id) = accounts.selected_account_id {
+                if let Some(account_id) = selected_account_id_memo() {
                     set_is_claiming.set(true);
                     spawn_local(async move {
                         let proxy_base = dotenvy_macro::dotenv!("SHARED_NFT_PROXY_SERVICE_ADDR");

@@ -71,7 +71,7 @@ pub fn TokenBalanceList() -> impl IntoView {
                                 * &BigDecimal::from(token.token.circulating_supply)
                                 / power_of_10(USDT_DECIMALS)
                                 >= BigDecimal::from(100_000_000_000_000u128);
-                            if market_cap_is_abnormal && network.get() != Network::Testnet {
+                            if market_cap_is_abnormal && network.get() == Network::Mainnet {
                                 log::warn!(
                                     "Hiding token {:?} as it has abnormal market cap",
                                     token.token.account_id
@@ -91,7 +91,6 @@ pub fn TokenBalanceList() -> impl IntoView {
                             true
                         })
                         .collect::<Vec<_>>();
-                    // Probably a bug in price indexer
 
                     view! {
                         <>

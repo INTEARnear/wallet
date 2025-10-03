@@ -497,9 +497,12 @@ pub fn provide_token_context() {
         }
     });
 
+    let selected_account_id_memo =
+        Memo::new(move |_| accounts_context.accounts.get().selected_account_id);
+
     // When the selected account changes
     Effect::new(move |_| {
-        let current_account = accounts_context.accounts.get().selected_account_id;
+        let current_account = selected_account_id_memo();
         let network = expect_context::<NetworkContext>().network.get();
 
         spawn_local(async move {
