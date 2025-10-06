@@ -687,7 +687,8 @@ pub fn Connect() -> impl IntoView {
                         request_data().expect("No request data").network_id,
                         &config.read(),
                     );
-                    let network_mismatch = selected_account_network != request_network;
+                    let network_mismatch = selected_account_network != request_network
+                        && !matches!(selected_account_network, Network::Localnet(_));
 
                     view! {
                         <div class="flex flex-col items-center gap-6 max-w-md w-full">
