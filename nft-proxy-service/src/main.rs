@@ -8,6 +8,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use base64::{engine::general_purpose, Engine};
 use bytes::Bytes;
 use image::{imageops::FilterType, DynamicImage};
 use moka::future::Cache;
@@ -47,6 +48,12 @@ pub enum HiddenNft {
 struct AirdropClaimRequest {
     addr: AccountId,
     airdrop_id: i32,
+}
+
+#[derive(Deserialize)]
+struct MemeCookingRequest {
+    image: String,
+    reference: String,
 }
 
 #[derive(Clone)]
@@ -132,6 +139,7 @@ async fn main() {
         .route("/airdrop/claim", post(airdrop_claim_handler))
         .route("/report-spam", post(report_spam_handler))
         .route("/spam-list", get(spam_list_handler))
+        .route("/meme-cooking-create", post(meme_cooking_create_handler))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
@@ -735,6 +743,78 @@ async fn traits_proxy_handler(
     state.cache.insert(cache_key, Ok(bytes.clone())).await;
 
     Ok(bytes)
+}
+
+async fn meme_cooking_create_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<MemeCookingRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let image_bytes = general_purpose::STANDARD
+        .decode(&payload.image)
+        .map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("Invalid base64 image: {}", e),
+            )
+        })?;
+
+    let reference_bytes = general_purpose::STANDARD
+        .decode(&payload.reference)
+        .map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("Invalid base64 reference: {}", e),
+            )
+        })?;
+
+    let form = reqwest::multipart::Form::new()
+        .part(
+            "imageFile",
+            reqwest::multipart::Part::bytes(image_bytes)
+                .file_name("token.webp".to_string())
+                .mime_str("image/webp")
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Failed to create image part: {}", e),
+                    )
+                })?,
+        )
+        .part(
+            "reference",
+            reqwest::multipart::Part::bytes(reference_bytes),
+        );
+
+    let res = state
+        .client
+        .post("https://meme.cooking/api/create")
+        .header("Origin", "https://meme.cooking")
+        .multipart(form)
+        .send()
+        .await;
+
+    let response = match res {
+        Ok(response) => response,
+        Err(e) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to forward request to meme.cooking: {}", e),
+            ));
+        }
+    };
+
+    let status = response.status();
+    let bytes = match response.bytes().await {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to read response bytes: {}", e),
+            ));
+        }
+    };
+
+    Ok((status, bytes))
 }
 
 fn is_local(host: Option<Host<&str>>) -> bool {

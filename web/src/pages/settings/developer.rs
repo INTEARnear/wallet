@@ -1,6 +1,6 @@
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
-use leptos_router::hooks::use_navigate;
+use leptos_router::{components::A, hooks::use_navigate};
 use near_min_api::{types::AccountId, RpcClient};
 use reqwest::Url;
 use std::collections::HashMap;
@@ -264,6 +264,29 @@ pub fn DeveloperSettings() -> impl IntoView {
                     "To create an account on testnet, tap \".near\"
                     and select \".testnet\" in the dropdown on account creation page."
                 </span>
+            </div>
+
+            // Create Token
+            <div class="flex flex-col gap-4">
+                <div class="text-lg font-semibold">"Token Factory"</div>
+                <A
+                    href="/settings/developer/create_token"
+                    attr:class="flex items-center justify-between p-3 bg-neutral-800 rounded-lg border border-neutral-700 hover:bg-neutral-700 cursor-pointer"
+                >
+                    <div class="flex items-center gap-3">
+                        <Icon icon=icondata::LuPlus attr:class="min-w-5 min-h-5" />
+                        <div class="flex flex-col gap-1">
+                            <div class="font-medium">"Create Token"</div>
+                            <div class="text-sm text-gray-400">
+                                "Create your own fungible token"
+                            </div>
+                        </div>
+                    </div>
+                    <Icon
+                        icon=icondata::LuChevronRight
+                        attr:class="min-w-5 min-h-5 text-gray-400"
+                    />
+                </A>
             </div>
 
             // Localnet section

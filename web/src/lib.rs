@@ -53,8 +53,8 @@ use crate::pages::send::SendToken;
 use crate::pages::send_transactions::SendTransactions;
 use crate::pages::settings::Settings;
 use crate::pages::settings::{
-    AccountSettings, ConnectedAppsSettings, DeveloperSandbox, DeveloperSettings,
-    PreferencesSettings, SecurityLogPage, SecuritySettings,
+    AccountSettings, ConnectedAppsSettings, DeveloperCreateToken, DeveloperSandbox,
+    DeveloperSettings, PreferencesSettings, SecurityLogPage, SecuritySettings,
 };
 use crate::pages::sign_message::SignMessage;
 use crate::pages::stake::{Stake, StakeValidator, UnstakeValidator};
@@ -178,6 +178,10 @@ pub fn App() -> impl IntoView {
                             </ParentRoute>
                             <Route path=path!("/preferences") view=PreferencesSettings />
                             <Route path=path!("/developer") view=DeveloperSettings />
+                            <Route
+                                path=path!("/developer/create_token")
+                                view=DeveloperCreateToken
+                            />
                             <Route
                                 path=path!("/developer/sandbox/:network_id")
                                 view=DeveloperSandbox

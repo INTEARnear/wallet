@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct ModalContext {
     pub modal: RwSignal<Option<Box<dyn Fn() -> AnyView>>, LocalStorage>,
 }
