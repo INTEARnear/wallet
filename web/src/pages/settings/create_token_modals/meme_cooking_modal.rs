@@ -917,8 +917,6 @@ fn MemeCookingSuccessModal(token_symbol: String) -> impl IntoView {
         modal_context.modal.set(None);
     };
 
-    let meme_cooking_url = "https://meme.cooking";
-
     view! {
         <div
             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
@@ -938,7 +936,7 @@ fn MemeCookingSuccessModal(token_symbol: String) -> impl IntoView {
                         " has been launched on Meme Cooking."
                     </p>
                     <a
-                        href=meme_cooking_url
+                        href="https://meme.cooking"
                         target="_blank"
                         rel="noopener noreferrer"
                         class="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-center cursor-pointer"

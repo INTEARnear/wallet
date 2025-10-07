@@ -1,17 +1,27 @@
 use bigdecimal::BigDecimal;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
+use leptos_router::components::A;
 use near_min_api::{
-    types::{AccountId, Finality},
+    types::{
+        near_crypto::{KeyType, SecretKey},
+        AccessKey, AccountContract, AccountId, Action, CreateAccountAction, CryptoHash,
+        FinalExecutionStatus, Finality, FunctionCallAction, GlobalContractIdentifier, NearGas,
+        NearToken, StateRecord, TransferAction, UseGlobalContractAction,
+    },
     QueryFinality,
 };
 
 use crate::{
     contexts::{
-        account_selector_context::AccountSelectorContext, accounts_context::AccountsContext,
-        modal_context::ModalContext, rpc_context::RpcContext,
+        account_selector_context::AccountSelectorContext,
+        accounts_context::AccountsContext,
+        modal_context::ModalContext,
+        network_context::{Network, NetworkContext},
+        rpc_context::RpcContext,
+        transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
-    utils::format_account_id,
+    utils::{decimal_to_balance, format_account_id},
 };
 
 #[derive(Clone, Debug)]
@@ -45,8 +55,30 @@ where
     let accounts_context = expect_context::<AccountsContext>();
     let AccountSelectorContext { set_expanded, .. } = expect_context::<AccountSelectorContext>();
     let RpcContext { client, .. } = expect_context::<RpcContext>();
+    let network_context = expect_context::<NetworkContext>();
+    let TransactionQueueContext {
+        add_transaction, ..
+    } = expect_context::<TransactionQueueContext>();
 
     let selected_account = move || accounts_context.accounts.get().selected_account_id;
+
+    let token_image_for_deposit = token_image.clone();
+    let token_name_for_deposit = token_name.clone();
+    let token_symbol_for_deposit = token_symbol.clone();
+    let calculate_deposit = move || {
+        let estimated_overhead_bytes = 360;
+        let image_base64_bytes = token_image_for_deposit.len();
+        let estimated_size_bytes = image_base64_bytes
+            + token_name_for_deposit.len()
+            + token_symbol_for_deposit.len()
+            + estimated_overhead_bytes;
+        let size_bd = BigDecimal::from(estimated_size_bytes as u64);
+        let divisor = BigDecimal::from(100_000u64);
+        let size_near = size_bd / divisor;
+        let size_yoctonear = decimal_to_balance(size_near, 24);
+        NearToken::from_yoctonear(size_yoctonear)
+    };
+    let calculate_deposit_clone = calculate_deposit.clone();
 
     let (account_check_state, set_account_check_state) = signal(AccountCheckState::NotChecked);
 
@@ -184,7 +216,230 @@ where
         log::info!("Contract Address: {}", f.contract_address);
         log::info!("Mint Tokens To: {}", f.mint_tokens_to);
 
-        let _ = window().alert_with_message("Tomorrop!");
+        let Ok(contract_id) = f.contract_address.parse::<AccountId>() else {
+            return;
+        };
+        let Some(selected_account) = selected_account() else {
+            return;
+        };
+        let rpc_client = client.get();
+
+        let token_symbol_clone = token_symbol_clone.clone();
+        let token_name_clone = token_name_clone.clone();
+        let token_image_clone = token_image_clone.clone();
+        let Ok(mint_tokens_to) = f.mint_tokens_to.parse::<AccountId>() else {
+            return;
+        };
+        let total_supply = decimal_to_balance(token_supply_clone.clone(), token_decimals);
+        let deposit = calculate_deposit();
+        spawn_local(async move {
+            let mut actions = vec![];
+            if contract_id.is_sub_account_of(&selected_account) {
+                actions.push(Action::CreateAccount(CreateAccountAction {}));
+                actions.push(Action::Transfer(TransferAction { deposit }));
+            }
+
+            match network_context.network.get() {
+                Network::Mainnet => {
+                    actions.push(Action::UseGlobalContract(Box::new(
+                        UseGlobalContractAction {
+                            contract_identifier: GlobalContractIdentifier::CodeHash(
+                                "8D1NEU2NC2hKhdtCkHyyAz2KVmVXRazm9ZQMC27D97jF"
+                                    .parse()
+                                    .unwrap(),
+                            ),
+                        },
+                    )));
+                }
+                Network::Testnet => {
+                    actions.push(Action::UseGlobalContract(Box::new(
+                        UseGlobalContractAction {
+                            contract_identifier: GlobalContractIdentifier::CodeHash(
+                                "8D1NEU2NC2hKhdtCkHyyAz2KVmVXRazm9ZQMC27D97jF"
+                                    .parse()
+                                    .unwrap(),
+                            ),
+                        },
+                    )));
+                }
+                Network::Localnet(_) => {
+                    let token_code = Network::Testnet
+                        .default_rpc_client()
+                        .view_code(
+                            "test.ssedfsdf.testnet".parse().unwrap(),
+                            QueryFinality::Finality(Finality::None),
+                        )
+                        .await
+                        .unwrap()
+                        .code;
+                    let secret_key = SecretKey::from_random(KeyType::ED25519);
+                    let records = vec![
+                        StateRecord::Account {
+                            account_id: contract_id.clone(),
+                            account: near_min_api::types::Account::new(
+                                NearToken::from_near(1000),
+                                NearToken::from_near(0),
+                                AccountContract::Local(CryptoHash::hash_bytes(&token_code)),
+                                0,
+                            ),
+                        },
+                        StateRecord::Contract {
+                            account_id: contract_id.clone(),
+                            code: token_code,
+                        },
+                        StateRecord::AccessKey {
+                            account_id: contract_id.clone(),
+                            public_key: secret_key.public_key(),
+                            access_key: AccessKey::full_access(),
+                        },
+                    ];
+                    match rpc_client.sandbox_patch_state(records).await {
+                        Ok(()) => {
+                            let actions =
+                                vec![Action::FunctionCall(Box::new(FunctionCallAction {
+                                    method_name: "new".to_string(),
+                                    args: serde_json::to_vec(&serde_json::json!({
+                                        "owner_id": mint_tokens_to,
+                                        "total_supply": total_supply.to_string(),
+                                        "metadata": {
+                                            "spec": "ft-1.0.0",
+                                            "name": token_name_clone,
+                                            "symbol": token_symbol_clone,
+                                            "icon": token_image_clone,
+                                            "reference": null,
+                                            "reference_hash": null,
+                                            "decimals": token_decimals,
+                                        }
+                                    }))
+                                    .unwrap(),
+                                    gas: NearGas::from_tgas(300).as_gas(),
+                                    deposit: NearToken::from_yoctonear(0),
+                                }))];
+                            let (rx, transaction) = EnqueuedTransaction::create(
+                                format!("Deploy {token_symbol_clone} contract"),
+                                selected_account.clone(),
+                                contract_id.clone(),
+                                actions,
+                            );
+                            add_transaction.update(|txs| txs.push(transaction));
+                            match rx.await {
+                                Ok(Ok(tx_details)) => {
+                                    if let Some(outcome) = tx_details.final_execution_outcome {
+                                        let tx_hash = outcome.final_outcome.transaction.hash;
+                                        match outcome.final_outcome.status {
+                                            FinalExecutionStatus::SuccessValue(_) => {
+                                                log::info!("Token contract deployed successfully: {tx_hash}");
+                                                modal_context.modal.set(Some(Box::new(
+                                                    move || {
+                                                        view! {
+                                                        <WithoutLaunchpadSuccessModal
+                                                            token_symbol=token_symbol_clone.clone()
+                                                            contract_id=contract_id.clone()
+                                                        />
+                                                    }.into_any()
+                                                    },
+                                                )));
+                                                return;
+                                            }
+                                            FinalExecutionStatus::Failure(_) => {
+                                                log::error!(
+                                                    "Token contract deployment failed: {tx_hash}"
+                                                );
+                                                modal_context.modal.set(Some(Box::new(move || {
+                                                    view! { <WithoutLaunchpadErrorModal tx_hash=tx_hash /> }.into_any()
+                                                })));
+                                                return;
+                                            }
+                                            _ => {
+                                                log::error!("Unexpected transaction status");
+                                                return;
+                                            }
+                                        }
+                                    }
+                                }
+                                Ok(Err(e)) => {
+                                    log::error!("Transaction failed: {e}");
+                                    return;
+                                }
+                                Err(_) => {
+                                    log::error!("Transaction cancelled");
+                                    return;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Failed to deploy token contract: {e}");
+                            return;
+                        }
+                    }
+                }
+            }
+
+            actions.push(Action::FunctionCall(Box::new(FunctionCallAction {
+                method_name: "new".to_string(),
+                args: serde_json::to_vec(&serde_json::json!({
+                    "owner_id": mint_tokens_to,
+                    "total_supply": total_supply.to_string(),
+                    "metadata": {
+                        "spec": "ft-1.0.0",
+                        "name": token_name_clone,
+                        "symbol": token_symbol_clone,
+                        "icon": token_image_clone,
+                        "reference": null,
+                        "reference_hash": null,
+                        "decimals": token_decimals,
+                    }
+                }))
+                .unwrap(),
+                gas: NearGas::from_tgas(300).as_gas(),
+                deposit: NearToken::from_yoctonear(0),
+            })));
+
+            let (rx, transaction) = EnqueuedTransaction::create(
+                format!("Deploy {token_symbol_clone} contract"),
+                selected_account.clone(),
+                contract_id.clone(),
+                actions,
+            );
+            add_transaction.update(|txs| txs.push(transaction));
+            match rx.await {
+                Ok(Ok(tx_details)) => {
+                    if let Some(outcome) = tx_details.final_execution_outcome {
+                        let tx_hash = outcome.final_outcome.transaction.hash;
+                        match outcome.final_outcome.status {
+                            FinalExecutionStatus::SuccessValue(_) => {
+                                log::info!("Token contract deployed successfully: {tx_hash}");
+                                modal_context.modal.set(Some(Box::new(move || {
+                                    view! {
+                                        <WithoutLaunchpadSuccessModal
+                                            token_symbol=token_symbol_clone.clone()
+                                            contract_id=contract_id.clone()
+                                        />
+                                    }
+                                    .into_any()
+                                })));
+                            }
+                            FinalExecutionStatus::Failure(_) => {
+                                log::error!("Token contract deployment failed: {tx_hash}");
+                                modal_context.modal.set(Some(Box::new(move || {
+                                    view! { <WithoutLaunchpadErrorModal tx_hash=tx_hash /> }
+                                        .into_any()
+                                })));
+                            }
+                            _ => {
+                                log::error!("Unexpected transaction status");
+                            }
+                        }
+                    }
+                }
+                Ok(Err(e)) => {
+                    log::error!("Transaction failed: {e}");
+                }
+                Err(_) => {
+                    log::error!("Transaction cancelled");
+                }
+            }
+        });
 
         on_confirm();
         close_modal();
@@ -442,7 +697,7 @@ where
                             disabled=move || !is_valid()
                             class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded cursor-pointer"
                         >
-                            "Confirm"
+                            {move || format!("Confirm ({})", calculate_deposit_clone())}
                         </button>
                         <button
                             on:click=move |_| close_modal()
@@ -451,6 +706,112 @@ where
                             "Cancel"
                         </button>
                     </div>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn WithoutLaunchpadSuccessModal(token_symbol: String, contract_id: AccountId) -> impl IntoView {
+    let modal_context = expect_context::<ModalContext>();
+
+    let close_modal = move || {
+        modal_context.modal.set(None);
+    };
+
+    view! {
+        <div
+            class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+            on:click=move |_| close_modal()
+        >
+            <div
+                class="bg-neutral-900 border border-neutral-700 rounded-lg p-6 max-w-md w-full m-4"
+                on:click=move |e| e.stop_propagation()
+            >
+                <div class="flex flex-col items-center gap-4">
+                    <div class="w-16 h-16 rounded-full bg-green-900/30 border border-green-700 flex items-center justify-center text-green-400">
+                        <Icon icon=icondata::LuCheck width="32" height="32" />
+                    </div>
+                    <h2 class="text-xl font-semibold">"Token Deployed Successfully!"</h2>
+                    <p class="text-center text-gray-400">
+                        "Your token " <span class="font-semibold text-white">{token_symbol}</span>
+                        " has been deployed to "
+                        <span class="font-mono text-white">{contract_id.to_string()}</span>
+                    </p>
+                    <A
+                        href=format!("/token/{contract_id}")
+                        attr:class="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-center cursor-pointer"
+                    >
+                        "View"
+                    </A>
+                    <button
+                        on:click=move |_| close_modal()
+                        class="w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded cursor-pointer"
+                    >
+                        "Close"
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn WithoutLaunchpadErrorModal(tx_hash: CryptoHash) -> impl IntoView {
+    let modal_context = expect_context::<ModalContext>();
+    let network_context = expect_context::<NetworkContext>();
+
+    let close_modal = move || {
+        modal_context.modal.set(None);
+    };
+
+    let nearblocks_url = move || match network_context.network.get() {
+        Network::Mainnet => Some(format!("https://nearblocks.io/txns/{tx_hash}")),
+        Network::Testnet => Some(format!("https://testnet.nearblocks.io/txns/{tx_hash}")),
+        Network::Localnet(_) => None,
+    };
+
+    view! {
+        <div
+            class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+            on:click=move |_| close_modal()
+        >
+            <div
+                class="bg-neutral-900 border border-neutral-700 rounded-lg p-6 max-w-md w-full m-4"
+                on:click=move |e| e.stop_propagation()
+            >
+                <div class="flex flex-col items-center gap-4">
+                    <div class="w-16 h-16 rounded-full bg-red-900/30 border border-red-700 flex items-center justify-center text-red-400">
+                        <Icon icon=icondata::LuX width="32" height="32" />
+                    </div>
+                    <h2 class="text-xl font-semibold">"Deployment Failed"</h2>
+                    <p class="text-center text-gray-400">
+                        "There was an error deploying your token contract."
+                    </p>
+                    {move || {
+                        if let Some(url) = nearblocks_url() {
+                            view! {
+                                <a
+                                    href=url
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-center cursor-pointer"
+                                >
+                                    "View Transaction Details"
+                                </a>
+                            }
+                                .into_any()
+                        } else {
+                            ().into_any()
+                        }
+                    }}
+                    <button
+                        on:click=move |_| close_modal()
+                        class="w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded cursor-pointer"
+                    >
+                        "Close"
+                    </button>
                 </div>
             </div>
         </div>

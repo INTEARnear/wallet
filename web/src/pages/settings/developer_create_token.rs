@@ -619,22 +619,19 @@ pub fn DeveloperCreateToken() -> impl IntoView {
 
                                         <div class="text-xs text-gray-400">
                                             {move || {
-                                                let estimated_overhead_bytes = 500;
                                                 let image_base64_bytes = form_data
                                                     .get()
                                                     .image
                                                     .as_ref()
                                                     .map(|s| s.len())
                                                     .unwrap_or(0);
-                                                let estimated_size_bytes = image_base64_bytes
-                                                    + form_data.get().name.len() + form_data.get().symbol.len()
-                                                    + estimated_overhead_bytes;
+                                                let estimated_size_bytes = image_base64_bytes;
                                                 let size_bd = BigDecimal::from(estimated_size_bytes as u64);
                                                 let divisor = BigDecimal::from(100_000u64);
                                                 let size_near = size_bd / divisor;
                                                 let size_yoctonear = decimal_to_balance(size_near, 24);
                                                 let size_near = NearToken::from_yoctonear(size_yoctonear);
-                                                format!("This will cost ~{size_near}")
+                                                format!("This image will cost ~{size_near}")
                                             }}
                                         </div>
                                     </div>
