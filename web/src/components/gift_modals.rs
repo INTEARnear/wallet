@@ -1059,7 +1059,7 @@ fn create_gift(
                     }))
                     .unwrap(),
                     gas: NearGas::from_tgas(5).as_gas(),
-                    deposit: "0.002 NEAR".parse().unwrap(),
+                    deposit: "0.00125 NEAR".parse().unwrap(),
                 }));
                 actions.push(storage_action);
             }
