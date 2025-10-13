@@ -6,7 +6,7 @@ The same JSON payloads are also used when Intear Wallet runs in a desktop / mobi
 1. Connect to `wss://logout-bridge-service/api/session/create`
 2. Receive a message with newly generated Session ID.
 3. Send a message to that WebSocket connection with the request data (`{"type":"...","data":{...}}`, same message as sent using `postMessage`)
-4. Open `intear://connect?sessionId={sessionId}`, `intear://sign-message?sessionId={sessionId}`, `intear://send-transactions?sessionId={sessionId}`
+4. Open `intear://connect?session_id={sessionId}`, `intear://sign-message?session_id={sessionId}`, `intear://send-transactions?session_id={sessionId}`
 5. Wait for wallet response coming from the WebSocket connection.
 
 ---
