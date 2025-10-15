@@ -30,6 +30,7 @@ use super::{
 pub enum Token {
     Near,
     Nep141(AccountId),
+    Rhea(AccountId),
 }
 
 impl FromStr for Token {
@@ -77,11 +78,18 @@ pub struct TokenMetadata {
     pub icon: Option<String>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Deserialize, Debug, PartialEq)]
 pub struct TokenData {
     #[serde(with = "dec_format")]
     pub balance: Balance,
     pub token: TokenInfo,
+    pub source: TokenBalanceSource,
+}
+
+#[derive(Clone, Deserialize, Debug, PartialEq)]
+pub enum TokenBalanceSource {
+    Direct,
+    Rhea,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -540,7 +548,7 @@ pub fn provide_token_context() {
                 let (token_response, account_response) = join(
                     match api_url {
                         Either::Left(url) => Box::pin(
-                            reqwest::get(format!("{url}/get-user-tokens?account_id={account_id}"))
+                            reqwest::get(format!("{url}/get-user-tokens?account_id={account_id}&direct=true&rhea=true"))
                                 .and_then(|r| r.json::<Vec<TokenData>>())
                                 .map_err(|e| e.to_string()),
                         )
@@ -584,6 +592,7 @@ pub fn provide_token_context() {
                                     total_supply: near_supply,
                                     reputation: TokenScore::Reputable,
                                 },
+                                source: TokenBalanceSource::Direct,
                             };
 
                             let balance_queries = tokens
@@ -670,6 +679,7 @@ pub fn provide_token_context() {
                                                     total_supply: *supply,
                                                     reputation: TokenScore::NotFake,
                                                 },
+                                                source: TokenBalanceSource::Direct,
                                             })
                                             .collect::<Vec<_>>();
                                         Ok(token_data)
@@ -708,6 +718,12 @@ pub fn provide_token_context() {
                                 token.token.metadata.icon = None;
                             }
                         }
+                        // Move Rhea tokens to Rhea variant
+                        if matches!(token.source, TokenBalanceSource::Rhea) {
+                            if let Token::Nep141(account_id) = &token.token.account_id {
+                                token.token.account_id = Token::Rhea(account_id.clone());
+                            }
+                        }
                         token
                     })
                     .collect::<Vec<_>>();
@@ -740,6 +756,7 @@ pub fn provide_token_context() {
                             total_supply: wnear_token.token.total_supply,
                             reputation: TokenScore::Reputable,
                         },
+                        source: TokenBalanceSource::Direct,
                     };
                     // NEAR always first
                     token_data.insert(0, near);
@@ -838,20 +855,24 @@ pub fn provide_token_context() {
                 let t1_hardcoded_order = match &t1.token.account_id {
                     Token::Near => 0,
                     Token::Nep141(_) => 1,
+                    Token::Rhea(_) => 2,
                 };
                 let t2_hardcoded_order = match &t2.token.account_id {
                     Token::Near => 0,
                     Token::Nep141(_) => 1,
+                    Token::Rhea(_) => 2,
                 };
                 let t1_value = BigDecimal::from(t1.balance) * &t1.token.price_usd_raw;
                 let t2_value = BigDecimal::from(t2.balance) * &t2.token.price_usd_raw;
                 let t1_name_comparable = match &t1.token.account_id {
                     Token::Near => "NEAR".to_string(),
                     Token::Nep141(id) => id.to_string(),
+                    Token::Rhea(id) => id.to_string(),
                 };
                 let t2_name_comparable = match &t2.token.account_id {
                     Token::Near => "NEAR".to_string(),
                     Token::Nep141(id) => id.to_string(),
+                    Token::Rhea(id) => id.to_string(),
                 };
                 t1_hardcoded_order
                     .cmp(&t2_hardcoded_order)

@@ -158,6 +158,7 @@ pub fn TrendingTokensSection() -> impl IntoView {
                                             let token_id = match &token.account_id {
                                                 Token::Near => "near".to_string(),
                                                 Token::Nep141(account_id) => account_id.to_string(),
+                                                Token::Rhea(account_id) => account_id.to_string(),
                                             };
                                             view! {
                                                 <A
@@ -387,6 +388,7 @@ pub fn ForYouSection() -> impl IntoView {
                 if STABLES.contains(&match &token.token.account_id {
                     Token::Nep141(account_id) => account_id.as_str(),
                     Token::Near => return None,
+                    Token::Rhea(_) => return None,
                 }) {
                     let normalized_balance =
                         balance_to_decimal(token.balance, token.token.metadata.decimals);

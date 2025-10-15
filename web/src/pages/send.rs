@@ -374,6 +374,7 @@ pub fn SendToken() -> impl IntoView {
             .find(|t| match &t.token.account_id {
                 Token::Near => token_id() == "near",
                 Token::Nep141(account_id) => *account_id == token_id(),
+                Token::Rhea(_) => false,
             })
     };
 
@@ -524,6 +525,7 @@ pub fn SendToken() -> impl IntoView {
                                 _ => (0, Err(()), Err(())),
                             }
                         }
+                        Token::Rhea(_) => (0, Err(()), Err(())),
                     };
                     if ft_metadata_result.is_ok() {
                         set_recipient_warning.set(Some(RecipientWarning {
@@ -1001,6 +1003,7 @@ pub fn SendMultiToken() -> impl IntoView {
             .find(|t| match &t.token.account_id {
                 Token::Near => token_id() == "near",
                 Token::Nep141(acc) => *acc == token_id(),
+                Token::Rhea(_) => false,
             })
     };
     let token_untracked = move || {
@@ -1010,6 +1013,7 @@ pub fn SendMultiToken() -> impl IntoView {
             .find(|t| match &t.token.account_id {
                 Token::Near => token_id() == "near",
                 Token::Nep141(acc) => *acc == token_id(),
+                Token::Rhea(_) => false,
             })
     };
 
@@ -1235,6 +1239,7 @@ pub fn SendMultiToken() -> impl IntoView {
                             _ => (0, Err(()), Err(())),
                         }
                     }
+                    Token::Rhea(_) => (0, Err(()), Err(())),
                 };
                 let warning = if ft_res.is_ok() {
                     Some(RecipientWarning { message: "This is a token contract address, not someone's wallet address, sending tokens to it would likely result in asset loss".into(), link: Some(format!("/token/{}", account_id_clone)), link_text: Some("View token details".into()) })
@@ -1987,6 +1992,7 @@ pub async fn execute_send(
                 })
                 .collect::<Vec<_>>()
         }
+        Token::Rhea(_) => unreachable!(),
     };
 
     let (rx_vec, pending_txns) = pending_txns.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();

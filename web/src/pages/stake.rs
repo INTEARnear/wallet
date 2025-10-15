@@ -456,6 +456,7 @@ fn ValidatorCard(
                                                                                                 continue;
                                                                                             }
                                                                                             Token::Nep141(account_id) => account_id.clone(),
+                                                                                            Token::Rhea(_) => unreachable!(),
                                                                                         };
                                                                                         let Ok(storage_balance_of_recipient) = rpc_client
                                                                                             .call::<

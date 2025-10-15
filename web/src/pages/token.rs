@@ -87,6 +87,7 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                         match &token_info.account_id {
                             Token::Near => "near".to_string(),
                             Token::Nep141(account_id) => account_id.to_string(),
+                            Token::Rhea(_) => unreachable!(),
                         },
                     )>
                         <button
@@ -108,6 +109,7 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                                         match &token_account_id {
                                             Token::Near => "near".to_string(),
                                             Token::Nep141(account_id) => account_id.to_string(),
+                                            Token::Rhea(_) => unreachable!(),
                                         },
                                         match &token_account_id {
                                             Token::Nep141(_) => "near".to_string(),
@@ -121,6 +123,7 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                                                     Network::Localnet { .. } => unreachable!(),
                                                 }
                                             }
+                                            Token::Rhea(_) => unreachable!(),
                                         },
                                     )
                                 }>
@@ -336,6 +339,7 @@ fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
                                 }
                             }
                             Token::Nep141(account_id) => account_id.to_string(),
+                            Token::Rhea(_) => unreachable!(),
                         },
                     )
                 }
@@ -365,6 +369,7 @@ pub fn TokenDetails() -> impl IntoView {
             && tokens.get().iter().all(|t| match &t.token.account_id {
                 Token::Near => token_id != "near",
                 Token::Nep141(account_id) => *account_id != token_id,
+                Token::Rhea(_) => true,
             })
         {
             set_loading_api(true);
@@ -404,6 +409,7 @@ pub fn TokenDetails() -> impl IntoView {
                         match &t.token.account_id {
                             Token::Near => token_id() == "near",
                             Token::Nep141(account_id) => *account_id == token_id(),
+                            Token::Rhea(_) => false,
                         }
                     });
                 if let Some(token) = token {

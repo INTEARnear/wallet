@@ -30,7 +30,9 @@ use crate::{
         config_context::ConfigContext,
         network_context::{Network, NetworkContext},
         rpc_context::RpcContext,
-        tokens_context::{Token, TokenData, TokenInfo, TokenScore, TokensContext},
+        tokens_context::{
+            Token, TokenBalanceSource, TokenData, TokenInfo, TokenScore, TokensContext,
+        },
         transaction_queue_context::{
             EnqueuedTransaction, OverlayMode, TransactionQueueContext, TransactionType,
         },
@@ -335,6 +337,7 @@ fn TokenSelector(
                                     if search_query.is_empty() {
                                         user_tokens
                                             .into_iter()
+                                            .filter(|token_data| matches!(token_data.token.account_id, Token::Near | Token::Nep141(_)))
                                             .map(|token_data| {
                                                 let token_clone = token_data.clone();
                                                 let balance_formatted = balance_to_decimal(
@@ -433,6 +436,7 @@ fn TokenSelector(
                                                                         }
                                                                             .into_any()
                                                                     }
+                                                                    Token::Rhea(_) => unreachable!(),
                                                                 }}
                                                             </div>
                                                         </div>
@@ -487,6 +491,7 @@ fn TokenSelector(
                                                             let token_data = TokenData {
                                                                 balance,
                                                                 token: token_info,
+                                                                source: TokenBalanceSource::Direct,
                                                             };
                                                             let token_clone = token_data.clone();
 
@@ -576,6 +581,7 @@ fn TokenSelector(
                                                                                     }
                                                                                         .into_any()
                                                                                 }
+                                                                                Token::Rhea(_) => unreachable!(),
                                                                             }}
                                                                         </div>
                                                                     </div>
@@ -790,6 +796,7 @@ pub fn Swap() -> impl IntoView {
                     let initial_token_in = match initial_token_in {
                         Token::Near => unreachable!(), // user always owns NEAR
                         Token::Nep141(token_id) => token_id,
+                        Token::Rhea(_) => unreachable!(),
                     };
                     spawn_local(async move {
                         match fetch_token_info(initial_token_in.clone(), account_clone.network)
@@ -799,6 +806,7 @@ pub fn Swap() -> impl IntoView {
                                 let token_data = TokenData {
                                     balance: 0,
                                     token: token_info,
+                                    source: TokenBalanceSource::Direct,
                                 };
                                 set_tokens.update(|tokens| {
                                     if let Some(token) = tokens.iter_mut().find(|t| {
@@ -857,6 +865,7 @@ pub fn Swap() -> impl IntoView {
                     let initial_token_out = match initial_token_out {
                         Token::Near => unreachable!(), // user always owns NEAR
                         Token::Nep141(token_id) => token_id,
+                        Token::Rhea(_) => unreachable!(),
                     };
                     spawn_local(async move {
                         match fetch_token_info(initial_token_out.clone(), account_clone.network)
@@ -866,6 +875,7 @@ pub fn Swap() -> impl IntoView {
                                 let token_data = TokenData {
                                     balance: 0,
                                     token: token_info,
+                                    source: TokenBalanceSource::Direct,
                                 };
                                 set_tokens.update(|tokens| {
                                     if let Some(token) = tokens.iter_mut().find(|t| {
@@ -1076,11 +1086,13 @@ pub fn Swap() -> impl IntoView {
         let token_in_id = match &token_in.token.account_id {
             Token::Near => TokenId::Near,
             Token::Nep141(account_id) => TokenId::Nep141(account_id.clone()),
+            Token::Rhea(_) => unreachable!(),
         };
 
         let token_out_id = match &token_out.token.account_id {
             Token::Near => TokenId::Near,
             Token::Nep141(account_id) => TokenId::Nep141(account_id.clone()),
+            Token::Rhea(_) => unreachable!(),
         };
 
         let amount = match mode {
@@ -1460,6 +1472,7 @@ pub fn Swap() -> impl IntoView {
                                                     let gas_cost_decimal = match token.token.account_id {
                                                         Token::Near => BigDecimal::from_str("0.05").unwrap(),
                                                         Token::Nep141(_) => BigDecimal::from_u32(0).unwrap(),
+                                                        Token::Rhea(_) => unreachable!(),
                                                     };
                                                     let final_amount = (max_amount_decimal - gas_cost_decimal)
                                                         .max(BigDecimal::from(0));
@@ -2478,6 +2491,14 @@ async fn get_ft_balance(
     rpc: &RpcClient,
 ) -> Option<Balance> {
     match token_id {
+        Token::Near => rpc
+            .view_account(
+                account_id.to_owned(),
+                QueryFinality::Finality(Finality::None),
+            )
+            .await
+            .ok()
+            .map(|account_view| account_view.amount.as_yoctonear()),
         Token::Nep141(token_id) => rpc
             .call::<U128>(
                 token_id,
@@ -2490,14 +2511,7 @@ async fn get_ft_balance(
             .await
             .ok()
             .map(|balance| *balance),
-        Token::Near => rpc
-            .view_account(
-                account_id.to_owned(),
-                QueryFinality::Finality(Finality::None),
-            )
-            .await
-            .ok()
-            .map(|account_view| account_view.amount.as_yoctonear()),
+        Token::Rhea(_) => unreachable!(),
     }
 }
 
