@@ -2,6 +2,7 @@ use futures_channel::oneshot;
 use icondata::*;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::Icon;
+use leptos_router::hooks::use_location;
 use near_min_api::{
     types::{
         near_crypto::{PublicKey, Signature},
@@ -461,6 +462,74 @@ pub fn SendTransactions() -> impl IntoView {
             || domain.ends_with(".localhost")
     };
 
+    let process_sign_and_send = move |data: SendTransactionsRequest, evt_origin: String| {
+        set_origin(evt_origin);
+        set_loading(false);
+        set_request_data(Some(data));
+    };
+
+    let retrieve_bridge_session = move |session_id: String| {
+        spawn_local(async move {
+            let url = dotenvy_macro::dotenv!("SHARED_LOGOUT_BRIDGE_SERVICE_ADDR");
+            let retrieve_url = format!("{url}/api/session/{session_id}/retrieve-request");
+
+            match reqwest::Client::new().get(&retrieve_url).send().await {
+                Ok(response) if response.status().is_success() => {
+                    match response.json::<serde_json::Value>().await {
+                        Ok(json) => {
+                            if let Some(message) = json.get("message") {
+                                let Some(message) = message.as_str() else {
+                                    log::error!("Bridge: Message is not a string");
+                                    return;
+                                };
+                                let Ok(message) = serde_json::from_str::<ReceiveMessage>(message)
+                                else {
+                                    log::error!("Bridge: Failed to parse message: {message}");
+                                    return;
+                                };
+                                log::info!("Bridge: Request data: {:?}", message);
+                                set_tauri_session_id(Some(session_id.clone()));
+                                match message {
+                                    ReceiveMessage::SignAndSendTransactions { data } => {
+                                        process_sign_and_send(data, "".to_string());
+                                    }
+                                    other => {
+                                        log::error!("Bridge: Unexpected message: {other:?}");
+                                    }
+                                }
+                            } else {
+                                log::warn!("Bridge: No message field in response");
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Bridge: Failed to parse response JSON: {e}");
+                        }
+                    }
+                }
+                Ok(response) => {
+                    log::error!(
+                        "Bridge: Bridge service responded with status {}",
+                        response.status()
+                    );
+                }
+                Err(e) => {
+                    log::error!("Bridge: Failed to connect to bridge service: {e}");
+                }
+            }
+        });
+    };
+
+    Effect::new(move |_| {
+        let location = use_location();
+        let params = location.query.get();
+        if let Some(session_id) = params.get("session_id") {
+            if !session_id.is_empty() {
+                log::info!("Found session_id in URL: {session_id}");
+                retrieve_bridge_session(session_id.clone());
+            }
+        }
+    });
+
     let opener = || {
         if let Ok(opener) = window().opener() {
             let opener = opener.unchecked_into::<Window>();
@@ -498,70 +567,12 @@ pub fn SendTransactions() -> impl IntoView {
             if is_debug_enabled() {
                 log::info!("Successfully parsed message: {:?}", message);
             }
-            let process_sign_and_send = move |data: SendTransactionsRequest| {
-                set_origin(event.origin());
-                set_loading(false);
-                set_request_data(Some(data));
-            };
             match message {
                 ReceiveMessage::SignAndSendTransactions { data } => {
-                    process_sign_and_send(data);
+                    process_sign_and_send(data, event.origin());
                 }
                 ReceiveMessage::TauriWalletSession { session_id } => {
-                    spawn_local(async move {
-                        let url = dotenvy_macro::dotenv!("SHARED_LOGOUT_BRIDGE_SERVICE_ADDR");
-                        let retrieve_url =
-                            format!("{url}/api/session/{session_id}/retrieve-request");
-
-                        match reqwest::Client::new().get(&retrieve_url).send().await {
-                            Ok(response) if response.status().is_success() => {
-                                match response.json::<serde_json::Value>().await {
-                                    Ok(json) => {
-                                        if let Some(message) = json.get("message") {
-                                            let Some(message) = message.as_str() else {
-                                                log::error!("Bridge: Message is not a string");
-                                                return;
-                                            };
-                                            let Ok(message) =
-                                                serde_json::from_str::<ReceiveMessage>(message)
-                                            else {
-                                                log::error!(
-                                                    "Bridge: Failed to parse message: {message}"
-                                                );
-                                                return;
-                                            };
-                                            log::info!("Bridge: Request data: {:?}", message);
-                                            set_tauri_session_id(Some(session_id.clone()));
-                                            match message {
-                                                ReceiveMessage::SignAndSendTransactions {
-                                                    data,
-                                                } => process_sign_and_send(data),
-                                                other => {
-                                                    log::error!(
-                                                        "Bridge: Unexpected message: {other:?}"
-                                                    );
-                                                }
-                                            }
-                                        } else {
-                                            log::warn!("Bridge: No message field in response");
-                                        }
-                                    }
-                                    Err(e) => {
-                                        log::error!("Bridge: Failed to parse response JSON: {e}");
-                                    }
-                                }
-                            }
-                            Ok(response) => {
-                                log::error!(
-                                    "Bridge: Bridge service responded with status {}",
-                                    response.status()
-                                );
-                            }
-                            Err(e) => {
-                                log::error!("Bridge: Failed to connect to bridge service: {e}");
-                            }
-                        }
-                    });
+                    retrieve_bridge_session(session_id);
                 }
             }
         } else if is_debug_enabled() {

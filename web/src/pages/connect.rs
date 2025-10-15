@@ -4,6 +4,7 @@ use chrono::Utc;
 use ed25519_dalek::SECRET_KEY_LENGTH;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
+use leptos_router::hooks::use_location;
 use near_min_api::types::{
     near_crypto::{ED25519SecretKey, KeyType, PublicKey, SecretKey, Signature},
     AccessKey, AccessKeyPermission, AccountId, Action, AddKeyAction, CryptoHash,
@@ -13,7 +14,6 @@ use serde::{Deserialize, Deserializer, Serialize};
 use wasm_bindgen::JsCast;
 use web_sys::{js_sys::Date, Window};
 
-use crate::contexts::config_context::{ConfigContext, WalletConfig};
 use crate::contexts::{
     accounts_context::{AccountsContext, SecretKeyHolder},
     connected_apps_context::{ConnectedApp, ConnectedAppsContext},
@@ -26,6 +26,10 @@ use crate::{
     contexts::account_selector_context::AccountSelectorContext,
     pages::sign_message::{MessageDisplay, MessageToSign, SignedMessage},
     utils::tauri_invoke_no_args,
+};
+use crate::{
+    contexts::config_context::{ConfigContext, WalletConfig},
+    utils::is_tauri,
 };
 
 const GAS_ALLOWANCE: NearToken = NearToken::from_millinear(1000); // 1 NEAR
@@ -188,7 +192,11 @@ pub async fn submit_tauri_response(
     }
 
     if close_window {
-        let _ = tauri_invoke_no_args("close_temporary_window");
+        if is_tauri() {
+            let _ = tauri_invoke_no_args("close_temporary_window");
+        } else {
+            let _ = window().close();
+        }
     }
 }
 
@@ -207,6 +215,100 @@ pub fn Connect() -> impl IntoView {
     } = expect_context::<TransactionQueueContext>();
     let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
     let (tauri_session_id, set_tauri_session_id) = signal::<Option<String>>(None);
+
+    let process_sign_in = move |data: SignInRequest, evt_origin: String| {
+        if matches!(data.version, Version::V1) {
+            // In V1 the event origin is the dapp. In V2+ it's an iframe which can't
+            // possibly navigate to a different location under normal circumstances,
+            // so we can use "*"
+            set_origin(evt_origin.clone());
+            set_actual_origin(Some(evt_origin.clone()));
+        } else {
+            set_actual_origin(Some(
+                data.actual_origin
+                    .clone()
+                    .expect("No actual_origin sent in V2+"),
+            ));
+        }
+        set_loading(false);
+        let has_contract = data.contract_id.as_deref().is_some_and(|v| !v.is_empty());
+        let default_checked = has_contract;
+        let restored = config
+            .get_untracked()
+            .autoconfirm_preference_by_origin
+            .get(&evt_origin)
+            .copied();
+        set_add_function_call_key(restored.unwrap_or(default_checked));
+        set_request_data(Some(data));
+    };
+
+    let retrieve_bridge_session = move |session_id: String| {
+        spawn_local(async move {
+            let url = dotenvy_macro::dotenv!("SHARED_LOGOUT_BRIDGE_SERVICE_ADDR");
+            let retrieve_url = format!("{url}/api/session/{session_id}/retrieve-request");
+
+            match reqwest::Client::new().get(&retrieve_url).send().await {
+                Ok(response) if response.status().is_success() => {
+                    match response.json::<serde_json::Value>().await {
+                        Ok(json) => {
+                            if let Some(message) = json.get("message") {
+                                let Some(message) = message.as_str() else {
+                                    log::error!("Bridge: Message is not a string");
+                                    return;
+                                };
+                                let Ok(message) = serde_json::from_str::<ReceiveMessage>(message)
+                                else {
+                                    log::error!("Bridge: Failed to parse message: {message}");
+                                    return;
+                                };
+                                log::info!("Bridge request data: {:?}", message);
+                                set_tauri_session_id(Some(session_id.clone()));
+                                match message {
+                                    ReceiveMessage::SignIn { data } => {
+                                        let origin = if matches!(data.version, Version::V1) {
+                                            "".to_string()
+                                        } else {
+                                            data.actual_origin.clone().unwrap_or_default()
+                                        };
+                                        process_sign_in(data, origin);
+                                    }
+                                    other => {
+                                        log::error!("Bridge: Unexpected message: {other:?}");
+                                    }
+                                }
+                            } else {
+                                log::warn!("Bridge: No message field in response");
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Bridge: Failed to parse response JSON: {e}");
+                        }
+                    }
+                }
+                Ok(response) => {
+                    log::error!(
+                        "Bridge: Bridge service responded with status {}",
+                        response.status()
+                    );
+                }
+                Err(e) => {
+                    log::error!("Bridge: Failed to connect to bridge service: {e}");
+                }
+            }
+        });
+    };
+
+    // Check for session_id in URL query parameters (e.g. ?session_id=abc123)
+    Effect::new(move |_| {
+        let location = use_location();
+        let params = location.query.get();
+        if let Some(session_id) = params.get("session_id") {
+            if !session_id.is_empty() {
+                log::info!("Found session_id in URL: {session_id}");
+                retrieve_bridge_session(session_id.clone());
+            }
+        }
+    });
 
     let message_to_sign = move || {
         let Some(request_data) = &*request_data.read() else {
@@ -282,91 +384,12 @@ pub fn Connect() -> impl IntoView {
             if is_debug_enabled() {
                 log::info!("Successfully parsed message: {:?}", message);
             }
-            let process_sign_in = move |data: SignInRequest| {
-                let evt_origin = event.origin();
-                if matches!(data.version, Version::V1) {
-                    // In V1 the event origin in the dapp. In V2+ it's an iframe which can't
-                    // possibly navigate to a different location under normal circumstances,
-                    // so we can use "*"
-                    set_origin(evt_origin.clone());
-                    set_actual_origin(Some(evt_origin.clone()));
-                } else {
-                    set_actual_origin(Some(
-                        data.actual_origin
-                            .clone()
-                            .expect("No actual_origin sent in V2+"),
-                    ));
-                }
-                set_loading(false);
-                let has_contract = data.contract_id.as_deref().is_some_and(|v| !v.is_empty());
-                let default_checked = has_contract;
-                let restored = config
-                    .get_untracked()
-                    .autoconfirm_preference_by_origin
-                    .get(&evt_origin)
-                    .copied();
-                set_add_function_call_key(restored.unwrap_or(default_checked));
-                set_request_data(Some(data));
-            };
             match message {
                 ReceiveMessage::SignIn { data } => {
-                    process_sign_in(data);
+                    process_sign_in(data, event.origin());
                 }
                 ReceiveMessage::TauriWalletSession { session_id } => {
-                    spawn_local(async move {
-                        let url = dotenvy_macro::dotenv!("SHARED_LOGOUT_BRIDGE_SERVICE_ADDR");
-                        let retrieve_url =
-                            format!("{url}/api/session/{session_id}/retrieve-request");
-
-                        match reqwest::Client::new().get(&retrieve_url).send().await {
-                            Ok(response) if response.status().is_success() => {
-                                match response.json::<serde_json::Value>().await {
-                                    Ok(json) => {
-                                        if let Some(message) = json.get("message") {
-                                            let Some(message) = message.as_str() else {
-                                                log::error!("Bridge: Message is not a string");
-                                                return;
-                                            };
-                                            let Ok(message) =
-                                                serde_json::from_str::<ReceiveMessage>(message)
-                                            else {
-                                                log::error!(
-                                                    "Bridge: Failed to parse message: {message}"
-                                                );
-                                                return;
-                                            };
-                                            log::info!("Bridge request data: {:?}", message);
-                                            set_tauri_session_id(Some(session_id.clone()));
-                                            match message {
-                                                ReceiveMessage::SignIn { data } => {
-                                                    process_sign_in(data)
-                                                }
-                                                other => {
-                                                    log::error!(
-                                                        "Bridge: Unexpected message: {other:?}"
-                                                    );
-                                                }
-                                            }
-                                        } else {
-                                            log::warn!("Bridge: No message field in response");
-                                        }
-                                    }
-                                    Err(e) => {
-                                        log::error!("Bridge: Failed to parse response JSON: {e}");
-                                    }
-                                }
-                            }
-                            Ok(response) => {
-                                log::error!(
-                                    "Bridge: Bridge service responded with status {}",
-                                    response.status()
-                                );
-                            }
-                            Err(e) => {
-                                log::error!("Bridge: Failed to connect to bridge service: {e}");
-                            }
-                        }
-                    });
+                    retrieve_bridge_session(session_id);
                 }
             }
         } else if is_debug_enabled() {
@@ -450,8 +473,9 @@ pub fn Connect() -> impl IntoView {
             let request_data = request_data.clone();
             let logout_key = logout_key.clone();
             let add_function_call_key = add_function_call_key();
+            let message_to_sign = message_to_sign();
             async move {
-                let signed_message = if let Some(message_to_sign) = message_to_sign() {
+                let signed_message = if let Some(message_to_sign) = message_to_sign {
                     let nep413_message = NEP413Payload {
                         message: message_to_sign.message.clone(),
                         nonce: message_to_sign.nonce,
