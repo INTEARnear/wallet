@@ -66,7 +66,7 @@ where
     let token_name_for_deposit = token_name.clone();
     let token_symbol_for_deposit = token_symbol.clone();
     let calculate_deposit = move || {
-        let estimated_overhead_bytes = 360;
+        let estimated_overhead_bytes = 400;
         let image_base64_bytes = token_image_for_deposit.len();
         let estimated_size_bytes = image_base64_bytes
             + token_name_for_deposit.len()
