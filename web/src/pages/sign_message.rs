@@ -1429,7 +1429,6 @@ pub fn SignMessage() -> impl IntoView {
                         .find(|app| {
                             app.public_key == request_data.public_key
                                 && app.account_id == request_data.account_id
-                                && app.origin == origin()
                                 && app.logged_out_at.is_none()
                         })
                         .cloned()

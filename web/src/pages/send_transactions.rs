@@ -606,7 +606,6 @@ pub fn SendTransactions() -> impl IntoView {
                         .find(|app| {
                             app.public_key == request_data.public_key
                                 && app.account_id == request_data.account_id
-                                && app.origin == origin()
                                 && app.logged_out_at.is_none()
                         })
                         .cloned()
@@ -772,7 +771,6 @@ pub fn SendTransactions() -> impl IntoView {
                     if let Some(app_to_update) = state.apps.iter_mut().find(|a| {
                         a.account_id == app.account_id
                             && a.public_key == app.public_key
-                            && a.origin == app.origin
                             && a.logged_out_at.is_none()
                     }) {
                         if remember_contract.get() {
