@@ -745,10 +745,7 @@ pub fn Swap() -> impl IntoView {
     let (selected_dexes, set_selected_dexes) = signal(vec![
         DexId::Rhea,
         // DexId::NearIntents,
-        // DexId::Veax, // until further investigation
         DexId::Aidols,
-        DexId::GraFun,
-        DexId::Jumpdefi,
         DexId::Wrap,
         DexId::RheaDcl,
         DexId::MetaPool,
@@ -1663,12 +1660,6 @@ pub fn Swap() -> impl IntoView {
                                                     }
                                                         .into_any()
                                                 }
-                                                DexId::GraFun => {
-                                                    view! {
-                                                        <img src="/grafun.svg" alt="GraFun" class="w-auto h-8" />
-                                                    }
-                                                        .into_any()
-                                                }
                                                 DexId::NearIntents => {
                                                     view! {
                                                         <img
@@ -1682,22 +1673,6 @@ pub fn Swap() -> impl IntoView {
                                                 DexId::Rhea => {
                                                     view! {
                                                         <img src="/rhea.svg" alt="Rhea" class="w-auto h-8" />
-                                                    }
-                                                        .into_any()
-                                                }
-                                                DexId::Veax => {
-                                                    view! {
-                                                        <img src="/veax.svg" alt="Veax" class="w-auto h-5" />
-                                                    }
-                                                        .into_any()
-                                                }
-                                                DexId::Jumpdefi => {
-                                                    view! {
-                                                        <img
-                                                            src="/jumpdefi.svg"
-                                                            alt="Jumpdefi"
-                                                            class="w-auto h-8"
-                                                        />
                                                     }
                                                         .into_any()
                                                 }
@@ -2118,9 +2093,7 @@ pub fn Swap() -> impl IntoView {
                                                     DexId::Rhea,
                                                     DexId::RheaDcl,
                                                     DexId::NearIntents,
-                                                    // DexId::Veax, // until further investigation
                                                     DexId::Aidols,
-                                                    DexId::GraFun,
                                                     DexId::Wrap,
                                                     DexId::MetaPool,
                                                     DexId::Linear,
@@ -2786,26 +2759,11 @@ pub enum DexId {
     ///
     /// Supports both AmountIn and AmountOut
     NearIntents,
-    /// https://app.veax.com/
-    /// AMM DEX
-    ///
-    /// Supports both AmountIn and AmountOut
-    Veax,
     /// https://aidols.bot/
     /// bonding-curve launchpad
     ///
     /// Supports both AmountIn and AmountOut, only *.aidols.near tokens
     Aidols,
-    /// https://gra.fun/
-    /// bonding-curve launchpad
-    ///
-    /// Supports AmountIn, doesn't support AmountOut, only *.gra-fun.near tokens
-    GraFun,
-    /// https://app.jumpdefi.xyz/swap
-    /// AMM DEX
-    ///
-    /// Not implemented yet
-    Jumpdefi,
     /// Directly wrap NEAR to wNEAR, or unwrap wNEAR to NEAR
     ///
     /// Supports both AmountIn and AmountOut
@@ -2839,10 +2797,7 @@ pub enum DexId {
 
 const RHEA_STR: &str = "Rhea";
 const NEAR_INTENTS_STR: &str = "NearIntents";
-const VEAX_STR: &str = "Veax";
 const AIDOLS_STR: &str = "Aidols";
-const GRA_FUN_STR: &str = "GraFun";
-const JUMPDEFI_STR: &str = "Jumpdefi";
 const WRAP_STR: &str = "Wrap";
 const RHEA_DCL_STR: &str = "RheaDcl";
 const METAPOOL_STR: &str = "MetaPool";
@@ -2855,10 +2810,7 @@ impl Display for DexId {
         match self {
             DexId::Rhea => f.write_str(RHEA_STR),
             DexId::NearIntents => f.write_str(NEAR_INTENTS_STR),
-            DexId::Veax => f.write_str(VEAX_STR),
             DexId::Aidols => f.write_str(AIDOLS_STR),
-            DexId::GraFun => f.write_str(GRA_FUN_STR),
-            DexId::Jumpdefi => f.write_str(JUMPDEFI_STR),
             DexId::Wrap => f.write_str(WRAP_STR),
             DexId::RheaDcl => f.write_str(RHEA_DCL_STR),
             DexId::MetaPool => f.write_str(METAPOOL_STR),
@@ -2876,10 +2828,7 @@ impl FromStr for DexId {
         Ok(match s {
             RHEA_STR => DexId::Rhea,
             NEAR_INTENTS_STR => DexId::NearIntents,
-            VEAX_STR => DexId::Veax,
             AIDOLS_STR => DexId::Aidols,
-            GRA_FUN_STR => DexId::GraFun,
-            JUMPDEFI_STR => DexId::Jumpdefi,
             WRAP_STR => DexId::Wrap,
             RHEA_DCL_STR => DexId::RheaDcl,
             METAPOOL_STR => DexId::MetaPool,
@@ -3222,12 +3171,6 @@ fn SwapConfirmationModal(
                                             }
                                                 .into_any()
                                         }
-                                        DexId::GraFun => {
-                                            view! {
-                                                <img src="/grafun.svg" alt="GraFun" class="w-auto h-5" />
-                                            }
-                                                .into_any()
-                                        }
                                         DexId::NearIntents => {
                                             view! {
                                                 <img
@@ -3241,22 +3184,6 @@ fn SwapConfirmationModal(
                                         DexId::Rhea => {
                                             view! {
                                                 <img src="/rhea.svg" alt="Rhea" class="w-auto h-5" />
-                                            }
-                                                .into_any()
-                                        }
-                                        DexId::Veax => {
-                                            view! {
-                                                <img src="/veax.svg" alt="Veax" class="w-auto h-4" />
-                                            }
-                                                .into_any()
-                                        }
-                                        DexId::Jumpdefi => {
-                                            view! {
-                                                <img
-                                                    src="/jumpdefi.svg"
-                                                    alt="Jumpdefi"
-                                                    class="w-auto h-5"
-                                                />
                                             }
                                                 .into_any()
                                         }
