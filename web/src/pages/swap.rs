@@ -745,7 +745,7 @@ pub fn Swap() -> impl IntoView {
     let (selected_dexes, set_selected_dexes) = signal(vec![
         DexId::Rhea,
         // DexId::NearIntents,
-        DexId::Veax,
+        // DexId::Veax, // until further investigation
         DexId::Aidols,
         DexId::GraFun,
         DexId::Jumpdefi,
@@ -2118,7 +2118,7 @@ pub fn Swap() -> impl IntoView {
                                                     DexId::Rhea,
                                                     DexId::RheaDcl,
                                                     DexId::NearIntents,
-                                                    DexId::Veax,
+                                                    // DexId::Veax, // until further investigation
                                                     DexId::Aidols,
                                                     DexId::GraFun,
                                                     DexId::Wrap,
