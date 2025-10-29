@@ -1774,7 +1774,7 @@ pub fn Stake() -> impl IntoView {
                                         if total_staked == 0 {
                                             BigDecimal::from(0)
                                         } else {
-                                            let base_inflation = BigDecimal::from_str("0.05").unwrap();
+                                            let base_inflation = BigDecimal::from_str("0.025").unwrap();
                                             let treasury_rate = BigDecimal::from_str("0.1").unwrap();
                                             let validator_rate = BigDecimal::from(1) - &treasury_rate;
                                             let validator_inflation = &base_inflation * &validator_rate;
@@ -1979,7 +1979,7 @@ pub fn StakeValidator() -> impl IntoView {
                     if total_staked == 0 {
                         return BigDecimal::from(0);
                     }
-                    let base_inflation = BigDecimal::from_str("0.05").unwrap();
+                    let base_inflation = BigDecimal::from_str("0.025").unwrap();
                     let treasury_rate = BigDecimal::from_str("0.1").unwrap();
                     let validator_rate = BigDecimal::from(1) - &treasury_rate;
                     let validator_inflation = &base_inflation * &validator_rate;
@@ -2447,7 +2447,7 @@ pub fn UnstakeValidator() -> impl IntoView {
                     if total_staked == 0 {
                         return BigDecimal::from(0);
                     }
-                    let base_inflation = BigDecimal::from_str("0.05").unwrap();
+                    let base_inflation = BigDecimal::from_str("0.025").unwrap();
                     let treasury_rate = BigDecimal::from_str("0.1").unwrap();
                     let validator_rate = BigDecimal::from(1) - &treasury_rate;
                     let validator_inflation = &base_inflation * &validator_rate;
