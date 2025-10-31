@@ -168,8 +168,38 @@ async fn message_handler(bot: Bot, msg: Message, state: AppState) -> HandlerResu
     }
 
     if let Some(text) = msg.text() {
-        bot.send_message(msg.chat.id, format!("Unknown command: {text}"))
-            .await?;
+        if let Some(account_id_str) = text.strip_prefix("/ban ") {
+            let account_id = account_id_str.trim();
+            if account_id.is_empty() {
+                bot.send_message(msg.chat.id, "Usage: /ban <AccountId>")
+                    .await?;
+                return Ok(());
+            }
+
+            let account_id: AccountId = account_id
+                .parse()
+                .map_err(|e| anyhow!("Failed to parse AccountId: {}", e))?;
+
+            let collection_item = HiddenNft::Collection(account_id.clone());
+            let collection_bytes = serde_json::to_vec(&collection_item)
+                .map_err(|e| anyhow!("Failed to serialize collection: {}", e))?;
+
+            match state.spam_db.put(&collection_bytes, b"") {
+                Ok(_) => {
+                    bot.send_message(msg.chat.id, format!("Banned collection `{account_id}`"))
+                        .parse_mode(ParseMode::MarkdownV2)
+                        .await?;
+                }
+                Err(e) => {
+                    tracing::error!("Failed to ban collection: {e}");
+                    bot.send_message(msg.chat.id, format!("Failed to ban collection: {e}"))
+                        .await?;
+                }
+            }
+        } else {
+            bot.send_message(msg.chat.id, format!("Unknown command: {text}"))
+                .await?;
+        }
     }
 
     Ok(())
