@@ -7,6 +7,7 @@ use std::{
 
 use bigdecimal::{num_bigint::Sign, BigDecimal, FromPrimitive, RoundingMode, Zero};
 use chrono::{DateTime, TimeDelta, Utc};
+use leptos::prelude::AnyView;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_icons::Icon;
@@ -28,6 +29,7 @@ use crate::{
     contexts::{
         accounts_context::{Account, AccountsContext},
         config_context::ConfigContext,
+        modal_context::ModalContext,
         network_context::{Network, NetworkContext},
         rpc_context::RpcContext,
         tokens_context::{
@@ -67,15 +69,6 @@ pub struct SwapConfirmation {
     pub worst_case_amount_out: Balance,
     pub route: Route,
     pub swap_mode: SwapMode,
-}
-
-#[derive(Debug, Clone)]
-pub enum SwapModalState {
-    None,
-    Confirmation(Box<SwapConfirmation>),
-    JamboSpecialConfirmation,
-    Success(Box<SwapResult>),
-    Error,
 }
 
 async fn search_tokens(query: &str, account: Account) -> Result<Vec<TokenInfo>, String> {
@@ -337,7 +330,12 @@ fn TokenSelector(
                                     if search_query.is_empty() {
                                         user_tokens
                                             .into_iter()
-                                            .filter(|token_data| matches!(token_data.token.account_id, Token::Near | Token::Nep141(_)))
+                                            .filter(|token_data| {
+                                                matches!(
+                                                    token_data.token.account_id,
+                                                    Token::Near | Token::Nep141(_)
+                                                )
+                                            })
                                             .map(|token_data| {
                                                 let token_clone = token_data.clone();
                                                 let balance_formatted = balance_to_decimal(
@@ -738,7 +736,7 @@ pub fn Swap() -> impl IntoView {
             Slippage::Fixed { slippage } => slippage.to_string(),
         });
 
-    let (swap_modal_state, set_swap_modal_state) = signal(SwapModalState::None);
+    let ModalContext { modal } = expect_context::<ModalContext>();
     let (show_advanced_options, set_show_advanced_options) = signal(false);
 
     // DEX selection state - all except NearIntents enabled by default
@@ -1856,34 +1854,24 @@ pub fn Swap() -> impl IntoView {
                                                 route: best_route.clone(),
                                                 swap_mode: swap_mode_memo.get(),
                                             };
-                                            let is_jambo_special = if let Token::Nep141(account_id) = &token_in
-                                                .token
-                                                .account_id
-                                            {
-                                                account_id.as_str() == "jambo-1679.meme-cooking.near"
-                                            } else {
-                                                false
-                                            };
-                                            let is_over_thousand = if is_jambo_special
-                                                && !token_in.token.price_usd_hardcoded.is_zero()
-                                            {
-                                                let amount_in_decimal = balance_to_decimal(
-                                                    validated_amount_entered,
-                                                    token_in.token.metadata.decimals,
+                                            let confirmation_clone = confirmation.clone();
+                                            modal
+                                                .set(
+                                                    Some(
+                                                        Box::new(move || {
+                                                            view! {
+                                                                <SwapConfirmationModal
+                                                                    confirmation=confirmation_clone.clone()
+                                                                    accounts=accounts
+                                                                    add_transaction=add_transaction
+                                                                    overlay_mode=overlay_mode
+                                                                    rpc_client=rpc_client
+                                                                />
+                                                            }
+                                                                .into_any()
+                                                        }),
+                                                    ),
                                                 );
-                                                let usd_value = &amount_in_decimal
-                                                    * &token_in.token.price_usd_hardcoded;
-                                                usd_value >= BigDecimal::from(1000)
-                                            } else {
-                                                false
-                                            };
-                                            if is_jambo_special && is_over_thousand {
-                                                set_swap_modal_state
-                                                    .set(SwapModalState::JamboSpecialConfirmation);
-                                            } else {
-                                                set_swap_modal_state
-                                                    .set(SwapModalState::Confirmation(Box::new(confirmation)));
-                                            }
                                         } else {
                                             let Some(selected_account_id) = accounts
                                                 .get_untracked()
@@ -1910,7 +1898,7 @@ pub fn Swap() -> impl IntoView {
                                                     add_transaction,
                                                     overlay_mode,
                                                     rpc_client.get_untracked(),
-                                                    set_swap_modal_state,
+                                                    modal,
                                                 ),
                                             );
                                             set_swap_mode.set(SwapMode::ExactIn);
@@ -2246,41 +2234,6 @@ pub fn Swap() -> impl IntoView {
                 </div>
             </div>
         </div>
-
-        {move || {
-            match swap_modal_state.get() {
-                SwapModalState::Confirmation(confirmation) => {
-                    view! {
-                        <SwapConfirmationModal
-                            confirmation=*confirmation
-                            set_swap_modal_state=set_swap_modal_state
-                            accounts=accounts
-                            add_transaction=add_transaction
-                            overlay_mode=overlay_mode
-                            rpc_client=rpc_client
-                        />
-                    }
-                        .into_any()
-                }
-                SwapModalState::JamboSpecialConfirmation => {
-                    view! { <JamboSpecialModal /> }.into_any()
-                }
-                SwapModalState::Success(result) => {
-                    view! {
-                        <SwapSuccessModal
-                            result=*result
-                            set_swap_modal_state=set_swap_modal_state
-                        />
-                    }
-                        .into_any()
-                }
-                SwapModalState::Error => {
-                    view! { <SwapErrorModal set_swap_modal_state=set_swap_modal_state /> }
-                        .into_any()
-                }
-                SwapModalState::None => ().into_any(),
-            }
-        }}
     }
 }
 
@@ -2295,7 +2248,7 @@ async fn execute_route(
     add_transaction: WriteSignal<Vec<EnqueuedTransaction>>,
     set_tx_overlay_mode: RwSignal<OverlayMode>,
     rpc: RpcClient,
-    set_swap_modal_state: WriteSignal<SwapModalState>,
+    modal: RwSignal<Option<Box<dyn Fn() -> AnyView>>, LocalStorage>,
 ) {
     let wrap_near_id = Token::Nep141("wrap.near".parse().unwrap());
 
@@ -2390,7 +2343,9 @@ async fn execute_route(
 
     let tx_result = last_rx.await;
     let Ok(Ok(_)) = tx_result else {
-        set_swap_modal_state.set(SwapModalState::Error);
+        modal.set(Some(Box::new(move || {
+            view! { <SwapErrorModal /> }.into_any()
+        })));
         return;
     };
 
@@ -2450,11 +2405,14 @@ async fn execute_route(
         return;
     };
 
-    set_swap_modal_state.set(SwapModalState::Success(Box::new(SwapResult {
+    let result = SwapResult {
         token_in,
         token_out,
         amount_in: amount_spent,
         amount_out: amount_received,
+    };
+    modal.set(Some(Box::new(move || {
+        view! { <SwapSuccessModal result=result.clone() /> }.into_any()
     })));
 }
 
@@ -2840,10 +2798,8 @@ impl FromStr for DexId {
 }
 
 #[component]
-fn SwapSuccessModal(
-    result: SwapResult,
-    set_swap_modal_state: WriteSignal<SwapModalState>,
-) -> impl IntoView {
+fn SwapSuccessModal(result: SwapResult) -> impl IntoView {
+    let ModalContext { modal } = expect_context::<ModalContext>();
     let amount_in_decimal = balance_to_decimal(result.amount_in, result.token_in.metadata.decimals);
     let amount_in_formatted = format!(
         "{} {}",
@@ -2862,7 +2818,7 @@ fn SwapSuccessModal(
     view! {
         <div
             class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
-            on:click=move |_| set_swap_modal_state.set(SwapModalState::None)
+            on:click=move |_| modal.set(None)
         >
             <div
                 on:click=|ev| ev.stop_propagation()
@@ -2966,7 +2922,7 @@ fn SwapSuccessModal(
 
                     <button
                         class="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
-                        on:click=move |_| set_swap_modal_state.set(SwapModalState::None)
+                        on:click=move |_| modal.set(None)
                     >
                         "Close"
                     </button>
@@ -2979,12 +2935,12 @@ fn SwapSuccessModal(
 #[component]
 fn SwapConfirmationModal(
     confirmation: SwapConfirmation,
-    set_swap_modal_state: WriteSignal<SwapModalState>,
     accounts: ReadSignal<crate::contexts::accounts_context::AccountsState>,
     add_transaction: WriteSignal<Vec<EnqueuedTransaction>>,
     overlay_mode: RwSignal<OverlayMode>,
     rpc_client: RwSignal<RpcClient>,
 ) -> impl IntoView {
+    let ModalContext { modal } = expect_context::<ModalContext>();
     // Clone all the values we need to avoid partial moves
     let token_in = confirmation.token_in.clone();
     let token_out = confirmation.token_out.clone();
@@ -3050,7 +3006,7 @@ fn SwapConfirmationModal(
     view! {
         <div
             class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
-            on:click=move |_| set_swap_modal_state.set(SwapModalState::None)
+            on:click=move |_| modal.set(None)
         >
             <div
                 on:click=|ev| ev.stop_propagation()
@@ -3288,7 +3244,7 @@ fn SwapConfirmationModal(
                     <div class="flex gap-3 mt-6">
                         <button
                             class="flex-1 bg-neutral-700 hover:bg-neutral-600 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
-                            on:click=move |_| set_swap_modal_state.set(SwapModalState::None)
+                            on:click=move |_| modal.set(None)
                         >
                             "Cancel"
                         </button>
@@ -3310,8 +3266,9 @@ fn SwapConfirmationModal(
                                     else {
                                         return;
                                     };
-                                    set_swap_modal_state.set(SwapModalState::None);
+                                    modal.set(None);
                                     let confirmation_exec = confirmation_clone.clone();
+                                    let modal_clone = modal;
                                     spawn_local(
                                         execute_route(
                                             confirmation_exec.amount_in,
@@ -3323,7 +3280,7 @@ fn SwapConfirmationModal(
                                             add_transaction,
                                             overlay_mode,
                                             rpc_client.get_untracked(),
-                                            set_swap_modal_state,
+                                            modal_clone,
                                         ),
                                     );
                                 }
@@ -3339,11 +3296,12 @@ fn SwapConfirmationModal(
 }
 
 #[component]
-fn SwapErrorModal(set_swap_modal_state: WriteSignal<SwapModalState>) -> impl IntoView {
+fn SwapErrorModal() -> impl IntoView {
+    let ModalContext { modal } = expect_context::<ModalContext>();
     view! {
         <div
             class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
-            on:click=move |_| set_swap_modal_state.set(SwapModalState::None)
+            on:click=move |_| modal.set(None)
         >
             <div
                 on:click=|ev| ev.stop_propagation()
@@ -3367,27 +3325,12 @@ fn SwapErrorModal(set_swap_modal_state: WriteSignal<SwapModalState>) -> impl Int
 
                     <button
                         class="w-full mt-6 bg-red-600 hover:bg-red-700 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
-                        on:click=move |_| set_swap_modal_state.set(SwapModalState::None)
+                        on:click=move |_| modal.set(None)
                     >
                         "Close"
                     </button>
                 </div>
             </div>
-        </div>
-    }
-}
-
-#[component]
-fn JamboSpecialModal() -> impl IntoView {
-    Effect::new(|_| {
-        if let Ok(audio) = web_sys::HtmlAudioElement::new_with_src("/call.ogg") {
-            let _ = audio.play();
-        }
-    });
-
-    view! {
-        <div class="fixed inset-0 bg-black flex items-center justify-center z-50">
-            <img src="/jambo-1clip.webp" class="cursor-pointer h-full" />
         </div>
     }
 }

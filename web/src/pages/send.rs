@@ -1510,8 +1510,8 @@ pub fn SendMultiToken() -> impl IntoView {
                         .map(|(index, rec)| {
 
                             view! {
-                                <div class="bg-neutral-900/50 rounded-xl p-3 md:p-4 border border-neutral-700 gap-2 md:gap-4 flex justify-between">
-                                    <div class="flex flex-col gap-1 flex-1">
+                                <div class="bg-neutral-900/50 rounded-xl p-3 md:p-4 border border-neutral-700 gap-2 md:gap-4 flex justify-between overflow-hidden">
+                                    <div class="flex flex-col gap-1 flex-1 min-w-0">
                                         <Show when={move || {
                                             index < 50
                                                 || index > recipients.get().len().saturating_sub(50)
@@ -1520,7 +1520,7 @@ pub fn SendMultiToken() -> impl IntoView {
                                         </Show>
                                         <input
                                             type="text"
-                                            class="w-full focus:ring-2 bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 text-base"
+                                            class="w-full focus:ring-2 bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 text-base min-w-0"
                                             style=move || {
                                                 let recs = recipients.get();
                                                 if let Some(r) = recs.get(index) {
@@ -1651,7 +1651,7 @@ pub fn SendMultiToken() -> impl IntoView {
                                             }
                                         }}
                                     </div>
-                                    <div class="flex flex-col gap-1 w-32">
+                                    <div class="flex flex-col gap-1 w-32 flex-shrink-0">
                                         <Show when={move || {
                                             index < 50
                                                 || index > recipients.get().len().saturating_sub(50)
@@ -1660,7 +1660,7 @@ pub fn SendMultiToken() -> impl IntoView {
                                         </Show>
                                         <input
                                             type="text"
-                                            class="w-full focus:ring-2 bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 text-base"
+                                            class="w-full focus:ring-2 bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 text-base min-w-0"
                                             style=move || {
                                                 let recipients = recipients.get();
                                                 if let Some(r) = recipients.get(index) {
@@ -1704,7 +1704,7 @@ pub fn SendMultiToken() -> impl IntoView {
                                         }}
                                     </div>
                                     <button
-                                        class="text-red-400 hover:text-red-300 cursor-pointer self-start"
+                                        class="text-red-400 hover:text-red-300 cursor-pointer self-start flex-shrink-0"
                                         on:click=move |_| remove_recipient(index)
                                     >
                                         <Icon

@@ -3,11 +3,13 @@ use std::{str::FromStr, time::Duration};
 use crate::components::account_selector::{
     mnemonic_to_key, AccountCreateParent, AccountCreateRecoveryMethod, ModalState,
 };
+use crate::components::danger_confirm_input::DangerConfirmInput;
 use crate::components::derivation_path_input::DerivationPathInput;
 use crate::contexts::accounts_context::format_ledger_error;
 use crate::contexts::{
     account_selector_context::AccountSelectorContext,
     accounts_context::{AccountsContext, SecretKeyHolder},
+    modal_context::ModalContext,
     network_context::{Network, NetworkContext},
     rpc_context::RpcContext,
     security_log_context::add_security_log,
@@ -19,6 +21,7 @@ use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_router::hooks::use_navigate;
 use leptos_use::{use_event_listener, use_window};
+use near_min_api::types::near_crypto::PublicKey;
 use near_min_api::types::AccountId;
 use near_min_api::{
     types::{
@@ -254,6 +257,191 @@ struct SetRecoveryMethodsArgs {
 }
 
 #[component]
+fn TerminateSessionsModal(
+    is_ledger_account: impl Fn() -> bool + Copy + Send + Sync + 'static,
+    terminate_sessions: impl Fn(()) + Copy + Send + Sync + 'static,
+    new_mnemonic: ReadSignal<Option<bip39::Mnemonic>>,
+    set_new_mnemonic: WriteSignal<Option<bip39::Mnemonic>>,
+    copied_to_clipboard: ReadSignal<bool>,
+    set_copied_to_clipboard: WriteSignal<bool>,
+    is_confirmed: ReadSignal<bool>,
+    set_is_confirmed: WriteSignal<bool>,
+    terminating_sessions: ReadSignal<bool>,
+    generate_new_mnemonic: impl Fn() + Copy + Send + Sync + 'static,
+) -> impl IntoView {
+    let ModalContext { modal } = expect_context::<ModalContext>();
+
+    let close_modal = move || {
+        modal.set(None);
+        set_is_confirmed(false);
+        set_new_mnemonic(None);
+        set_copied_to_clipboard(false);
+    };
+
+    view! {
+        <div
+            class="fixed inset-0 bg-neutral-950/60 backdrop-blur-[2px] lg:rounded-3xl z-10"
+            on:click=move |_| close_modal()
+        >
+            <div class="absolute inset-0 flex items-center justify-center">
+                <div
+                    class="bg-neutral-950 p-8 rounded-xl w-full max-w-md border border-red-500/20"
+                    on:click=|ev| ev.stop_propagation()
+                >
+                    <h3 class="text-xl font-semibold mb-4 text-white">
+                        "Terminate All Other Sessions"
+                    </h3>
+                    <div class="text-neutral-400 mb-6 space-y-4">
+                        {move || {
+                            if is_ledger_account() {
+                                view! {
+                                    <div class="space-y-4">
+                                        <p>
+                                            "This will remove all other access keys from your account, keeping only the current Ledger key. This will make the currently connected Ledger the only way to access this account."
+                                        </p>
+                                    </div>
+                                }
+                                    .into_any()
+                            } else {
+                                view! {
+                                    <div class="space-y-4">
+                                        <p>
+                                            "This will log you out of all wallets other than this one. This can be useful if you feel like you might have compromised your seed phrase and want to change it."
+                                        </p>
+                                        <p>
+                                            "Note that if you have saved your seed phrase, "
+                                            <span class="text-yellow-400 font-bold">
+                                                "IT WILL STOP WORKING"
+                                            </span> ", and a "
+                                            <span class="text-yellow-400 font-bold">"NEW"</span>
+                                            " phrase will appear in the Account page."
+                                        </p>
+                                    </div>
+                                }
+                                    .into_any()
+                            }
+                        }}
+                    </div>
+
+                    <Show when=move || { new_mnemonic.get().is_some() && !is_ledger_account() }>
+                        <div class="bg-neutral-900 rounded-lg p-4 mb-6 border border-neutral-700">
+                            <div class="flex items-center justify-between mb-3">
+                                <h4 class="text-lg font-medium text-white">"New Seed Phrase"</h4>
+                                <div class="flex gap-2">
+                                    <button
+                                        class="p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors cursor-pointer"
+                                        style:color=move || {
+                                            if copied_to_clipboard.get() { "#22c55e" } else { "" }
+                                        }
+                                        on:click=move |_| {
+                                            if let Some(mnemonic) = new_mnemonic.get() {
+                                                let _ = window()
+                                                    .navigator()
+                                                    .clipboard()
+                                                    .write_text(&mnemonic.to_string());
+                                                set_copied_to_clipboard(true);
+                                                set_timeout(
+                                                    move || set_copied_to_clipboard(false),
+                                                    Duration::from_secs(2),
+                                                );
+                                            }
+                                        }
+                                        title=move || {
+                                            if copied_to_clipboard.get() {
+                                                "Copied!"
+                                            } else {
+                                                "Copy seed phrase"
+                                            }
+                                        }
+                                    >
+                                        <Show when=move || !copied_to_clipboard.get()>
+                                            <Icon icon=icondata::LuCopy width="16" height="16" />
+                                        </Show>
+                                        <Show when=move || copied_to_clipboard.get()>
+                                            <Icon icon=icondata::LuCheck width="16" height="16" />
+                                        </Show>
+                                    </button>
+                                    <button
+                                        class="p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors cursor-pointer"
+                                        on:click=move |_| generate_new_mnemonic()
+                                        title="Generate new seed phrase"
+                                    >
+                                        <Icon icon=icondata::LuRefreshCw width="16" height="16" />
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-3 gap-2 text-sm">
+                                {move || {
+                                    if let Some(mnemonic) = new_mnemonic.get() {
+                                        mnemonic
+                                            .words()
+                                            .enumerate()
+                                            .map(|(i, word)| {
+                                                view! {
+                                                    <div class="flex items-center gap-2 p-2 bg-neutral-800 rounded">
+                                                        <span class="text-neutral-500 text-xs w-4">
+                                                            {format!("{}.", i + 1)}
+                                                        </span>
+                                                        <span class="text-white font-mono">{word}</span>
+                                                    </div>
+                                                }
+                                            })
+                                            .collect::<Vec<_>>()
+                                    } else {
+                                        vec![]
+                                    }
+                                }}
+                            </div>
+                            <div class="mt-3 text-xs text-yellow-400">
+                                <Icon
+                                    icon=icondata::LuTriangleAlert
+                                    width="14"
+                                    height="14"
+                                    attr:class="inline mr-1"
+                                />
+                                "Save this new seed phrase - it will replace your current one!"
+                            </div>
+                        </div>
+                    </Show>
+
+                    <DangerConfirmInput
+                        set_is_confirmed=set_is_confirmed
+                        warning_title="Please read the above"
+                        warning_message=if is_ledger_account() {
+                            "This action cannot be undone. Your Ledger device will be the ONLY way to access this account."
+                                .to_string()
+                        } else {
+                            "This action cannot be undone. This device will be the ONLY one that can access this account."
+                                .to_string()
+                        }
+                        attr:class="mb-4"
+                    />
+
+                    <div class="flex gap-3">
+                        <button
+                            class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden bg-neutral-800 hover:bg-neutral-700 cursor-pointer"
+                            on:click=move |_| close_modal()
+                        >
+                            "Cancel"
+                        </button>
+                        <button
+                            class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden bg-red-500 hover:bg-red-600 disabled:bg-red-500/50 disabled:cursor-not-allowed cursor-pointer"
+                            disabled=move || { terminating_sessions.get() || !is_confirmed.get() }
+                            on:click=move |_| {
+                                terminate_sessions(());
+                                close_modal();
+                            }
+                        >
+                            "Confirm"
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+#[component]
 pub fn AccountSettings() -> impl IntoView {
     let accounts_context = expect_context::<AccountsContext>();
     let (show_secrets, set_show_secrets) = signal(false);
@@ -282,6 +470,14 @@ pub fn AccountSettings() -> impl IntoView {
     let (ledger_account_number, set_ledger_account_number) = signal(0u32);
     let (ledger_change_number, set_ledger_change_number) = signal(0u32);
     let (ledger_address_number, set_ledger_address_number) = signal(1u32);
+
+    let (is_confirmed, set_is_confirmed) = signal(false);
+    let (new_mnemonic, set_new_mnemonic) = signal::<Option<bip39::Mnemonic>>(None);
+    let (copied_to_clipboard, set_copied_to_clipboard) = signal(false);
+    let (ledger_is_only_key, set_ledger_is_only_key) = signal(false);
+    let (checking_keys, set_checking_keys) = signal(false);
+    let (terminating_sessions, set_terminating_sessions) = signal(false);
+    let ModalContext { modal } = expect_context::<ModalContext>();
 
     let on_path_change = move || {
         set_ledger_current_key_data.set(None);
@@ -721,6 +917,271 @@ pub fn AccountSettings() -> impl IntoView {
             }
         },
     );
+
+    let terminate_sessions = move |_| {
+        let Some(account_id) = accounts_context.accounts.get().selected_account_id else {
+            log::error!("No account selected");
+            return;
+        };
+
+        set_terminating_sessions(true);
+
+        let account = accounts_context
+            .accounts
+            .get_untracked()
+            .accounts
+            .into_iter()
+            .find(|acc| acc.account_id == account_id)
+            .expect("Account not found");
+        let is_ledger = matches!(account.secret_key, SecretKeyHolder::Ledger { .. });
+
+        let Some(mnemonic) = new_mnemonic.get_untracked() else {
+            set_terminating_sessions(false);
+            return;
+        };
+
+        let rpc_client = rpc_context.client.get();
+        spawn_local(async move {
+            let mut delete_actions = Vec::new();
+            let keys = match rpc_client
+                .view_access_key_list(account_id.clone(), QueryFinality::Finality(Finality::Final))
+                .await
+            {
+                Ok(keys) => keys,
+                Err(e) => {
+                    log::error!("Error fetching access key list: {e:?}");
+                    set_terminating_sessions(false);
+                    return;
+                }
+            };
+
+            let current_public_key = account.secret_key.public_key();
+
+            for key in keys.keys {
+                if matches!(
+                    key.access_key.permission,
+                    AccessKeyPermissionView::FullAccess
+                ) {
+                    // For Ledger accounts, keep the current key, delete all others
+                    // For non-Ledger accounts, delete all keys (will add new one later)
+                    if !is_ledger || key.public_key != current_public_key {
+                        delete_actions.push(Action::DeleteKey(Box::new(DeleteKeyAction {
+                            public_key: key.public_key,
+                        })));
+                    }
+                }
+            }
+
+            let mut actions = delete_actions;
+
+            let intents_transactions = match network.get() {
+                Network::Mainnet => {
+                    if let Ok(keys) = rpc_client
+                        .call::<Vec<PublicKey>>(
+                            "intents.near".parse().unwrap(),
+                            "public_keys_of",
+                            serde_json::json!({
+                                "account_id": account_id,
+                            }),
+                            QueryFinality::Finality(Finality::Final),
+                        )
+                        .await
+                    {
+                        // If the user has more than 30 keys, we need to split the actions into
+                        // chunks of 30 because of 300 TGas per-transaction limit
+                        if !keys.is_empty() {
+                            let actions: Vec<Vec<Action>> = keys
+                                .into_iter()
+                                .map(|key| {
+                                    Action::FunctionCall(Box::new(FunctionCallAction {
+                                        method_name: "remove_public_key".to_string(),
+                                        args: serde_json::json!({
+                                            "public_key": key,
+                                        })
+                                        .to_string()
+                                        .into_bytes(),
+                                        gas: NearGas::from_tgas(10).as_gas(),
+                                        deposit: NearToken::from_yoctonear(1),
+                                    }))
+                                })
+                                .collect::<Vec<_>>()
+                                .chunks(30)
+                                .map(|chunk| chunk.to_vec())
+                                .collect();
+                            Some(actions)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                Network::Testnet => None,
+                Network::Localnet { .. } => None,
+            };
+
+            if is_ledger {
+                // For Ledger accounts, just remove other keys, keep current one
+                add_security_log(
+                    format!(
+                        "Terminated all other sessions for Ledger account {account_id}: Removed {} other keys, kept current Ledger key {}",
+                        actions.len(),
+                        current_public_key
+                    ),
+                    account_id.clone(),
+                    accounts_context,
+                );
+            } else {
+                let secret_key = mnemonic_to_key(mnemonic.clone()).unwrap();
+                let public_key = secret_key.public_key();
+
+                let add_action = Action::AddKey(Box::new(AddKeyAction {
+                    access_key: AccessKey {
+                        nonce: 0,
+                        permission: AccessKeyPermission::FullAccess,
+                    },
+                    public_key: public_key.clone(),
+                }));
+
+                actions.push(add_action);
+
+                add_security_log(
+                    format!(
+                        "Terminated all other sessions for account {account_id}: Added key {secret_key} (public key: {public_key}) and removed keys {}. Previous key that the wallet was using was {}",
+                        serde_json::to_string(&actions).unwrap(),
+                        account.secret_key
+                    ),
+                    account_id.clone(),
+                    accounts_context,
+                );
+            }
+
+            let (details_receiver, replace_key_transaction) = EnqueuedTransaction::create(
+                "Terminate other sessions".to_string(),
+                account_id.clone(),
+                account_id.clone(),
+                actions,
+            );
+            if let Some(intents_transactions) = intents_transactions {
+                let intents_transactions = intents_transactions
+                    .into_iter()
+                    .map(|intents_actions| {
+                        let (_intents_details_receiver, intents_transaction) =
+                            EnqueuedTransaction::create(
+                                "Remove Near Intents keys".to_string(),
+                                account_id.clone(),
+                                "intents.near".parse().unwrap(),
+                                intents_actions,
+                            );
+
+                        intents_transaction.in_same_queue_as(&replace_key_transaction)
+                    })
+                    .collect::<Vec<_>>();
+                add_transaction.update(|queue| {
+                    queue.extend(
+                        intents_transactions
+                            .into_iter()
+                            .chain(std::iter::once(replace_key_transaction)),
+                    )
+                });
+            } else {
+                add_transaction.update(|queue| queue.push(replace_key_transaction));
+            }
+
+            let res = details_receiver.await;
+            if matches!(res, Ok(Ok(_))) && !is_ledger {
+                let secret_key = mnemonic_to_key(mnemonic.clone()).unwrap();
+                accounts_context.set_accounts.update(|accounts| {
+                    for acc in accounts.accounts.iter_mut() {
+                        if acc.account_id == account_id {
+                            acc.secret_key = SecretKeyHolder::SecretKey(secret_key.clone());
+                            acc.seed_phrase = Some(mnemonic.to_string());
+                        }
+                    }
+                });
+            }
+            set_timeout(
+                move || set_terminating_sessions(false),
+                Duration::from_secs(2),
+            );
+        });
+    };
+
+    let generate_new_mnemonic = move || {
+        let mnemonic = bip39::Mnemonic::generate(12).unwrap();
+        set_new_mnemonic(Some(mnemonic));
+        set_copied_to_clipboard(false);
+    };
+
+    let is_ledger_account = move || {
+        let accs = accounts_context.accounts.get();
+        if let Some(selected_id) = &accs.selected_account_id {
+            if let Some(account) = accs.accounts.iter().find(|a| &a.account_id == selected_id) {
+                return matches!(account.secret_key, SecretKeyHolder::Ledger { .. });
+            }
+        }
+        false
+    };
+
+    let check_ledger_keys = move || {
+        if !is_ledger_account() {
+            set_ledger_is_only_key(false);
+            return;
+        }
+
+        let Some(account_id) = accounts_context.accounts.get().selected_account_id else {
+            return;
+        };
+
+        let account = accounts_context
+            .accounts
+            .get()
+            .accounts
+            .into_iter()
+            .find(|acc| acc.account_id == account_id)
+            .expect("Account not found");
+
+        let current_public_key = account.secret_key.public_key();
+        let rpc_client = rpc_context.client.get();
+
+        set_checking_keys(true);
+        spawn_local(async move {
+            match rpc_client
+                .view_access_key_list(account_id, QueryFinality::Finality(Finality::Final))
+                .await
+            {
+                Ok(keys) => {
+                    let full_access_keys: Vec<_> = keys
+                        .keys
+                        .into_iter()
+                        .filter(|key| {
+                            matches!(
+                                key.access_key.permission,
+                                AccessKeyPermissionView::FullAccess
+                            )
+                        })
+                        .collect();
+
+                    // Check if there's only one full access key and it's the current Ledger key
+                    let is_only_key = full_access_keys.len() == 1
+                        && full_access_keys[0].public_key == current_public_key;
+
+                    set_ledger_is_only_key(is_only_key);
+                }
+                Err(err) => {
+                    log::error!("Failed to fetch access key list: {}", err);
+                    set_ledger_is_only_key(false);
+                }
+            }
+            set_checking_keys(false);
+        });
+    };
+
+    // Check ledger keys when account changes
+    Effect::new(move || {
+        accounts_context.accounts.track();
+        check_ledger_keys();
+    });
 
     view! {
         <div class="flex flex-col gap-4 p-4">
@@ -2111,8 +2572,104 @@ pub fn AccountSettings() -> impl IntoView {
             </button>
         </div>
 
+        <div class="flex flex-col gap-4 p-4">
+            <div class="text-lg font-medium">
+                {move || {
+                    if is_ledger_account() {
+                        "Access Key Management"
+                    } else {
+                        "Terminate All Other Sessions"
+                    }
+                }}
+            </div>
+            <div class="text-sm text-neutral-400">
+                {move || {
+                    if is_ledger_account() {
+                        "This will remove all other access keys from your account, keeping only the current Ledger key. This will make your Ledger the only way to access this account."
+                    } else {
+                        "This will log you out of all devices / wallets other than this one."
+                    }
+                }}
+            </div>
+
+            <Show when=move || is_ledger_account() && ledger_is_only_key.get()>
+                <div class="flex items-center gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400">
+                    <Icon icon=icondata::LuCircleCheck width="16" height="16" />
+                    <span class="text-sm">
+                        "Your Ledger is already the only access key for this account"
+                    </span>
+                </div>
+            </Show>
+            <button
+                class=move || {
+                    let is_disabled = terminating_sessions.get() || checking_keys.get()
+                        || (is_ledger_account() && ledger_is_only_key.get());
+                    if is_disabled {
+                        "flex items-center justify-center gap-2 p-4 rounded-lg bg-neutral-500/10 text-neutral-500 transition-colors opacity-50 cursor-not-allowed"
+                    } else {
+                        "flex items-center justify-center gap-2 p-4 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors cursor-pointer"
+                    }
+                }
+                disabled=move || {
+                    terminating_sessions.get() || checking_keys.get()
+                        || (is_ledger_account() && ledger_is_only_key.get())
+                }
+                on:click=move |_| {
+                    set_is_confirmed(false);
+                    generate_new_mnemonic();
+                    modal
+                        .set(
+                            Some(
+                                Box::new(move || {
+                                    view! {
+                                        <TerminateSessionsModal
+                                            is_ledger_account=is_ledger_account
+                                            terminate_sessions=terminate_sessions
+                                            new_mnemonic=new_mnemonic
+                                            set_new_mnemonic=set_new_mnemonic
+                                            copied_to_clipboard=copied_to_clipboard
+                                            set_copied_to_clipboard=set_copied_to_clipboard
+                                            is_confirmed=is_confirmed
+                                            set_is_confirmed=set_is_confirmed
+                                            terminating_sessions=terminating_sessions
+                                            generate_new_mnemonic=generate_new_mnemonic
+                                        />
+                                    }
+                                        .into_any()
+                                }),
+                            ),
+                        );
+                }
+            >
+                <Show when=move || !terminating_sessions.get()>
+                    <Icon icon=icondata::LuLogOut width="20" height="20" />
+                    <span>
+                        {move || {
+                            if is_ledger_account() {
+                                "Remove Other Access Keys"
+                            } else {
+                                "Terminate All Other Sessions"
+                            }
+                        }}
+                    </span>
+                </Show>
+                <Show when=move || terminating_sessions.get()>
+                    <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-red-500"></div>
+                    <span>"Terminating..."</span>
+                </Show>
+                <Show when=move || checking_keys.get()>
+                    <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-neutral-500"></div>
+                    <span>"Checking keys..."</span>
+                </Show>
+            </button>
+        </div>
+
         // Log Out section
         <div class="flex flex-col gap-4 p-4">
+            <div class="text-lg font-medium">"Log Out"</div>
+            <div class="text-sm text-neutral-400">
+                "This will log you out of your account on this device. Make sure to export your seed phrase or private key somewhere safe."
+            </div>
             <button
                 on:click=move |_| {
                     accounts_context

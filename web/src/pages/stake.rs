@@ -43,6 +43,7 @@ use crate::utils::{
 use crate::{
     contexts::{
         accounts_context::AccountsContext,
+        modal_context::ModalContext,
         network_context::{Network, NetworkContext},
         rpc_context::RpcContext,
         search_context::SearchContext,
@@ -1088,13 +1089,6 @@ async fn compute_liquid_staking_apys(
     Ok([metapool, linear, rhea])
 }
 
-#[derive(Debug, Clone)]
-pub enum StakeModalState {
-    None,
-    Success(String),
-    Error(String),
-}
-
 #[component]
 fn LiquidStakingCard(
     href: &'static str,
@@ -1889,7 +1883,7 @@ pub fn StakeValidator() -> impl IntoView {
     let (amount, set_amount) = signal("".to_string());
     let (amount_error, set_amount_error) = signal::<Option<String>>(None);
     let (has_typed_amount, set_has_typed_amount) = signal(false);
-    let (modal_state, set_modal_state) = signal(StakeModalState::None);
+    let ModalContext { modal } = expect_context::<ModalContext>();
 
     let validator_data = LocalResource::new(move || {
         let rpc_client = rpc_context.client.get();
@@ -2061,6 +2055,7 @@ pub fn StakeValidator() -> impl IntoView {
     };
 
     let handle_stake = move |_| {
+        let navigate = navigate.clone();
         if amount_error.with(|e| e.is_some()) || amount.with(|a| a.is_empty()) {
             return;
         }
@@ -2100,16 +2095,41 @@ pub fn StakeValidator() -> impl IntoView {
                 .add_transaction
                 .update(|txs| txs.push(tx));
 
+            let navigate_clone = navigate.clone();
+            let navigate_clone2 = navigate.clone();
             match rx.await {
                 Ok(_) => {
-                    set_modal_state.set(StakeModalState::Success(format!(
-                        "Successfully staked {} with {}",
-                        amount, validator_pool,
-                    )));
+                    let message =
+                        format!("Successfully staked {} with {}", amount, validator_pool,);
+                    modal.set(Some(Box::new(move || {
+                        let navigate = navigate_clone.clone();
+                        view! {
+                            <TransactionSuccessModal
+                                on_close=move || {
+                                    modal.set(None);
+                                    navigate("/stake", Default::default());
+                                }
+                                message=message.clone()
+                            />
+                        }
+                        .into_any()
+                    })));
                 }
                 Err(err) => {
                     let error = format!("{err}");
-                    set_modal_state.set(StakeModalState::Error(error));
+                    modal.set(Some(Box::new(move || {
+                        let navigate = navigate_clone2.clone();
+                        view! {
+                            <TransactionErrorModal
+                                on_close=move || {
+                                    modal.set(None);
+                                    navigate("/stake", Default::default());
+                                }
+                                error=error.clone()
+                            />
+                        }
+                        .into_any()
+                    })));
                 }
             }
         });
@@ -2265,7 +2285,7 @@ pub fn StakeValidator() -> impl IntoView {
                                                     amount_error.with(|e| e.is_some())
                                                         || amount.with(|a| a.is_empty())
                                                 }
-                                                on:click=handle_stake
+                                                on:click=handle_stake.clone()
                                             >
                                                 "Stake"
                                             </button>
@@ -2295,46 +2315,8 @@ pub fn StakeValidator() -> impl IntoView {
                     }
                 }
             }}
-            {move || {
-                let navigate = navigate.clone();
-                let navigate2 = navigate.clone();
-                match modal_state.get() {
-                    StakeModalState::Success(message) => {
-                        view! {
-                            <TransactionSuccessModal
-                                on_close=move || {
-                                    set_modal_state.set(StakeModalState::None);
-                                    navigate("/stake", Default::default());
-                                }
-                                message=message
-                            />
-                        }
-                            .into_any()
-                    }
-                    StakeModalState::Error(error) => {
-                        view! {
-                            <TransactionErrorModal
-                                on_close=move || {
-                                    set_modal_state.set(StakeModalState::None);
-                                    navigate2("/stake", Default::default());
-                                }
-                                error=error
-                            />
-                        }
-                            .into_any()
-                    }
-                    StakeModalState::None => ().into_any(),
-                }
-            }}
         </div>
     }
-}
-
-#[derive(Debug, Clone)]
-pub enum UnstakeModalState {
-    None,
-    Success(String),
-    Error(String),
 }
 
 #[component]
@@ -2357,7 +2339,7 @@ pub fn UnstakeValidator() -> impl IntoView {
     let (amount, set_amount) = signal("".to_string());
     let (amount_error, set_amount_error) = signal::<Option<String>>(None);
     let (has_typed_amount, set_has_typed_amount) = signal(false);
-    let (modal_state, set_modal_state) = signal(UnstakeModalState::None);
+    let ModalContext { modal } = expect_context::<ModalContext>();
 
     let validator_data = LocalResource::new(move || {
         let rpc_client = rpc_context.client.get();
@@ -2521,6 +2503,7 @@ pub fn UnstakeValidator() -> impl IntoView {
     };
 
     let handle_unstake = move |_| {
+        let navigate = navigate.clone();
         if amount_error.with(|e| e.is_some()) || amount.with(|a| a.is_empty()) {
             return;
         }
@@ -2562,15 +2545,43 @@ pub fn UnstakeValidator() -> impl IntoView {
                 .add_transaction
                 .update(|t| t.push(tx));
 
+            let navigate_clone = navigate.clone();
+            let navigate_clone2 = navigate.clone();
             match rx.await {
                 Ok(_) => {
-                    set_modal_state.set(UnstakeModalState::Success(format!(
+                    let message = format!(
                         "Successfully initiated unstake of {} from {}. Come back tomorrow to withdraw your NEAR.",
                         amount, validator_pool
-                    )));
+                    );
+                    modal.set(Some(Box::new(move || {
+                        let navigate = navigate_clone.clone();
+                        view! {
+                            <TransactionSuccessModal
+                                on_close=move || {
+                                    modal.set(None);
+                                    navigate("/stake", Default::default());
+                                }
+                                message=message.clone()
+                            />
+                        }
+                        .into_any()
+                    })));
                 }
                 Err(err) => {
-                    set_modal_state.set(UnstakeModalState::Error(err.to_string()));
+                    let error = err.to_string();
+                    modal.set(Some(Box::new(move || {
+                        let navigate = navigate_clone2.clone();
+                        view! {
+                            <TransactionErrorModal
+                                on_close=move || {
+                                    modal.set(None);
+                                    navigate("/stake", Default::default());
+                                }
+                                error=error.clone()
+                            />
+                        }
+                        .into_any()
+                    })));
                 }
             }
         });
@@ -2788,38 +2799,6 @@ pub fn UnstakeValidator() -> impl IntoView {
             >
                 "Unstake"
             </button>
-
-            {move || {
-                let navigate = navigate.clone();
-                let navigate2 = navigate.clone();
-                match modal_state.get() {
-                    UnstakeModalState::Success(message) => {
-                        view! {
-                            <TransactionSuccessModal
-                                on_close=move || {
-                                    set_modal_state.set(UnstakeModalState::None);
-                                    navigate("/stake", Default::default());
-                                }
-                                message=message
-                            />
-                        }
-                            .into_any()
-                    }
-                    UnstakeModalState::Error(error) => {
-                        view! {
-                            <TransactionErrorModal
-                                on_close=move || {
-                                    set_modal_state.set(UnstakeModalState::None);
-                                    navigate2("/stake", Default::default());
-                                }
-                                error=error
-                            />
-                        }
-                            .into_any()
-                    }
-                    UnstakeModalState::None => ().into_any(),
-                }
-            }}
         </div>
     }
 }

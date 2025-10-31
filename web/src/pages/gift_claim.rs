@@ -21,7 +21,6 @@ use crate::{
     },
     contexts::{
         accounts_context::{AccountsContext, SecretKeyHolder},
-        modal_context::ModalContext,
         network_context::{Network, NetworkContext},
         rpc_context::RpcContext,
         transaction_queue_context::{
@@ -57,7 +56,6 @@ pub fn GiftClaim() -> impl IntoView {
     let TransactionQueueContext {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
-    let ModalContext { .. } = expect_context::<ModalContext>();
 
     let (claim_state, set_claim_state) = signal(ClaimState::Idle);
 
@@ -240,11 +238,9 @@ pub fn GiftClaim() -> impl IntoView {
                     match claim_state.get() {
                         ClaimState::Idle => {
                             view! {
-                                <Show
-                                    when=move || {
-                                        accounts.accounts.get().selected_account_id.is_some()
-                                    }
-                                >
+                                <Show when=move || {
+                                    accounts.accounts.get().selected_account_id.is_some()
+                                }>
                                     {move || {
                                         if public_key().is_none() {
                                             return ().into_any();

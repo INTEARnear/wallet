@@ -646,7 +646,7 @@ async fn validate_signed_delegate_action(
             tracing::error!("Receiver ID is not a subaccount of sender ID");
             false
         } else if signed_delegate_action.delegate_action.actions.len() != 2 {
-            tracing::error!("Actions length is not 1");
+            tracing::error!("Actions length is not 2");
             false
         } else if let Action::CreateAccount(CreateAccountAction {}) =
             signed_delegate_action.delegate_action.actions[0]
