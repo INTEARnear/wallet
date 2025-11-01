@@ -14,7 +14,7 @@
     "@tauri-apps/plugin-window-state": "2.4.0",
     "buffer": "6.0.3",
     "events": "3.3.0",
-    "fastintear": "github:sliman4/fastintear#8227ae5bc154ffeada712c8d179395ca0fd0e090",
+    "fastintear": "github:sliman4/fastintear#f206a72300a2a84a79b58ccbc4733d9044f3e992",
     "posthog-js": "1.254.0",
     "qr-code-styling": "^1.9.2",
     "react": "19.1.0",

@@ -576,7 +576,7 @@
             }
             let closedIntentionally = false;
             window.addEventListener("message", (event) => {
-                console.log("Received message", JSON.stringify(event.data));
+                console.log("Received message", event.data);
                 if (event.source === window.parent) {
                     if (event.data.type === "close") {
                         closedIntentionally = true;

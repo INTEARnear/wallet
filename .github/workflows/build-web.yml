@@ -30,8 +30,19 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
+      - name: Cache cargo-installed binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: ${{ runner.os }}-cargo-bin-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-bin-
+
       - name: Install build tools
-        run: cargo install patch-crate cargo-leptos --debug --locked
+        run: |
+          if ! command -v patch-crate &> /dev/null || ! command -v cargo-leptos &> /dev/null; then
+            cargo install patch-crate cargo-leptos --locked
+          fi
 
       - name: Install npm dependencies
         run: npm install
