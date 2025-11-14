@@ -683,21 +683,21 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                 } else if is_loading.get() {
                                     view! {
                                         <p class="text-neutral-400 text-sm mt-2 font-medium">
-                                            Checking availability...
+                                            "Checking availability..."
                                         </p>
                                     }
                                         .into_any()
                                 } else if is_valid.get().is_some() {
                                     view! {
                                         <p class="text-green-500 text-sm mt-2 font-medium">
-                                            Account name is available!
+                                            "Name is available!"
                                         </p>
                                     }
                                         .into_any()
                                 } else {
                                     view! {
                                         <p class="text-neutral-400 text-sm mt-2 font-medium">
-                                            Enter your account name
+                                            "Enter your account name"
                                         </p>
                                     }
                                         .into_any()
@@ -715,8 +715,8 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                 if is_testnet {
                                     view! {
                                         <p class="text-yellow-500 text-sm mt-2 font-medium">
-                                            This is a <b>testnet</b>
-                                            account. Tokens sent to this account are not real and hold no value
+                                            "This is a " <b>"testnet"</b>
+                                            " account. Tokens sent to this account are not real and hold no value"
                                         </p>
                                     }
                                         .into_any()
@@ -762,7 +762,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                             />
                                         </div>
                                         <div class="text-white text-sm font-medium">
-                                            Recovery Phrase
+                                            "Recovery Phrase"
                                         </div>
                                     </div>
                                 </button>
@@ -881,7 +881,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                 attr:class="text-purple-400"
                                             />
                                         </div>
-                                        <div class="text-white text-sm font-medium">Ledger</div>
+                                        <div class="text-white text-sm font-medium">"Ledger"</div>
                                     </div>
                                 </button>
                             </div>

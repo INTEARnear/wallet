@@ -90,7 +90,7 @@ pub fn Explore() -> impl IntoView {
     };
 
     view! {
-        <div class="pt-4 transition-all duration-100 lg:p-2">
+        <div class="pt-4 lg:p-2">
             <h1 class="text-4xl font-bold mb-8 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
                 Explore NEAR Ecosystem
             </h1>
@@ -152,11 +152,11 @@ pub fn Explore() -> impl IntoView {
                                     Building on NEAR?
                                 </h2>
                                 <a
-                                    href="https://t.me/slimytentacles"
+                                    href="https://github.com/INTEARnear/wallet"
                                     target="_blank"
                                     class="inline-flex items-center gap-2 text-white text-sm px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 cursor-pointer transition-colors"
                                 >
-                                    Add your app
+                                    "Add your app"
                                     <Icon icon=icondata::LuArrowRight width="16" height="16" />
                                 </a>
                             </div>

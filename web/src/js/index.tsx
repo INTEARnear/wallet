@@ -240,3 +240,76 @@ window.addEventListener("message", (event) => {
         }
     }
 });
+
+// Prevent link dragging
+document.addEventListener('dragstart', (event) => {
+    if (event.target instanceof HTMLAnchorElement) {
+        event.preventDefault();
+    }
+});
+
+// Tauri event listeners for hide/show screen
+if ((window as any).__TAURI__) {
+    try {
+        const tauri = (window as any).__TAURI__;
+        const eventApi = tauri?.event || tauri?.core?.event;
+
+        const overlay = document.createElement('div');
+        overlay.id = 'wallet-unlock-overlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 999999;
+        `;
+
+        const button = document.createElement('button');
+        button.textContent = 'Unlock Wallet';
+        button.style.cssText = `
+            padding: 20px 60px;
+            font-size: 24px;
+            font-weight: bold;
+            background-color: #333333;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        `;
+        button.addEventListener('click', async () => {
+            tauri.core.invoke('get_os_encryption_key');
+        });
+
+        overlay.appendChild(button);
+        document.body.appendChild(overlay);
+
+        if (eventApi && typeof eventApi.listen === 'function') {
+            eventApi.listen('hide', () => {
+                const contentWrapper = document.getElementById('content-wrapper');
+                if (contentWrapper) {
+                    contentWrapper.style.visibility = 'hidden';
+                }
+                overlay.style.display = 'flex';
+                overlay.style.visibility = 'visible';
+            });
+
+            eventApi.listen('show', () => {
+                const contentWrapper = document.getElementById('content-wrapper');
+                if (contentWrapper) {
+                    contentWrapper.style.visibility = 'visible';
+                }
+                overlay.style.display = 'none';
+            });
+        } else {
+            console.warn('Tauri event API not available. Screen hide/show events will not work.');
+        }
+    } catch (err: any) {
+        console.error('Failed to set up Tauri event listeners:', err);
+    }
+}

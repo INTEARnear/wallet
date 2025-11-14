@@ -392,7 +392,7 @@ pub fn TokenDetails() -> impl IntoView {
     });
 
     view! {
-        <div class="flex flex-col gap-4 p-2 md:p-4 transition-all duration-100">
+        <div class="flex flex-col gap-4 p-2 md:p-4">
             <A
                 href="/"
                 attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-2 cursor-pointer"

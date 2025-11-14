@@ -4,8 +4,8 @@ use crate::contexts::network_context::{Network, NetworkContext};
 use crate::contexts::rpc_context::RpcContext;
 use crate::contexts::tokens_context::TokensContext;
 use crate::utils::{
-    balance_to_decimal, format_token_amount, format_usd_value, get_ft_metadata, power_of_10,
-    USDT_DECIMALS,
+    balance_to_decimal, format_token_amount, format_usd_value, get_ft_metadata, is_tauri,
+    power_of_10, USDT_DECIMALS,
 };
 use bigdecimal::{BigDecimal, ToPrimitive};
 use futures_util::future::join_all;
@@ -17,7 +17,7 @@ use near_min_api::types::{AccountId, Balance};
 use near_min_api::utils::dec_format;
 use serde::{Deserialize, Serialize};
 
-const AIRDROPS: &[(i32, &str)] = &[(2, "RHEA Genesis Airdrop")];
+const AIRDROPS: &[(i32, &str)] = &[];
 
 #[derive(Debug, Clone, Deserialize)]
 struct AirdropClaimToken {
@@ -166,6 +166,9 @@ pub fn TotalPortfolioValue() -> impl IntoView {
 
     // Check storage persistence
     let storage_persisted = LocalResource::new(|| async {
+        if is_tauri() {
+            return true;
+        }
         match window()
             .navigator()
             .storage()
@@ -187,6 +190,9 @@ pub fn TotalPortfolioValue() -> impl IntoView {
         airdrop_reload_trigger.track();
         let account_id = accounts_context.accounts.get().selected_account_id;
         async move {
+            if AIRDROPS.is_empty() {
+                return None;
+            }
             if let Some(account_id) = account_id {
                 let mut all_airdrops = Vec::new();
                 let proxy_base = dotenvy_macro::dotenv!("SHARED_NFT_PROXY_SERVICE_ADDR");
@@ -289,9 +295,9 @@ pub fn TotalPortfolioValue() -> impl IntoView {
     };
 
     view! {
-        <div class="text-center mb-8">
+        <div class="text-center mb-4">
             <h1
-                class="text-white text-4xl min-[400px]:text-5xl sm:text-6xl font-semibold tracking-wider cursor-pointer select-none hover:text-neutral-200 py-8 transition-all duration-100 wrap-anywhere"
+                class="text-white text-4xl min-[400px]:text-5xl sm:text-6xl font-semibold tracking-wider cursor-pointer select-none hover:text-neutral-200 pt-8 pb-2 transition-all duration-100 wrap-anywhere"
                 on:click=handle_tap
             >
                 {display_value}

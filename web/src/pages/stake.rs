@@ -1763,6 +1763,8 @@ pub fn Stake() -> impl IntoView {
                                         .filter_map(|v| v.active_info.as_ref())
                                         .map(|v| v.stake)
                                         .sum();
+                                    log::info!("total_staked: {}", NearToken::from_yoctonear(total_staked));
+                                    log::info!("near_total_supply: {}", near_total_supply());
                                     let near_total_supply = near_total_supply();
                                     let calculated_apy = {
                                         if total_staked == 0 {
@@ -2140,7 +2142,7 @@ pub fn StakeValidator() -> impl IntoView {
     };
 
     view! {
-        <div class="flex flex-col gap-4 p-2 md:p-4 transition-all duration-100">
+        <div class="flex flex-col gap-4 p-2 md:p-4">
             <A
                 href="/stake"
                 attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-2 cursor-pointer no-mobile-ripple"
@@ -2592,7 +2594,7 @@ pub fn UnstakeValidator() -> impl IntoView {
     };
 
     view! {
-        <div class="flex flex-col gap-4 p-2 md:p-4 transition-all duration-100">
+        <div class="flex flex-col gap-4 p-2 md:p-4">
             <A
                 href="/stake"
                 attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-2 cursor-pointer no-mobile-ripple"

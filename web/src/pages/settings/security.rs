@@ -6,6 +6,8 @@ use crate::{
         accounts_context::{AccountsContext, PasswordAction, ENCRYPTION_MEMORY_COST_KB},
         config_context::{ConfigContext, PasswordRememberDuration},
     },
+    pages::settings::ToggleSwitch,
+    utils::{is_tauri, tauri_invoke_no_args},
 };
 use argon2::{Argon2, ParamsBuilder};
 use leptos::prelude::*;
@@ -14,7 +16,7 @@ use leptos_icons::*;
 use leptos_router::components::A;
 use leptos_router::hooks::use_location;
 use rand::{rngs::OsRng, RngCore};
-use wasm_bindgen_futures;
+use serde::Deserialize;
 use web_sys::js_sys::{Object, Reflect};
 
 const MIN_ROUNDS: u32 = 2;
@@ -134,8 +136,13 @@ pub fn SecuritySettings() -> impl IntoView {
     let (persistence_denied, set_persistence_denied) = signal(false);
     let (clearing_cache, set_clearing_cache) = signal(false);
     let (cache_clear_result, set_cache_clear_result) = signal::<Option<Result<(), String>>>(None);
+    let (supports_biometry, set_supports_biometry) = signal(false);
 
     let check_storage_persistence = move || {
+        if is_tauri() {
+            set_storage_persisted(Some(true));
+            return;
+        }
         spawn_local(async move {
             // Check if storage is persisted
             match window()
@@ -238,6 +245,31 @@ pub fn SecuritySettings() -> impl IntoView {
         check_storage_persistence();
     });
 
+    Effect::new(move || {
+        spawn_local(async move {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct BiometricStatus {
+                is_available: bool,
+            }
+            let status_promise = tauri_invoke_no_args("plugin:biometric|status");
+            let status = wasm_bindgen_futures::JsFuture::from(status_promise)
+                .await
+                .map_err(|e| format!("Failed to get biometric status: {:?}", e))
+                .and_then(|val| {
+                    serde_wasm_bindgen::from_value(val)
+                        .map_err(|e| format!("Failed to parse biometric status: {:?}", e))
+                })
+                .unwrap_or_else(|err| {
+                    log::error!("{}", err);
+                    BiometricStatus {
+                        is_available: false,
+                    }
+                });
+            set_supports_biometry(status.is_available);
+        });
+    });
+
     let location = use_location();
     Effect::new(move || {
         let hash = location.hash.get();
@@ -262,6 +294,9 @@ pub fn SecuritySettings() -> impl IntoView {
     Effect::new(move || {
         if let Some(result) = accounts_context.set_password.value().get() {
             if encrypting_accounts.get_untracked() {
+                if let Err(e) = result.as_ref() {
+                    log::error!("Failed to encrypt accounts: {}", e);
+                }
                 set_encryption_result(Some(result));
                 set_encrypting_accounts(false);
                 set_timeout(move || set_encryption_result(None), Duration::from_secs(2));
@@ -321,10 +356,30 @@ pub fn SecuritySettings() -> impl IntoView {
                     <Icon icon=icondata::LuChevronRight width="20" height="20" />
                 </A>
 
+                <Show when=move || supports_biometry.get()>
+                    <div class="flex flex-col gap-2">
+                        <div class="text-lg font-medium">Biometric Authentication</div>
+                        <div class="text-sm text-neutral-400">
+                            "Use biometric authentication to unlock your wallet."
+                        </div>
+                        <div class="p-4 rounded-lg bg-neutral-900 border border-neutral-700">
+                            <ToggleSwitch
+                                label="Biometric authentication"
+                                value=Signal::derive(move || config.get().biometric_enabled)
+                                disabled=Signal::derive(|| false)
+                                on_toggle=move || {
+                                    set_config
+                                        .update(|c| c.biometric_enabled = !c.biometric_enabled);
+                                }
+                            />
+                        </div>
+                    </div>
+                </Show>
+
                 <div class="flex flex-col gap-2">
                     <div class="text-lg font-medium">Password</div>
                     <div class="text-sm text-neutral-400">
-                        "Encrypt your wallet credentials, so that even if your device is compromised (for example, if you get malware, or someone steals your device), it will be much harder for the attacker to access your accounts."
+                        "Encrypt your wallet keys, so that even if your device is compromised (for example, if you get malware, or someone steals your device), it will be much harder for the attacker to access your accounts."
                     </div>
 
                     <div class="flex flex-col gap-3">
@@ -494,7 +549,11 @@ pub fn SecuritySettings() -> impl IntoView {
                     </div>
                 </div>
 
-                <div class="flex flex-col gap-2" id="storage-section">
+                <div
+                    class="flex flex-col gap-2"
+                    id="storage-section"
+                    class:hidden=move || is_tauri()
+                >
                     <Show when=move || storage_persisted.get().is_some()>
                         <div class="text-lg font-medium">Storage Persistence</div>
                         <div class="text-sm text-neutral-400">

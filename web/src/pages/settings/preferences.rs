@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use crate::contexts::config_context::{BackgroundGroup, ConfigContext, HiddenNft};
 use crate::pages::swap::Slippage;
-use crate::utils::is_tauri;
+use crate::utils::{is_android, is_tauri};
 use bigdecimal::{BigDecimal, FromPrimitive};
 use leptos::prelude::*;
 use leptos_icons::*;
@@ -11,7 +11,7 @@ use leptos_use::use_window_size;
 pub const SLIPPAGE_PRESETS: [f64; 4] = [0.5, 1.0, 2.0, 5.0];
 
 #[component]
-fn ToggleSwitch(
+pub fn ToggleSwitch(
     label: &'static str,
     #[prop(into)] value: Signal<bool>,
     #[prop(into)] disabled: Signal<bool>,
@@ -75,6 +75,8 @@ pub fn PreferencesSettings() -> impl IntoView {
     let analytics_disabled = Memo::new(move |_| config_context.config.get().analytics_disabled);
     let hide_to_tray = Memo::new(move |_| config_context.config.get().hide_to_tray);
     let autostart = Memo::new(move |_| config_context.config.get().autostart);
+    let amounts_hidden = Memo::new(move |_| config_context.config.get().amounts_hidden);
+    let prevent_screenshots = Memo::new(move |_| config_context.config.get().prevent_screenshots);
 
     let updates_disabled = Signal::derive(|| false);
     let prices_disabled = Signal::derive(|| false);
@@ -168,6 +170,32 @@ pub fn PreferencesSettings() -> impl IntoView {
                             });
                     }
                 />
+                <ToggleSwitch
+                    label="Hide Amounts"
+                    value=amounts_hidden
+                    disabled=Signal::derive(|| false)
+                    on_toggle=move || {
+                        config_context
+                            .set_config
+                            .update(|config| {
+                                config.amounts_hidden = !config.amounts_hidden;
+                            });
+                    }
+                />
+                <Show when=is_android>
+                    <ToggleSwitch
+                        label="Disable screenshots"
+                        value=prevent_screenshots
+                        disabled=Signal::derive(|| false)
+                        on_toggle=move || {
+                            config_context
+                                .set_config
+                                .update(|config| {
+                                    config.prevent_screenshots = !config.prevent_screenshots;
+                                });
+                        }
+                    />
+                </Show>
             </div>
 
             // Slippage settings section

@@ -675,7 +675,7 @@ pub fn SendToken() -> impl IntoView {
     };
 
     view! {
-        <div class="flex flex-col gap-4 p-3 md:p-4 transition-all duration-100">
+        <div class="flex flex-col gap-4 p-3 md:p-4">
             <div class="flex items-center justify-between mb-2">
                 <A
                     href="/"
@@ -1411,7 +1411,7 @@ pub fn SendMultiToken() -> impl IntoView {
     };
 
     view! {
-        <div class="flex flex-col gap-4 p-2 md:p-4 transition-all duration-100 overflow-y-auto">
+        <div class="flex flex-col gap-4 p-2 md:p-4 overflow-y-auto">
             <div class="flex items-center justify-between mb-2">
                 <A
                     href=move || format!("/send/{}", token_id())

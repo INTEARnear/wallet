@@ -376,8 +376,10 @@ async fn save_encrypted_accounts(cipher: Cipher, accounts: AccountsState) -> Res
             let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
             let cipher = Aes256Gcm::new(key);
             let Ok(encrypted_data) = cipher.encrypt(&nonce, encrypted_data.as_ref()) else {
-                tx.send(Err("Failed to encrypt data using OS key".to_string()))
-                    .unwrap();
+                tx.send(Err(
+                    "Failed to encrypt data using OS key on client".to_string()
+                ))
+                .unwrap();
                 return;
             };
             tx.send(Ok(encrypted_data)).unwrap();
@@ -461,10 +463,15 @@ async fn try_decrypt_accounts(
             };
             let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
             let cipher = Aes256Gcm::new(key);
-            let Ok(decrypted_data) = cipher.decrypt(&nonce, encrypted_data.as_ref()) else {
-                tx.send(Err("Failed to decrypt data using OS key".to_string()))
+            let decrypted_data = match cipher.decrypt(&nonce, encrypted_data.as_ref()) {
+                Ok(decrypted_data) => decrypted_data,
+                Err(e) => {
+                    tx.send(Err(format!(
+                        "Failed to decrypt data using OS key on client: {e:?}"
+                    )))
                     .unwrap();
-                return;
+                    return;
+                }
             };
             tx.send(Ok(decrypted_data)).unwrap();
         });
@@ -712,8 +719,10 @@ pub fn provide_accounts_context() {
                             let Ok(decrypted_data) =
                                 cipher.decrypt(&nonce, encrypted_data.as_ref())
                             else {
-                                tx.send(Err("Failed to decrypt data using OS key".to_string()))
-                                    .unwrap();
+                                tx.send(Err(
+                                    "Failed to decrypt data using OS key on client".to_string()
+                                ))
+                                .unwrap();
                                 return;
                             };
                             tx.send(Ok(decrypted_data)).unwrap();
@@ -721,7 +730,7 @@ pub fn provide_accounts_context() {
                         match rx.await.unwrap() {
                             Ok(decrypted_data) => decrypted_data,
                             Err(e) => {
-                                log::error!("Failed to decrypt data using OS key: {}", e);
+                                log::error!("Failed to decrypt data using OS key on client: {}", e);
                                 return;
                             }
                         }

@@ -2,10 +2,7 @@
 
 use leptos::{html::Div, prelude::*};
 use leptos_icons::*;
-use leptos_router::{
-    components::*,
-    hooks::{use_location, use_navigate},
-};
+use leptos_router::{components::*, hooks::use_location};
 use leptos_use::use_window_size;
 use rand::{rngs::OsRng, Rng};
 use std::time::Duration;
@@ -29,10 +26,8 @@ use crate::{
 
 /// Height of the bottom navbar with buttons
 const BOTTOM_NAV_HEIGHT_PX: u32 = 64;
-/// Don't perform horizontal tab swipe if swipe Y is at least this amount
-const SWIPE_Y_THRESHOLD_PX: f64 = 75.0;
-/// Only perform horizontal tab swipe if swipe X is at least this amount
-const SWIPE_X_THRESHOLD_PX: f64 = 75.0;
+/// Only perform accounts swipe if swipe X is at least this amount
+const SWIPE_X_THRESHOLD_PX: f64 = 60.0;
 /// Distance from left edge to trigger account selector - scales with viewport width up to a maximum
 fn left_edge_threshold() -> f64 {
     let viewport_width = window().inner_width().unwrap().as_f64().unwrap();
@@ -63,12 +58,10 @@ struct NavItem {
 #[component]
 pub fn Layout(children: ChildrenFn) -> impl IntoView {
     let location = use_location();
-    let navigate = use_navigate();
     let (slide_direction, set_slide_direction) = signal("");
     let (prev_path, set_prev_path) = signal("".to_string());
     let (touch_start_x, set_touch_start_x) = signal(0.0);
     let (touch_start_y, set_touch_start_y) = signal(0.0);
-    let (swipe_progress, set_swipe_progress) = signal(0.0);
     let (initial_movement_direction, set_initial_movement_direction) =
         signal(Option::<MovementDirection>::None);
     let (is_left_edge_swipe, set_is_left_edge_swipe) = signal(false);
@@ -95,14 +88,6 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
         path: "/",
         icon: icondata::LuWallet,
     };
-    const NFTS_ITEM: &NavItem = &NavItem {
-        path: "/nfts",
-        icon: icondata::LuImage,
-    };
-    const STAKE_ITEM: &NavItem = &NavItem {
-        path: "/stake",
-        icon: icondata::LuBeef,
-    };
     const SWAP_ITEM: &NavItem = &NavItem {
         path: "/swap",
         icon: icondata::LuRefreshCw,
@@ -115,36 +100,17 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
         path: "/explore",
         icon: icondata::LuCompass,
     };
-    const GIFTS_ITEM: &NavItem = &NavItem {
-        path: "/gifts",
-        icon: icondata::LuGift,
-    };
     let nav_items = move || match network.get() {
         Network::Mainnet => {
-            vec![
-                HOME_ITEM,
-                NFTS_ITEM,
-                STAKE_ITEM,
-                SWAP_ITEM,
-                GIFTS_ITEM,
-                HISTORY_ITEM,
-                EXPLORE_ITEM,
-            ]
+            vec![HOME_ITEM, SWAP_ITEM, HISTORY_ITEM, EXPLORE_ITEM]
         }
         Network::Testnet => {
-            vec![HOME_ITEM, NFTS_ITEM, STAKE_ITEM, HISTORY_ITEM]
+            vec![HOME_ITEM, HISTORY_ITEM]
         }
         Network::Localnet(network) => {
-            let mut items = vec![HOME_ITEM, NFTS_ITEM, STAKE_ITEM, HISTORY_ITEM];
-            if network.staking_pools.is_empty() {
-                items.retain(|item| item.path != STAKE_ITEM.path);
-            }
+            let mut items = vec![HOME_ITEM, HISTORY_ITEM];
             if network.history_service_url.is_none() {
                 items.retain(|item| item.path != HISTORY_ITEM.path);
-            }
-            if network.fastnear_api_url.is_none() {
-                items.retain(|item| item.path != NFTS_ITEM.path);
-                items.retain(|item| item.path != STAKE_ITEM.path);
             }
             items
         }
@@ -168,11 +134,6 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
             let delta_x = touch_x - touch_start_x.get();
             let delta_y = touch_y - touch_start_y.get();
 
-            // Skip horizontal swipe handling in settings pages
-            if location.pathname.get().starts_with("/settings") {
-                return;
-            }
-
             // Determine initial movement direction if not already set
             if initial_movement_direction.get().is_none() {
                 let total_movement = (delta_x * delta_x + delta_y * delta_y).sqrt();
@@ -186,7 +147,7 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                 }
             }
 
-            // If we've determined this is a horizontal swipe, prevent default scrolling
+            // If we've determined this is a horizontal swipe, prevent default vertical scrolling
             if initial_movement_direction.get() == Some(MovementDirection::Horizontal) {
                 event.prevent_default();
             }
@@ -198,45 +159,13 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                 set_account_selector_progress((delta_x / SWIPE_X_THRESHOLD_PX).clamp(0.0, 1.0));
                 return;
             }
-
-            // Only process horizontal swipes if the initial movement was horizontal
-            if initial_movement_direction.get() == Some(MovementDirection::Horizontal) {
-                let current_index = nav_items()
-                    .iter()
-                    .position(|item| item.path == location.pathname.get().as_str());
-
-                // Calculate swipe progress
-                let progress = match delta_x {
-                    -100.0..=100.0 => delta_x,
-                    ..-100.0 => -(-delta_x - 100.0).powf(0.75) - 100.0,
-                    100.0.. => (delta_x - 100.0).powf(0.75) + 100.0,
-                    _ => 0.0,
-                };
-
-                // Only allow swiping if we're not at the edge
-                if let Some(current_index) = current_index {
-                    if (delta_x < 0.0 && current_index < nav_items().len() - 1)
-                        || (delta_x > 0.0 && current_index > 0)
-                    {
-                        set_swipe_progress(progress);
-                    }
-                }
-            }
         }
     };
 
     let handle_touch_end = move |event: TouchEvent| {
         if let Some(touch) = event.changed_touches().get(0) {
             let touch_end_x = touch.client_x() as f64;
-            let touch_end_y = touch.client_y() as f64;
             let delta_x = touch_end_x - touch_start_x.get();
-            let delta_y = touch_end_y - touch_start_y.get();
-
-            // Skip horizontal swipe handling in settings pages
-            if location.pathname.get().starts_with("/settings") {
-                set_initial_movement_direction(None);
-                return;
-            }
 
             // Handle left edge swipe for account selector
             if is_left_edge_swipe.get()
@@ -247,27 +176,7 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                     set_account_selector_progress(0.0);
                 }
                 set_is_left_edge_swipe(false);
-            } else if initial_movement_direction.get() == Some(MovementDirection::Horizontal)
-                && delta_y.abs() < SWIPE_Y_THRESHOLD_PX
-                && delta_x.abs() > SWIPE_X_THRESHOLD_PX
-            {
-                let current_index = nav_items()
-                    .iter()
-                    .position(|item| item.path == location.pathname.get().as_str());
-
-                if let Some(current_index) = current_index {
-                    if delta_x < 0.0 && current_index < nav_items().len() - 1 {
-                        // Swipe left - go to next page
-                        let next_path = nav_items()[current_index + 1].path;
-                        navigate(next_path, Default::default());
-                    } else if delta_x > 0.0 && current_index > 0 {
-                        // Swipe right - go to previous page
-                        let prev_path = nav_items()[current_index - 1].path;
-                        navigate(prev_path, Default::default());
-                    }
-                }
             }
-            set_swipe_progress(0.0);
         }
         set_initial_movement_direction(None);
     };
@@ -364,13 +273,7 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                             class=move || {
                                 format!("{} *:min-h-full *:flex-1 flex flex-col", slide_direction())
                             }
-                            style=move || {
-                                format!(
-                                    "transform: translateX(calc({}px + var(--slide-transform))); opacity: min({}, var(--slide-opacity));",
-                                    swipe_progress.get(),
-                                    1.0 - swipe_progress.get().abs() / 250.0,
-                                )
-                            }
+                            style="transform: translateX(var(--slide-transform)); opacity: var(--slide-opacity);"
                         >
                             {move || {
                                 if accounts.get().selected_account_id.is_some() {
@@ -425,9 +328,8 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                                                 });
                                             if let Some(current_index) = current_index {
                                                 format!(
-                                                    "left: calc({}% - {}px); height: {BOTTOM_NAV_HEIGHT_PX}px; width: calc(100% / {})",
+                                                    "left: {}%; height: {BOTTOM_NAV_HEIGHT_PX}px; width: calc(100% / {})",
                                                     current_index as f64 * 100.0 / nav_items().len() as f64,
-                                                    swipe_progress.get() / 4.0,
                                                     nav_items().len(),
                                                 )
                                             } else {

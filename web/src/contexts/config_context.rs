@@ -154,6 +154,10 @@ pub struct WalletConfig {
     pub swap_confirmation_enabled: bool,
     #[serde(default)]
     pub custom_networks: Vec<CustomNetwork>,
+    #[serde(default = "default_true")]
+    pub biometric_enabled: bool,
+    #[serde(default = "default_true")]
+    pub prevent_screenshots: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -218,6 +222,8 @@ impl Default for WalletConfig {
             autostart: false,
             swap_confirmation_enabled: true,
             custom_networks: vec![],
+            biometric_enabled: true,
+            prevent_screenshots: true,
         }
     }
 }

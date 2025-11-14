@@ -1,14 +1,16 @@
 use base64::{Engine, prelude::BASE64_STANDARD};
-use keyring::Entry;
+use keyring_core::Entry;
 use rand::{RngCore, rngs::OsRng};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::sync::Mutex;
+#[cfg(mobile)]
+use tauri::Emitter;
+use tauri::{AppHandle, Manager, Url, WebviewWindow, Wry};
+#[cfg(desktop)]
 use tauri::{
-    AppHandle, Manager, Url, WebviewWindow, Wry,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
-#[cfg(desktop)]
 use tauri_plugin_deep_link::DeepLinkExt;
 
 const WINDOW_MAIN: &str = "main";
@@ -25,26 +27,48 @@ fn close_temporary_window(window: WebviewWindow) {
         log::error!("Cannot close the main window using close_temporary_window");
         return;
     }
+    #[cfg(desktop)]
     window.close().expect("Failed to close a temporary window");
 }
 
 #[tauri::command]
-async fn get_os_encryption_key() -> Result<String, String> {
-    let entry = Entry::new(SERVICE_NAME, ENTRY_NAME)
-        .map_err(|e| format!("Failed to create keyring entry: {}", e))?;
+fn get_os_encryption_key(
+    #[allow(unused)] handle: AppHandle,
+    #[allow(unused)] state: tauri::State<AppState>,
+) -> Result<String, String> {
+    #[cfg(mobile)]
+    match ensure_biometric_authentication(&handle, &state) {
+        Ok(()) => (),
+        Err(e) => {
+            log::error!("Failed to ensure biometric authentication: {}", e);
+            return Err(format!("Failed to ensure biometric authentication: {}", e));
+        }
+    };
+
+    let entry = match Entry::new(SERVICE_NAME, ENTRY_NAME) {
+        Ok(entry) => entry,
+        Err(e) => {
+            log::error!("Failed to create keyring entry: {}", e);
+            return Err(format!("Failed to create keyring entry: {}", e));
+        }
+    };
 
     match entry.get_password() {
         Ok(key) => {
-            let key_bytes = BASE64_STANDARD
-                .decode(&key)
-                .map_err(|e| format!("Failed to decode key: {}", e))?;
-            if key_bytes.len() == 32 {
-                Ok(key)
-            } else {
-                panic!("Invalid key length: {}", key_bytes.len());
+            let key_bytes = match BASE64_STANDARD.decode(&key) {
+                Ok(key_bytes) => key_bytes,
+                Err(e) => {
+                    log::error!("Failed to decode key: {}", e);
+                    return Err(format!("Failed to decode key: {}", e));
+                }
+            };
+            if key_bytes.len() != 32 {
+                log::error!("Invalid key length: {}", key_bytes.len());
+                return Err(format!("Invalid key length: {}", key_bytes.len()));
             }
+            Ok(key)
         }
-        Err(keyring::Error::NoEntry) => {
+        Err(keyring_core::Error::NoEntry) => {
             log::info!("No entry found, generating new key");
             generate_and_store_os_key(&entry)
         }
@@ -67,14 +91,97 @@ fn generate_and_store_os_key(entry: &Entry) -> Result<String, String> {
     Ok(key_string)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(mobile)]
+fn ensure_biometric_authentication(
+    handle: &AppHandle,
+    state: &tauri::State<AppState>,
+) -> Result<(), String> {
+    use tauri_plugin_biometric::BiometricExt;
+
+    let require_biometric = {
+        if let Ok(config_guard) = state.config.lock() {
+            config_guard.biometric_enabled
+        } else {
+            false
+        }
+    };
+
+    if !require_biometric
+        || !handle
+            .biometric()
+            .status()
+            .map_err(|e| format!("Failed to get biometric status: {}", e))?
+            .is_available
+    {
+        if let Some(window) = handle.get_webview_window(WINDOW_MAIN) {
+            if let Err(e) = window.emit("show", ()) {
+                log::warn!("Failed to emit show event: {:?}", e);
+            }
+        }
+        return Ok(());
+    }
+
+    // Check if already authenticated in this session
+    let is_authenticated = {
+        if let Ok(auth_guard) = state.biometric_authenticated.lock() {
+            *auth_guard
+        } else {
+            false
+        }
+    };
+
+    if is_authenticated {
+        if let Some(window) = handle.get_webview_window(WINDOW_MAIN) {
+            if let Err(e) = window.emit("show", ()) {
+                log::warn!("Failed to emit show event: {:?}", e);
+            }
+        }
+        return Ok(());
+    }
+
+    let auth_options = tauri_plugin_biometric::AuthOptions {
+        allow_device_credential: true,
+        cancel_title: Some("Authentication required".to_string()),
+        fallback_title: Some("Authentication failed".to_string()),
+        title: Some("Unlock Wallet".to_string()),
+        subtitle: None,
+        confirmation_required: Some(true),
+    };
+
+    handle
+        .biometric()
+        .authenticate(
+            "Authenticate to access your wallet".to_string(),
+            auth_options,
+        )
+        .map_err(|e| format!("Biometric authentication failed: {}", e))?;
+
+    if let Ok(mut auth_guard) = state.biometric_authenticated.lock() {
+        *auth_guard = true;
+        log::info!("Biometric authentication cached for session");
+    }
+
+    if let Some(window) = handle.get_webview_window(WINDOW_MAIN) {
+        if let Err(e) = window.emit("show", ()) {
+            log::warn!("Failed to emit show event: {:?}", e);
+        }
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct WalletConfig {
     pub hide_to_tray: bool,
     pub autostart: bool,
+    pub biometric_enabled: bool,
+    pub prevent_screenshots: bool,
 }
 
 struct AppState {
     config: Mutex<WalletConfig>,
+    #[cfg(mobile)]
+    biometric_authenticated: Mutex<bool>,
 }
 
 #[tauri::command]
@@ -96,7 +203,29 @@ fn update_config(
             }
         }
 
+        #[cfg(target_os = "android")]
+        {
+            let prevent: jni::sys::jboolean = new_config.prevent_screenshots.into();
+            let _ = handle
+                .get_webview_window(WINDOW_MAIN)
+                .unwrap()
+                .with_webview(move |webview| {
+                    webview.jni_handle().exec(move |env, activity, _webview| {
+                        let _ = env.call_method(
+                            &activity,
+                            "setPreventScreenshots",
+                            "(Z)V",
+                            &[prevent.into()],
+                        );
+                    })
+                });
+        }
+
         *config_guard = new_config;
+        drop(config_guard);
+
+        #[cfg(mobile)]
+        let _ = ensure_biometric_authentication(&handle, &state);
     }
     Ok(())
 }
@@ -109,128 +238,212 @@ pub fn run() {
         std::env::set_var("__NV_DISABLE_EXPLICIT_SYNC", "1");
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
-    tauri::Builder::default()
-        .plugin(tauri_plugin_deep_link::init())
-        .manage(AppState {
-            config: Mutex::new(WalletConfig {
-                hide_to_tray: false,
-                autostart: false,
-            }),
-        })
-        .invoke_handler(tauri::generate_handler![
-            update_config,
-            get_os_encryption_key,
-            close_temporary_window,
-        ])
-        .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+    #[cfg(target_os = "linux")]
+    keyring_core::set_default_store(dbus_secret_service_keyring_store::Store::new().unwrap());
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    keyring_core::set_default_store(apple_native_keyring_store::protected::Store::new().unwrap());
+    #[cfg(target_os = "windows")]
+    keyring_core::set_default_store(windows_native_keyring_store::Store::new().unwrap());
+    #[cfg(target_os = "android")]
+    keyring_core::set_default_store(
+        android_native_keyring_store::AndroidStore::from_ndk_context().unwrap(),
+    );
+    let app = tauri::Builder::default();
+    #[cfg(mobile)]
+    let app = app.plugin(tauri_plugin_biometric::init());
+    let app =
+        app.plugin(tauri_plugin_os::init())
+            .plugin(tauri_plugin_deep_link::init())
+            .manage(AppState {
+                config: Mutex::new(WalletConfig {
+                    hide_to_tray: false,
+                    autostart: false,
+                    biometric_enabled: true,
+                    prevent_screenshots: true,
+                }),
+                #[cfg(mobile)]
+                biometric_authenticated: Mutex::new(false),
+            })
+            .invoke_handler(tauri::generate_handler![
+                update_config,
+                get_os_encryption_key,
+                close_temporary_window,
+            ])
+            .setup(|app| {
+                if cfg!(debug_assertions) {
+                    app.handle().plugin(
+                        tauri_plugin_log::Builder::default()
+                            .level(log::LevelFilter::Info)
+                            .build(),
+                    )?;
+                }
 
-            #[cfg(desktop)]
-            {
-                app.handle()
-                    .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {}))?;
-            }
+                #[cfg(desktop)]
+                {
+                    app.handle()
+                        .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {}))?;
+                }
 
-            app.handle().plugin(tauri_plugin_deep_link::init())?;
-            #[cfg(desktop)]
-            app.deep_link().register_all()?;
+                app.handle().plugin(tauri_plugin_deep_link::init())?;
+                #[cfg(desktop)]
+                app.deep_link().register_all()?;
 
-            let handle = app.handle().clone();
-            app.deep_link().on_open_url(move |event| {
-                for url in event.urls() {
-                    if let Err(err) = process_deep_link(&handle, &url) {
-                        log::warn!("Failed to process deep link: {err:?}");
+                let handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        if let Err(err) = process_deep_link(&handle, &url) {
+                            log::warn!("Failed to process deep link: {err:?}");
+                        }
+                    }
+                });
+
+                if let Ok(Some(url)) = app.deep_link().get_current() {
+                    for url in url {
+                        if let Err(err) = process_deep_link(app.handle(), &url) {
+                            log::warn!("Failed to process deep link: {err:?}");
+                        }
                     }
                 }
+
+                #[cfg(all(desktop, not(debug_assertions)))]
+                {
+                    use tauri_plugin_autostart::MacosLauncher;
+
+                    app.handle().plugin(tauri_plugin_autostart::init(
+                        MacosLauncher::LaunchAgent,
+                        None,
+                    ))?;
+                }
+
+                #[cfg(desktop)]
+                {
+                    let show_item = MenuItem::with_id(app, "show", "Open", true, None::<&str>)?;
+                    let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+                    let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+
+                    TrayIconBuilder::new()
+                        .icon(app.default_window_icon().unwrap().clone())
+                        .menu(&menu)
+                        .on_tray_icon_event(|tray, event| match event {
+                            TrayIconEvent::Click {
+                                button: MouseButton::Left,
+                                button_state: MouseButtonState::Up,
+                                ..
+                            } => {
+                                log::info!("Tray icon left clicked, showing main window");
+                                let app = tray.app_handle();
+                                if let Some(window) = app.get_webview_window(WINDOW_MAIN) {
+                                    let _ = window.unminimize();
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
+                            }
+                            _ => {
+                                log::debug!("Unhandled tray event: {event:?}");
+                            }
+                        })
+                        .on_menu_event(|app, event| match event.id.as_ref() {
+                            "show" => {
+                                log::info!("Show menu item clicked");
+                                if let Some(window) = app.get_webview_window(WINDOW_MAIN) {
+                                    let _ = window.unminimize();
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
+                            }
+                            "quit" => {
+                                log::info!("Quit menu item clicked");
+                                app.exit(0);
+                            }
+                            _ => {
+                                log::warn!("Unknown menu item clicked: {:?}", event.id);
+                            }
+                        })
+                        .build(app)?;
+                }
+
+                #[cfg(mobile)]
+                {
+                    use tauri_plugin_app_events::AppEventsExt;
+
+                    app.handle().plugin(tauri_plugin_app_events::init())?;
+
+                    if let Some(window) = app.handle().get_webview_window(WINDOW_MAIN) {
+                        if let Err(e) = window.emit("hide", ()) {
+                            log::warn!("Failed to emit hide event: {:?}", e);
+                        }
+                    }
+
+                    let app_handle = app.handle().clone();
+                    let _ = app_handle.clone().app_events().set_pause_handler(
+                        tauri::ipc::Channel::new(move |_| {
+                            log::info!("App paused");
+                            let app_handle_clone = app_handle.clone();
+                            if let Some(window) = app_handle_clone.get_webview_window(WINDOW_MAIN) {
+                                if let Err(e) = window.emit("hide", ()) {
+                                    log::warn!("Failed to emit hide event: {:?}", e);
+                                }
+                            }
+                            if let Ok(mut auth_guard) = app_handle
+                                .state::<AppState>()
+                                .biometric_authenticated
+                                .try_lock()
+                            {
+                                if *auth_guard {
+                                    *auth_guard = false;
+                                    log::info!(
+                                        "Biometric authentication cache cleared (focus changed)"
+                                    );
+                                    drop(auth_guard);
+                                }
+                            }
+                            Ok(())
+                        }),
+                    );
+
+                    let app_handle = app.handle().clone();
+                    let is_first_resume = std::sync::atomic::AtomicBool::new(true);
+                    let _ = app_handle.clone().app_events().set_resume_handler(
+                        tauri::ipc::Channel::new(move |_| {
+                            if is_first_resume.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                                log::info!("App resumed for the first time");
+                            } else {
+                                log::info!("App resumed");
+                                let app_handle_clone = app_handle.clone();
+                                let _ = app_handle.run_on_main_thread(move || {
+                                    let _ = ensure_biometric_authentication(
+                                        &app_handle_clone,
+                                        &app_handle_clone.state::<AppState>(),
+                                    );
+                                });
+                            }
+                            Ok(())
+                        }),
+                    );
+                }
+
+                Ok(())
             });
 
-            if let Ok(Some(url)) = app.deep_link().get_current() {
-                for url in url {
-                    if let Err(err) = process_deep_link(app.handle(), &url) {
-                        log::warn!("Failed to process deep link: {err:?}");
-                    }
-                }
-            }
-
-            #[cfg(all(desktop, not(debug_assertions)))]
+    #[cfg(desktop)]
+    let app = app.on_window_event(|window, event| {
+        if window.label() == WINDOW_MAIN
+            && let tauri::WindowEvent::CloseRequested { api, .. } = event
+            && let Some(window) = window.get_webview_window(WINDOW_MAIN)
+        {
+            let app_handle = window.app_handle();
+            if let Ok(config) = app_handle.state::<AppState>().config.lock()
+                && config.hide_to_tray
             {
-                use tauri_plugin_autostart::MacosLauncher;
-
-                app.handle().plugin(tauri_plugin_autostart::init(
-                    MacosLauncher::LaunchAgent,
-                    None,
-                ))?;
+                // Hide the window instead of closing it
+                api.prevent_close();
+                log::info!("Window close requested, hiding to tray");
+                let _ = window.hide();
             }
+        }
+    });
 
-            let show_item = MenuItem::with_id(app, "show", "Open", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
-
-            TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
-                .menu(&menu)
-                .on_tray_icon_event(|tray, event| match event {
-                    TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } => {
-                        log::info!("Tray icon left clicked, showing main window");
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window(WINDOW_MAIN) {
-                            let _ = window.unminimize();
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                    _ => {
-                        log::debug!("Unhandled tray event: {event:?}");
-                    }
-                })
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => {
-                        log::info!("Show menu item clicked");
-                        if let Some(window) = app.get_webview_window(WINDOW_MAIN) {
-                            let _ = window.unminimize();
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                    "quit" => {
-                        log::info!("Quit menu item clicked");
-                        app.exit(0);
-                    }
-                    _ => {
-                        log::warn!("Unknown menu item clicked: {:?}", event.id);
-                    }
-                })
-                .build(app)?;
-
-            Ok(())
-        })
-        .on_window_event(|window, event| {
-            if window.label() == WINDOW_MAIN
-                && let tauri::WindowEvent::CloseRequested { api, .. } = event
-                && let Some(window) = window.get_webview_window(WINDOW_MAIN)
-            {
-                let app_handle = window.app_handle();
-                if let Ok(config) = app_handle.state::<AppState>().config.lock()
-                    && config.hide_to_tray
-                {
-                    // Hide the window instead of closing it
-                    api.prevent_close();
-                    log::info!("Window close requested, hiding to tray");
-                    let _ = window.hide();
-                }
-            }
-        })
-        .run(tauri::generate_context!())
+    app.run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
@@ -252,11 +465,15 @@ fn process_deep_link(app: &AppHandle<Wry>, url: &Url) -> Result<(), anyhow::Erro
                 app,
                 WINDOW_CONNECT,
                 tauri::WebviewUrl::App("connect".into()),
-            )
-            .minimizable(false)
-            .inner_size(400.0, 700.0)
-            .title("Connect Wallet")
-            .build()?;
+            );
+
+            #[cfg(desktop)]
+            let window = window
+                .minimizable(false)
+                .inner_size(400.0, 700.0)
+                .title("Connect Wallet");
+
+            let window = window.build()?;
 
             if let Some(session_id) = session_id {
                 let js_code = format!(
@@ -292,11 +509,24 @@ fn process_deep_link(app: &AppHandle<Wry>, url: &Url) -> Result<(), anyhow::Erro
                 app,
                 WINDOW_SIGN_MESSAGE,
                 tauri::WebviewUrl::App("sign-message".into()),
-            )
-            .minimizable(false)
-            .inner_size(400.0, 700.0)
-            .title("Sign Message")
-            .build()?;
+            );
+
+            #[cfg(desktop)]
+            let window = window
+                .minimizable(false)
+                .inner_size(400.0, 700.0)
+                .parent(&app.get_webview_window(WINDOW_MAIN).unwrap())
+                .unwrap()
+                .title("Sign Message")
+                .always_on_top(true)
+                .zoom_hotkeys_enabled(true);
+
+            #[cfg(target_os = "macos")]
+            let window = window
+                .tabbing_identifier("intearwallet")
+                .theme(Some(tauri::Theme::Dark));
+
+            let window = window.build()?;
 
             if let Some(session_id) = session_id {
                 let js_code = format!(
@@ -332,11 +562,15 @@ fn process_deep_link(app: &AppHandle<Wry>, url: &Url) -> Result<(), anyhow::Erro
                 app,
                 WINDOW_SEND_TRANSACTIONS,
                 tauri::WebviewUrl::App("send-transactions".into()),
-            )
-            .minimizable(false)
-            .inner_size(400.0, 700.0)
-            .title("Send Transactions")
-            .build()?;
+            );
+
+            #[cfg(desktop)]
+            let window = window
+                .minimizable(false)
+                .inner_size(400.0, 700.0)
+                .title("Send Transactions");
+
+            let window = window.build()?;
 
             if let Some(session_id) = session_id {
                 let js_code = format!(

@@ -2,7 +2,6 @@ use base64::{prelude::BASE64_STANDARD, Engine};
 use bigdecimal::{num_bigint::BigInt, BigDecimal, One, ToPrimitive, Zero};
 use borsh::BorshSerialize;
 use cached::proc_macro::cached;
-use chrono::{DateTime, Utc};
 use futures_util::lock::Mutex;
 use leptos::prelude::*;
 use near_min_api::{
@@ -19,10 +18,7 @@ use near_min_api::{
 use serde::Deserialize;
 use std::{fmt::Display, ops::Deref, str::FromStr, time::Duration};
 use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
-use web_sys::{
-    js_sys::{Promise, Reflect},
-    MouseEvent,
-};
+use web_sys::js_sys::{Promise, Reflect};
 
 use crate::contexts::{
     accounts_context::{AccountsContext, SecretKeyHolder, UserCancelledSigning},
@@ -186,119 +182,12 @@ pub fn format_account_id(account_id: &AccountIdRef) -> AnyView {
 }
 
 pub fn format_account_id_no_hide(account_id: &AccountIdRef) -> AnyView {
-    let account_id2 = account_id.to_owned();
-    let badge = LocalResource::new(move || get_user_badge(account_id2.clone()));
     view! {
         <span class="items-center gap-1 inline-flex max-w-full">
-            {move || {
-                badge
-                    .read()
-                    .as_ref()
-                    .and_then(|badge| badge.as_ref().map(|get_badge| (get_badge)()))
-                    .map(|badge| badge.into_any())
-            }} <span class="truncate max-w-48">{account_id.to_string()}</span>
+            <span class="truncate max-w-48">{account_id.to_string()}</span>
         </span>
     }
     .into_any()
-}
-
-async fn get_user_badge(account_id: AccountId) -> Option<impl Fn() -> AnyView> {
-    get_user_badge_inner(account_id).await.map(|badge| {
-        move || {
-            let badge = badge.clone();
-            let (is_open, set_is_open) = signal(false);
-            let onclick = move |e: MouseEvent| {
-                if !is_open.get_untracked() {
-                    e.prevent_default();
-                    e.stop_propagation();
-                    set_is_open(true);
-                }
-            };
-            let onclick_close = move |e: MouseEvent| {
-                e.prevent_default();
-                e.stop_propagation();
-                set_is_open(false);
-            };
-            let title = format!("{}\n\n{}", badge.name.clone(), badge.description);
-            view! {
-                <span
-                    title=title
-                    class="cursor-help"
-                    class:hover-brightness-125=move || !is_open()
-                    on:click=onclick
-                >
-                    <style>
-                        ".hover-brightness-125:hover {
-                            filter: brightness(125%);
-                        }"
-                    </style>
-                    {badge.emoji.clone()}
-                    <Show when=is_open>
-                        <a href="#">
-                            <div class="fixed inset-0 z-[9999] flex items-start justify-center cursor-default">
-                                <div
-                                    class="fixed inset-0 bg-black opacity-90"
-                                    on:click=onclick_close
-                                ></div>
-                                <div class="sticky top-[50%] translate-y-[-50%] bg-neutral-800 p-8 rounded-lg shadow-xl max-w-sm min-h-96 w-full flex flex-col items-center justify-center">
-                                    <div class="text-6xl text-center mb-4">
-                                        {badge.emoji.clone()}
-                                    </div>
-                                    <div class="text-white text-center text-4xl font-bold mb-4">
-                                        {badge.name.clone()}
-                                    </div>
-                                    <div class="text-gray-300 text-center text-lg mb-4">
-                                        {badge.description.clone()}
-                                    </div>
-                                    <div class="text-yellow-400 text-center text-md">
-                                        "Sign up on "
-                                        <a
-                                            href="https://imminent.build/"
-                                            target="_blank"
-                                            class="underline"
-                                        >
-                                            Imminent.build
-                                        </a> " to start collecting badges!"
-                                    </div>
-                                </div>
-                            </div>
-                        </a>
-                    </Show>
-                </span>
-            }.into_any()
-        }
-    })
-}
-
-#[cached]
-async fn get_user_badge_inner(account_id: AccountId) -> Option<Badge> {
-    let url = format!("https://imminent.build/api/users/{account_id}/badges");
-    match reqwest::get(&url).await {
-        Ok(response) => match response.json::<serde_json::Value>().await {
-            Ok(data) => data
-                .get("selectedBadge")
-                .and_then(|badge| badge.get("badge"))
-                .and_then(|badge| serde_json::from_value(badge.clone()).ok()),
-            Err(_) => None,
-        },
-        Err(_) => None,
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct Project {
-    pub id: u32,
-    pub name: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Badge {
-    pub id: u32,
-    pub name: String,
-    pub description: String,
-    pub emoji: String,
-    pub created_at: DateTime<Utc>,
 }
 
 /// Log data container that is used in [NEP-297](https://nomicon.io/Standards/EventsFormat).
@@ -779,33 +668,6 @@ impl EventLogData<RefDclSwapLog> {
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]
-#[serde(transparent, deny_unknown_fields)]
-pub struct VeaxSwapLog(pub VeaxSwapEvent);
-
-impl Deref for VeaxSwapLog {
-    type Target = VeaxSwapEvent;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-#[derive(Deserialize, Debug, Clone, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct VeaxSwapEvent {
-    pub user: AccountId,
-    pub tokens: (AccountId, AccountId),
-    pub amounts: (String, String),    // (Balance, Balance)
-    pub fees: Vec<serde_json::Value>, // Not implemented
-}
-
-impl EventLogData<VeaxSwapLog> {
-    pub fn validate(&self) -> bool {
-        self.standard == "veax" && self.event == "swap"
-    }
-}
-
-#[derive(Deserialize, Debug, Clone, PartialEq)]
 pub struct StorageBalance {
     pub available: NearToken,
     pub total: NearToken,
@@ -1037,12 +899,21 @@ pub fn is_tauri() -> bool {
     false
 }
 
+pub fn is_android() -> bool {
+    if !is_tauri() {
+        return false;
+    }
+    platform() == "android"
+}
+
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = ["__TAURI__", "core"], js_name = "invoke")]
     pub fn tauri_invoke(cmd: &str, args: &JsValue) -> Promise;
     #[wasm_bindgen(js_namespace = ["__TAURI__", "core"], js_name = "invoke")]
     pub fn tauri_invoke_no_args(cmd: &str) -> Promise;
+    #[wasm_bindgen(js_namespace = ["__TAURI_PLUGIN_OS__"])]
+    pub fn platform() -> String;
 }
 
 pub enum Resolution {

@@ -143,53 +143,64 @@ pub fn App() -> impl IntoView {
     provide_transaction_queue_context(); // depends on accounts
 
     view! {
-        <ConfigProvider theme=RwSignal::new(Theme::dark())>
-            <Router>
-                <Layout>
-                    <Routes fallback=|| view! { "404 Not Found" }>
-                        <Route path=path!("/") view=Home />
-                        <Route path=path!("/nfts") view=Nfts />
-                        <Route path=path!("/nfts/:collection_id") view=NftCollection />
-                        <Route path=path!("/nfts/:collection_id/*token_id") view=NftTokenDetails />
-                        <Route path=path!("/send-nft/:collection_id/*token_id") view=SendNft />
-                        <Route path=path!("/swap") view=Swap />
-                        <Route path=path!("/stake") view=Stake />
-                        <Route path=path!("/stake/:validator_pool/stake") view=StakeValidator />
-                        <Route path=path!("/stake/:validator_pool/unstake") view=UnstakeValidator />
-                        <Route path=path!("/gifts") view=Gifts />
-                        <Route path=path!("/gifts/*private_key") view=GiftClaim />
-                        <Route path=path!("/history") view=History />
-                        <Route path=path!("/explore") view=Explore />
-                        <Route path=path!("/token/:token_id") view=TokenDetails />
-                        <Route path=path!("/send/:token_id") view=SendToken />
-                        <Route path=path!("/multi-send/:token_id") view=SendMultiToken />
-                        <Route path=path!("/connect") view=Connect />
-                        <Route path=path!("/send-transactions") view=SendTransactions />
-                        <Route path=path!("/sign-message") view=SignMessage />
-                        <Route path=path!("/auto-import-secret-key") view=AutoImportSecretKey />
-                        <Route path=path!("/login") view=Login />
-                        <ParentRoute path=path!("/settings") view=Settings>
-                            <Route path=path!("") view=() />
-                            <ParentRoute path=path!("/security") view=Outlet>
-                                <Route path=path!("") view=SecuritySettings />
-                                <Route path=path!("/account") view=AccountSettings />
-                                <Route path=path!("/connected-apps") view=ConnectedAppsSettings />
-                                <Route path=path!("/security-log") view=SecurityLogPage />
+        <div id="content-wrapper">
+            <ConfigProvider theme=RwSignal::new(Theme::dark())>
+                <Router>
+                    <Layout>
+                        <Routes fallback=|| view! { "404 Not Found" }>
+                            <Route path=path!("/") view=Home />
+                            <Route path=path!("/nfts") view=Nfts />
+                            <Route path=path!("/nfts/:collection_id") view=NftCollection />
+                            <Route
+                                path=path!("/nfts/:collection_id/*token_id")
+                                view=NftTokenDetails
+                            />
+                            <Route path=path!("/send-nft/:collection_id/*token_id") view=SendNft />
+                            <Route path=path!("/swap") view=Swap />
+                            <Route path=path!("/stake") view=Stake />
+                            <Route path=path!("/stake/:validator_pool/stake") view=StakeValidator />
+                            <Route
+                                path=path!("/stake/:validator_pool/unstake")
+                                view=UnstakeValidator
+                            />
+                            <Route path=path!("/gifts") view=Gifts />
+                            <Route path=path!("/gifts/*private_key") view=GiftClaim />
+                            <Route path=path!("/history") view=History />
+                            <Route path=path!("/explore") view=Explore />
+                            <Route path=path!("/token/:token_id") view=TokenDetails />
+                            <Route path=path!("/send/:token_id") view=SendToken />
+                            <Route path=path!("/multi-send/:token_id") view=SendMultiToken />
+                            <Route path=path!("/connect") view=Connect />
+                            <Route path=path!("/send-transactions") view=SendTransactions />
+                            <Route path=path!("/sign-message") view=SignMessage />
+                            <Route path=path!("/auto-import-secret-key") view=AutoImportSecretKey />
+                            <Route path=path!("/login") view=Login />
+                            <ParentRoute path=path!("/settings") view=Settings>
+                                <Route path=path!("") view=() />
+                                <ParentRoute path=path!("/security") view=Outlet>
+                                    <Route path=path!("") view=SecuritySettings />
+                                    <Route path=path!("/account") view=AccountSettings />
+                                    <Route
+                                        path=path!("/connected-apps")
+                                        view=ConnectedAppsSettings
+                                    />
+                                    <Route path=path!("/security-log") view=SecurityLogPage />
+                                </ParentRoute>
+                                <Route path=path!("/preferences") view=PreferencesSettings />
+                                <Route path=path!("/developer") view=DeveloperSettings />
+                                <Route
+                                    path=path!("/developer/create_token")
+                                    view=DeveloperCreateToken
+                                />
+                                <Route
+                                    path=path!("/developer/sandbox/:network_id")
+                                    view=DeveloperSandbox
+                                />
                             </ParentRoute>
-                            <Route path=path!("/preferences") view=PreferencesSettings />
-                            <Route path=path!("/developer") view=DeveloperSettings />
-                            <Route
-                                path=path!("/developer/create_token")
-                                view=DeveloperCreateToken
-                            />
-                            <Route
-                                path=path!("/developer/sandbox/:network_id")
-                                view=DeveloperSandbox
-                            />
-                        </ParentRoute>
-                    </Routes>
-                </Layout>
-            </Router>
-        </ConfigProvider>
+                        </Routes>
+                    </Layout>
+                </Router>
+            </ConfigProvider>
+        </div>
     }
 }

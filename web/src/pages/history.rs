@@ -11,7 +11,7 @@ use crate::{
     utils::{
         format_account_id, format_duration, format_token_amount, get_ft_metadata,
         get_nft_collection_metadata, EventLogData, FtBurnLog, FtMintLog, FtTransferLog, NftBurnLog,
-        NftMintLog, NftTransferLog, RefDclSwapLog, VeaxSwapLog, NEP141_EVENT_STANDARD_STRING,
+        NftMintLog, NftTransferLog, RefDclSwapLog, NEP141_EVENT_STANDARD_STRING,
     },
 };
 use base64::{self, Engine};
@@ -96,7 +96,7 @@ pub fn History() -> impl IntoView {
     });
 
     view! {
-        <div class="md:p-4 transition-all duration-100">
+        <div class="md:p-4">
             <div class="flex justify-between items-center mb-4 px-4">
                 <h1 class="text-white text-2xl font-bold pt-4 sm:pt-0">Transaction History</h1>
                 <button
@@ -955,25 +955,6 @@ fn add_dex_actions(
                     actions_config.ft_event_format = TokenEventFormat::Short;
                     swap_exchange_logo = Some("/history-rhea.svg");
                     break;
-                }
-            }
-        }
-        if receipt.receiver_id == "veax.near" {
-            for log in transaction
-                .final_outcome
-                .receipts_outcome
-                .iter()
-                .find(|r| r.id == receipt.receipt_id)
-                .expect("receipt outcome not found")
-                .outcome
-                .logs
-                .iter()
-            {
-                if let Ok(log) = EventLogData::<VeaxSwapLog>::deserialize(log) {
-                    if log.validate() && log.data.user == me {
-                        actions_config.ft_event_format = TokenEventFormat::Short;
-                        swap_exchange_logo = Some("/history-veax.svg");
-                    }
                 }
             }
         }
