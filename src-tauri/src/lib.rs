@@ -238,16 +238,20 @@ pub fn run() {
         std::env::set_var("__NV_DISABLE_EXPLICIT_SYNC", "1");
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
+
     #[cfg(target_os = "linux")]
     keyring_core::set_default_store(dbus_secret_service_keyring_store::Store::new().unwrap());
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    keyring_core::set_default_store(apple_native_keyring_store::protected::Store::new().unwrap());
+    #[cfg(target_os = "macos")]
+    keyring_core::set_default_store(apple_native_keyring_store::keychain::Store::new().unwrap());
     #[cfg(target_os = "windows")]
     keyring_core::set_default_store(windows_native_keyring_store::Store::new().unwrap());
     #[cfg(target_os = "android")]
     keyring_core::set_default_store(
         android_native_keyring_store::AndroidStore::from_ndk_context().unwrap(),
     );
+    #[cfg(target_os = "ios")]
+    keyring_core::set_default_store(apple_native_keyring_store::protected::Store::new().unwrap());
+
     let app = tauri::Builder::default();
     #[cfg(mobile)]
     let app = app.plugin(tauri_plugin_biometric::init());
