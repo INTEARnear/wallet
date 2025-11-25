@@ -17,7 +17,7 @@ async function initialize() {
         async signIn({ network, contractId, methodNames, successUrl, failureUrl }) {
             near.config({ networkId: network });
             window.selector.ui.showIframe();
-            const result = await near.requestSignIn();
+            const result = await near.requestSignIn({ contractId, methodNames });
             if (near.accountId() && near.publicKey()) {
                 return result.accounts
             } else {
