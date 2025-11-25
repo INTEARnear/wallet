@@ -608,6 +608,7 @@ dependencies = [
  "jni",
  "keyring-core 0.5.0",
  "keyring-core 0.6.0",
+ "keyring-core 0.7.0",
  "log",
  "rand 0.8.5",
  "serde",
