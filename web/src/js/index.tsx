@@ -313,3 +313,25 @@ if ((window as any).__TAURI__) {
         console.error('Failed to set up Tauri event listeners:', err);
     }
 }
+
+// Disable autocorrection on input fields
+function disableAssist(el) {
+    el.setAttribute("autocorrect", "off");
+    el.setAttribute("autocapitalize", "off");
+    el.setAttribute("spellcheck", "false");
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll("input").forEach(disableAssist);
+
+    new MutationObserver(mutations => {
+        mutations.forEach(mutation => {
+            mutation.addedNodes.forEach(node => {
+                if (node instanceof HTMLInputElement) disableAssist(node);
+                if (node instanceof HTMLElement) {
+                    node.querySelectorAll("input").forEach(disableAssist);
+                }
+            });
+        });
+    }).observe(document.body, { childList: true, subtree: true });
+});
