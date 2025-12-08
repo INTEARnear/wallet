@@ -467,7 +467,7 @@ pub fn NftCollection() -> impl IntoView {
     };
 
     view! {
-        <div class="md:p-4">
+        <div class="p-2 md:p-4">
             <div class="flex justify-between items-center mb-6 px-4">
                 <button
                     class="flex items-center gap-3 text-neutral-400 hover:text-white transition-colors cursor-pointer"
@@ -729,8 +729,15 @@ pub fn Nfts() -> impl IntoView {
         let q = search_query.get();
         if !q.trim().is_empty() {
             view! {
-                <div class="md:p-4">
-                    <div class="flex justify-between items-center mb-6 px-4">
+                <div class="flex flex-col gap-6 p-2 md:p-4">
+                    <A
+                        href="/"
+                        attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                    >
+                        <Icon icon=icondata::LuArrowLeft width="20" height="20" />
+                        <span>Back</span>
+                    </A>
+                    <div class="flex justify-between items-center pr-4">
                         <h1 class="text-white text-2xl font-bold">"Search Results"</h1>
                     </div>
                     <Suspense fallback=move || {
@@ -1013,8 +1020,15 @@ pub fn Nfts() -> impl IntoView {
             match config.get().nfts_view_state {
                 NftsViewState::Collections => {
                     view! {
-                        <div class="md:p-4">
-                            <div class="flex justify-between items-center mb-6 px-4">
+                        <div class="flex flex-col gap-6 p-2 md:p-4">
+                            <A
+                                href="/"
+                                attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                            >
+                                <Icon icon=icondata::LuArrowLeft width="20" height="20" />
+                                <span>Back</span>
+                            </A>
+                            <div class="flex justify-between items-center pr-4">
                                 <h1 class="text-white text-2xl font-bold">"NFT Collections"</h1>
                                 <button
                                     class="text-neutral-400 hover:text-white transition-colors cursor-pointer"
@@ -1219,8 +1233,15 @@ pub fn Nfts() -> impl IntoView {
                 }
                 NftsViewState::AllNfts => {
                     view! {
-                        <div class="md:p-4">
-                            <div class="flex justify-between items-center mb-6 px-4">
+                        <div class="flex flex-col gap-6 p-2 md:p-4">
+                            <A
+                                href="/"
+                                attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                            >
+                                <Icon icon=icondata::LuArrowLeft width="20" height="20" />
+                                <span>Back</span>
+                            </A>
+                            <div class="flex justify-between items-center pr-4">
                                 <h1 class="text-white text-2xl font-bold">"Your NFTs"</h1>
                                 <button
                                     class="text-neutral-400 hover:text-white transition-colors cursor-pointer"
@@ -2108,7 +2129,7 @@ pub fn NftTokenDetails() -> impl IntoView {
     };
 
     view! {
-        <div class="md:p-4">
+        <div class="p-2 md:p-4">
             <div class="flex justify-between items-center mb-6 px-4">
                 <button
                     class="flex items-center gap-3 text-neutral-400 hover:text-white transition-colors cursor-pointer"

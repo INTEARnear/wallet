@@ -904,7 +904,7 @@ pub fn AccountSelector() -> impl IntoView {
 
                                     <div class="flex gap-2 flex-col bg-neutral-900 mt-2 lg:rounded-bl-3xl transition-all duration-200">
                                         <button
-                                            class="w-full aspect-square rounded-lg transition-colors flex flex-col items-center justify-center gap-1 p-1 text-green-500 group hover:bg-green-500/10"
+                                            class="w-full aspect-square transition-colors flex flex-col items-center justify-center gap-1 p-1 text-green-500 group hover:bg-green-500/10"
                                             on:click=move |_| {
                                                 set_modal_state
                                                     .set(ModalState::Creating {
@@ -927,7 +927,7 @@ pub fn AccountSelector() -> impl IntoView {
 
                                         <A
                                             href="/settings/security"
-                                            attr:class="w-full aspect-square rounded-lg lg:rounded-bl-3xl transition-colors flex flex-col items-center justify-center gap-1 p-1 text-neutral-400 group hover:bg-neutral-500/10"
+                                            attr:class="w-full aspect-square lg:rounded-bl-3xl transition-colors flex flex-col items-center justify-center gap-1 p-1 text-neutral-400 group hover:bg-neutral-500/10"
                                             on:click=move |_| set_expanded(false)
                                         >
                                             <div class="w-10 h-10 rounded-full flex items-center justify-center bg-neutral-500/20 group-hover:bg-neutral-300">

@@ -2,6 +2,7 @@ use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 use leptos::prelude::*;
 use leptos_icons::*;
+use leptos_router::components::A;
 use near_min_api::{
     QueryFinality,
     types::{AccountId, Finality, NearToken, U128, near_crypto::PublicKey},
@@ -548,6 +549,13 @@ pub fn Gifts() -> impl IntoView {
             }
         >
             <div class="flex flex-col gap-6 p-2 md:p-4">
+                <A
+                    href="/"
+                    attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                >
+                    <Icon icon=icondata::LuArrowLeft width="20" height="20" />
+                    <span>Back</span>
+                </A>
                 <div class="text-center">
                     <h1 class="text-2xl font-bold text-white mb-2">"Gift Tokens"</h1>
                     <p class="text-gray-400">"Send tokens as a gift link to someone"</p>
@@ -963,23 +971,23 @@ pub fn Gifts() -> impl IntoView {
                                                                                                 && let Some(collection) = collections_clone_2
                                                                                                     .iter()
                                                                                                     .find(|c| c.contract_id == new_contract_id)
-                                                                                                {
-                                                                                                    for token in collection.tokens.iter() {
-                                                                                                        if !is_nft_already_selected(
-                                                                                                            new_contract_id.clone(),
-                                                                                                            token.token_id.clone(),
-                                                                                                        ) {
-                                                                                                            set_selected_nfts
-                                                                                                                .update(|nfts| {
-                                                                                                                    if let Some(entry) = nfts.get_mut(list_index) {
-                                                                                                                        entry.0 = new_contract_id;
-                                                                                                                        entry.1 = token.token_id.clone();
-                                                                                                                    }
-                                                                                                                });
-                                                                                                            break;
-                                                                                                        }
+                                                                                            {
+                                                                                                for token in collection.tokens.iter() {
+                                                                                                    if !is_nft_already_selected(
+                                                                                                        new_contract_id.clone(),
+                                                                                                        token.token_id.clone(),
+                                                                                                    ) {
+                                                                                                        set_selected_nfts
+                                                                                                            .update(|nfts| {
+                                                                                                                if let Some(entry) = nfts.get_mut(list_index) {
+                                                                                                                    entry.0 = new_contract_id;
+                                                                                                                    entry.1 = token.token_id.clone();
+                                                                                                                }
+                                                                                                            });
+                                                                                                        break;
                                                                                                     }
                                                                                                 }
+                                                                                            }
                                                                                         })
                                                                                     />
                                                                                 </div>

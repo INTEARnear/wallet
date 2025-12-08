@@ -7,7 +7,7 @@ pub mod history;
 pub mod home;
 pub mod login;
 pub mod nfts;
-pub mod not_found;
+pub mod receive;
 pub mod send;
 pub mod send_transactions;
 pub mod settings;

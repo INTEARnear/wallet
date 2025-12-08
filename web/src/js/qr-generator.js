@@ -3,7 +3,6 @@ import QRCodeStyling from "qr-code-styling";
 const qrCode = new QRCodeStyling({
     width: 500,
     height: 500,
-    image: "https://intea.rs/wallet-logo.svg",
     dotsOptions: {
         color: "#19a7fb",
         type: "classy-rounded",
@@ -26,9 +25,9 @@ const qrCode = new QRCodeStyling({
     },
 });
 
-async function generateQRCode(data) {
+async function generateQRCode(data, includeLogo) {
     try {
-        qrCode.update({ data });
+        qrCode.update({ data, image: includeLogo ? "https://intea.rs/wallet-logo.svg" : undefined });
         const blob = await qrCode.getRawData("png");
         return new Promise((resolve, reject) => {
             const reader = new FileReader();

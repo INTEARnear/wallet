@@ -206,6 +206,28 @@ pub fn format_account_id_no_hide(account_id: &AccountIdRef) -> AnyView {
     .into_any()
 }
 
+pub fn format_account_id_full(account_id: &AccountIdRef) -> AnyView {
+    let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+    if let Some(selected_account) = accounts().selected_account_id
+        && selected_account == *account_id
+    {
+        let ConfigContext { config, .. } = expect_context::<ConfigContext>();
+        if config().amounts_hidden {
+            return "😭".into_any();
+        }
+    }
+    format_account_id_full_no_hide(account_id)
+}
+
+pub fn format_account_id_full_no_hide(account_id: &AccountIdRef) -> AnyView {
+    view! {
+        <span class="items-center gap-1 inline-flex max-w-full">
+            <span>{account_id.to_string()}</span>
+        </span>
+    }
+    .into_any()
+}
+
 /// Log data container that is used in [NEP-297](https://nomicon.io/Standards/EventsFormat).
 #[derive(Deserialize, Debug, Clone)]
 pub struct EventLogData<T> {
@@ -950,11 +972,11 @@ pub fn proxify_url(url: &str, resolution: Resolution) -> String {
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_name = generateQRCode)]
-    async fn generate_qr_code_js(data: &str) -> JsValue;
+    async fn generate_qr_code_js(data: &str, include_logo: bool) -> JsValue;
 }
 
-pub async fn generate_qr_code(data: &str) -> Result<String, JsValue> {
-    let result = generate_qr_code_js(data).await;
+pub async fn generate_qr_code(data: &str, include_logo: bool) -> Result<String, JsValue> {
+    let result = generate_qr_code_js(data, include_logo).await;
     if result.is_string() {
         Ok(result.as_string().unwrap())
     } else {

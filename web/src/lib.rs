@@ -48,6 +48,7 @@ use crate::pages::history::History;
 use crate::pages::home::Home;
 use crate::pages::login::Login;
 use crate::pages::nfts::{NftCollection, NftTokenDetails, Nfts, SendNft};
+use crate::pages::receive::Receive;
 use crate::pages::send::SendMultiToken;
 use crate::pages::send::SendToken;
 use crate::pages::send_transactions::SendTransactions;
@@ -165,6 +166,7 @@ pub fn App() -> impl IntoView {
                             />
                             <Route path=path!("/gifts") view=Gifts />
                             <Route path=path!("/gifts/*private_key") view=GiftClaim />
+                            <Route path=path!("/receive") view=Receive />
                             <Route path=path!("/history") view=History />
                             <Route path=path!("/explore") view=Explore />
                             <Route path=path!("/token/:token_id") view=TokenDetails />

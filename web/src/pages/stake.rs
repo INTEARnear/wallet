@@ -1607,7 +1607,14 @@ pub fn Stake() -> impl IntoView {
     });
 
     view! {
-        <div class="flex flex-col gap-4 text-white sm:p-1">
+        <div class="flex flex-col gap-6 text-white p-2 md:p-4">
+            <A
+                href="/"
+                attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
+            >
+                <Icon icon=icondata::LuArrowLeft width="20" height="20" />
+                <span>Back</span>
+            </A>
             {move || {
                 let query = search_query.get();
                 if !query.trim().is_empty() {

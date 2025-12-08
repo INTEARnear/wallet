@@ -741,7 +741,7 @@ pub fn GiftSuccessModal(result: GiftResult) -> impl IntoView {
         let gift_link = result.gift_link.clone();
         move || {
             let link = gift_link.clone();
-            async move { generate_qr_code(&link).await }
+            async move { generate_qr_code(&link, true).await }
         }
     });
 
