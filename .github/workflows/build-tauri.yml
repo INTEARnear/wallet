@@ -1,4 +1,4 @@
-name: Build Tauri Desktop App
+name: Build Native App
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  build-tauri:
+  build-native:
     strategy:
       matrix:
         include:
@@ -87,9 +87,9 @@ jobs:
         id: cache
         with:
           path: ~/.cargo/bin
-          key: ${{ runner.os }}-cargo-bin-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-tauri-bin-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-bin-
+            ${{ runner.os }}-cargo-tauri-bin-
 
       - name: Install build tools
         if: steps.cache.outputs.cache-hit != 'true'
