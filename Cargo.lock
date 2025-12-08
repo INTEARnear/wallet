@@ -21,7 +21,7 @@ dependencies = [
  "dotenv",
  "near-min-api",
  "rand 0.8.5",
- "reqwest 0.12.24",
+ "reqwest 0.12.25",
  "serde",
  "serde_json",
  "solana-signature",
@@ -119,7 +119,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "dotenvy",
- "reqwest 0.12.24",
+ "reqwest 0.12.25",
  "rustyscript",
  "serde",
  "serde_json",
@@ -4308,7 +4308,7 @@ dependencies = [
  "futures",
  "hyper 1.8.1",
  "near-min-api",
- "reqwest 0.12.24",
+ "reqwest 0.12.25",
  "rocksdb",
  "serde",
  "serde_json",
@@ -5547,7 +5547,7 @@ dependencies = [
  "hyper 1.8.1",
  "nanoid",
  "near-min-api",
- "reqwest 0.12.24",
+ "reqwest 0.12.25",
  "rocksdb",
  "serde",
  "serde_json",
@@ -5902,7 +5902,7 @@ dependencies = [
  "near-crypto",
  "near-gas",
  "near-token",
- "reqwest 0.12.24",
+ "reqwest 0.12.25",
  "serde",
  "serde_json",
  "serde_with",
@@ -5982,7 +5982,7 @@ dependencies = [
  "nanoid",
  "near-min-api",
  "percent-encoding",
- "reqwest 0.12.24",
+ "reqwest 0.12.25",
  "rocksdb",
  "serde",
  "serde_json",
@@ -7801,9 +7801,9 @@ dependencies = [
 
 [[package]]
 name = "reqwest"
-version = "0.12.24"
+version = "0.12.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d0946410b9f7b082a427e4ef5c8ff541a88b357bc6c637c40db3a68ac70a36f"
+checksum = "b6eff9328d40131d43bd911d42d79eb6a47312002a4daefc9e37f17e74a7701a"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -8823,9 +8823,9 @@ dependencies = [
 
 [[package]]
 name = "simd-adler32"
-version = "0.3.7"
+version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d66dc143e6b11c1eddc06d5c423cfc97062865baf299914ab64caa38182078fe"
+checksum = "e320a6c5ad31d271ad523dcf3ad13e2767ad8b1cb8f047f75a8aeaf8da139da2"
 
 [[package]]
 name = "simdutf8"
@@ -9981,7 +9981,7 @@ dependencies = [
  "percent-encoding",
  "plist",
  "raw-window-handle",
- "reqwest 0.12.24",
+ "reqwest 0.12.25",
  "serde",
  "serde_json",
  "serde_repr",
@@ -10818,9 +10818,9 @@ dependencies = [
 
 [[package]]
 name = "tower-http"
-version = "0.6.7"
+version = "0.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9cf146f99d442e8e68e585f5d798ccd3cad9a7835b917e09728880a862706456"
+checksum = "d4e6559d53cc268e5031cd8429d05415bc4cb4aefc4aa5d6cc35fbf5b924a1f8"
 dependencies = [
  "async-compression",
  "base64 0.22.1",
@@ -11537,7 +11537,7 @@ dependencies = [
  "near-min-api",
  "percent-encoding",
  "rand 0.8.5",
- "reqwest 0.12.24",
+ "reqwest 0.12.25",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
@@ -12591,9 +12591,9 @@ checksum = "111f7d9820f05fd715df3144e254d6fc02ee4088b0644c0ffd0efc9e6d9d2773"
 
 [[package]]
 name = "zune-jpeg"
-version = "0.5.5"
+version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc6fb7703e32e9a07fb3f757360338b3a567a5054f21b5f52a666752e333d58e"
+checksum = "f520eebad972262a1dde0ec455bce4f8b298b1e5154513de58c114c4c54303e8"
 dependencies = [
  "zune-core",
 ]
