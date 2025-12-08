@@ -2,7 +2,6 @@ use leptos::prelude::*;
 use leptos_icons::*;
 use leptos_router::components::A;
 use std::time::Duration;
-use web_sys::window;
 
 use crate::contexts::accounts_context::AccountsContext;
 use crate::utils::{format_account_id_full, generate_qr_code};
@@ -28,12 +27,10 @@ pub fn Receive() -> impl IntoView {
 
     let copy_to_clipboard = move |_| {
         if let Some(account_id) = selected_account() {
-            if let Some(window) = window() {
-                let clipboard = window.navigator().clipboard();
-                let _ = clipboard.write_text(account_id.as_ref());
-                set_is_copied(true);
-                set_timeout(move || set_is_copied(false), Duration::from_millis(2000));
-            }
+            let clipboard = window().navigator().clipboard();
+            let _ = clipboard.write_text(account_id.as_ref());
+            set_is_copied(true);
+            set_timeout(move || set_is_copied(false), Duration::from_millis(2000));
         }
     };
 
@@ -137,7 +134,7 @@ pub fn Receive() -> impl IntoView {
 
                 <div class="flex flex-col gap-3 w-full max-w-md mt-4">
                     <A
-                        href="/bridge"
+                        href="/receive/bridge"
                         attr:class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-center text-base"
                     >
                         "Bridge"
@@ -156,4 +153,3 @@ pub fn Receive() -> impl IntoView {
         </div>
     }
 }
-

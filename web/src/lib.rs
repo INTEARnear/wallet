@@ -40,6 +40,7 @@ use crate::components::layout::Layout;
 use crate::contexts::modal_context::provide_modal_context;
 use crate::contexts::rpc_context::provide_rpc_context;
 use crate::pages::auto_import_secret_key::AutoImportSecretKey;
+use crate::pages::bridge::Bridge;
 use crate::pages::connect::Connect;
 use crate::pages::explore::Explore;
 use crate::pages::gift_claim::GiftClaim;
@@ -167,6 +168,7 @@ pub fn App() -> impl IntoView {
                             <Route path=path!("/gifts") view=Gifts />
                             <Route path=path!("/gifts/*private_key") view=GiftClaim />
                             <Route path=path!("/receive") view=Receive />
+                            <Route path=path!("/receive/bridge") view=Bridge />
                             <Route path=path!("/history") view=History />
                             <Route path=path!("/explore") view=Explore />
                             <Route path=path!("/token/:token_id") view=TokenDetails />

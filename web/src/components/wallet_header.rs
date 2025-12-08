@@ -4,7 +4,7 @@ use leptos_router::components::A;
 use leptos_router::hooks::use_location;
 use std::time::Duration;
 use wasm_bindgen::JsCast;
-use web_sys::{Clipboard, HtmlInputElement, window};
+use web_sys::{Clipboard, HtmlInputElement};
 
 use crate::{
     components::account_selector::AccountSelector,
@@ -36,10 +36,8 @@ pub fn WalletHeader() -> impl IntoView {
     });
 
     let copy_to_clipboard = move |_| {
-        if let Some(account_id) = selected_account()
-            && let Some(window) = window()
-        {
-            let clipboard: Clipboard = window.navigator().clipboard();
+        if let Some(account_id) = selected_account() {
+            let clipboard: Clipboard = window().navigator().clipboard();
             let _ = clipboard.write_text(account_id.as_ref());
             set_is_copied(true);
             set_timeout(move || set_is_copied(false), Duration::from_millis(2000));

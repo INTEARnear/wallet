@@ -22,10 +22,25 @@ pub use connected_apps::ConnectedAppsSettings;
 pub use developer::DeveloperSettings;
 pub use developer_create_token::DeveloperCreateToken;
 pub use developer_sandbox::DeveloperSandbox;
+use near_min_api::types::AccountId;
 pub use preferences::{PreferencesSettings, SLIPPAGE_PRESETS, ToggleSwitch};
 pub use security::SecuritySettings;
 pub use security_log::SecurityLogPage;
 use web_sys::{ScrollBehavior, ScrollToOptions};
+
+pub fn open_live_chat(selected_account_id: AccountId, bridge_deposit_address: Option<String>) {
+    let message = JsWalletRequest::ChatwootOpen {
+        account_id: selected_account_id,
+        bridge_deposit_address,
+    };
+
+    if let Ok(location_origin) = window().location().origin() {
+        let _ = window().post_message(
+            &serde_wasm_bindgen::to_value(&message).unwrap(),
+            &location_origin,
+        );
+    }
+}
 
 #[component]
 pub fn Settings() -> impl IntoView {
@@ -34,19 +49,6 @@ pub fn Settings() -> impl IntoView {
     let scroll_div_ref = NodeRef::<Div>::new();
 
     let is_active = move |path: &str| location.pathname.get().starts_with(path);
-
-    let open_live_chat = move || {
-        let message = JsWalletRequest::ChatwootOpen {
-            account_id: accounts_context.accounts.get().selected_account_id.unwrap(),
-        };
-
-        if let Ok(location_origin) = window().location().origin() {
-            let _ = window().post_message(
-                &serde_wasm_bindgen::to_value(&message).unwrap(),
-                &location_origin,
-            );
-        }
-    };
 
     let _ = use_event_listener(scroll_div_ref, leptos::ev::wheel, move |e| {
         e.prevent_default();
@@ -143,7 +145,10 @@ pub fn Settings() -> impl IntoView {
                     <div class="text-sm font-semibold">Support & Resources</div>
                     <button
                         class="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-colors cursor-pointer text-sm font-medium"
-                        on:click=move |_| open_live_chat()
+                        on:click=move |_| open_live_chat(
+                            accounts_context.accounts.get_untracked().selected_account_id.unwrap(),
+                            None,
+                        )
                     >
                         <Icon icon=icondata::LuMessageCircle width="16" height="16" />
                         <span>"Live Chat"</span>

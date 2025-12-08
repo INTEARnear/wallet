@@ -1,4 +1,5 @@
 pub mod auto_import_secret_key;
+pub mod bridge;
 pub mod connect;
 pub mod explore;
 pub mod gift_claim;

@@ -227,6 +227,7 @@ pub enum JsWalletRequest {
     },
     ChatwootOpen {
         account_id: AccountId,
+        bridge_deposit_address: Option<String>,
     },
 }
 

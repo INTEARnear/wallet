@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::time::Duration;
-use web_sys::{MouseEvent, window};
+use web_sys::MouseEvent;
 
 use crate::components::progressive_image::ProgressiveImage;
 use crate::contexts::nft_cache_context::{NftCacheContext, NftTokenMetadata};
@@ -613,8 +613,7 @@ pub fn NftCollection() -> impl IntoView {
                                             let (is_copied, set_is_copied) = signal(false);
                                             let copy_token_id = move |ev: MouseEvent| {
                                                 ev.stop_propagation();
-                                                if let Some(window) = window() {
-                                                    let _ = window
+                                                    let _ = window()
                                                         .navigator()
                                                         .clipboard()
                                                         .write_text(&token_id_for_clipboard);
@@ -623,7 +622,6 @@ pub fn NftCollection() -> impl IntoView {
                                                         move || set_is_copied(false),
                                                         Duration::from_millis(2000),
                                                     );
-                                                }
                                             };
 
                                             view! {
@@ -870,8 +868,7 @@ pub fn Nfts() -> impl IntoView {
                                                             let (is_token_copied, set_is_token_copied) = signal(false);
                                                             let copy_contract = move |event: MouseEvent| {
                                                                 event.stop_propagation();
-                                                                if let Some(win) = window() {
-                                                                    let _ = win
+                                                                    let _ = window()
                                                                         .navigator()
                                                                         .clipboard()
                                                                         .write_text(contract_id_for_clipboard.as_ref());
@@ -880,12 +877,10 @@ pub fn Nfts() -> impl IntoView {
                                                                         move || set_is_contract_copied(false),
                                                                         Duration::from_millis(2000),
                                                                     );
-                                                                }
                                                             };
                                                             let copy_token = move |event: MouseEvent| {
                                                                 event.stop_propagation();
-                                                                if let Some(win) = window() {
-                                                                    let _ = win
+                                                                    let _ = window()
                                                                         .navigator()
                                                                         .clipboard()
                                                                         .write_text(&token_id_for_clipboard);
@@ -894,7 +889,6 @@ pub fn Nfts() -> impl IntoView {
                                                                         move || set_is_token_copied(false),
                                                                         Duration::from_millis(2000),
                                                                     );
-                                                                }
                                                             };
                                                             let title = nft
                                                                 .metadata
@@ -1109,8 +1103,7 @@ pub fn Nfts() -> impl IntoView {
                                                                 let num_tokens = collection.tokens.len();
                                                                 let copy_to_clipboard = move |event: MouseEvent| {
                                                                     event.stop_propagation();
-                                                                    if let Some(window) = window() {
-                                                                        let _ = window
+                                                                        let _ = window()
                                                                             .navigator()
                                                                             .clipboard()
                                                                             .write_text(contract_id_for_clipboard.as_ref());
@@ -1119,7 +1112,6 @@ pub fn Nfts() -> impl IntoView {
                                                                             move || set_is_copied(false),
                                                                             Duration::from_millis(2000),
                                                                         );
-                                                                    }
                                                                 };
                                                                 let navigate = navigate.clone();
                                                                 let on_collection_click = move |_| {
@@ -1387,8 +1379,7 @@ pub fn Nfts() -> impl IntoView {
                                                         let (is_token_copied, set_is_token_copied) = signal(false);
                                                         let copy_contract = move |event: MouseEvent| {
                                                             event.stop_propagation();
-                                                            if let Some(win) = window() {
-                                                                let _ = win
+                                                                let _ = window()
                                                                     .navigator()
                                                                     .clipboard()
                                                                     .write_text(contract_id_for_clipboard.as_ref());
@@ -1397,12 +1388,10 @@ pub fn Nfts() -> impl IntoView {
                                                                     move || set_is_contract_copied(false),
                                                                     Duration::from_millis(2000),
                                                                 );
-                                                            }
                                                         };
                                                         let copy_token = move |event: MouseEvent| {
                                                             event.stop_propagation();
-                                                            if let Some(win) = window() {
-                                                                let _ = win
+                                                                let _ = window()
                                                                     .navigator()
                                                                     .clipboard()
                                                                     .write_text(&token_id_for_clipboard);
@@ -1411,7 +1400,6 @@ pub fn Nfts() -> impl IntoView {
                                                                     move || set_is_token_copied(false),
                                                                     Duration::from_millis(2000),
                                                                 );
-                                                            }
                                                         };
                                                         let title = nft
                                                             .metadata

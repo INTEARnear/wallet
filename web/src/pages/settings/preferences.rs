@@ -184,7 +184,7 @@ pub fn PreferencesSettings() -> impl IntoView {
                     }
                 />
                 <ToggleSwitch
-                    label="Short Amounts"
+                    label="Short Amounts (1.00K instead of 1000.00)"
                     value=short_amounts
                     disabled=Signal::derive(|| false)
                     on_toggle=move || {
