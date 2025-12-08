@@ -25,7 +25,7 @@ use super::{
     rpc_context::RpcContext,
 };
 
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug, Hash)]
 #[serde(untagged)]
 pub enum Token {
     Near,

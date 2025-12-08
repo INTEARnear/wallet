@@ -9,8 +9,8 @@ license = "AGPL-3.0-or-later"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-leptos = { version = "=0.8.8", features = ["csr", "nightly"] }
-leptos_router = { version = "0.8.6", features = ["nightly"] }
+leptos = { version = "0.8.14", features = ["csr", "nightly"] }
+leptos_router = { version = "0.8.10", features = ["nightly"] }
 console_log = "1.0.0"
 log = "0.4.27"
 console_error_panic_hook = "0.1.7"
@@ -61,7 +61,7 @@ ed25519-dalek = { version = "2.1.1", default-features = false }
 slipped10 = "0.4.6"
 argon2 = "0.5.3"
 aes-gcm = "0.10.3"
-leptos-use = { version = "0.16.2", features = [
+leptos-use = { version = "0.16.3", features = [
     "use_websocket",
     "use_event_listener",
     "use_window",
@@ -84,12 +84,12 @@ solana-signature = { version = "2.3.0", features = [
     "serde",
     "verify",
 ], default-features = false }
-alloy-primitives = { version = "1.1.2", features = [
+alloy-primitives = { version = "=1.1.2", features = [
     "serde",
     "k256",
 ], default-features = false }
-alloy-signer = "1.0.8"
-alloy-signer-local = "1.0.8"
+alloy-signer = "=1.0.8"
+alloy-signer-local = "=1.0.8"
 bigdecimal = { version = "0.4.8", features = ["serde-json"] }
 thaw = { version = "0.5.0-beta", features = ["csr", "nightly"] }
 percent-encoding = "2.3.1"
@@ -105,6 +105,4 @@ crates = [
     # Need to add async interruptions to not block the main
     # thread for too long and make it abortable
     "argon2",
-    # Don't pull leptos_config in CSR builds which pulls regex
-    "leptos",
 ]

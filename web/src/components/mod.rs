@@ -15,6 +15,7 @@ pub mod select;
 pub mod send_modals;
 pub mod social_link;
 pub mod token_balance_list;
+pub mod token_selector;
 pub mod tooltip;
 pub mod total_portfolio_value;
 pub mod transaction_modals;

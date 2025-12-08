@@ -46,7 +46,23 @@ pub fn format_token_amount(balance: Balance, decimals: u32, symbol: &str) -> Str
 }
 
 pub fn format_token_amount_no_hide(amount: Balance, decimals: u32, symbol: &str) -> String {
+    let short = if let Some(config_context) = use_context::<ConfigContext>() {
+        config_context.config.get().short_amounts
+    } else {
+        false
+    };
     let normalized_decimal = balance_to_decimal(amount, decimals);
+
+    if !short {
+        let mut amount_str = normalized_decimal.to_string();
+        if amount_str.contains('.') {
+            amount_str = amount_str
+                .trim_end_matches('0')
+                .trim_end_matches('.')
+                .to_string();
+        }
+        return format!("{amount_str} {symbol}");
+    }
 
     for (divisor, suffix) in AMOUNT_SUFFIXES {
         let divisor_decimal = BigDecimal::from(*divisor);

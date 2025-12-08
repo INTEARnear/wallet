@@ -22,6 +22,7 @@ use crate::{
         },
         progressive_image::ProgressiveImage,
         select::{Select, SelectOption},
+        token_selector::TokenSelector,
     },
     contexts::{
         accounts_context::AccountsContext,
@@ -29,7 +30,7 @@ use crate::{
         network_context::{Network, NetworkContext},
         nft_cache_context::{NftCacheContext, OwnedCollection},
         rpc_context::RpcContext,
-        tokens_context::{Token, TokensContext},
+        tokens_context::{Token, TokenData, TokensContext},
         transaction_queue_context::TransactionQueueContext,
     },
     pages::nfts::fetch_nfts,
@@ -85,7 +86,7 @@ pub fn Gifts() -> impl IntoView {
     let (has_typed_near_amount, set_has_typed_near_amount) = signal(false);
     let (near_amount_error, set_near_amount_error) = signal(Option::<String>::None);
     let (selected_fungible_tokens, set_selected_fungible_tokens) =
-        signal(Vec::<(AccountId, String, Option<String>)>::new()); // (token_account_id, amount, amount_error)
+        signal(Vec::<(TokenData, String, Option<String>)>::new()); // (token_data, amount, amount_error)
     let (selected_nfts, set_selected_nfts) = signal(Vec::<(AccountId, String)>::new()); // (contract_id, token_id)
     let (active_tab, set_active_tab) = signal(ActiveTab::Gifts);
 
@@ -356,82 +357,64 @@ pub fn Gifts() -> impl IntoView {
         check_near_amount(trimmed_max_amount);
     };
 
-    let check_token_amount = move |token_account_id: AccountId, amount: String| {
-        let nep141_list = nep141_tokens();
-        if let Some(token_data) = nep141_list.iter().find(|t| {
-            if let Token::Nep141(account_id) = &t.token.account_id {
-                account_id == &token_account_id
-            } else {
-                false
-            }
-        }) {
-            let amount_trim = amount.trim();
-            let error = if amount_trim.is_empty() {
-                Some("Please enter amount".to_string())
-            } else {
-                match amount_trim.parse::<BigDecimal>() {
-                    Ok(dec) => {
-                        if dec <= BigDecimal::from(0) {
-                            Some("Amount must be greater than 0".to_string())
+    let check_token_amount = move |token_data: &TokenData, amount: String| {
+        let amount_trim = amount.trim();
+        let error = if amount_trim.is_empty() {
+            Some("Please enter amount".to_string())
+        } else {
+            match amount_trim.parse::<BigDecimal>() {
+                Ok(dec) => {
+                    if dec <= BigDecimal::from(0) {
+                        Some("Amount must be greater than 0".to_string())
+                    } else {
+                        let max_amount_decimal = balance_to_decimal(
+                            token_data.balance,
+                            token_data.token.metadata.decimals,
+                        );
+                        if dec > max_amount_decimal {
+                            Some("Not enough balance".to_string())
                         } else {
-                            let max_amount_decimal = balance_to_decimal(
-                                token_data.balance,
-                                token_data.token.metadata.decimals,
-                            );
-                            if dec > max_amount_decimal {
-                                Some("Not enough balance".to_string())
-                            } else {
-                                None
-                            }
+                            None
                         }
                     }
-                    Err(_) => Some("Please enter a valid amount".to_string()),
                 }
-            };
+                Err(_) => Some("Please enter a valid amount".to_string()),
+            }
+        };
 
-            set_selected_fungible_tokens.update(|tokens| {
-                for (account_id, _, ref mut amount_error) in tokens.iter_mut() {
-                    if *account_id == token_account_id {
-                        *amount_error = error.clone();
-                        break;
-                    }
+        set_selected_fungible_tokens.update(|tokens| {
+            for (token, _, ref mut amount_error) in tokens.iter_mut() {
+                if token.token.account_id == token_data.token.account_id {
+                    *amount_error = error.clone();
+                    break;
                 }
-            });
-        }
+            }
+        });
     };
 
-    let handle_token_max = move |token_account_id: AccountId| {
-        let nep141_list = nep141_tokens();
-        if let Some(token_data) = nep141_list.iter().find(|t| {
-            if let Token::Nep141(account_id) = &t.token.account_id {
-                account_id == &token_account_id
-            } else {
-                false
-            }
-        }) {
-            let max_amount_decimal =
-                balance_to_decimal(token_data.balance, token_data.token.metadata.decimals);
-            let mut max_amount_str = max_amount_decimal.to_string();
-            if max_amount_str.contains('.') {
-                max_amount_str = max_amount_str
-                    .trim_end_matches('0')
-                    .trim_end_matches('.')
-                    .to_string();
-            }
-
-            let trimmed_max_amount = trim_to_three_decimals(max_amount_str);
-
-            set_selected_fungible_tokens.update(|tokens| {
-                for (account_id, ref mut amount, _) in tokens.iter_mut() {
-                    if *account_id == token_account_id {
-                        *amount = trimmed_max_amount.clone();
-                        break;
-                    }
-                }
-            });
-
-            check_token_amount(token_account_id, trimmed_max_amount);
+    let handle_token_max = move |token_data: TokenData| {
+        let max_amount_decimal =
+            balance_to_decimal(token_data.balance, token_data.token.metadata.decimals);
+        let mut max_amount_str = max_amount_decimal.to_string();
+        if max_amount_str.contains('.') {
+            max_amount_str = max_amount_str
+                .trim_end_matches('0')
+                .trim_end_matches('.')
+                .to_string();
         }
+
+        let trimmed_max_amount = trim_to_three_decimals(max_amount_str);
+
+        set_selected_fungible_tokens.update(|tokens| {
+            for (token, ref mut amount, _) in tokens.iter_mut() {
+                if token.token.account_id == token_data.token.account_id {
+                    *amount = trimmed_max_amount.clone();
+                    break;
+                }
+            }
+        });
+
+        check_token_amount(&token_data, trimmed_max_amount);
     };
 
     let handle_gift = move |_: leptos::ev::MouseEvent| {
@@ -450,7 +433,7 @@ pub fn Gifts() -> impl IntoView {
         let fungible_tokens = selected_fungible_tokens
             .get()
             .into_iter()
-            .filter_map(|(token_account_id, amount_str, amount_error)| {
+            .filter_map(|(token_data, amount_str, amount_error)| {
                 if amount_error.is_some() {
                     return None;
                 }
@@ -458,17 +441,6 @@ pub fn Gifts() -> impl IntoView {
                 if amount_decimal <= BigDecimal::from(0) {
                     return None;
                 }
-                let nep141_list = nep141_tokens();
-                let token_data = nep141_list
-                    .iter()
-                    .find(|t| {
-                        if let Token::Nep141(account_id) = &t.token.account_id {
-                            account_id == &token_account_id
-                        } else {
-                            false
-                        }
-                    })?
-                    .clone();
                 let token_amount =
                     decimal_to_balance(amount_decimal.clone(), token_data.token.metadata.decimals);
                 Some((token_data, token_amount, amount_decimal))
@@ -680,29 +652,23 @@ pub fn Gifts() -> impl IntoView {
                                     let selected_account_ids: HashSet<_> = selected_fungible_tokens
                                         .get()
                                         .iter()
-                                        .map(|(account_id, _, _)| account_id.clone())
+                                        .map(|(token_data, _, _)| {
+                                            token_data.token.account_id.clone()
+                                        })
                                         .collect();
                                     if let Some(first_available_token) = nep141_list
                                         .iter()
                                         .find(|t| {
-                                            if let Token::Nep141(account_id) = &t.token.account_id {
-                                                !selected_account_ids.contains(account_id)
-                                            } else {
-                                                false
-                                            }
+                                            !selected_account_ids.contains(&t.token.account_id)
                                         })
                                     {
-                                        if let Token::Nep141(account_id) = &first_available_token
-                                            .token
-                                            .account_id
-                                        {
-                                            let current = selected_fungible_tokens.get();
-                                            let mut new_list = current;
-                                            new_list.push((account_id.clone(), String::new(), None));
-                                            set_selected_fungible_tokens.set(new_list);
-                                            if has_typed_near_amount.get() {
-                                                check_near_amount(near_amount.get());
-                                            }
+                                        let current = selected_fungible_tokens.get();
+                                        let mut new_list = current;
+                                        new_list
+                                            .push((first_available_token.clone(), String::new(), None));
+                                        set_selected_fungible_tokens.set(new_list);
+                                        if has_typed_near_amount.get() {
+                                            check_near_amount(near_amount.get());
                                         }
                                     }
                                 }
@@ -719,14 +685,13 @@ pub fn Gifts() -> impl IntoView {
                                 selected_fungible_tokens
                                     .get()
                                     .into_iter()
-                                    .map(|(token_account_id, amount, amount_error)| {
+                                    .map(|(token_data, amount, amount_error)| {
                                         let amount_clone = amount.clone();
                                         let amount_error_clone = amount_error.clone();
-                                        let token_account_id_clone = token_account_id.clone();
-                                        let token_account_id_clone_2 = token_account_id.clone();
-                                        let token_account_id_clone_3 = token_account_id.clone();
-                                        let token_account_id_clone_4 = token_account_id.clone();
-                                        let token_account_id_clone_5 = token_account_id.clone();
+                                        let token_data_clone = token_data.clone();
+                                        let token_data_clone_2 = token_data.clone();
+                                        let token_data_clone_3 = token_data.clone();
+                                        let token_data_clone_4 = token_data.clone();
 
                                         view! {
                                             <div class="bg-neutral-900/50 rounded-xl p-3 md:p-4 border border-neutral-700">
@@ -737,73 +702,25 @@ pub fn Gifts() -> impl IntoView {
                                                                 <label class="text-gray-400 text-sm mb-2 block">
                                                                     "Token"
                                                                 </label>
-                                                                <Select
-                                                                    options=Signal::derive(move || {
-                                                                        let selected_account_ids: HashSet<_> = selected_fungible_tokens
-                                                                            .get()
-                                                                            .into_iter()
-                                                                            .filter(|(account_id, _, _)| {
-                                                                                account_id != &token_account_id_clone_3
-                                                                            })
-                                                                            .map(|(account_id, _, _)| account_id)
-                                                                            .collect();
-                                                                        nep141_tokens()
-                                                                            .into_iter()
-                                                                            .filter(|token| {
-                                                                                if let Token::Nep141(account_id) = &token.token.account_id {
-                                                                                    !selected_account_ids.contains(account_id)
-                                                                                } else {
-                                                                                    false
+                                                                <TokenSelector
+                                                                    selected_token=move || Some(token_data_clone.clone())
+                                                                    on_select=move |new_token: TokenData| {
+                                                                        set_selected_fungible_tokens
+                                                                            .update(|tokens| {
+                                                                                if let Some(entry) = tokens
+                                                                                    .iter_mut()
+                                                                                    .find(|(t, _, _)| {
+                                                                                        t.token.account_id == new_token.token.account_id
+                                                                                    })
+                                                                                {
+                                                                                    entry.0 = new_token;
+                                                                                    entry.1 = String::new();
+                                                                                    entry.2 = None;
                                                                                 }
-                                                                            })
-                                                                            .map(|token| {
-                                                                                if let Token::Nep141(account_id) = &token.token.account_id {
-                                                                                    SelectOption::new(
-                                                                                        account_id.to_string(),
-                                                                                        move || {
-                                                                                            view! {
-                                                                                                <span class="inline-flex items-start gap-2">
-                                                                                                    {if let Some(icon_url) = token.token.metadata.icon.clone() {
-                                                                                                        view! {
-                                                                                                            <img
-                                                                                                                src=icon_url
-                                                                                                                class="w-6 h-6 rounded-full flex-shrink-0"
-                                                                                                            />
-                                                                                                        }
-                                                                                                            .into_any()
-                                                                                                    } else {
-                                                                                                        ().into_any()
-                                                                                                    }} {token.token.metadata.symbol.clone()}
-                                                                                                </span>
-                                                                                            }
-                                                                                                .into_any()
-                                                                                        },
-                                                                                    )
-                                                                                } else {
-                                                                                    unreachable!()
-                                                                                }
-                                                                            })
-                                                                            .collect()
-                                                                    })
-                                                                    initial_value=token_account_id.to_string()
-                                                                    class="bg-neutral-800 border-neutral-700 text-white rounded-lg"
-                                                                    on_change=Callback::new(move |value: String| {
-                                                                        if let Ok(account_id) = value.parse::<AccountId>() {
-                                                                            set_selected_fungible_tokens
-                                                                                .update(|tokens| {
-                                                                                    if let Some(entry) = tokens
-                                                                                        .iter_mut()
-                                                                                        .find(|(account_id, _, _)| {
-                                                                                            account_id == &token_account_id_clone_2
-                                                                                        })
-                                                                                    {
-                                                                                        entry.0 = account_id;
-                                                                                        entry.1 = String::new();
-                                                                                        entry.2 = None;
-                                                                                    }
-                                                                                });
-                                                                        }
-                                                                    })
+                                                                            });
+                                                                    }
+                                                                    placeholder="Select token"
+                                                                    allow_native_near=false
                                                                 />
                                                             </div>
 
@@ -836,18 +753,20 @@ pub fn Gifts() -> impl IntoView {
                                                                                 .update(|tokens| {
                                                                                     if let Some(entry) = tokens
                                                                                         .iter_mut()
-                                                                                        .find(|(account_id, _, _)| account_id == &token_account_id)
+                                                                                        .find(|(t, _, _)| {
+                                                                                            t.token.account_id == token_data_clone_3.token.account_id
+                                                                                        })
                                                                                     {
                                                                                         entry.1 = value.clone();
                                                                                     }
                                                                                 });
-                                                                            check_token_amount(token_account_id_clone_5.clone(), value);
+                                                                            check_token_amount(&token_data_clone_3, value);
                                                                         }
                                                                     />
                                                                     <button
                                                                         class="absolute right-3 top-1/2 -translate-y-1/2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm px-3 py-1 rounded-lg transition-colors duration-200 no-mobile-ripple cursor-pointer"
                                                                         on:click=move |_| handle_token_max(
-                                                                            token_account_id_clone_4.clone(),
+                                                                            token_data_clone_2.clone(),
                                                                         )
                                                                     >
                                                                         "MAX"
@@ -878,8 +797,8 @@ pub fn Gifts() -> impl IntoView {
                                                                 set_selected_fungible_tokens
                                                                     .update(|tokens| {
                                                                         tokens
-                                                                            .retain(|(account_id, _, _)| {
-                                                                                account_id != &token_account_id_clone
+                                                                            .retain(|(t, _, _)| {
+                                                                                t.token.account_id != token_data_clone_4.token.account_id
                                                                             });
                                                                     });
                                                                 if has_typed_near_amount.get() {
@@ -1296,7 +1215,7 @@ pub fn Gifts() -> impl IntoView {
                                                                         <div class="bg-neutral-900/50 border border-neutral-700 rounded-xl p-4">
                                                                             <div class="flex items-center justify-between">
                                                                                 <div class="flex items-center gap-3">
-                                                                                    <div class="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center">
+                                                                                    <div class="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center shrink-0">
                                                                                         <Icon
                                                                                             icon=icondata::LuGift
                                                                                             attr:class="w-5 h-5 text-blue-400"

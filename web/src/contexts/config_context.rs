@@ -158,6 +158,8 @@ pub struct WalletConfig {
     pub biometric_enabled: bool,
     #[serde(default = "default_true")]
     pub prevent_screenshots: bool,
+    #[serde(default = "default_true")]
+    pub short_amounts: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -224,6 +226,7 @@ impl Default for WalletConfig {
             custom_networks: vec![],
             biometric_enabled: true,
             prevent_screenshots: true,
+            short_amounts: true,
         }
     }
 }

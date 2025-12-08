@@ -420,6 +420,7 @@ fn add_account_actions(
     _rpc_client: RpcClient,
 ) {
     for action in transaction.final_outcome.transaction.actions.iter() {
+        let receiver_id = transaction.final_outcome.transaction.receiver_id.clone();
         match action {
             ActionView::CreateAccount => {
                 actions.push(
@@ -434,8 +435,8 @@ fn add_account_actions(
                                 />
                                 <span>
                                     "Create Account "
-                                    {format_account_id(
-                                        &transaction.final_outcome.transaction.receiver_id,
+                                    {move || format_account_id(
+                                        &receiver_id,
                                     )}
                                 </span>
                             </div>
@@ -445,6 +446,7 @@ fn add_account_actions(
                 );
             }
             ActionView::DeleteAccount { beneficiary_id } => {
+                let beneficiary_id = beneficiary_id.clone();
                 actions.push(
                     view! {
                         <div class="flex flex-col gap-1">
@@ -457,10 +459,10 @@ fn add_account_actions(
                                 />
                                 <span>
                                     "Delete Account "
-                                    {format_account_id(
-                                        &transaction.final_outcome.transaction.receiver_id,
+                                    {move || format_account_id(
+                                        &receiver_id,
                                     )} " and send remaining NEAR to "
-                                    {format_account_id(beneficiary_id)}
+                                    {move || format_account_id(&beneficiary_id)}
                                 </span>
                             </div>
                         </div>
@@ -1166,7 +1168,7 @@ fn add_ft_actions(
                                                                 <div class="flex flex-col gap-1">
                                                                     <span>
                                                                         "Send "
-                                                                        {format_token_amount(
+                                                                        {move || format_token_amount(
                                                                             transfer.amount,
                                                                             metadata.decimals,
                                                                             &metadata.symbol,
@@ -1233,7 +1235,7 @@ fn add_ft_actions(
                                                             <div class="flex flex-col gap-1">
                                                                 <span>
                                                                     "Receive "
-                                                                    {format_token_amount(
+                                                                    {move || format_token_amount(
                                                                         transfer.amount,
                                                                         metadata.decimals,
                                                                         &metadata.symbol,
@@ -1527,6 +1529,7 @@ fn add_nft_actions(
                             actions.push(view! {
                                 <div class="flex items-center gap-2">
                                     {move || {
+                                        let old_owner_id = transfer.old_owner_id.clone();
                                         if let Some(Ok(metadata)) = metadata.get() {
                                             view! {
                                                 <img
@@ -1559,7 +1562,7 @@ fn add_nft_actions(
                                                                 <span>
                                                                     "Receive " {transfer.token_ids.len().to_string()} " "
                                                                     {metadata.name.clone()} " from "
-                                                                    {format_account_id(&transfer.old_owner_id)}
+                                                                    {move || format_account_id(&old_owner_id)}
                                                                 </span>
                                                                 <span class="text-xs">{memo}</span>
                                                             </div>

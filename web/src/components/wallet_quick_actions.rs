@@ -33,7 +33,7 @@ pub fn WalletQuickActions() -> impl IntoView {
             let buttons = vec![
                 (show_nfts(), "/nfts", icondata::LuImage, "NFTs"),
                 (show_stake(), "/stake", icondata::LuBeef, "Stake"),
-                (show_gifts(), "/gifts", icondata::LuGift, "Gifts"),
+                (show_gifts(), "/gifts", icondata::LuGift, "Gift"),
             ]
                 .into_iter()
                 .filter(|(show, _, _, _)| *show)
@@ -54,9 +54,9 @@ pub fn WalletQuickActions() -> impl IntoView {
                             view! {
                                 <A
                                     href=href
-                                    attr:class="flex flex-col items-center justify-center gap-2 p-2 transition-colors"
+                                    attr:class="flex flex-col items-center justify-center gap-2 p-2 transition-colors rounded-lg hover:bg-neutral-900/50"
                                 >
-                                    <div class="w-12 h-12 rounded-full bg-neutral-800 flex items-center justify-center">
+                                    <div class="w-12 h-12 rounded-full bg-neutral-800 hover:bg-neutral-700 flex items-center justify-center transition-colors">
                                         <Icon icon=icon width="20" height="20" />
                                     </div>
                                     <span class="text-sm text-white">{label}</span>

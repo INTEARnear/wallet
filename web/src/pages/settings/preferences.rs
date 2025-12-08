@@ -76,6 +76,7 @@ pub fn PreferencesSettings() -> impl IntoView {
     let hide_to_tray = Memo::new(move |_| config_context.config.get().hide_to_tray);
     let autostart = Memo::new(move |_| config_context.config.get().autostart);
     let amounts_hidden = Memo::new(move |_| config_context.config.get().amounts_hidden);
+    let short_amounts = Memo::new(move |_| config_context.config.get().short_amounts);
     let prevent_screenshots = Memo::new(move |_| config_context.config.get().prevent_screenshots);
 
     let updates_disabled = Signal::derive(|| false);
@@ -179,6 +180,18 @@ pub fn PreferencesSettings() -> impl IntoView {
                             .set_config
                             .update(|config| {
                                 config.amounts_hidden = !config.amounts_hidden;
+                            });
+                    }
+                />
+                <ToggleSwitch
+                    label="Short Amounts"
+                    value=short_amounts
+                    disabled=Signal::derive(|| false)
+                    on_toggle=move || {
+                        config_context
+                            .set_config
+                            .update(|config| {
+                                config.short_amounts = !config.short_amounts;
                             });
                     }
                 />

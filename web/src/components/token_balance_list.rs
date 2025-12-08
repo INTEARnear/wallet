@@ -55,7 +55,9 @@ fn RheaBalanceCard(rhea_tokens: Vec<TokenData>, total_usd: BigDecimal) -> impl I
                     </div>
                     <div class="text-left">
                         <div class="flex items-center gap-2">
-                            <span class="text-white text-lg font-semibold">"Rhea Inner Balance"</span>
+                            <span class="text-white text-lg font-semibold">
+                                "Rhea Inner Balance"
+                            </span>
                             <div class="px-2 py-0.5 bg-purple-500/20 border border-purple-400/30 rounded-full">
                                 <span class="text-purple-300 text-xs font-medium">
                                     {format!(
@@ -72,7 +74,9 @@ fn RheaBalanceCard(rhea_tokens: Vec<TokenData>, total_usd: BigDecimal) -> impl I
                     </div>
                 </div>
                 <div class="text-right">
-                    <p class="text-white text-2xl font-bold">{move || format_usd_value(total_usd.clone())}</p>
+                    <p class="text-white text-2xl font-bold">
+                        {move || format_usd_value(total_usd.clone())}
+                    </p>
                     <div class="flex items-center gap-1 text-purple-300/70 text-sm mt-1 justify-end">
                         <span>"View details"</span>
                         <Icon icon=icondata::LuChevronRight width="16" height="16" />
@@ -114,180 +118,182 @@ fn RheaBalanceModal(rhea_tokens: Vec<TokenData>) -> impl IntoView {
                     "These tokens are stored in Rhea's internal balance, apps like BettearBot use this feature to trade faster. Withdraw them to use in your wallet."
                 </p>
                 <div class="flex flex-col gap-3">
-                    {move || rhea_tokens
-                        .clone()
-                        .into_iter()
-                        .filter(|token| token.balance > 0)
-                        .map(|token| {
-                            let balance = token.balance;
-                            let decimals = token.token.metadata.decimals;
-                            let formatted_balance = format_token_amount(
-                                balance,
-                                decimals,
-                                &token.token.metadata.symbol,
-                            );
-                            let normalized_balance = balance_to_decimal(balance, decimals);
-                            let usd_value = format_usd_value(
-                                &token.token.price_usd * &normalized_balance,
-                            );
-                            let symbol = token.token.metadata.symbol.clone();
-                            let token_id = match token.token.account_id {
-                                Token::Near => "near".parse().unwrap(),
-                                Token::Nep141(id) => id.clone(),
-                                Token::Rhea(id) => id.clone(),
-                            };
+                    {move || {
+                        rhea_tokens
+                            .clone()
+                            .into_iter()
+                            .filter(|token| token.balance > 0)
+                            .map(|token| {
+                                let balance = token.balance;
+                                let decimals = token.token.metadata.decimals;
+                                let formatted_balance = format_token_amount(
+                                    balance,
+                                    decimals,
+                                    &token.token.metadata.symbol,
+                                );
+                                let normalized_balance = balance_to_decimal(balance, decimals);
+                                let usd_value = format_usd_value(
+                                    &token.token.price_usd * &normalized_balance,
+                                );
+                                let symbol = token.token.metadata.symbol.clone();
+                                let token_id = match token.token.account_id {
+                                    Token::Near => "near".parse().unwrap(),
+                                    Token::Nep141(id) => id.clone(),
+                                    Token::Rhea(id) => id.clone(),
+                                };
 
-                            view! {
-                                <div class="flex flex-col bg-neutral-800 rounded-xl p-4 gap-3">
-                                    <div class="flex items-center justify-between gap-4">
-                                        <div class="flex items-center gap-3 wrap-anywhere min-w-0 flex-1">
-                                            {match token.token.metadata.icon.clone() {
-                                                Some(icon) => {
-                                                    view! {
-                                                        <img
-                                                            src=icon
-                                                            alt=token.token.metadata.symbol.clone()
-                                                            class="w-10 h-10 rounded-full"
-                                                        />
-                                                    }
-                                                        .into_any()
-                                                }
-                                                None => {
-                                                    view! {
-                                                        <div class="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center text-white text-xl">
-                                                            {token.token.metadata.symbol.chars().next().unwrap_or('?')}
-                                                        </div>
-                                                    }
-                                                        .into_any()
-                                                }
-                                            }} <div>
-                                                <span
-                                                    class="text-white text-lg font-medium"
-                                                    style=move || {
-                                                        if symbol.len() > 14 {
-                                                            "font-size: 0.8rem;"
-                                                        } else if symbol.len() > 10 {
-                                                            "font-size: 1rem;"
-                                                        } else {
-                                                            ""
+                                view! {
+                                    <div class="flex flex-col bg-neutral-800 rounded-xl p-4 gap-3">
+                                        <div class="flex items-center justify-between gap-4">
+                                            <div class="flex items-center gap-3 wrap-anywhere min-w-0 flex-1">
+                                                {match token.token.metadata.icon.clone() {
+                                                    Some(icon) => {
+                                                        view! {
+                                                            <img
+                                                                src=icon
+                                                                alt=token.token.metadata.symbol.clone()
+                                                                class="w-10 h-10 rounded-full"
+                                                            />
                                                         }
+                                                            .into_any()
                                                     }
-                                                >
-                                                    {token.token.metadata.symbol.clone()}
-                                                </span>
-                                                <p class="text-gray-400 text-sm">{formatted_balance}</p>
+                                                    None => {
+                                                        view! {
+                                                            <div class="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center text-white text-xl">
+                                                                {token.token.metadata.symbol.chars().next().unwrap_or('?')}
+                                                            </div>
+                                                        }
+                                                            .into_any()
+                                                    }
+                                                }} <div>
+                                                    <span
+                                                        class="text-white text-lg font-medium"
+                                                        style=move || {
+                                                            if symbol.len() > 14 {
+                                                                "font-size: 0.8rem;"
+                                                            } else if symbol.len() > 10 {
+                                                                "font-size: 1rem;"
+                                                            } else {
+                                                                ""
+                                                            }
+                                                        }
+                                                    >
+                                                        {token.token.metadata.symbol.clone()}
+                                                    </span>
+                                                    <p class="text-gray-400 text-sm">{formatted_balance}</p>
+                                                </div>
+                                            </div>
+                                            <div class="text-right">
+                                                <p class="text-white text-lg">{usd_value}</p>
                                             </div>
                                         </div>
-                                        <div class="text-right">
-                                            <p class="text-white text-lg">{usd_value}</p>
-                                        </div>
-                                    </div>
-                                    <button
-                                        class="w-full bg-orange-500 hover:bg-orange-600 text-white font-medium py-2.5 px-4 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-2"
-                                        on:click=move |_| {
-                                            let selected_account_id = accounts
-                                                .get()
-                                                .selected_account_id;
-                                            if let Some(signer_id) = selected_account_id {
-                                                let token_id_clone = token_id.clone();
-                                                let token_symbol = token.token.metadata.symbol.clone();
-                                                let rpc = rpc_client.get_untracked();
-                                                let signer_clone = signer_id.clone();
-                                                spawn_local(async move {
-                                                    let storage_result = rpc
-                                                        .call::<
-                                                            Option<StorageBalance>,
-                                                        >(
-                                                            token_id_clone.clone(),
-                                                            "storage_balance_of",
-                                                            serde_json::json!(
-                                                                {
+                                        <button
+                                            class="w-full bg-orange-500 hover:bg-orange-600 text-white font-medium py-2.5 px-4 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-2"
+                                            on:click=move |_| {
+                                                let selected_account_id = accounts
+                                                    .get()
+                                                    .selected_account_id;
+                                                if let Some(signer_id) = selected_account_id {
+                                                    let token_id_clone = token_id.clone();
+                                                    let token_symbol = token.token.metadata.symbol.clone();
+                                                    let rpc = rpc_client.get_untracked();
+                                                    let signer_clone = signer_id.clone();
+                                                    spawn_local(async move {
+                                                        let storage_result = rpc
+                                                            .call::<
+                                                                Option<StorageBalance>,
+                                                            >(
+                                                                token_id_clone.clone(),
+                                                                "storage_balance_of",
+                                                                serde_json::json!(
+                                                                    {
                                                                 "account_id": signer_id,
                                                             }
-                                                            ),
-                                                            QueryFinality::Finality(Finality::DoomSlug),
-                                                        )
-                                                        .await;
-                                                    let needs_storage_deposit = match storage_result {
-                                                        Ok(storage_balance) => {
-                                                            match storage_balance {
-                                                                Some(storage_balance) => storage_balance.total.is_zero(),
-                                                                None => true,
+                                                                ),
+                                                                QueryFinality::Finality(Finality::DoomSlug),
+                                                            )
+                                                            .await;
+                                                        let needs_storage_deposit = match storage_result {
+                                                            Ok(storage_balance) => {
+                                                                match storage_balance {
+                                                                    Some(storage_balance) => storage_balance.total.is_zero(),
+                                                                    None => true,
+                                                                }
                                                             }
-                                                        }
-                                                        Err(_) => false,
-                                                    };
-                                                    let mut transactions = Vec::new();
-                                                    if needs_storage_deposit {
-                                                        let (_rx, storage_tx) = EnqueuedTransaction::create(
-                                                            format!("Storage deposit on {}", token_symbol),
-                                                            signer_clone.clone(),
-                                                            token_id_clone.clone(),
-                                                            vec![
-                                                                Action::FunctionCall(
-                                                                    Box::new(FunctionCallAction {
-                                                                        method_name: "storage_deposit".to_string(),
-                                                                        args: serde_json::json!(
-                                                                            {
+                                                            Err(_) => false,
+                                                        };
+                                                        let mut transactions = Vec::new();
+                                                        if needs_storage_deposit {
+                                                            let (_rx, storage_tx) = EnqueuedTransaction::create(
+                                                                format!("Storage deposit on {}", token_symbol),
+                                                                signer_clone.clone(),
+                                                                token_id_clone.clone(),
+                                                                vec![
+                                                                    Action::FunctionCall(
+                                                                        Box::new(FunctionCallAction {
+                                                                            method_name: "storage_deposit".to_string(),
+                                                                            args: serde_json::json!(
+                                                                                {
                                                                     "account_id": signer_clone,
                                                                     "registration_only": true,
                                                                 }
+                                                                            )
+                                                                                .to_string()
+                                                                                .into_bytes(),
+                                                                            gas: NearGas::from_tgas(5).as_gas(),
+                                                                            deposit: "0.00125 NEAR".parse().unwrap(),
+                                                                        }),
+                                                                    ),
+                                                                ],
+                                                            );
+                                                            transactions.push(storage_tx);
+                                                        }
+                                                        let (_rx, withdraw_tx) = EnqueuedTransaction::create(
+                                                            format!("Withdraw {} from Rhea", token_symbol),
+                                                            signer_clone,
+                                                            "v2.ref-finance.near".parse().unwrap(),
+                                                            vec![
+                                                                Action::FunctionCall(
+                                                                    Box::new(FunctionCallAction {
+                                                                        method_name: "withdraw".to_string(),
+                                                                        args: serde_json::json!(
+                                                                            {
+                                                                "token_id": token_id_clone,
+                                                                "amount": balance.to_string(),
+                                                            }
                                                                         )
                                                                             .to_string()
                                                                             .into_bytes(),
-                                                                        gas: NearGas::from_tgas(5).as_gas(),
-                                                                        deposit: "0.00125 NEAR".parse().unwrap(),
+                                                                        gas: NearGas::from_tgas(50).as_gas(),
+                                                                        deposit: NearToken::from_yoctonear(1),
                                                                     }),
                                                                 ),
                                                             ],
                                                         );
-                                                        transactions.push(storage_tx);
-                                                    }
-                                                    let (_rx, withdraw_tx) = EnqueuedTransaction::create(
-                                                        format!("Withdraw {} from Rhea", token_symbol),
-                                                        signer_clone,
-                                                        "v2.ref-finance.near".parse().unwrap(),
-                                                        vec![
-                                                            Action::FunctionCall(
-                                                                Box::new(FunctionCallAction {
-                                                                    method_name: "withdraw".to_string(),
-                                                                    args: serde_json::json!(
-                                                                        {
-                                                                "token_id": token_id_clone,
-                                                                "amount": balance.to_string(),
-                                                            }
-                                                                    )
-                                                                        .to_string()
-                                                                        .into_bytes(),
-                                                                    gas: NearGas::from_tgas(50).as_gas(),
-                                                                    deposit: NearToken::from_yoctonear(1),
-                                                                }),
-                                                            ),
-                                                        ],
-                                                    );
-                                                    if !transactions.is_empty() {
-                                                        transactions
-                                                            .push(withdraw_tx.in_same_queue_as(&transactions[0]));
-                                                    } else {
-                                                        transactions.push(withdraw_tx);
-                                                    }
-                                                    add_transaction.update(|txs| txs.extend(transactions));
-                                                    modal.set(None);
-                                                });
+                                                        if !transactions.is_empty() {
+                                                            transactions
+                                                                .push(withdraw_tx.in_same_queue_as(&transactions[0]));
+                                                        } else {
+                                                            transactions.push(withdraw_tx);
+                                                        }
+                                                        add_transaction.update(|txs| txs.extend(transactions));
+                                                        modal.set(None);
+                                                    });
+                                                }
                                             }
-                                        }
-                                    >
-                                        <Icon
-                                            icon=icondata::LuArrowUpFromLine
-                                            width="16"
-                                            height="16"
-                                        />
-                                        "Withdraw"
-                                    </button>
-                                </div>
-                            }
-                        })
-                        .collect_view()}
+                                        >
+                                            <Icon
+                                                icon=icondata::LuArrowUpFromLine
+                                                width="16"
+                                                height="16"
+                                            />
+                                            "Withdraw"
+                                        </button>
+                                    </div>
+                                }
+                            })
+                            .collect_view()
+                    }}
                 </div>
             </div>
         </div>
@@ -384,6 +390,7 @@ pub fn TokenBalanceList() -> impl IntoView {
                         })
                         .fold(BigDecimal::from(0), |acc, val| acc + val);
                     let rhea_total_is_significant = rhea_total_usd >= BigDecimal::from(10);
+                    let visible_token_count = filtered_tokens.len();
 
                     view! {
                         {if has_rhea_balance && rhea_total_is_significant {
@@ -526,6 +533,32 @@ pub fn TokenBalanceList() -> impl IntoView {
                         } else {
                             ().into_any()
                         }}
+                        <Show when={move || visible_token_count > 5}>
+                            <A
+                                href="/settings/developer/create_token"
+                                attr:class="flex items-center justify-between bg-neutral-900 rounded-xl p-4 hover:bg-neutral-800 transition-colors gap-4 mobile-ripple cursor-pointer"
+                            >
+                                <div class="flex items-center gap-3 wrap-anywhere">
+                                    <div class="w-10 h-10 rounded-full bg-neutral-700 flex items-center justify-center text-gray-300">
+                                        <Icon icon=icondata::LuPlus width="20" height="20" />
+                                    </div>
+                                    <div>
+                                        <span class="text-white text-lg font-medium">
+                                            "Create Your Own Token"
+                                        </span>
+                                        <p class="text-gray-400 text-sm">
+                                            "Available in Developer Settings"
+                                        </p>
+                                    </div>
+                                </div>
+                                <Icon
+                                    icon=icondata::LuChevronRight
+                                    width="20"
+                                    height="20"
+                                    attr:class="text-gray-400"
+                                />
+                            </A>
+                        </Show>
                         <div class="flex justify-center">
                             <button
                                 class="flex items-center gap-2 text-gray-400 text-sm hover:text-white transition-colors no-mobile-ripple cursor-pointer"

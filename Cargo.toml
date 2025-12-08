@@ -47,4 +47,3 @@ resolver = "3"
 
 [patch.crates-io]
 argon2 = { path = "./target/patch/argon2-0.5.3" }
-leptos = { path = "./target/patch/leptos-0.8.8" }
