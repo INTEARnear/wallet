@@ -39,8 +39,8 @@ jobs:
       - name: Create .env file
         run: cp .env.prod .env
 
-      - name: Setup mold (Linux only)
-        if: matrix.platform == 'linux'
+      - name: Setup mold (Linux and Android only)
+        if: matrix.platform == 'linux' || matrix.platform == 'android'
         uses: rui314/setup-mold@v1
 
       - name: Install Rust
