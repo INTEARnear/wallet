@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, str::FromStr, time::Duration};
 
 use crate::contexts::accounts_context::AccountsContext;
+use crate::contexts::network_context::{Network, NetworkContext};
 use crate::pages::settings::open_live_chat;
 use crate::utils::{decimal_to_balance, generate_qr_code};
 use crate::{
@@ -304,6 +305,7 @@ struct TerminalScreenData {
 
 #[component]
 pub fn Bridge() -> impl IntoView {
+    let NetworkContext { network } = expect_context::<NetworkContext>();
     let (active_tab, set_active_tab) = signal(Tab::ToNear);
     let (selected_stable, set_selected_stable) = signal(StableCoin::Usdc);
     let (terminal_screen, set_terminal_screen) = signal::<Option<TerminalScreenData>>(None);
@@ -339,224 +341,252 @@ pub fn Bridge() -> impl IntoView {
     });
 
     view! {
-        <div class="flex flex-col gap-6 p-2 md:p-4">
-            <A
-                href="/"
-                attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
-            >
-                <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                <span>"Back"</span>
-            </A>
-
-            <Show
-                when=move || terminal_screen.get().is_some()
-                fallback=move || {
-                    view! {
-                        <div class="flex flex-col items-center justify-center min-h-[60vh] gap-6">
-                            <h1 class="text-2xl font-bold text-white mb-4">"Bridge"</h1>
-
-                            <div class="flex gap-2 w-full max-w-md">
-                                <button
-                                    class=move || {
-                                        format!(
-                                            "flex-1 py-3 px-4 rounded-lg font-semibold transition-colors cursor-pointer text-base {}",
-                                            match active_tab.get() {
-                                                Tab::ToNear => "bg-blue-600 text-white",
-                                                _ => "bg-neutral-800 text-gray-400 hover:bg-neutral-700",
-                                            },
-                                        )
-                                    }
-
-                                    on:click=move |_| set_active_tab(Tab::ToNear)
-                                >
-                                    "To NEAR"
-                                </button>
-                                <button
-                                    class=move || {
-                                        format!(
-                                            "flex-1 py-3 px-4 rounded-lg font-semibold transition-colors cursor-pointer text-base {}",
-                                            match active_tab.get() {
-                                                Tab::Stables => "bg-blue-600 text-white",
-                                                _ => "bg-neutral-800 text-gray-400 hover:bg-neutral-700",
-                                            },
-                                        )
-                                    }
-
-                                    on:click=move |_| set_active_tab(Tab::Stables)
-                                >
-                                    "Stables"
-                                </button>
-                                <button
-                                    class=move || {
-                                        format!(
-                                            "py-3 px-4 rounded-lg font-semibold transition-colors cursor-pointer text-base flex items-center justify-center {}",
-                                            match active_tab.get() {
-                                                Tab::History => "bg-blue-600 text-white",
-                                                _ => "bg-neutral-800 text-gray-400 hover:bg-neutral-700",
-                                            },
-                                        )
-                                    }
-
-                                    on:click=move |_| set_active_tab(Tab::History)
-                                >
-                                    <Icon icon=icondata::LuHistory width="20" height="20" />
-                                </button>
+        <Show
+            when=move || network.get() == Network::Mainnet
+            fallback=move || {
+                view! {
+                    <div class="flex flex-col gap-6 p-2 md:p-4">
+                        <A
+                            href="/receive"
+                            attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                        >
+                            <Icon icon=icondata::LuArrowLeft width="20" height="20" />
+                            <span>"Back"</span>
+                        </A>
+                        <div class="flex flex-col items-center justify-center h-full p-8 text-center">
+                            <div class="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mb-4">
+                                <Icon icon=icondata::LuCircleX attr:class="w-8 h-8 text-red-500" />
                             </div>
+                            <h2 class="text-xl font-bold text-white mb-2">
+                                "Bridge Only Available on Mainnet"
+                            </h2>
+                            <p class="text-gray-400 max-w-md">
+                                "The bridge feature is only available on NEAR Mainnet. Please switch to a Mainnet account to use the bridge."
+                            </p>
+                        </div>
+                    </div>
+                }
+            }
+        >
+            <div class="flex flex-col gap-6 p-2 md:p-4">
+                <A
+                    href="/"
+                    attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                >
+                    <Icon icon=icondata::LuArrowLeft width="20" height="20" />
+                    <span>"Back"</span>
+                </A>
 
-                            <Suspense fallback=move || {
-                                view! {
-                                    <div class="w-full max-w-md bg-neutral-800 rounded-lg p-6 flex items-center justify-center">
-                                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
-                                    </div>
-                                }
-                            }>
-                                {move || {
-                                    supported_tokens
-                                        .get()
-                                        .map(|result| match result {
-                                            Ok(tokens) => {
+                <Show
+                    when=move || terminal_screen.get().is_some()
+                    fallback=move || {
+                        view! {
+                            <div class="flex flex-col items-center justify-center min-h-[60vh] gap-6">
+                                <h1 class="text-2xl font-bold text-white mb-4">"Bridge"</h1>
+
+                                <div class="flex gap-2 w-full max-w-md">
+                                    <button
+                                        class=move || {
+                                            format!(
+                                                "flex-1 py-3 px-4 rounded-lg font-semibold transition-colors cursor-pointer text-base {}",
                                                 match active_tab.get() {
-                                                    Tab::ToNear => {
-                                                        view! {
-                                                            <ToNearTab
-                                                                tokens=tokens.clone()
-                                                                set_terminal_screen=set_terminal_screen
-                                                            />
+                                                    Tab::ToNear => "bg-blue-600 text-white",
+                                                    _ => "bg-neutral-800 text-gray-400 hover:bg-neutral-700",
+                                                },
+                                            )
+                                        }
+
+                                        on:click=move |_| set_active_tab(Tab::ToNear)
+                                    >
+                                        "To NEAR"
+                                    </button>
+                                    <button
+                                        class=move || {
+                                            format!(
+                                                "flex-1 py-3 px-4 rounded-lg font-semibold transition-colors cursor-pointer text-base {}",
+                                                match active_tab.get() {
+                                                    Tab::Stables => "bg-blue-600 text-white",
+                                                    _ => "bg-neutral-800 text-gray-400 hover:bg-neutral-700",
+                                                },
+                                            )
+                                        }
+
+                                        on:click=move |_| set_active_tab(Tab::Stables)
+                                    >
+                                        "Stables"
+                                    </button>
+                                    <button
+                                        class=move || {
+                                            format!(
+                                                "py-3 px-4 rounded-lg font-semibold transition-colors cursor-pointer text-base flex items-center justify-center {}",
+                                                match active_tab.get() {
+                                                    Tab::History => "bg-blue-600 text-white",
+                                                    _ => "bg-neutral-800 text-gray-400 hover:bg-neutral-700",
+                                                },
+                                            )
+                                        }
+
+                                        on:click=move |_| set_active_tab(Tab::History)
+                                    >
+                                        <Icon icon=icondata::LuHistory width="20" height="20" />
+                                    </button>
+                                </div>
+
+                                <Suspense fallback=move || {
+                                    view! {
+                                        <div class="w-full max-w-md bg-neutral-800 rounded-lg p-6 flex items-center justify-center">
+                                            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+                                        </div>
+                                    }
+                                }>
+                                    {move || {
+                                        supported_tokens
+                                            .get()
+                                            .map(|result| match result {
+                                                Ok(tokens) => {
+                                                    match active_tab.get() {
+                                                        Tab::ToNear => {
+                                                            view! {
+                                                                <ToNearTab
+                                                                    tokens=tokens.clone()
+                                                                    set_terminal_screen=set_terminal_screen
+                                                                />
+                                                            }
+                                                                .into_any()
                                                         }
-                                                            .into_any()
-                                                    }
-                                                    Tab::Stables => {
-                                                        view! {
-                                                            <StablesTab
-                                                                tokens=tokens.clone()
-                                                                selected_stable=selected_stable
-                                                                set_selected_stable=set_selected_stable
-                                                                set_terminal_screen=set_terminal_screen
-                                                            />
+                                                        Tab::Stables => {
+                                                            view! {
+                                                                <StablesTab
+                                                                    tokens=tokens.clone()
+                                                                    selected_stable=selected_stable
+                                                                    set_selected_stable=set_selected_stable
+                                                                    set_terminal_screen=set_terminal_screen
+                                                                />
+                                                            }
+                                                                .into_any()
                                                         }
-                                                            .into_any()
+                                                        Tab::History => view! { <HistoryTab /> }.into_any(),
                                                     }
-                                                    Tab::History => view! { <HistoryTab /> }.into_any(),
                                                 }
-                                            }
-                                            Err(e) => {
+                                                Err(e) => {
+                                                    view! {
+                                                        <div class="w-full max-w-md bg-neutral-800 rounded-lg p-6 text-red-400 text-center">
+                                                            "Failed to load tokens: " {e}
+                                                        </div>
+                                                    }
+                                                        .into_any()
+                                                }
+                                            })
+                                            .unwrap_or_else(|| {
                                                 view! {
-                                                    <div class="w-full max-w-md bg-neutral-800 rounded-lg p-6 text-red-400 text-center">
-                                                        "Failed to load tokens: " {e}
+                                                    <div class="w-full max-w-md bg-neutral-800 rounded-lg p-6 flex items-center justify-center">
+                                                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
                                                     </div>
                                                 }
                                                     .into_any()
-                                            }
-                                        })
-                                        .unwrap_or_else(|| {
-                                            view! {
-                                                <div class="w-full max-w-md bg-neutral-800 rounded-lg p-6 flex items-center justify-center">
-                                                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
-                                                </div>
-                                            }
-                                                .into_any()
-                                        })
-                                }}
+                                            })
+                                    }}
 
-                            </Suspense>
-                        </div>
+                                </Suspense>
+                            </div>
+                        }
                     }
-                }
-            >
+                >
 
-                {move || {
-                    terminal_screen
-                        .get()
-                        .map(|data| {
-                            match data.status {
-                                DepositStatus::Success => {
-                                    let amount_formatted = if let Ok(amount) = BigDecimal::from_str(
-                                        &data.quote.amount_out_formatted,
-                                    ) {
-                                        format!("{amount:.6}")
-                                    } else {
-                                        data.quote
-                                            .amount_out_formatted
-                                            .trim_end_matches('0')
-                                            .trim_end_matches('.')
-                                            .to_string()
-                                    };
-                                    view! {
-                                        <div class="flex flex-col items-center justify-center gap-6 py-8 min-h-[60vh]">
-                                            <div class="w-16 h-16 rounded-full bg-green-400/20 flex items-center justify-center">
-                                                <Icon
-                                                    icon=icondata::LuCheck
-                                                    width="48"
-                                                    height="48"
-                                                    attr:class="text-green-400"
-                                                />
-                                            </div>
-                                            <h2 class="text-2xl font-bold text-white">
-                                                "Bridge Complete!"
-                                            </h2>
-                                            <div class="bg-neutral-800 rounded-lg p-6 max-w-md w-full">
-                                                <div class="text-center">
-                                                    <p class="text-gray-400 text-sm mb-2">"You received"</p>
-                                                    <p class="text-3xl font-bold text-white">
-                                                        {amount_formatted
-                                                            .trim_end_matches('0')
-                                                            .trim_end_matches('.')} " " {data.receive_token_symbol}
-                                                    </p>
+                    {move || {
+                        terminal_screen
+                            .get()
+                            .map(|data| {
+                                match data.status {
+                                    DepositStatus::Success => {
+                                        let amount_formatted = if let Ok(amount) = BigDecimal::from_str(
+                                            &data.quote.amount_out_formatted,
+                                        ) {
+                                            format!("{amount:.6}")
+                                        } else {
+                                            data.quote
+                                                .amount_out_formatted
+                                                .trim_end_matches('0')
+                                                .trim_end_matches('.')
+                                                .to_string()
+                                        };
+                                        view! {
+                                            <div class="flex flex-col items-center justify-center gap-6 py-8 min-h-[60vh]">
+                                                <div class="w-16 h-16 rounded-full bg-green-400/20 flex items-center justify-center">
+                                                    <Icon
+                                                        icon=icondata::LuCheck
+                                                        width="48"
+                                                        height="48"
+                                                        attr:class="text-green-400"
+                                                    />
                                                 </div>
+                                                <h2 class="text-2xl font-bold text-white">
+                                                    "Bridge Complete!"
+                                                </h2>
+                                                <div class="bg-neutral-800 rounded-lg p-6 max-w-md w-full">
+                                                    <div class="text-center">
+                                                        <p class="text-gray-400 text-sm mb-2">"You received"</p>
+                                                        <p class="text-3xl font-bold text-white">
+                                                            {amount_formatted
+                                                                .trim_end_matches('0')
+                                                                .trim_end_matches('.')} " " {data.receive_token_symbol}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <p class="text-gray-400 text-center max-w-md">
+                                                    "Your tokens have been successfully bridged to NEAR."
+                                                </p>
+                                                <A
+                                                    href="/"
+                                                    attr:class="w-full max-w-md bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-center text-base"
+                                                >
+                                                    "Done"
+                                                </A>
                                             </div>
-                                            <p class="text-gray-400 text-center max-w-md">
-                                                "Your tokens have been successfully bridged to NEAR."
-                                            </p>
-                                            <A
-                                                href="/"
-                                                attr:class="w-full max-w-md bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-center text-base"
-                                            >
-                                                "Done"
-                                            </A>
-                                        </div>
+                                        }
+                                            .into_any()
                                     }
-                                        .into_any()
-                                }
-                                DepositStatus::Failed | DepositStatus::Refunded => {
-                                    view! {
-                                        <div class="flex flex-col items-center justify-center gap-6 py-8 min-h-[60vh]">
-                                            <div class="w-16 h-16 rounded-full bg-red-400/20 flex items-center justify-center">
-                                                <Icon
-                                                    icon=icondata::LuX
-                                                    width="48"
-                                                    height="48"
-                                                    attr:class="text-red-400"
-                                                />
+                                    DepositStatus::Failed | DepositStatus::Refunded => {
+                                        view! {
+                                            <div class="flex flex-col items-center justify-center gap-6 py-8 min-h-[60vh]">
+                                                <div class="w-16 h-16 rounded-full bg-red-400/20 flex items-center justify-center">
+                                                    <Icon
+                                                        icon=icondata::LuX
+                                                        width="48"
+                                                        height="48"
+                                                        attr:class="text-red-400"
+                                                    />
+                                                </div>
+                                                <h2 class="text-2xl font-bold text-white">
+                                                    "Bridge Failed"
+                                                </h2>
+                                                <p class="text-gray-400 text-center max-w-md">
+                                                    "Your bridge transaction has failed. Please contact support for assistance."
+                                                </p>
+                                                <button
+                                                    class="w-full max-w-md bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-base"
+                                                    on:click=move |_| {
+                                                        open_live_chat(
+                                                            data.recipient.clone(),
+                                                            Some(data.deposit_address.clone()),
+                                                        )
+                                                    }
+                                                >
+                                                    "Contact Support"
+                                                </button>
                                             </div>
-                                            <h2 class="text-2xl font-bold text-white">
-                                                "Bridge Failed"
-                                            </h2>
-                                            <p class="text-gray-400 text-center max-w-md">
-                                                "Your bridge transaction has failed. Please contact support for assistance."
-                                            </p>
-                                            <button
-                                                class="w-full max-w-md bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-base"
-                                                on:click=move |_| {
-                                                    open_live_chat(
-                                                        data.recipient.clone(),
-                                                        Some(data.deposit_address.clone()),
-                                                    )
-                                                }
-                                            >
-                                                "Contact Support"
-                                            </button>
-                                        </div>
+                                        }
+                                            .into_any()
                                     }
-                                        .into_any()
+                                    _ => ().into_any(),
                                 }
-                                _ => ().into_any(),
-                            }
-                        })
-                        .unwrap_or_else(|| ().into_any())
-                }}
+                            })
+                            .unwrap_or_else(|| ().into_any())
+                    }}
 
-            </Show>
-        </div>
+                </Show>
+            </div>
+        </Show>
     }
 }
 

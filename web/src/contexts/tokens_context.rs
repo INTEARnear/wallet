@@ -688,6 +688,7 @@ pub fn provide_token_context() {
                 )
                 .await;
 
+                log::info!("Token response: {token_response:?}");
                 let Ok(token_data) = token_response else {
                     log::error!("Failed to fetch token data");
                     set_loading(false);

@@ -6,6 +6,7 @@ pub mod gift_claim;
 pub mod gifts;
 pub mod history;
 pub mod home;
+pub mod invoices;
 pub mod login;
 pub mod nfts;
 pub mod receive;

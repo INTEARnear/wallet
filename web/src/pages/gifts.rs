@@ -542,7 +542,7 @@ pub fn Gifts() -> impl IntoView {
                             "Gifts Only Available on Mainnet"
                         </h2>
                         <p class="text-gray-400 max-w-md">
-                            "The gift feature is only available on NEAR Mainnet. Please switch to Mainnet to send NEAR gifts."
+                            "The gift feature is only available on NEAR Mainnet. Please switch to a Mainnet account to send NEAR gifts."
                         </p>
                     </div>
                 }

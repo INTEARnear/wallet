@@ -4,11 +4,13 @@ use leptos_router::components::A;
 use std::time::Duration;
 
 use crate::contexts::accounts_context::AccountsContext;
+use crate::contexts::network_context::{Network, NetworkContext};
 use crate::utils::{format_account_id_full, generate_qr_code};
 
 #[component]
 pub fn Receive() -> impl IntoView {
     let accounts_context = expect_context::<AccountsContext>();
+    let NetworkContext { network } = expect_context::<NetworkContext>();
     let selected_account = move || accounts_context.accounts.get().selected_account_id.clone();
     let (is_copied, set_is_copied) = signal(false);
 
@@ -133,21 +135,25 @@ pub fn Receive() -> impl IntoView {
                 }}
 
                 <div class="flex flex-col gap-3 w-full max-w-md mt-4">
-                    <A
-                        href="/receive/bridge"
-                        attr:class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-center text-base"
-                    >
-                        "Bridge"
-                    </A>
-                    <A
-                        href="/invoices"
-                        attr:class="w-full bg-neutral-700 hover:bg-neutral-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-center text-base relative"
-                    >
-                        <span>"Invoices"</span>
-                        <span class="absolute top-1 right-1 bg-yellow-500 text-black text-xs px-1.5 py-0.5 rounded">
-                            "BETA"
-                        </span>
-                    </A>
+                    <Show when=move || network.get() == Network::Mainnet>
+                        <A
+                            href="/receive/bridge"
+                            attr:class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-center text-base"
+                        >
+                            "Bridge"
+                        </A>
+                    </Show>
+                    <Show when=move || network.get() == Network::Mainnet>
+                        <A
+                            href="/receive/invoices"
+                            attr:class="w-full bg-neutral-700 hover:bg-neutral-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-center text-base relative"
+                        >
+                            <span>"Invoices"</span>
+                            <span class="absolute top-1 right-1 bg-yellow-500 text-black text-xs px-1.5 py-0.5 rounded">
+                                "BETA"
+                            </span>
+                        </A>
+                    </Show>
                 </div>
             </div>
         </div>
