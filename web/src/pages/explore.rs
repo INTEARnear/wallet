@@ -2,7 +2,7 @@ use leptos::prelude::*;
 use leptos_icons::*;
 
 use crate::components::explore_components::{ForYouSection, LearnSection, TrendingTokensSection};
-use crate::data::protocols::{get_protocols, Protocol, ProtocolCategory, ProtocolSize};
+use crate::data::protocols::{Protocol, ProtocolCategory, ProtocolSize, get_protocols};
 
 #[component]
 pub fn Explore() -> impl IntoView {

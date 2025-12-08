@@ -100,10 +100,10 @@ fn TokenSelectorModal(
                     results
                         .into_iter()
                         .map(|mut r| {
-                            if let Some(icon) = r.metadata.icon.as_ref() {
-                                if !icon.starts_with("data:") {
-                                    r.metadata.icon = None;
-                                }
+                            if let Some(icon) = r.metadata.icon.as_ref()
+                                && !icon.starts_with("data:")
+                            {
+                                r.metadata.icon = None;
                             }
                             r
                         })
@@ -328,14 +328,13 @@ fn TokenSelectorModal(
                                     match search_resource.get() {
                                         Some(Ok(mut search_results)) => {
                                             let query_lower = search_query.to_lowercase();
-                                            if allow_native_near && "near".contains(&query_lower) {
-                                                if let Some(near_token_data) = user_tokens
+                                            if allow_native_near && "near".contains(&query_lower)
+                                                && let Some(near_token_data) = user_tokens
                                                     .iter()
                                                     .find(|t| t.token.account_id == Token::Near)
                                                 {
                                                     search_results.insert(0, near_token_data.token.clone());
                                                 }
-                                            }
                                             if search_results.is_empty() {
                                                 view! {
                                                     <div class="flex items-center justify-center h-32 text-gray-400">

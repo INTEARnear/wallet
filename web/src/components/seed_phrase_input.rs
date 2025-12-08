@@ -71,10 +71,10 @@ pub fn SeedPhraseInput(#[prop(into)] on_change: Callback<String>) -> impl IntoVi
     let move_to_next_field = {
         let input_refs = input_refs.clone();
         move |current_index: usize, cursor_position: u32| {
-            if current_index < WORD_COUNT - 1 {
-                if let Some(next_input) = input_refs.get(current_index + 1) {
-                    focus_input_at_position(next_input, cursor_position);
-                }
+            if current_index < WORD_COUNT - 1
+                && let Some(next_input) = input_refs.get(current_index + 1)
+            {
+                focus_input_at_position(next_input, cursor_position);
             }
         }
     };
@@ -82,10 +82,10 @@ pub fn SeedPhraseInput(#[prop(into)] on_change: Callback<String>) -> impl IntoVi
     let move_to_previous_field = {
         let input_refs = input_refs.clone();
         move |current_index: usize, cursor_position: u32| {
-            if current_index > 0 {
-                if let Some(prev_input) = input_refs.get(current_index - 1) {
-                    focus_input_at_position(prev_input, cursor_position);
-                }
+            if current_index > 0
+                && let Some(prev_input) = input_refs.get(current_index - 1)
+            {
+                focus_input_at_position(prev_input, cursor_position);
             }
         }
     };
@@ -126,46 +126,46 @@ pub fn SeedPhraseInput(#[prop(into)] on_change: Callback<String>) -> impl IntoVi
             update_seed_phrase();
 
             // If a valid word is entered, move to next field
-            if !trimmed_value.is_empty() && validate_word(&trimmed_value) && index < 11 {
-                if let Some(next_input) = input_refs.get(index + 1) {
-                    if let Some(element) = next_input.get() {
-                        let _ = element.focus();
-                    }
-                }
+            if !trimmed_value.is_empty()
+                && validate_word(&trimmed_value)
+                && index < 11
+                && let Some(next_input) = input_refs.get(index + 1)
+                && let Some(element) = next_input.get()
+            {
+                let _ = element.focus();
             }
         }
     };
 
     let handle_paste = move |event: Event, target_index: usize| {
-        if let Ok(clipboard_event) = event.dyn_into::<web_sys::ClipboardEvent>() {
-            if let Some(clipboard_data) = clipboard_event.clipboard_data() {
-                if let Ok(pasted_text) = clipboard_data.get_data("text") {
-                    let words: Vec<&str> = pasted_text.split_whitespace().collect();
+        if let Ok(clipboard_event) = event.dyn_into::<web_sys::ClipboardEvent>()
+            && let Some(clipboard_data) = clipboard_event.clipboard_data()
+            && let Ok(pasted_text) = clipboard_data.get_data("text")
+        {
+            let words: Vec<&str> = pasted_text.split_whitespace().collect();
 
-                    if words.len() == WORD_COUNT {
-                        // If we have enough words, fill all fields
-                        let new_words: Vec<String> = words
-                            .iter()
-                            .take(WORD_COUNT)
-                            .map(|&w| w.trim().to_lowercase())
-                            .collect();
+            if words.len() == WORD_COUNT {
+                // If we have enough words, fill all fields
+                let new_words: Vec<String> = words
+                    .iter()
+                    .take(WORD_COUNT)
+                    .map(|&w| w.trim().to_lowercase())
+                    .collect();
 
-                        set_word_values.set(new_words);
-                        update_seed_phrase();
-                        clipboard_event.prevent_default();
-                    } else if words.len() > 1 && words.len() < WORD_COUNT {
-                        // If we have multiple words but less than required, fill from target index
-                        set_word_values.update(|current_words| {
-                            for (i, &word) in words.iter().enumerate() {
-                                if target_index + i < WORD_COUNT {
-                                    current_words[target_index + i] = word.trim().to_lowercase();
-                                }
-                            }
-                        });
-                        update_seed_phrase();
-                        clipboard_event.prevent_default();
+                set_word_values.set(new_words);
+                update_seed_phrase();
+                clipboard_event.prevent_default();
+            } else if words.len() > 1 && words.len() < WORD_COUNT {
+                // If we have multiple words but less than required, fill from target index
+                set_word_values.update(|current_words| {
+                    for (i, &word) in words.iter().enumerate() {
+                        if target_index + i < WORD_COUNT {
+                            current_words[target_index + i] = word.trim().to_lowercase();
+                        }
                     }
-                }
+                });
+                update_seed_phrase();
+                clipboard_event.prevent_default();
             }
         }
     };
@@ -200,77 +200,68 @@ pub fn SeedPhraseInput(#[prop(into)] on_change: Callback<String>) -> impl IntoVi
                 "ArrowRight" => {
                     if event.ctrl_key() {
                         // Completion + move to end of next word if at end of current word
-                        if let Some(target) = event.target() {
-                            if let Ok(input_element) =
+                        if let Some(target) = event.target()
+                            && let Ok(input_element) =
                                 target.dyn_into::<web_sys::HtmlInputElement>()
-                            {
-                                let cursor_pos = input_element
-                                    .selection_start()
-                                    .unwrap_or(Some(0))
-                                    .unwrap_or(0)
-                                    as usize;
-                                let word_length = word_values.get_untracked()[index].len();
+                        {
+                            let cursor_pos = input_element
+                                .selection_start()
+                                .unwrap_or(Some(0))
+                                .unwrap_or(0) as usize;
+                            let word_length = word_values.get_untracked()[index].len();
 
-                                if cursor_pos >= word_length {
-                                    if let Some(completion) =
-                                        find_auto_completion(&word_values.get_untracked()[index])
-                                    {
-                                        set_word_values.update(|words| {
-                                            words[index] = completion.clone();
-                                        });
-                                        update_seed_phrase();
-                                    }
+                            if cursor_pos >= word_length {
+                                if let Some(completion) =
+                                    find_auto_completion(&word_values.get_untracked()[index])
+                                {
+                                    set_word_values.update(|words| {
+                                        words[index] = completion.clone();
+                                    });
+                                    update_seed_phrase();
+                                }
 
-                                    if index < 11 {
-                                        if let Some(next_input) = input_refs.get(index + 1) {
-                                            if let Some(element) = next_input.get_untracked() {
-                                                let _ = element.focus();
-                                                let next_word_length =
-                                                    word_values.get_untracked()[index + 1].len()
-                                                        as u32;
-                                                let _ = element.set_selection_range(
-                                                    next_word_length,
-                                                    next_word_length,
-                                                );
-                                                event.prevent_default();
-                                            }
-                                        }
-                                    }
+                                if index < 11
+                                    && let Some(next_input) = input_refs.get(index + 1)
+                                    && let Some(element) = next_input.get_untracked()
+                                {
+                                    let _ = element.focus();
+                                    let next_word_length =
+                                        word_values.get_untracked()[index + 1].len() as u32;
+                                    let _ = element
+                                        .set_selection_range(next_word_length, next_word_length);
+                                    event.prevent_default();
                                 }
                             }
                         }
                     } else {
                         // Completion + navigate to next word if cursor is at the end of current word
-                        if let Some(target) = event.target() {
-                            if let Ok(input_element) =
+                        if let Some(target) = event.target()
+                            && let Ok(input_element) =
                                 target.dyn_into::<web_sys::HtmlInputElement>()
-                            {
-                                let cursor_pos = input_element
-                                    .selection_start()
-                                    .unwrap_or(Some(0))
-                                    .unwrap_or(0)
-                                    as usize;
-                                let word_length = word_values.get_untracked()[index].len();
+                        {
+                            let cursor_pos = input_element
+                                .selection_start()
+                                .unwrap_or(Some(0))
+                                .unwrap_or(0) as usize;
+                            let word_length = word_values.get_untracked()[index].len();
 
-                                if cursor_pos >= word_length {
-                                    if let Some(completion) =
-                                        find_auto_completion(&word_values.get_untracked()[index])
-                                    {
-                                        set_word_values.update(|words| {
-                                            words[index] = completion.clone();
-                                        });
-                                        update_seed_phrase();
-                                    }
+                            if cursor_pos >= word_length {
+                                if let Some(completion) =
+                                    find_auto_completion(&word_values.get_untracked()[index])
+                                {
+                                    set_word_values.update(|words| {
+                                        words[index] = completion.clone();
+                                    });
+                                    update_seed_phrase();
+                                }
 
-                                    if index < 11 {
-                                        if let Some(next_input) = input_refs.get(index + 1) {
-                                            if let Some(element) = next_input.get_untracked() {
-                                                let _ = element.focus();
-                                                let _ = element.set_selection_range(0, 0);
-                                                event.prevent_default();
-                                            }
-                                        }
-                                    }
+                                if index < 11
+                                    && let Some(next_input) = input_refs.get(index + 1)
+                                    && let Some(element) = next_input.get_untracked()
+                                {
+                                    let _ = element.focus();
+                                    let _ = element.set_selection_range(0, 0);
+                                    event.prevent_default();
                                 }
                             }
                         }
@@ -279,49 +270,45 @@ pub fn SeedPhraseInput(#[prop(into)] on_change: Callback<String>) -> impl IntoVi
                 "ArrowLeft" => {
                     if event.ctrl_key() {
                         // Move to start of previous word if at start of current word
-                        if let Some(target) = event.target() {
-                            if let Ok(input_element) =
+                        if let Some(target) = event.target()
+                            && let Ok(input_element) =
                                 target.dyn_into::<web_sys::HtmlInputElement>()
-                            {
-                                let cursor_pos = input_element
-                                    .selection_start()
-                                    .unwrap_or(Some(0))
-                                    .unwrap_or(0)
-                                    as usize;
+                        {
+                            let cursor_pos = input_element
+                                .selection_start()
+                                .unwrap_or(Some(0))
+                                .unwrap_or(0) as usize;
 
-                                if cursor_pos == 0 && index > 0 {
-                                    if let Some(prev_input) = input_refs.get(index - 1) {
-                                        if let Some(element) = prev_input.get_untracked() {
-                                            let _ = element.focus();
-                                            let _ = element.set_selection_range(0, 0);
-                                            event.prevent_default();
-                                        }
-                                    }
-                                }
+                            if cursor_pos == 0
+                                && index > 0
+                                && let Some(prev_input) = input_refs.get(index - 1)
+                                && let Some(element) = prev_input.get_untracked()
+                            {
+                                let _ = element.focus();
+                                let _ = element.set_selection_range(0, 0);
+                                event.prevent_default();
                             }
                         }
                     } else {
                         // avigate to previous word if cursor is at the start of current word
-                        if let Some(target) = event.target() {
-                            if let Ok(input_element) =
+                        if let Some(target) = event.target()
+                            && let Ok(input_element) =
                                 target.dyn_into::<web_sys::HtmlInputElement>()
-                            {
-                                let cursor_pos = input_element
-                                    .selection_start()
-                                    .unwrap_or(Some(0))
-                                    .unwrap_or(0)
-                                    as usize;
+                        {
+                            let cursor_pos = input_element
+                                .selection_start()
+                                .unwrap_or(Some(0))
+                                .unwrap_or(0) as usize;
 
-                                if cursor_pos == 0 && index > 0 {
-                                    if let Some(prev_input) = input_refs.get(index - 1) {
-                                        if let Some(element) = prev_input.get_untracked() {
-                                            let _ = element.focus();
-                                            // Set cursor to end of previous field
-                                            let _ = element.set_selection_range(u32::MAX, u32::MAX);
-                                            event.prevent_default();
-                                        }
-                                    }
-                                }
+                            if cursor_pos == 0
+                                && index > 0
+                                && let Some(prev_input) = input_refs.get(index - 1)
+                                && let Some(element) = prev_input.get_untracked()
+                            {
+                                let _ = element.focus();
+                                // Set cursor to end of previous field
+                                let _ = element.set_selection_range(u32::MAX, u32::MAX);
+                                event.prevent_default();
                             }
                         }
                     }
@@ -329,31 +316,25 @@ pub fn SeedPhraseInput(#[prop(into)] on_change: Callback<String>) -> impl IntoVi
                 "ArrowDown" => {
                     // Navigate to word in next row (4 words per row in grid)
                     let next_row_index = index + 3;
-                    if next_row_index < 12 {
-                        if let Some(target) = event.target() {
-                            if let Ok(input_element) =
-                                target.dyn_into::<web_sys::HtmlInputElement>()
-                            {
-                                let cursor_pos = input_element
-                                    .selection_start()
-                                    .unwrap_or(Some(0))
-                                    .unwrap_or(0)
-                                    as usize;
+                    if next_row_index < 12
+                        && let Some(target) = event.target()
+                        && let Ok(input_element) = target.dyn_into::<web_sys::HtmlInputElement>()
+                    {
+                        let cursor_pos = input_element
+                            .selection_start()
+                            .unwrap_or(Some(0))
+                            .unwrap_or(0) as usize;
 
-                                if let Some(next_input) = input_refs.get(next_row_index) {
-                                    if let Some(element) = next_input.get_untracked() {
-                                        let _ = element.focus();
-                                        // Set cursor position to min(target word length, current cursor position)
-                                        let target_word_length =
-                                            word_values.get_untracked()[next_row_index].len();
-                                        let new_cursor_pos =
-                                            cursor_pos.min(target_word_length) as u32;
-                                        let _ = element
-                                            .set_selection_range(new_cursor_pos, new_cursor_pos);
-                                        event.prevent_default();
-                                    }
-                                }
-                            }
+                        if let Some(next_input) = input_refs.get(next_row_index)
+                            && let Some(element) = next_input.get_untracked()
+                        {
+                            let _ = element.focus();
+                            // Set cursor position to min(target word length, current cursor position)
+                            let target_word_length =
+                                word_values.get_untracked()[next_row_index].len();
+                            let new_cursor_pos = cursor_pos.min(target_word_length) as u32;
+                            let _ = element.set_selection_range(new_cursor_pos, new_cursor_pos);
+                            event.prevent_default();
                         }
                     }
                 }
@@ -361,29 +342,25 @@ pub fn SeedPhraseInput(#[prop(into)] on_change: Callback<String>) -> impl IntoVi
                     // Navigate to word in previous row (4 words per row in grid)
                     if index >= 3 {
                         let prev_row_index = index - 3;
-                        if let Some(target) = event.target() {
-                            if let Ok(input_element) =
+                        if let Some(target) = event.target()
+                            && let Ok(input_element) =
                                 target.dyn_into::<web_sys::HtmlInputElement>()
-                            {
-                                let cursor_pos = input_element
-                                    .selection_start()
-                                    .unwrap_or(Some(0))
-                                    .unwrap_or(0)
-                                    as usize;
+                        {
+                            let cursor_pos = input_element
+                                .selection_start()
+                                .unwrap_or(Some(0))
+                                .unwrap_or(0) as usize;
 
-                                if let Some(prev_input) = input_refs.get(prev_row_index) {
-                                    if let Some(element) = prev_input.get_untracked() {
-                                        let _ = element.focus();
-                                        // Set cursor position to min(target word length, current cursor position)
-                                        let target_word_length =
-                                            word_values.get_untracked()[prev_row_index].len();
-                                        let new_cursor_pos =
-                                            cursor_pos.min(target_word_length) as u32;
-                                        let _ = element
-                                            .set_selection_range(new_cursor_pos, new_cursor_pos);
-                                        event.prevent_default();
-                                    }
-                                }
+                            if let Some(prev_input) = input_refs.get(prev_row_index)
+                                && let Some(element) = prev_input.get_untracked()
+                            {
+                                let _ = element.focus();
+                                // Set cursor position to min(target word length, current cursor position)
+                                let target_word_length =
+                                    word_values.get_untracked()[prev_row_index].len();
+                                let new_cursor_pos = cursor_pos.min(target_word_length) as u32;
+                                let _ = element.set_selection_range(new_cursor_pos, new_cursor_pos);
+                                event.prevent_default();
                             }
                         }
                     }

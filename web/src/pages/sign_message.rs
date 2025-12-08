@@ -1,17 +1,17 @@
 use std::time::Duration;
 
-use base64::{prelude::BASE64_STANDARD, Engine};
+use base64::{Engine, prelude::BASE64_STANDARD};
 use borsh::BorshSerialize;
 use chrono::{DateTime, Utc};
 use leptos::{prelude::*, task::spawn_local};
 use leptos_router::hooks::use_location;
 use near_min_api::types::{
-    near_crypto::{PublicKey, Signature},
     AccountId, CryptoHash,
+    near_crypto::{PublicKey, Signature},
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsCast;
-use web_sys::{js_sys::Date, Window};
+use web_sys::{Window, js_sys::Date};
 
 use crate::{
     contexts::{
@@ -20,7 +20,7 @@ use crate::{
         network_context::Network,
         security_log_context::add_security_log,
     },
-    utils::{fetch_token_info, format_token_amount, sign_nep413, NEP413Payload},
+    utils::{NEP413Payload, fetch_token_info, format_token_amount, sign_nep413},
 };
 use crate::{pages::connect::submit_tauri_response, utils::is_debug_enabled};
 use leptos_icons::*;
@@ -107,14 +107,15 @@ mod intents {
     use std::{collections::BTreeMap, fmt::Debug, str::FromStr};
 
     use near_min_api::{
-        types::{near_crypto::PublicKey, AccountId, Balance, NearGas, NearToken},
+        types::{AccountId, Balance, NearGas, NearToken, near_crypto::PublicKey},
         utils::{dec_format, dec_format_vec},
     };
     use serde::{Deserialize, Deserializer};
     use serde_with::{
+        DeserializeAs, DeserializeFromStr, DisplayFromStr,
         base64::{Alphabet, Standard},
         formats::{Format, Padded},
-        serde_as, DeserializeAs, DeserializeFromStr, DisplayFromStr,
+        serde_as,
     };
 
     #[derive(Debug, Clone, Deserialize)]
@@ -577,10 +578,10 @@ fn TokenDiffView(diff: intents::TokenDiff) -> impl IntoView {
         .map(|a| a.network.clone());
 
     let simple_swap = if diff.diff.len() == 2 {
-        if let Some(token_in) = diff.diff.iter().find(|(_, &amount)| amount > 0) {
+        if let Some(token_in) = diff.diff.iter().find(|&(_, &amount)| amount > 0) {
             diff.diff
                 .iter()
-                .find(|(_, &amount)| amount < 0)
+                .find(|&(_, &amount)| amount < 0)
                 .map(|token_out| {
                     (
                         (token_in.0.clone(), u128::try_from(*token_in.1).unwrap()),
@@ -856,45 +857,44 @@ pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
     let get_warnings = move || -> Vec<Warning> {
         let mut warnings = Vec::new();
 
-        if let Some(deserialized) = message.get() {
-            if deserialized.recipient == "intents.near" {
-                if let Ok(intents_msg) =
-                    serde_json::from_str::<IntentsMessage>(&deserialized.message)
-                {
-                    let now = chrono::Utc::now();
-                    let deadline_diff = intents_msg.deadline.signed_duration_since(now);
+        if let Some(deserialized) = message.get()
+            && deserialized.recipient == "intents.near"
+            && let Ok(intents_msg) = serde_json::from_str::<IntentsMessage>(&deserialized.message)
+        {
+            let now = chrono::Utc::now();
+            let deadline_diff = intents_msg.deadline.signed_duration_since(now);
 
-                    // Check for past deadline
-                    if deadline_diff.num_seconds() < 0 {
-                        let past_duration = now.signed_duration_since(intents_msg.deadline);
-                        let total_minutes = past_duration.num_minutes();
-                        let text = if total_minutes >= 24 * 60 {
-                            let days = total_minutes / (24 * 60);
-                            if days == 1 {
-                                "1 day".to_string()
-                            } else {
-                                format!("{} days", days)
-                            }
-                        } else if total_minutes >= 60 {
-                            let hours = total_minutes / 60;
-                            if hours == 1 {
-                                "1 hour".to_string()
-                            } else {
-                                format!("{} hours", hours)
-                            }
-                        } else {
-                            format!("{} minutes", total_minutes)
-                        };
-                        warnings.push(Warning {
+            // Check for past deadline
+            if deadline_diff.num_seconds() < 0 {
+                let past_duration = now.signed_duration_since(intents_msg.deadline);
+                let total_minutes = past_duration.num_minutes();
+                let text = if total_minutes >= 24 * 60 {
+                    let days = total_minutes / (24 * 60);
+                    if days == 1 {
+                        "1 day".to_string()
+                    } else {
+                        format!("{} days", days)
+                    }
+                } else if total_minutes >= 60 {
+                    let hours = total_minutes / 60;
+                    if hours == 1 {
+                        "1 hour".to_string()
+                    } else {
+                        format!("{} hours", hours)
+                    }
+                } else {
+                    format!("{} minutes", total_minutes)
+                };
+                warnings.push(Warning {
                             warning_type: WarningType::PastDeadline,
                             message: format!("This request expired {} ago and will fail. Try again and next time sign it faster", text),
                         });
-                    }
+            }
 
-                    // Check for signer mismatch
-                    let current_account = accounts_context.accounts.get().selected_account_id;
-                    if Some(intents_msg.signer_id.clone()) != current_account {
-                        warnings.push(Warning {
+            // Check for signer mismatch
+            let current_account = accounts_context.accounts.get().selected_account_id;
+            if Some(intents_msg.signer_id.clone()) != current_account {
+                warnings.push(Warning {
                             warning_type: WarningType::SignerMismatch,
                             message: format!(
                                 "This intent will be executed for account '{}' but you're connected with account {}",
@@ -902,58 +902,57 @@ pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
                                 current_account.as_ref().map(|a| a.to_string()).unwrap_or("unknown account".to_string())
                             ),
                         });
-                    }
+            }
 
-                    // Check for long deadline (only if not in the past)
-                    if deadline_diff.num_minutes() > 10 {
-                        let total_minutes = deadline_diff.num_minutes();
-                        let text = if total_minutes >= 1440 {
-                            // 24 hours * 60 minutes
-                            let days = total_minutes / 1440;
-                            if days == 1 {
-                                "1 day".to_string()
-                            } else {
-                                format!("{} days", days)
-                            }
-                        } else if total_minutes >= 60 {
-                            let hours = total_minutes / 60;
-                            if hours == 1 {
-                                "1 hour".to_string()
-                            } else {
-                                format!("{} hours", hours)
-                            }
-                        } else {
-                            format!("{} minutes", total_minutes)
-                        };
+            // Check for long deadline (only if not in the past)
+            if deadline_diff.num_minutes() > 10 {
+                let total_minutes = deadline_diff.num_minutes();
+                let text = if total_minutes >= 1440 {
+                    // 24 hours * 60 minutes
+                    let days = total_minutes / 1440;
+                    if days == 1 {
+                        "1 day".to_string()
+                    } else {
+                        format!("{} days", days)
+                    }
+                } else if total_minutes >= 60 {
+                    let hours = total_minutes / 60;
+                    if hours == 1 {
+                        "1 hour".to_string()
+                    } else {
+                        format!("{} hours", hours)
+                    }
+                } else {
+                    format!("{} minutes", total_minutes)
+                };
+                warnings.push(Warning {
+                    warning_type: WarningType::LongDeadline,
+                    message: format!(
+                        "This intent might be executed up to {} later after you sign it",
+                        text
+                    ),
+                });
+            }
+
+            // Check for unauthorized public key additions
+            let accounts_state = accounts_context.accounts.get();
+            let current_account = accounts_state
+                .accounts
+                .iter()
+                .find(|acc| Some(acc.account_id.clone()) == accounts_state.selected_account_id);
+
+            if let Some(account) = current_account {
+                let wallet_public_key = account.secret_key.public_key();
+
+                for intent in &intents_msg.intents {
+                    if let intents::Intent::AddPublicKey(add_key) = intent
+                        && add_key.public_key != wallet_public_key
+                    {
                         warnings.push(Warning {
-                            warning_type: WarningType::LongDeadline,
-                            message: format!(
-                                "This intent might be executed up to {} later after you sign it",
-                                text
-                            ),
-                        });
-                    }
-
-                    // Check for unauthorized public key additions
-                    let accounts_state = accounts_context.accounts.get();
-                    let current_account = accounts_state.accounts.iter().find(|acc| {
-                        Some(acc.account_id.clone()) == accounts_state.selected_account_id
-                    });
-
-                    if let Some(account) = current_account {
-                        let wallet_public_key = account.secret_key.public_key();
-
-                        for intent in &intents_msg.intents {
-                            if let intents::Intent::AddPublicKey(add_key) = intent {
-                                if add_key.public_key != wallet_public_key {
-                                    warnings.push(Warning {
                                         warning_type: WarningType::UnauthorizedPublicKey,
                                         message: "This intent will add a public key that is NOT owned by your wallet. This could allow someone else to control your account!".to_string(),
                                     });
-                                    break; // Only show one warning even if multiple unauthorized keys
-                                }
-                            }
-                        }
+                        break; // Only show one warning even if multiple unauthorized keys
                     }
                 }
             }
@@ -1345,25 +1344,20 @@ pub fn SignMessage() -> impl IntoView {
     Effect::new(move |_| {
         let location = use_location();
         let params = location.query.get();
-        if let Some(session_id) = params.get("session_id") {
-            if !session_id.is_empty() {
-                log::info!("Found session_id in URL: {session_id}");
-                retrieve_bridge_session(session_id.clone());
-            }
+        if let Some(session_id) = params.get("session_id")
+            && !session_id.is_empty()
+        {
+            log::info!("Found session_id in URL: {session_id}");
+            retrieve_bridge_session(session_id.clone());
         }
     });
 
-    let opener = || {
-        if let Ok(opener) = window().opener() {
+    let opener = || match window().opener() {
+        Ok(opener) => {
             let opener = opener.unchecked_into::<Window>();
-            if opener.is_truthy() {
-                opener
-            } else {
-                window()
-            }
-        } else {
-            window()
+            if opener.is_truthy() { opener } else { window() }
         }
+        _ => window(),
     };
 
     let post_to_opener = move |message: SendMessage, close_window: bool| {
@@ -1386,20 +1380,25 @@ pub fn SignMessage() -> impl IntoView {
             );
         }
 
-        if let Ok(message) = serde_wasm_bindgen::from_value::<ReceiveMessage>(event.data()) {
-            if is_debug_enabled() {
-                log::info!("Successfully parsed message: {:?}", message);
-            }
-            match message {
-                ReceiveMessage::SignMessage { data } => {
-                    process_sign_message(data, event.origin());
+        match serde_wasm_bindgen::from_value::<ReceiveMessage>(event.data()) {
+            Ok(message) => {
+                if is_debug_enabled() {
+                    log::info!("Successfully parsed message: {:?}", message);
                 }
-                ReceiveMessage::TauriWalletSession { session_id } => {
-                    retrieve_bridge_session(session_id);
+                match message {
+                    ReceiveMessage::SignMessage { data } => {
+                        process_sign_message(data, event.origin());
+                    }
+                    ReceiveMessage::TauriWalletSession { session_id } => {
+                        retrieve_bridge_session(session_id);
+                    }
                 }
             }
-        } else if is_debug_enabled() {
-            log::info!("Failed to parse message as ReceiveMessage");
+            _ => {
+                if is_debug_enabled() {
+                    log::info!("Failed to parse message as ReceiveMessage");
+                }
+            }
         }
     });
 
@@ -1412,39 +1411,40 @@ pub fn SignMessage() -> impl IntoView {
     });
 
     let connected_app = Memo::new(move |_| {
-        if let Some(request_data) = &*request_data.read() {
-            let text_to_prove = format!("{}|{}", request_data.nonce, request_data.message);
-            let to_prove = text_to_prove.as_bytes();
-            let to_prove = CryptoHash::hash_bytes(to_prove); // sha256
-            let is_valid = request_data
-                .signature
-                .verify(to_prove.as_bytes(), &request_data.public_key)
-                && request_data.nonce > Date::now() as u64 - 1000 * 60 * 5
-                && request_data.nonce <= Date::now() as u64;
-            is_valid
-                .then(|| {
-                    apps.get()
-                        .apps
-                        .iter()
-                        .find(|app| {
-                            app.public_key == request_data.public_key
-                                && app.account_id == request_data.account_id
-                                && app.logged_out_at.is_none()
-                        })
-                        .cloned()
-                })
-                .flatten()
-        } else {
-            None
+        match &*request_data.read() {
+            Some(request_data) => {
+                let text_to_prove = format!("{}|{}", request_data.nonce, request_data.message);
+                let to_prove = text_to_prove.as_bytes();
+                let to_prove = CryptoHash::hash_bytes(to_prove); // sha256
+                let is_valid = request_data
+                    .signature
+                    .verify(to_prove.as_bytes(), &request_data.public_key)
+                    && request_data.nonce > Date::now() as u64 - 1000 * 60 * 5
+                    && request_data.nonce <= Date::now() as u64;
+                is_valid
+                    .then(|| {
+                        apps.get()
+                            .apps
+                            .iter()
+                            .find(|app| {
+                                app.public_key == request_data.public_key
+                                    && app.account_id == request_data.account_id
+                                    && app.logged_out_at.is_none()
+                            })
+                            .cloned()
+                    })
+                    .flatten()
+            }
+            _ => None,
         }
     });
     Effect::new(move || {
-        if let Some(app) = connected_app() {
-            if accounts_context.accounts.get().selected_account_id != Some(app.account_id.clone()) {
-                accounts_context.set_accounts.update(|accounts| {
-                    accounts.selected_account_id = Some(app.account_id);
-                });
-            }
+        if let Some(app) = connected_app()
+            && accounts_context.accounts.get().selected_account_id != Some(app.account_id.clone())
+        {
+            accounts_context.set_accounts.update(|accounts| {
+                accounts.selected_account_id = Some(app.account_id);
+            });
         }
     });
 

@@ -1,5 +1,5 @@
-use axum::{routing::post, Json, Router};
-use rustyscript::{json_args, Module, Runtime, RuntimeOptions};
+use axum::{Json, Router, routing::post};
+use rustyscript::{Module, Runtime, RuntimeOptions, json_args};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, net::SocketAddr, time::Duration};
 use tower_http::cors::CorsLayer;
@@ -169,16 +169,13 @@ async fn call_openai_with_js_sandbox(content: &str) -> Result<HashMap<String, f6
 }
 
 fn extract_js_code_from_response(json: serde_json::Value) -> Result<String, String> {
-    if let Some(output) = json.get("output") {
-        if let Some(last) = output.as_array().and_then(|a| a.last()) {
-            if let Some(content) = last.get("content") {
-                if let Some(first_content) = content.as_array().and_then(|a| a.first()) {
-                    if let Some(text) = first_content.get("text").and_then(|t| t.as_str()) {
-                        return Ok(text.to_string());
-                    }
-                }
-            }
-        }
+    if let Some(output) = json.get("output")
+        && let Some(last) = output.as_array().and_then(|a| a.last())
+        && let Some(content) = last.get("content")
+        && let Some(first_content) = content.as_array().and_then(|a| a.first())
+        && let Some(text) = first_content.get("text").and_then(|t| t.as_str())
+    {
+        return Ok(text.to_string());
     }
     Err("Could not extract JavaScript code from OpenAI response".to_string())
 }

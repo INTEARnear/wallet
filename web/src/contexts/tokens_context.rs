@@ -1,22 +1,22 @@
 use std::{collections::HashSet, future::Future, str::FromStr};
 
-use base64::{prelude::BASE64_STANDARD, Engine};
+use base64::{Engine, prelude::BASE64_STANDARD};
 use bigdecimal::BigDecimal;
 use codee::string::FromToStringCodec;
-use futures_util::{future::join, TryFutureExt};
+use futures_util::{TryFutureExt, future::join};
 use itertools::Either;
 use json_filter::{Filter, Operator};
 use leptos::{prelude::*, task::spawn_local};
 use leptos_use::{core::ConnectionReadyState, use_websocket};
 use near_min_api::{
+    QueryFinality,
     types::{AccountId, Balance, BlockHeight, BlockReference, CryptoHash, Finality, U128},
     utils::dec_format,
-    QueryFinality,
 };
 use serde::{Deserialize, Serialize};
 use web_sys::HtmlAudioElement;
 
-use crate::utils::{power_of_10, TOKEN_CACHE, USDT_DECIMALS};
+use crate::utils::{TOKEN_CACHE, USDT_DECIMALS, power_of_10};
 
 use super::{
     accounts_context::AccountsContext,
@@ -269,22 +269,22 @@ pub fn provide_token_context() {
         let Some(ws) = transfer_ws() else {
             return;
         };
-        if ws.ready_state.try_get() == Some(ConnectionReadyState::Open) {
-            if let Some(account_id) = &accounts_context.accounts.get().selected_account_id {
-                let filter = Operator::Or(vec![
-                    Filter::new(
-                        "old_owner_id",
-                        Operator::Equals(serde_json::json!(account_id.to_string())),
-                    ),
-                    Filter::new(
-                        "new_owner_id",
-                        Operator::Equals(serde_json::json!(account_id.to_string())),
-                    ),
-                ]);
+        if ws.ready_state.try_get() == Some(ConnectionReadyState::Open)
+            && let Some(account_id) = &accounts_context.accounts.get().selected_account_id
+        {
+            let filter = Operator::Or(vec![
+                Filter::new(
+                    "old_owner_id",
+                    Operator::Equals(serde_json::json!(account_id.to_string())),
+                ),
+                Filter::new(
+                    "new_owner_id",
+                    Operator::Equals(serde_json::json!(account_id.to_string())),
+                ),
+            ]);
 
-                let filter_json = serde_json::to_string(&filter).unwrap();
-                (ws.send)(&filter_json);
-            }
+            let filter_json = serde_json::to_string(&filter).unwrap();
+            (ws.send)(&filter_json);
         }
     });
 
@@ -292,16 +292,16 @@ pub fn provide_token_context() {
         let Some(ws) = mint_ws() else {
             return;
         };
-        if ws.ready_state.try_get() == Some(ConnectionReadyState::Open) {
-            if let Some(account_id) = &accounts_context.accounts.get().selected_account_id {
-                let filter = Operator::And(vec![Filter::new(
-                    "owner_id",
-                    Operator::Equals(serde_json::json!(account_id.to_string())),
-                )]);
+        if ws.ready_state.try_get() == Some(ConnectionReadyState::Open)
+            && let Some(account_id) = &accounts_context.accounts.get().selected_account_id
+        {
+            let filter = Operator::And(vec![Filter::new(
+                "owner_id",
+                Operator::Equals(serde_json::json!(account_id.to_string())),
+            )]);
 
-                let filter_json = serde_json::to_string(&filter).unwrap();
-                (ws.send)(&filter_json);
-            }
+            let filter_json = serde_json::to_string(&filter).unwrap();
+            (ws.send)(&filter_json);
         }
     });
 
@@ -309,16 +309,16 @@ pub fn provide_token_context() {
         let Some(ws) = burn_ws() else {
             return;
         };
-        if ws.ready_state.try_get() == Some(ConnectionReadyState::Open) {
-            if let Some(account_id) = &accounts_context.accounts.get().selected_account_id {
-                let filter = Operator::And(vec![Filter::new(
-                    "owner_id",
-                    Operator::Equals(serde_json::json!(account_id.to_string())),
-                )]);
+        if ws.ready_state.try_get() == Some(ConnectionReadyState::Open)
+            && let Some(account_id) = &accounts_context.accounts.get().selected_account_id
+        {
+            let filter = Operator::And(vec![Filter::new(
+                "owner_id",
+                Operator::Equals(serde_json::json!(account_id.to_string())),
+            )]);
 
-                let filter_json = serde_json::to_string(&filter).unwrap();
-                (ws.send)(&filter_json);
-            }
+            let filter_json = serde_json::to_string(&filter).unwrap();
+            (ws.send)(&filter_json);
         }
     });
 
@@ -339,59 +339,56 @@ pub fn provide_token_context() {
         let Some(ws) = transfer_ws() else {
             return;
         };
-        if let Some(msg) = ws.message.get() {
-            if let Ok(events) = serde_json::from_str::<Vec<FtTransferEvent>>(&msg) {
-                for (i, event) in events.into_iter().enumerate() {
-                    if !transfer_events_processed.insert((event.receipt_id, i)) {
-                        continue;
-                    }
-                    let current_account = accounts_context.accounts.get().selected_account_id;
-                    log::info!("Received transfer: {event:?}");
+        if let Some(msg) = ws.message.get()
+            && let Ok(events) = serde_json::from_str::<Vec<FtTransferEvent>>(&msg)
+        {
+            for (i, event) in events.into_iter().enumerate() {
+                if !transfer_events_processed.insert((event.receipt_id, i)) {
+                    continue;
+                }
+                let current_account = accounts_context.accounts.get().selected_account_id;
+                log::info!("Received transfer: {event:?}");
 
-                    let event_token_id = if event.token_id == "near" {
-                        Token::Near
-                    } else {
-                        Token::Nep141(event.token_id.clone())
-                    };
+                let event_token_id = if event.token_id == "near" {
+                    Token::Near
+                } else {
+                    Token::Nep141(event.token_id.clone())
+                };
 
-                    if let Some(account_id) = &current_account {
-                        if event.old_owner_id == *account_id {
-                            log::info!("Decreasing balance for {event_token_id:?}");
-                            // Decrease balance
-                            set_tokens.update(|tokens| {
-                                if let Some(token) = tokens
-                                    .iter_mut()
-                                    .find(|token| token.token.account_id == event_token_id)
-                                {
-                                    token.balance = token.balance.saturating_sub(event.amount);
-                                }
-                            });
-                        }
-                        if event.new_owner_id == *account_id {
-                            // Don't play sound for unwrapping wNEAR
-                            if event.old_owner_id != "wrap.near"
-                                && config_context.config.get().play_transfer_sound
+                if let Some(account_id) = &current_account {
+                    if event.old_owner_id == *account_id {
+                        log::info!("Decreasing balance for {event_token_id:?}");
+                        // Decrease balance
+                        set_tokens.update(|tokens| {
+                            if let Some(token) = tokens
+                                .iter_mut()
+                                .find(|token| token.token.account_id == event_token_id)
                             {
-                                if let Ok(audio) = HtmlAudioElement::new() {
-                                    audio.set_src("/cash-register-sound.mp3");
-                                    let _ = audio.play();
-                                }
+                                token.balance = token.balance.saturating_sub(event.amount);
                             }
-
-                            // Increase balance
-                            set_tokens.update(|tokens| {
-                                if let Some(token) = tokens
-                                    .iter_mut()
-                                    .find(|token| token.token.account_id == event_token_id)
-                                {
-                                    token.balance = token.balance.saturating_add(event.amount);
-                                } else {
-                                    log::info!(
-                                        "Token not found in tokens list: {event_token_id:?}"
-                                    );
-                                }
-                            });
+                        });
+                    }
+                    if event.new_owner_id == *account_id {
+                        // Don't play sound for unwrapping wNEAR
+                        if event.old_owner_id != "wrap.near"
+                            && config_context.config.get().play_transfer_sound
+                            && let Ok(audio) = HtmlAudioElement::new()
+                        {
+                            audio.set_src("/cash-register-sound.mp3");
+                            let _ = audio.play();
                         }
+
+                        // Increase balance
+                        set_tokens.update(|tokens| {
+                            if let Some(token) = tokens
+                                .iter_mut()
+                                .find(|token| token.token.account_id == event_token_id)
+                            {
+                                token.balance = token.balance.saturating_add(event.amount);
+                            } else {
+                                log::info!("Token not found in tokens list: {event_token_id:?}");
+                            }
+                        });
                     }
                 }
             }
@@ -404,32 +401,28 @@ pub fn provide_token_context() {
         let Some(ws) = mint_ws() else {
             return;
         };
-        if let Some(msg) = ws.message.get() {
-            if let Ok(events) = serde_json::from_str::<Vec<FtMintEvent>>(&msg) {
-                for (i, event) in events.into_iter().enumerate() {
-                    if !mint_events_processed.insert((event.receipt_id, i)) {
-                        continue;
-                    }
-                    let current_account =
-                        accounts_context.accounts.get().selected_account_id.clone();
-                    log::info!("Received mint: {event:?}");
+        if let Some(msg) = ws.message.get()
+            && let Ok(events) = serde_json::from_str::<Vec<FtMintEvent>>(&msg)
+        {
+            for (i, event) in events.into_iter().enumerate() {
+                if !mint_events_processed.insert((event.receipt_id, i)) {
+                    continue;
+                }
+                let current_account = accounts_context.accounts.get().selected_account_id.clone();
+                log::info!("Received mint: {event:?}");
 
-                    if let Some(account_id) = &current_account {
-                        if event.owner_id == *account_id {
-                            set_tokens.update(|tokens| {
-                                if let Some(token) = tokens.iter_mut().find(|token| {
-                                    token.token.account_id == Token::Nep141(event.token_id.clone())
-                                }) {
-                                    token.balance = token.balance.saturating_add(event.amount);
-                                } else {
-                                    log::info!(
-                                        "Token not found in tokens list: {:?}",
-                                        event.token_id
-                                    );
-                                }
-                            });
+                if let Some(account_id) = &current_account
+                    && event.owner_id == *account_id
+                {
+                    set_tokens.update(|tokens| {
+                        if let Some(token) = tokens.iter_mut().find(|token| {
+                            token.token.account_id == Token::Nep141(event.token_id.clone())
+                        }) {
+                            token.balance = token.balance.saturating_add(event.amount);
+                        } else {
+                            log::info!("Token not found in tokens list: {:?}", event.token_id);
                         }
-                    }
+                    });
                 }
             }
         }
@@ -441,33 +434,29 @@ pub fn provide_token_context() {
         let Some(ws) = burn_ws() else {
             return;
         };
-        if let Some(msg) = ws.message.get() {
-            if let Ok(events) = serde_json::from_str::<Vec<FtBurnEvent>>(&msg) {
-                for (i, event) in events.into_iter().enumerate() {
-                    if !burn_events_processed.insert((event.receipt_id, i)) {
-                        continue;
-                    }
-                    let current_account =
-                        accounts_context.accounts.get().selected_account_id.clone();
-                    log::info!("Received burn: {event:?}");
+        if let Some(msg) = ws.message.get()
+            && let Ok(events) = serde_json::from_str::<Vec<FtBurnEvent>>(&msg)
+        {
+            for (i, event) in events.into_iter().enumerate() {
+                if !burn_events_processed.insert((event.receipt_id, i)) {
+                    continue;
+                }
+                let current_account = accounts_context.accounts.get().selected_account_id.clone();
+                log::info!("Received burn: {event:?}");
 
-                    if let Some(account_id) = &current_account {
-                        if event.owner_id == *account_id {
-                            // Decrease balance
-                            set_tokens.update(|tokens| {
-                                if let Some(token) = tokens.iter_mut().find(|token| {
-                                    token.token.account_id == Token::Nep141(event.token_id.clone())
-                                }) {
-                                    token.balance = token.balance.saturating_sub(event.amount);
-                                } else {
-                                    log::info!(
-                                        "Token not found in tokens list: {:?}",
-                                        event.token_id
-                                    );
-                                }
-                            });
+                if let Some(account_id) = &current_account
+                    && event.owner_id == *account_id
+                {
+                    // Decrease balance
+                    set_tokens.update(|tokens| {
+                        if let Some(token) = tokens.iter_mut().find(|token| {
+                            token.token.account_id == Token::Nep141(event.token_id.clone())
+                        }) {
+                            token.balance = token.balance.saturating_sub(event.amount);
+                        } else {
+                            log::info!("Token not found in tokens list: {:?}", event.token_id);
                         }
-                    }
+                    });
                 }
             }
         }
@@ -478,29 +467,28 @@ pub fn provide_token_context() {
         let Some(ws) = price_ws() else {
             return;
         };
-        if let Some(msg) = ws.message.get() {
-            if let Ok(updates) = serde_json::from_str::<Vec<TokenPriceUpdate>>(&msg) {
-                for update in updates {
-                    set_tokens.update(|tokens| {
-                        if let Some(token) = tokens.iter_mut().find(|t| {
-                            matches!(&t.token.account_id, Token::Nep141(id) if *id == update.token)
-                        }) {
-                            if let Ok(raw_price) = update.price_usd.parse::<BigDecimal>() {
-                                let decimals = token.token.metadata.decimals;
-                                let multiplier = power_of_10(decimals) / power_of_10(USDT_DECIMALS);
-                                let normalized_price = &raw_price * &multiplier;
-                                token.token.price_usd_raw = raw_price.clone();
-                                token.token.price_usd = normalized_price.clone();
-                                if token.token.price_usd_hardcoded != BigDecimal::from(1) {
-                                    // Don't update stablecoin prices in realtime. They're unlikely
-                                    // to change in real time, but UX is shit when USDC costs $0.99
-                                    // or $1.01.
-                                    token.token.price_usd_hardcoded = normalized_price;
-                                }
-                            }
+        if let Some(msg) = ws.message.get()
+            && let Ok(updates) = serde_json::from_str::<Vec<TokenPriceUpdate>>(&msg)
+        {
+            for update in updates {
+                set_tokens.update(|tokens| {
+                    if let Some(token) = tokens.iter_mut().find(
+                        |t| matches!(&t.token.account_id, Token::Nep141(id) if *id == update.token),
+                    ) && let Ok(raw_price) = update.price_usd.parse::<BigDecimal>()
+                    {
+                        let decimals = token.token.metadata.decimals;
+                        let multiplier = power_of_10(decimals) / power_of_10(USDT_DECIMALS);
+                        let normalized_price = &raw_price * &multiplier;
+                        token.token.price_usd_raw = raw_price.clone();
+                        token.token.price_usd = normalized_price.clone();
+                        if token.token.price_usd_hardcoded != BigDecimal::from(1) {
+                            // Don't update stablecoin prices in realtime. They're unlikely
+                            // to change in real time, but UX is shit when USDC costs $0.99
+                            // or $1.01.
+                            token.token.price_usd_hardcoded = normalized_price;
                         }
-                    });
-                }
+                    }
+                });
             }
         }
     });
@@ -630,24 +618,24 @@ pub fn provide_token_context() {
                                     )
                                 })
                                 .collect::<Vec<_>>();
-                            if let Ok(response) = rpc_client
+                            match rpc_client
                                 .client
                                 .get_untracked()
                                 .batch_call::<U128>(balance_queries)
                                 .await
-                            {
-                                if let Ok(metadata_response) = rpc_client
+                            { Ok(response) => {
+                                match rpc_client
                                     .client
                                     .get_untracked()
                                     .batch_call::<TokenMetadata>(metadata_queries)
                                     .await
-                                {
-                                    if let Ok(total_supply_response) = rpc_client
+                                { Ok(metadata_response) => {
+                                    match rpc_client
                                         .client
                                         .get_untracked()
                                         .batch_call::<U128>(total_supply_queries)
                                         .await
-                                    {
+                                    { Ok(total_supply_response) => {
                                         let token_data = response
                                             .into_iter()
                                             .zip(tokens.iter())
@@ -655,13 +643,12 @@ pub fn provide_token_context() {
                                             .zip(total_supply_response.into_iter())
                                             .filter_map(
                                                 |(((balance_result, token), metadata_result), supply_result)| {
-                                                    if let (Ok(balance), Ok(metadata), Ok(supply)) =
-                                                        (balance_result, metadata_result, supply_result)
-                                                    {
+                                                    match (balance_result, metadata_result, supply_result)
+                                                    { (Ok(balance), Ok(metadata), Ok(supply)) => {
                                                         Some((balance, token, metadata, supply))
-                                                    } else {
+                                                    } _ => {
                                                         None
-                                                    }
+                                                    }}
                                                 },
                                             )
                                             .map(|(balance, token, metadata, supply)| TokenData {
@@ -683,15 +670,15 @@ pub fn provide_token_context() {
                                             })
                                             .collect::<Vec<_>>();
                                         Ok(token_data)
-                                    } else {
+                                    } _ => {
                                         Ok(vec![near])
-                                    }
-                                } else {
+                                    }}
+                                } _ => {
                                     Ok(vec![near])
-                                }
-                            } else {
+                                }}
+                            } _ => {
                                 Ok(vec![near])
-                            }
+                            }}
                         }),
                     },
                     rpc_client.client.get_untracked().view_account(
@@ -713,16 +700,16 @@ pub fn provide_token_context() {
                     .filter(|token| !matches!(token.token.reputation, TokenScore::Spam))
                     .map(|mut token| {
                         // Validate icon is a data URL
-                        if let Some(icon) = &token.token.metadata.icon {
-                            if !icon.starts_with("data:") {
-                                token.token.metadata.icon = None;
-                            }
+                        if let Some(icon) = &token.token.metadata.icon
+                            && !icon.starts_with("data:")
+                        {
+                            token.token.metadata.icon = None;
                         }
                         // Move Rhea tokens to Rhea variant
-                        if matches!(token.source, TokenBalanceSource::Rhea) {
-                            if let Token::Nep141(account_id) = &token.token.account_id {
-                                token.token.account_id = Token::Rhea(account_id.clone());
-                            }
+                        if matches!(token.source, TokenBalanceSource::Rhea)
+                            && let Token::Nep141(account_id) = &token.token.account_id
+                        {
+                            token.token.account_id = Token::Rhea(account_id.clone());
                         }
                         token
                     })

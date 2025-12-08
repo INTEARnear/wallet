@@ -12,9 +12,9 @@ use crate::{
     },
     pages::stake::is_validator_supported,
     utils::{
-        balance_to_decimal, decimal_to_balance, format_account_id_no_hide, format_token_amount,
-        format_token_amount_full_precision, format_token_amount_no_hide, format_usd_value_no_hide,
-        StorageBalance,
+        StorageBalance, balance_to_decimal, decimal_to_balance, format_account_id_no_hide,
+        format_token_amount, format_token_amount_full_precision, format_token_amount_no_hide,
+        format_usd_value_no_hide,
     },
 };
 use bigdecimal::{BigDecimal, FromPrimitive};
@@ -25,18 +25,18 @@ use leptos_icons::Icon;
 use leptos_router::components::A;
 use leptos_router::hooks::use_params_map;
 use near_min_api::{
+    QueryFinality, RpcClient,
     types::{
         AccountId, Action, Balance, FinalExecutionStatus, Finality, FunctionCallAction, NearGas,
         NearToken, TransferAction, U128,
     },
-    QueryFinality, RpcClient,
 };
 use reqwest;
 use serde_json;
 use std::collections::HashSet;
 use std::time::Duration;
-use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::closure::Closure;
 use web_sys::{Event, FileReader, HtmlInputElement, ProgressEvent};
 
 #[allow(dead_code)]
@@ -1127,11 +1127,11 @@ pub fn SendMultiToken() -> impl IntoView {
 
                 if !account_exists {
                     set_recipients.update(|r| {
-                        if let Some(rec) = r.get_mut(index) {
-                            if rec.recipient == account_id.as_str() {
-                                rec.account_exists = false;
-                                rec.is_loading_recipient = false;
-                            }
+                        if let Some(rec) = r.get_mut(index)
+                            && rec.recipient == account_id.as_str()
+                        {
+                            rec.account_exists = false;
+                            rec.is_loading_recipient = false;
                         }
                     });
                     return;
@@ -1264,13 +1264,13 @@ pub fn SendMultiToken() -> impl IntoView {
 
                 let balance_val = bal_res;
                 set_recipients.update(|r| {
-                    if let Some(rec) = r.get_mut(index) {
-                        if rec.recipient == account_id.as_str() {
-                            rec.account_exists = true;
-                            rec.recipient_balance = Some(balance_val);
-                            rec.recipient_warning = warning;
-                            rec.is_loading_recipient = false;
-                        }
+                    if let Some(rec) = r.get_mut(index)
+                        && rec.recipient == account_id.as_str()
+                    {
+                        rec.account_exists = true;
+                        rec.recipient_balance = Some(balance_val);
+                        rec.recipient_warning = warning;
+                        rec.is_loading_recipient = false;
                     }
                 });
             });
@@ -2005,17 +2005,17 @@ pub async fn execute_send(
     for rx in rx_vec {
         match rx.await {
             Ok(Ok(tx)) => {
-                if let Some(outcome) = tx.final_execution_outcome {
-                    if matches!(
+                if let Some(outcome) = tx.final_execution_outcome
+                    && matches!(
                         outcome.final_outcome.status,
                         FinalExecutionStatus::Failure(_)
-                    ) {
-                        modal.set(Some(Box::new(move || {
-                            view! { <SendErrorModal /> }.into_any()
-                        })));
-                        has_error = true;
-                        break;
-                    }
+                    )
+                {
+                    modal.set(Some(Box::new(move || {
+                        view! { <SendErrorModal /> }.into_any()
+                    })));
+                    has_error = true;
+                    break;
                 }
             }
             Ok(Err(_)) | Err(_) => {

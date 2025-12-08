@@ -3,8 +3,8 @@ use futures_channel::oneshot;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use near_min_api::types::{
-    near_crypto::{PublicKey, Signature},
     AccountId, Action, DeleteKeyAction,
+    near_crypto::{PublicKey, Signature},
 };
 use serde::Deserialize;
 use web_sys::js_sys::Date;
@@ -65,7 +65,9 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
 
         if let Some(app) = app {
             add_security_log(
-                format!("Logged out of {app:?} on /logout (NOTE: some logouts made on dapp side might not be displayed on this page)"),
+                format!(
+                    "Logged out of {app:?} on /logout (NOTE: some logouts made on dapp side might not be displayed on this page)"
+                ),
                 app.account_id.clone(),
                 accounts_context,
             );

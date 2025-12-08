@@ -9,7 +9,7 @@ use web_sys::js_sys::Date;
 use crate::{
     contexts::{
         accounts_context::AccountsContext,
-        security_log_context::{load_security_logs, SecurityLog},
+        security_log_context::{SecurityLog, load_security_logs},
     },
     utils::format_account_id,
 };

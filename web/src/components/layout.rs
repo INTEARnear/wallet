@@ -4,7 +4,7 @@ use leptos::{html::Div, prelude::*};
 use leptos_icons::*;
 use leptos_router::{components::*, hooks::use_location};
 use leptos_use::use_window_size;
-use rand::{rngs::OsRng, Rng};
+use rand::{Rng, rngs::OsRng};
 use std::time::Duration;
 use web_sys::TouchEvent;
 
@@ -39,7 +39,7 @@ fn get_random_background(background_group: BackgroundGroup, width: f64) -> Strin
         return "".to_string();
     }
     let mut rng = OsRng;
-    let random_num = rng.gen_range(1..=background_group.get_count());
+    let random_num = rng.r#gen_range(1..=background_group.get_count());
     format!("/{}-{}.webp", background_group.get_prefix(), random_num)
 }
 
@@ -157,7 +157,6 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                 && initial_movement_direction.get() == Some(MovementDirection::Horizontal)
             {
                 set_account_selector_progress((delta_x / SWIPE_X_THRESHOLD_PX).clamp(0.0, 1.0));
-                return;
             }
         }
     };
@@ -260,7 +259,7 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                     <PasswordUnlockOverlay />
                     <TransactionQueueOverlay />
                     {move || {
-                        if let Some(modal) = &*modal.read() { modal() } else { ().into_any() }
+                        match &*modal.read() { Some(modal) => { modal() } _ => { ().into_any() }}
                     }}
                     <div class="p-2 sm:p-4">
                         <WalletHeader />

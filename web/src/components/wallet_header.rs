@@ -4,7 +4,7 @@ use leptos_router::components::A;
 use leptos_router::hooks::use_location;
 use std::time::Duration;
 use wasm_bindgen::JsCast;
-use web_sys::{window, Clipboard, HtmlInputElement};
+use web_sys::{Clipboard, HtmlInputElement, window};
 
 use crate::{
     components::account_selector::AccountSelector,
@@ -28,21 +28,21 @@ pub fn WalletHeader() -> impl IntoView {
 
     // Focus the input when search is expanded
     Effect::new(move || {
-        if is_search_expanded.get() {
-            if let Some(input) = search_input_ref.get() {
-                input.focus().unwrap();
-            }
+        if is_search_expanded.get()
+            && let Some(input) = search_input_ref.get()
+        {
+            input.focus().unwrap();
         }
     });
 
     let copy_to_clipboard = move |_| {
-        if let Some(account_id) = selected_account() {
-            if let Some(window) = window() {
-                let clipboard: Clipboard = window.navigator().clipboard();
-                let _ = clipboard.write_text(account_id.as_ref());
-                set_is_copied(true);
-                set_timeout(move || set_is_copied(false), Duration::from_millis(2000));
-            }
+        if let Some(account_id) = selected_account()
+            && let Some(window) = window()
+        {
+            let clipboard: Clipboard = window.navigator().clipboard();
+            let _ = clipboard.write_text(account_id.as_ref());
+            set_is_copied(true);
+            set_timeout(move || set_is_copied(false), Duration::from_millis(2000));
         }
     };
 

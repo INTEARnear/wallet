@@ -1,7 +1,7 @@
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_router::{components::A, hooks::use_navigate};
-use near_min_api::{types::AccountId, RpcClient};
+use near_min_api::{RpcClient, types::AccountId};
 use reqwest::Url;
 use std::collections::HashMap;
 

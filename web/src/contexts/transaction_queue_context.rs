@@ -1,9 +1,9 @@
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use futures_channel::oneshot;
 use futures_timer::Delay;
-use futures_util::future::Either;
 use futures_util::TryFutureExt;
+use futures_util::future::Either;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use near_min_api::types::{
@@ -23,7 +23,7 @@ use std::time::Duration;
 
 use crate::contexts::accounts_context::Account;
 use crate::contexts::network_context::Network;
-use crate::utils::{sign_nep366, sign_nep413, NEP413Payload};
+use crate::utils::{NEP413Payload, sign_nep366, sign_nep413};
 
 use super::accounts_context::AccountsContext;
 use super::rpc_context::RpcContext;
@@ -103,27 +103,25 @@ impl<'a> TransactionResult<'a> {
                                 return Err("Failed to parse intent status".to_string());
                             };
 
-                            if let Some(result) = status.get("result") {
-                                if let Some(status_str) =
+                            if let Some(result) = status.get("result")
+                                && let Some(status_str) =
                                     result.get("status").and_then(|s| s.as_str())
-                                {
-                                    if status_str == "SETTLED" {
-                                        if let Some(hash) = result
-                                            .get("data")
-                                            .and_then(|d| d.get("hash").and_then(|h| h.as_str()))
-                                            .and_then(|h| h.parse::<CryptoHash>().ok())
-                                        {
-                                            tx_hash.set(hash).unwrap();
-                                        }
-                                        return Ok(());
-                                    } else if status_str != "PENDING"
-                                        && status_str != "TX_BROADCASTED"
+                            {
+                                if status_str == "SETTLED" {
+                                    if let Some(hash) = result
+                                        .get("data")
+                                        .and_then(|d| d.get("hash").and_then(|h| h.as_str()))
+                                        .and_then(|h| h.parse::<CryptoHash>().ok())
                                     {
-                                        return Err(format!(
-                                            "Intent failed with status: {}",
-                                            status_str
-                                        ));
+                                        tx_hash.set(hash).unwrap();
                                     }
+                                    return Ok(());
+                                } else if status_str != "PENDING" && status_str != "TX_BROADCASTED"
+                                {
+                                    return Err(format!(
+                                        "Intent failed with status: {}",
+                                        status_str
+                                    ));
                                 }
                             }
 
@@ -286,14 +284,13 @@ impl TransactionType {
 
                 if let Some(result) = response_value.get("result") {
                     if let Some(intent_hash) = result.get("intent_hash").and_then(|h| h.as_str()) {
-                        if let Ok(intent_hash) = intent_hash.parse::<CryptoHash>() {
-                            Ok(TransactionResult::PublishedIntent {
+                        match intent_hash.parse::<CryptoHash>() {
+                            Ok(intent_hash) => Ok(TransactionResult::PublishedIntent {
                                 intent_hash,
                                 rpc_client,
                                 tx_hash: OnceCell::new(),
-                            })
-                        } else {
-                            Err("Invalid intent hash".to_string())
+                            }),
+                            _ => Err("Invalid intent hash".to_string()),
                         }
                     } else {
                         Err("Intent hash not found in response".to_string())
@@ -366,7 +363,7 @@ impl TransactionType {
                     Network::Localnet { .. } => {
                         return Err(
                             "Sponsored transactions on localnet are not supported".to_string()
-                        )
+                        );
                     }
                 };
                 let Ok(response) = reqwest::Client::new()
@@ -573,7 +570,7 @@ impl EnqueuedTransaction {
         (
             details_rx,
             Self {
-                id: OsRng.gen(),
+                id: OsRng.r#gen(),
                 description,
                 stage: TransactionStage::Preparing,
                 signer_id,
@@ -581,7 +578,7 @@ impl EnqueuedTransaction {
                     actions,
                     receiver_id,
                 },
-                queue_id: OsRng.gen(),
+                queue_id: OsRng.r#gen(),
                 details_tx: Some(details_tx),
             },
         )
@@ -599,12 +596,12 @@ impl EnqueuedTransaction {
         (
             details_rx,
             Self {
-                id: OsRng.gen(),
+                id: OsRng.r#gen(),
                 description,
                 stage: TransactionStage::Preparing,
                 signer_id,
                 transaction_type,
-                queue_id: OsRng.gen(),
+                queue_id: OsRng.r#gen(),
                 details_tx: Some(details_tx),
             },
         )
@@ -618,10 +615,11 @@ impl EnqueuedTransaction {
     }
 
     fn clone_and_take_tx(&mut self) -> Self {
-        let tx = if let Some(details_tx) = self.details_tx.take() {
-            details_tx
-        } else {
-            panic!("Transaction has already been taken");
+        let tx = match self.details_tx.take() {
+            Some(details_tx) => details_tx,
+            _ => {
+                panic!("Transaction has already been taken");
+            }
         };
         Self {
             id: self.id,
@@ -670,45 +668,47 @@ pub fn provide_transaction_queue_context() {
             );
             log::info!("Queue: {:?}", *queue.read_untracked());
             let mut queue_mut = set_queue.write_untracked();
-            if let Some(transaction) = queue_mut
+            match queue_mut
                 .get_mut(current_index.get())
                 .filter(|tx| tx.stage == TransactionStage::Preparing)
                 .map(|tx| tx.clone_and_take_tx())
             {
-                set_is_processing.set(true);
-                let tx_current_index = current_index.get();
-                let current_queue_id = transaction.queue_id;
-                let rpc_client = rpc_client.client.get();
-                let Some(account) = accounts_context
-                    .accounts
-                    .get_untracked()
-                    .accounts
-                    .iter()
-                    .find(|account| account.account_id == transaction.signer_id)
-                    .cloned()
-                else {
-                    log::error!("Account not found: {}", transaction.signer_id);
-                    set_queue.update(|q| {
-                        q[tx_current_index].stage =
-                            TransactionStage::Failed("Account not found".into())
-                    });
-                    set_is_processing.set(false);
-                    return;
-                };
+                Some(transaction) => {
+                    set_is_processing.set(true);
+                    let tx_current_index = current_index.get();
+                    let current_queue_id = transaction.queue_id;
+                    let rpc_client = rpc_client.client.get();
+                    let Some(account) = accounts_context
+                        .accounts
+                        .get_untracked()
+                        .accounts
+                        .iter()
+                        .find(|account| account.account_id == transaction.signer_id)
+                        .cloned()
+                    else {
+                        log::error!("Account not found: {}", transaction.signer_id);
+                        set_queue.update(|q| {
+                            q[tx_current_index].stage =
+                                TransactionStage::Failed("Account not found".into())
+                        });
+                        set_is_processing.set(false);
+                        return;
+                    };
 
-                spawn_local(async move {
-                    log::info!("Transaction started: {}", transaction.description);
-                    set_queue.update(|q| q[tx_current_index].stage = TransactionStage::Publishing);
-                    signing_tx_id.set(Some(transaction.id));
-                    let pending_tx = match transaction
-                        .transaction_type
-                        .execute(account, &rpc_client, accounts_context)
-                        .await
-                    {
-                        Ok(tx) => tx,
-                        Err(error) => {
-                            signing_tx_id.set(None);
-                            set_queue.update(|q| {
+                    spawn_local(async move {
+                        log::info!("Transaction started: {}", transaction.description);
+                        set_queue
+                            .update(|q| q[tx_current_index].stage = TransactionStage::Publishing);
+                        signing_tx_id.set(Some(transaction.id));
+                        let pending_tx = match transaction
+                            .transaction_type
+                            .execute(account, &rpc_client, accounts_context)
+                            .await
+                        {
+                            Ok(tx) => tx,
+                            Err(error) => {
+                                signing_tx_id.set(None);
+                                set_queue.update(|q| {
                                 q[tx_current_index].stage = TransactionStage::Failed(error.clone());
                                 for tx in q.iter_mut() {
                                     if tx.stage == TransactionStage::Preparing && tx.queue_id == current_queue_id {
@@ -718,45 +718,47 @@ pub fn provide_transaction_queue_context() {
                                 }
                                 transaction.details_tx.expect("Transaction details sender should have been taken by this task").send(Err(error.clone())).ok();
                             });
-                            set_current_index.update(|i| *i += 1);
-                            Delay::new(Duration::from_secs(5)).await;
-                            set_queue.update(|q| {
-                                let prev_len = q.len();
-                                q.retain(|tx| tx.queue_id != current_queue_id);
-                                set_current_index
-                                    .update(|i| *i = i.saturating_sub(prev_len - q.len()));
-                            });
-                            set_is_processing.set(false);
-                            return;
-                        }
-                    };
+                                set_current_index.update(|i| *i += 1);
+                                Delay::new(Duration::from_secs(5)).await;
+                                set_queue.update(|q| {
+                                    let prev_len = q.len();
+                                    q.retain(|tx| tx.queue_id != current_queue_id);
+                                    set_current_index
+                                        .update(|i| *i = i.saturating_sub(prev_len - q.len()));
+                                });
+                                set_is_processing.set(false);
+                                return;
+                            }
+                        };
 
-                    signing_tx_id.set(None);
-                    set_queue.update(|q| q[tx_current_index].stage = TransactionStage::Included);
+                        signing_tx_id.set(None);
+                        set_queue
+                            .update(|q| q[tx_current_index].stage = TransactionStage::Included);
 
-                    match pending_tx
-                        .wait_for(
-                            TxExecutionStatus::ExecutedOptimistic,
-                            Duration::from_millis(60000),
-                        )
-                        .and_then(|_| pending_tx.get_tx_details())
-                        .await
-                    {
-                        Ok(details) => {
-                            set_queue
-                                .update(|q| q[tx_current_index].stage = TransactionStage::Doomslug);
-                            transaction
+                        match pending_tx
+                            .wait_for(
+                                TxExecutionStatus::ExecutedOptimistic,
+                                Duration::from_millis(60000),
+                            )
+                            .and_then(|_| pending_tx.get_tx_details())
+                            .await
+                        {
+                            Ok(details) => {
+                                set_queue.update(|q| {
+                                    q[tx_current_index].stage = TransactionStage::Doomslug
+                                });
+                                transaction
                             .details_tx
                             .expect(
                                 "Transaction details sender should have been taken by this task",
                             )
                             .send(Ok(details))
                             .ok();
-                        }
-                        Err(e) => {
-                            let error = format!("Transaction failed to execute: {e}");
-                            log::error!("{error}");
-                            set_queue.update(|q| {
+                            }
+                            Err(e) => {
+                                let error = format!("Transaction failed to execute: {e}");
+                                log::error!("{error}");
+                                set_queue.update(|q| {
                                 q[tx_current_index].stage = TransactionStage::Failed(error);
                                 for tx in q.iter_mut() {
                                     if tx.stage == TransactionStage::Preparing && tx.queue_id == current_queue_id {
@@ -766,79 +768,88 @@ pub fn provide_transaction_queue_context() {
                                 }
                                 transaction.details_tx.expect("Transaction details sender should have been taken by this task").send(Err(e.to_string())).ok();
                             });
-                            set_is_processing.set(false);
-                            set_current_index.update(|i| *i += 1);
-                            return;
+                                set_is_processing.set(false);
+                                set_current_index.update(|i| *i += 1);
+                                return;
+                            }
                         }
-                    }
 
-                    set_current_index.update(|i| *i += 1);
-                    set_is_processing.set(false);
-                    if tx_current_index < queue.read_untracked().len() - 1 {
-                        match pending_tx
-                            .wait_for(TxExecutionStatus::Final, Duration::from_millis(10000))
-                            .await
-                        {
-                            Ok(_) => {
-                                set_queue.update(|q| {
-                                    if let Some(transaction) = q.get_mut(tx_current_index) {
-                                        if transaction.queue_id == current_queue_id {
+                        set_current_index.update(|i| *i += 1);
+                        set_is_processing.set(false);
+                        if tx_current_index < queue.read_untracked().len() - 1 {
+                            match pending_tx
+                                .wait_for(TxExecutionStatus::Final, Duration::from_millis(10000))
+                                .await
+                            {
+                                Ok(_) => {
+                                    set_queue.update(|q| {
+                                        if let Some(transaction) = q.get_mut(tx_current_index)
+                                            && transaction.queue_id == current_queue_id
+                                        {
                                             transaction.stage = TransactionStage::Finalized;
                                         }
+                                    });
+                                    log::info!(
+                                        "Transaction completed: {}",
+                                        transaction.description
+                                    );
+                                }
+                                Err(e) => {
+                                    // Should never happen unless 33% of total NEAR Protocol stake
+                                    // is down or something is wrong with all RPCs
+                                    let error = format!("Transaction failed to finalize: {e}");
+                                    log::error!("{error}");
+                                    set_queue.update(|q| {
+                                        q[tx_current_index].stage = TransactionStage::Failed(error)
+                                    });
+                                }
+                            }
+                        } else {
+                            set_timeout(
+                                move || {
+                                    if queue.read_untracked().len() == tx_current_index + 1 {
+                                        set_queue.update(|q| {
+                                            log::info!("Clearing queue: reached end of queue");
+                                            q.clear();
+                                        });
+                                        set_current_index.set(0);
                                     }
-                                });
-                                log::info!("Transaction completed: {}", transaction.description);
-                            }
-                            Err(e) => {
-                                // Should never happen unless 33% of total NEAR Protocol stake
-                                // is down or something is wrong with all RPCs
-                                let error = format!("Transaction failed to finalize: {e}");
-                                log::error!("{error}");
-                                set_queue.update(|q| {
-                                    q[tx_current_index].stage = TransactionStage::Failed(error)
-                                });
-                            }
+                                },
+                                Duration::from_millis(200),
+                            );
                         }
+                    });
+                }
+                _ => {
+                    if current_index.get() < queue_mut.len() {
+                        set_current_index.update(|i| *i += 1);
                     } else {
+                        let had_error = queue_mut
+                            .get(current_index.get().saturating_sub(1))
+                            .map(|tx| matches!(tx.stage, TransactionStage::Failed(_)))
+                            .unwrap_or(false);
                         set_timeout(
                             move || {
-                                if queue.read_untracked().len() == tx_current_index + 1 {
+                                if queue.read_untracked().len() < current_index.get_untracked() + 1
+                                    && !queue.read_untracked().is_empty()
+                                {
                                     set_queue.update(|q| {
-                                        log::info!("Clearing queue: reached end of queue");
+                                        log::info!(
+                                            "Clearing queue: next transaction was not found"
+                                        );
                                         q.clear();
                                     });
                                     set_current_index.set(0);
                                 }
                             },
-                            Duration::from_millis(200),
+                            if had_error {
+                                Duration::from_millis(5000)
+                            } else {
+                                Duration::from_millis(200)
+                            },
                         );
                     }
-                });
-            } else if current_index.get() < queue_mut.len() {
-                set_current_index.update(|i| *i += 1);
-            } else {
-                let had_error = queue_mut
-                    .get(current_index.get().saturating_sub(1))
-                    .map(|tx| matches!(tx.stage, TransactionStage::Failed(_)))
-                    .unwrap_or(false);
-                set_timeout(
-                    move || {
-                        if queue.read_untracked().len() < current_index.get_untracked() + 1
-                            && !queue.read_untracked().is_empty()
-                        {
-                            set_queue.update(|q| {
-                                log::info!("Clearing queue: next transaction was not found");
-                                q.clear();
-                            });
-                            set_current_index.set(0);
-                        }
-                    },
-                    if had_error {
-                        Duration::from_millis(5000)
-                    } else {
-                        Duration::from_millis(200)
-                    },
-                );
+                }
             }
         }
     });

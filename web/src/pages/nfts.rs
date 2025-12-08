@@ -5,17 +5,17 @@ use leptos::task::spawn_local;
 use leptos_icons::*;
 use leptos_router::components::A;
 use leptos_router::hooks::use_navigate;
-use leptos_router::{hooks::use_params_map, NavigateOptions};
+use leptos_router::{NavigateOptions, hooks::use_params_map};
 use near_min_api::types::{Action, FunctionCallAction, NearGas, NearToken};
 use near_min_api::{
-    types::{AccountId, Finality},
     QueryFinality, RpcClient,
+    types::{AccountId, Finality},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::time::Duration;
-use web_sys::{window, MouseEvent};
+use web_sys::{MouseEvent, window};
 
 use crate::components::progressive_image::ProgressiveImage;
 use crate::contexts::nft_cache_context::{NftCacheContext, NftTokenMetadata};
@@ -31,16 +31,16 @@ use crate::contexts::{
 };
 use crate::pages::stake::is_validator_supported;
 use crate::utils::{
-    format_account_id_no_hide, format_token_amount_no_hide, proxify_url, Resolution, StorageBalance,
+    Resolution, StorageBalance, format_account_id_no_hide, format_token_amount_no_hide, proxify_url,
 };
 
 async fn fetch_spam_list() -> Vec<HiddenNft> {
     let proxy_base = dotenvy_macro::dotenv!("SHARED_NFT_PROXY_SERVICE_ADDR");
     let url = format!("{}/spam-list", proxy_base);
-    if let Ok(res) = reqwest::get(&url).await {
-        if let Ok(list) = res.json::<Vec<HiddenNft>>().await {
-            return list;
-        }
+    if let Ok(res) = reqwest::get(&url).await
+        && let Ok(list) = res.json::<Vec<HiddenNft>>().await
+    {
+        return list;
     }
     vec![]
 }
@@ -454,10 +454,13 @@ pub fn NftCollection() -> impl IntoView {
                 let proxy_base = dotenvy_macro::dotenv!("SHARED_NFT_PROXY_SERVICE_ADDR");
                 let url = format!("{}/report-spam", proxy_base);
                 let client = reqwest::Client::new();
-                if let Err(e) = client.post(&url).json(&item).send().await {
-                    leptos::logging::error!("Failed to report spam: {e:?}");
-                } else {
-                    spam_list.refetch();
+                match client.post(&url).json(&item).send().await {
+                    Err(e) => {
+                        leptos::logging::error!("Failed to report spam: {e:?}");
+                    }
+                    _ => {
+                        spam_list.refetch();
+                    }
                 }
             });
         }
@@ -2092,10 +2095,13 @@ pub fn NftTokenDetails() -> impl IntoView {
                 let proxy_base = dotenvy_macro::dotenv!("SHARED_NFT_PROXY_SERVICE_ADDR");
                 let url = format!("{}/report-spam", proxy_base);
                 let client = reqwest::Client::new();
-                if let Err(e) = client.post(&url).json(&item).send().await {
-                    leptos::logging::error!("Failed to report spam: {e:?}");
-                } else {
-                    spam_list.refetch();
+                match client.post(&url).json(&item).send().await {
+                    Err(e) => {
+                        leptos::logging::error!("Failed to report spam: {e:?}");
+                    }
+                    _ => {
+                        spam_list.refetch();
+                    }
                 }
             });
         }

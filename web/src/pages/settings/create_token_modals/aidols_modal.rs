@@ -156,7 +156,9 @@ where
                                         .await
                                         {
                                             Ok(reference_cid) => {
-                                                log::info!("Metadata JSON uploaded to IPFS: {reference_cid}");
+                                                log::info!(
+                                                    "Metadata JSON uploaded to IPFS: {reference_cid}"
+                                                );
 
                                                 let initial_buy_token = if initial_buy_value
                                                     .is_empty()

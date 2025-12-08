@@ -1,9 +1,9 @@
 use aes_gcm::{
-    aead::{rand_core::RngCore, Aead, OsRng},
     Aes256Gcm, Key, KeyInit, Nonce,
+    aead::{Aead, OsRng, rand_core::RngCore},
 };
 use base64::prelude::BASE64_STANDARD;
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
 use deli::{CursorDirection, Database, Model};
 use futures_channel::oneshot;
@@ -306,16 +306,16 @@ pub async fn reencrypt_security_logs(
                 Some(log_entry.message.clone())
             };
 
-            if let Some(plaintext) = plaintext_opt {
-                if let Ok((enc_msg, new_nonce)) = encrypt_message(&plaintext, &new_cipher).await {
-                    log_entry.message = enc_msg;
-                    log_entry.nonce = Some(new_nonce);
-                    if let Err(e) = store.update(&log_entry).await {
-                        log::error!(
-                            "Failed to update security log id {} during re-encryption: {e:?}",
-                            log_entry.id
-                        );
-                    }
+            if let Some(plaintext) = plaintext_opt
+                && let Ok((enc_msg, new_nonce)) = encrypt_message(&plaintext, &new_cipher).await
+            {
+                log_entry.message = enc_msg;
+                log_entry.nonce = Some(new_nonce);
+                if let Err(e) = store.update(&log_entry).await {
+                    log::error!(
+                        "Failed to update security log id {} during re-encryption: {e:?}",
+                        log_entry.id
+                    );
                 }
             }
 

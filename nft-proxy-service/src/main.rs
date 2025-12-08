@@ -2,20 +2,20 @@
 
 use anyhow::anyhow;
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
-    Json, Router,
 };
-use base64::{engine::general_purpose, Engine};
+use base64::{Engine, engine::general_purpose};
 use bytes::Bytes;
-use image::{imageops::FilterType, DynamicImage};
+use image::{DynamicImage, imageops::FilterType};
 use moka::future::Cache;
 use near_min_api::types::AccountId;
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use reqwest::Client;
-use rocksdb::{Options, DB};
+use rocksdb::{DB, Options};
 use serde::{Deserialize, Serialize};
 use std::{
     env,
@@ -25,11 +25,11 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use teloxide::{
+    Bot,
     dispatching::UpdateHandler,
     prelude::*,
     types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode},
     utils::markdown,
-    Bot,
 };
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::EnvFilter;
@@ -622,18 +622,16 @@ async fn airdrop_claim_handler(
     tokio::time::sleep(Duration::from_secs(15)).await;
 
     // If claim was successful, invalidate the cached airdrop data for this account
-    if status == StatusCode::OK {
-        if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&bytes) {
-            if json.get("code").and_then(|v| v.as_i64()) == Some(0)
-                && json.get("data").is_some_and(|v| v.is_null())
-            {
-                let cache_key = format!(
-                    "airdrop:{}:{}",
-                    claim_request.airdrop_id, claim_request.addr
-                );
-                state.cache.invalidate(&cache_key).await;
-            }
-        }
+    if status == StatusCode::OK
+        && let Ok(json) = serde_json::from_slice::<serde_json::Value>(&bytes)
+        && json.get("code").and_then(|v| v.as_i64()) == Some(0)
+        && json.get("data").is_some_and(|v| v.is_null())
+    {
+        let cache_key = format!(
+            "airdrop:{}:{}",
+            claim_request.airdrop_id, claim_request.addr
+        );
+        state.cache.invalidate(&cache_key).await;
     }
 
     Ok((status, bytes))

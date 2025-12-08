@@ -3,13 +3,13 @@ use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_router::components::A;
 use near_min_api::{
+    QueryFinality,
     types::{
-        near_crypto::{KeyType, SecretKey},
         AccessKey, AccountContract, AccountId, Action, CreateAccountAction, CryptoHash,
         FinalExecutionStatus, Finality, FunctionCallAction, GlobalContractIdentifier, NearGas,
         NearToken, StateRecord, TransferAction, UseGlobalContractAction,
+        near_crypto::{KeyType, SecretKey},
     },
-    QueryFinality,
 };
 
 use crate::{
@@ -328,7 +328,9 @@ where
                                         let tx_hash = outcome.final_outcome.transaction.hash;
                                         match outcome.final_outcome.status {
                                             FinalExecutionStatus::SuccessValue(_) => {
-                                                log::info!("Token contract deployed successfully: {tx_hash}");
+                                                log::info!(
+                                                    "Token contract deployed successfully: {tx_hash}"
+                                                );
                                                 modal_context.modal.set(Some(Box::new(
                                                     move || {
                                                         view! {

@@ -52,17 +52,15 @@ pub fn provide_network_context() {
     );
     Effect::new(move || {
         let selected_account = accounts.get().selected_account_id;
-        if let Some(selected_account_id) = selected_account {
-            if let Some(account) = accounts
+        if let Some(selected_account_id) = selected_account
+            && let Some(account) = accounts
                 .get()
                 .accounts
                 .iter()
                 .find(|a| a.account_id == selected_account_id)
-            {
-                if account.network != network.get() {
-                    network.set(account.network.clone());
-                }
-            }
+            && account.network != network.get()
+        {
+            network.set(account.network.clone());
         }
     });
     provide_context(NetworkContext { network });

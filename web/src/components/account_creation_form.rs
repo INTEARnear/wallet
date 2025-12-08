@@ -11,20 +11,20 @@ use near_min_api::types::{
     AccessKey, AccessKeyPermission, Action, AddKeyAction, CreateAccountAction, FinalExecutionStatus,
 };
 use near_min_api::{
-    types::{AccessKeyPermissionView, AccessKeyView, AccountId, Finality},
     QueryFinality,
+    types::{AccessKeyPermissionView, AccessKeyView, AccountId, Finality},
 };
 use web_sys::KeyboardEvent;
 
 use crate::components::account_selector::{
-    mnemonic_to_key, AccountCreateParent, AccountCreateRecoveryMethod, ModalState,
+    AccountCreateParent, AccountCreateRecoveryMethod, ModalState, mnemonic_to_key,
 };
 use crate::components::derivation_path_input::DerivationPathInput;
 use crate::components::gift_amount_display::GiftAmountDisplay;
 use crate::components::select::{Select, SelectOption};
 use crate::contexts::account_selector_context::AccountSelectorContext;
 use crate::contexts::accounts_context::{
-    format_ledger_error, Account, AccountsContext, SecretKeyHolder,
+    Account, AccountsContext, SecretKeyHolder, format_ledger_error,
 };
 use crate::contexts::network_context::Network;
 use crate::contexts::security_log_context::add_security_log;
@@ -246,101 +246,104 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
             set_error.set(None);
             let network_clone = network.clone();
 
-            let creation_future: Pin<Box<dyn Future<Output = Result<(), String>>>> =
-                if let Some(account_to_sign_with) = account_to_sign_with {
-                    let actions = vec![
-                        Action::CreateAccount(CreateAccountAction {}),
-                        Action::AddKey(Box::new(AddKeyAction {
-                            public_key: secret_key.public_key(),
-                            access_key: AccessKey {
-                                nonce: 0,
-                                permission: AccessKeyPermission::FullAccess,
-                            },
-                        })),
-                    ];
-
-                    let transaction_description = format!("Create account {account_id}");
-                    let (tx_details_rx, tx) = EnqueuedTransaction::create_with_type(
-                        transaction_description,
-                        account_to_sign_with.account_id.clone(),
-                        TransactionType::MetaTransaction {
-                            actions,
-                            receiver_id: account_id.clone(),
+            let creation_future: Pin<Box<dyn Future<Output = Result<(), String>>>> = if let Some(
+                account_to_sign_with,
+            ) =
+                account_to_sign_with
+            {
+                let actions = vec![
+                    Action::CreateAccount(CreateAccountAction {}),
+                    Action::AddKey(Box::new(AddKeyAction {
+                        public_key: secret_key.public_key(),
+                        access_key: AccessKey {
+                            nonce: 0,
+                            permission: AccessKeyPermission::FullAccess,
                         },
-                    );
-                    add_transaction.update(|txs| {
-                        txs.push(tx);
-                    });
-                    Box::pin(async move {
-                        let tx_details = match tx_details_rx.await {
-                            Ok(tx_details) => tx_details,
-                            Err(Canceled) => {
-                                return Err("Cancelled".to_string());
-                            }
-                        };
-                        let tx_details = match tx_details {
-                            Ok(tx_details) => tx_details,
-                            Err(e) => {
-                                return Err(format!("Failed to create account: {e}"));
-                            }
-                        };
-                        let Some(outcome) = tx_details.final_execution_outcome else {
-                            return Err("Transaction outcome not found".to_string());
-                        };
-                        match outcome.final_outcome.status {
-                            FinalExecutionStatus::SuccessValue(_) => Ok(()),
-                            _ => Err("Transaction failed".to_string()),
+                    })),
+                ];
+
+                let transaction_description = format!("Create account {account_id}");
+                let (tx_details_rx, tx) = EnqueuedTransaction::create_with_type(
+                    transaction_description,
+                    account_to_sign_with.account_id.clone(),
+                    TransactionType::MetaTransaction {
+                        actions,
+                        receiver_id: account_id.clone(),
+                    },
+                );
+                add_transaction.update(|txs| {
+                    txs.push(tx);
+                });
+                Box::pin(async move {
+                    let tx_details = match tx_details_rx.await {
+                        Ok(tx_details) => tx_details,
+                        Err(Canceled) => {
+                            return Err("Cancelled".to_string());
                         }
-                    })
-                } else {
-                    let payload = serde_json::json!({
-                        "account_id": account_id.to_string(),
-                        "public_key": secret_key.public_key().to_string(),
-                    });
-                    Box::pin(async move {
-                        let client = reqwest::Client::new();
-                        let account_creation_service_addr = match network_clone {
-                            Network::Mainnet => {
-                                dotenvy_macro::dotenv!("MAINNET_ACCOUNT_CREATION_SERVICE_ADDR")
-                                    .to_string()
-                            }
-                            Network::Testnet => {
-                                dotenvy_macro::dotenv!("TESTNET_ACCOUNT_CREATION_SERVICE_ADDR")
-                                    .to_string()
-                            }
-                            Network::Localnet { .. } => unreachable!(),
-                        };
-                        let response = client
-                            .post(format!("{account_creation_service_addr}/create"))
-                            .json(&payload)
-                            .send()
-                            .await;
-                        match response {
-                            Ok(resp) => {
-                                if let Ok(data) = resp.json::<serde_json::Value>().await {
-                                    let success = data
-                                        .get("success")
-                                        .and_then(|s| s.as_bool())
-                                        .unwrap_or(false);
-                                    if success {
-                                        Ok(())
-                                    } else {
-                                        Err(format!(
-                                            "Failed to create account: Server returned error: {}",
-                                            data.get("message")
-                                                .and_then(|s| s.as_str())
-                                                .unwrap_or("Unknown error")
-                                        ))
-                                    }
+                    };
+                    let tx_details = match tx_details {
+                        Ok(tx_details) => tx_details,
+                        Err(e) => {
+                            return Err(format!("Failed to create account: {e}"));
+                        }
+                    };
+                    let Some(outcome) = tx_details.final_execution_outcome else {
+                        return Err("Transaction outcome not found".to_string());
+                    };
+                    match outcome.final_outcome.status {
+                        FinalExecutionStatus::SuccessValue(_) => Ok(()),
+                        _ => Err("Transaction failed".to_string()),
+                    }
+                })
+            } else {
+                let payload = serde_json::json!({
+                    "account_id": account_id.to_string(),
+                    "public_key": secret_key.public_key().to_string(),
+                });
+                Box::pin(async move {
+                    let client = reqwest::Client::new();
+                    let account_creation_service_addr = match network_clone {
+                        Network::Mainnet => {
+                            dotenvy_macro::dotenv!("MAINNET_ACCOUNT_CREATION_SERVICE_ADDR")
+                                .to_string()
+                        }
+                        Network::Testnet => {
+                            dotenvy_macro::dotenv!("TESTNET_ACCOUNT_CREATION_SERVICE_ADDR")
+                                .to_string()
+                        }
+                        Network::Localnet { .. } => unreachable!(),
+                    };
+                    let response = client
+                        .post(format!("{account_creation_service_addr}/create"))
+                        .json(&payload)
+                        .send()
+                        .await;
+                    match response {
+                        Ok(resp) => match resp.json::<serde_json::Value>().await {
+                            Ok(data) => {
+                                let success = data
+                                    .get("success")
+                                    .and_then(|s| s.as_bool())
+                                    .unwrap_or(false);
+                                if success {
+                                    Ok(())
                                 } else {
-                                    Err("Failed to create account: Couldn't parse response"
-                                        .to_string())
+                                    Err(format!(
+                                        "Failed to create account: Server returned error: {}",
+                                        data.get("message")
+                                            .and_then(|s| s.as_str())
+                                            .unwrap_or("Unknown error")
+                                    ))
                                 }
                             }
-                            Err(e) => Err(format!("Failed to create account: {e}")),
-                        }
-                    })
-                };
+                            _ => {
+                                Err("Failed to create account: Couldn't parse response".to_string())
+                            }
+                        },
+                        Err(e) => Err(format!("Failed to create account: {e}")),
+                    }
+                })
+            };
 
             match creation_future.await {
                 Ok(()) => {
@@ -386,7 +389,9 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                             _ => {
                                 attempts += 1;
                                 if attempts >= MAX_ATTEMPTS {
-                                    log::error!("Failed to create account: Couldn't verify by getting access key after 3 attempts");
+                                    log::error!(
+                                        "Failed to create account: Couldn't verify by getting access key after 3 attempts"
+                                    );
                                     set_error.set(Some("Failed to create account".to_string()));
                                 }
                             }
@@ -484,18 +489,21 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
         }
         set_ledger_connection_in_progress(true);
         let request = JsWalletRequest::LedgerConnect;
-        if let Ok(js_value) = serde_wasm_bindgen::to_value(&request) {
-            let origin = window()
-                .location()
-                .origin()
-                .unwrap_or_else(|_| "*".to_string());
-            if window().post_message(&js_value, &origin).is_err() {
-                log::error!("Failed to send Ledger connection request");
+        match serde_wasm_bindgen::to_value(&request) {
+            Ok(js_value) => {
+                let origin = window()
+                    .location()
+                    .origin()
+                    .unwrap_or_else(|_| "*".to_string());
+                if window().post_message(&js_value, &origin).is_err() {
+                    log::error!("Failed to send Ledger connection request");
+                    set_ledger_connection_in_progress(false);
+                }
+            }
+            _ => {
+                log::error!("Failed to serialize Ledger connection request");
                 set_ledger_connection_in_progress(false);
             }
-        } else {
-            log::error!("Failed to serialize Ledger connection request");
-            set_ledger_connection_in_progress(false);
         }
     };
 
@@ -972,9 +980,9 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                                         let request = JsWalletRequest::LedgerGetPublicKey {
                                                                             path,
                                                                         };
-                                                                        if let Ok(js_value) = serde_wasm_bindgen::to_value(
+                                                                        match serde_wasm_bindgen::to_value(
                                                                             &request,
-                                                                        ) {
+                                                                        ) { Ok(js_value) => {
                                                                             let origin = window()
                                                                                 .location()
                                                                                 .origin()
@@ -986,12 +994,12 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                                                 log::error!("Failed to send Ledger public key request");
                                                                                 set_ledger_getting_public_key(false);
                                                                             }
-                                                                        } else {
+                                                                        } _ => {
                                                                             log::error!(
                                                                                 "Failed to serialize Ledger public key request"
                                                                             );
                                                                             set_ledger_getting_public_key(false);
-                                                                        }
+                                                                        }}
                                                                     }
                                                                 >
                                                                     <span class="relative flex items-center justify-center gap-2">

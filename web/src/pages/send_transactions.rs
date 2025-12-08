@@ -4,11 +4,11 @@ use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::Icon;
 use leptos_router::hooks::use_location;
 use near_min_api::{
-    types::{
-        near_crypto::{PublicKey, Signature},
-        AccountId, CryptoHash, FinalExecutionOutcomeViewEnum, NearGas, NearToken,
-    },
     ExperimentalTxDetails,
+    types::{
+        AccountId, CryptoHash, FinalExecutionOutcomeViewEnum, NearGas, NearToken,
+        near_crypto::{PublicKey, Signature},
+    },
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -16,7 +16,7 @@ use std::{
     time::Duration,
 };
 use wasm_bindgen::JsCast;
-use web_sys::{js_sys::Date, Window};
+use web_sys::{Window, js_sys::Date};
 
 use crate::{
     components::danger_confirm_input::DangerConfirmInput,
@@ -24,7 +24,7 @@ use crate::{
         accounts_context::{Account, AccountsContext},
         config_context::ConfigContext,
         connected_apps_context::{
-            action_attaches_deposit, is_dangerous_action, ConnectedAppsContext,
+            ConnectedAppsContext, action_attaches_deposit, is_dangerous_action,
         },
         network_context::Network,
         security_log_context::add_security_log,
@@ -32,8 +32,8 @@ use crate::{
     },
     pages::connect::submit_tauri_response,
     utils::{
-        is_debug_enabled, WalletSelectorAccessKeyPermission, WalletSelectorAction,
-        WalletSelectorTransaction,
+        WalletSelectorAccessKeyPermission, WalletSelectorAction, WalletSelectorTransaction,
+        is_debug_enabled,
     },
 };
 
@@ -203,7 +203,9 @@ fn TransactionAction(
                     let allowance_str = allowance
                         .map(|a| format!(" and allowance {a}"))
                         .unwrap_or_default();
-                    format!("Add Function Call Key {public_key} for contract {receiver_id} with methods: {methods}{allowance_str}")
+                    format!(
+                        "Add Function Call Key {public_key} for contract {receiver_id} with methods: {methods}{allowance_str}"
+                    )
                 }
             },
             WalletSelectorAction::DeleteKey { public_key } => {
@@ -306,7 +308,7 @@ fn TransactionItem<'a>(
     tx_idx: usize,
     expanded_actions: ReadSignal<HashSet<(usize, usize)>>,
     set_expanded_actions: WriteSignal<HashSet<(usize, usize)>>,
-) -> impl IntoView {
+) -> impl IntoView + use<> {
     view! {
         <div class="py-4 first:pt-0 last:pb-0">
             <div class="flex items-start gap-3 mb-2">
@@ -522,25 +524,20 @@ pub fn SendTransactions() -> impl IntoView {
     Effect::new(move |_| {
         let location = use_location();
         let params = location.query.get();
-        if let Some(session_id) = params.get("session_id") {
-            if !session_id.is_empty() {
-                log::info!("Found session_id in URL: {session_id}");
-                retrieve_bridge_session(session_id.clone());
-            }
+        if let Some(session_id) = params.get("session_id")
+            && !session_id.is_empty()
+        {
+            log::info!("Found session_id in URL: {session_id}");
+            retrieve_bridge_session(session_id.clone());
         }
     });
 
-    let opener = || {
-        if let Ok(opener) = window().opener() {
+    let opener = || match window().opener() {
+        Ok(opener) => {
             let opener = opener.unchecked_into::<Window>();
-            if opener.is_truthy() {
-                opener
-            } else {
-                window()
-            }
-        } else {
-            window()
+            if opener.is_truthy() { opener } else { window() }
         }
+        _ => window(),
     };
 
     let post_to_opener = move |message: SendMessage, close_window: bool| {
@@ -563,20 +560,25 @@ pub fn SendTransactions() -> impl IntoView {
             );
         }
 
-        if let Ok(message) = serde_wasm_bindgen::from_value::<ReceiveMessage>(event.data()) {
-            if is_debug_enabled() {
-                log::info!("Successfully parsed message: {:?}", message);
-            }
-            match message {
-                ReceiveMessage::SignAndSendTransactions { data } => {
-                    process_sign_and_send(data, event.origin());
+        match serde_wasm_bindgen::from_value::<ReceiveMessage>(event.data()) {
+            Ok(message) => {
+                if is_debug_enabled() {
+                    log::info!("Successfully parsed message: {:?}", message);
                 }
-                ReceiveMessage::TauriWalletSession { session_id } => {
-                    retrieve_bridge_session(session_id);
+                match message {
+                    ReceiveMessage::SignAndSendTransactions { data } => {
+                        process_sign_and_send(data, event.origin());
+                    }
+                    ReceiveMessage::TauriWalletSession { session_id } => {
+                        retrieve_bridge_session(session_id);
+                    }
                 }
             }
-        } else if is_debug_enabled() {
-            log::info!("Failed to parse message as ReceiveMessage");
+            _ => {
+                if is_debug_enabled() {
+                    log::info!("Failed to parse message as ReceiveMessage");
+                }
+            }
         }
     });
 
@@ -589,39 +591,40 @@ pub fn SendTransactions() -> impl IntoView {
     });
 
     let connected_app = Memo::new(move |_| {
-        if let Some(request_data) = &*request_data.read() {
-            let text_to_prove = format!("{}|{}", request_data.nonce, request_data.transactions);
-            let to_prove = text_to_prove.as_bytes();
-            let to_prove = CryptoHash::hash_bytes(to_prove); // sha256
-            let is_valid = request_data
-                .signature
-                .verify(to_prove.as_bytes(), &request_data.public_key)
-                && request_data.nonce > Date::now() as u64 - 1000 * 60 * 5
-                && request_data.nonce <= Date::now() as u64;
-            is_valid
-                .then(|| {
-                    apps.get()
-                        .apps
-                        .iter()
-                        .find(|app| {
-                            app.public_key == request_data.public_key
-                                && app.account_id == request_data.account_id
-                                && app.logged_out_at.is_none()
-                        })
-                        .cloned()
-                })
-                .flatten()
-        } else {
-            None
+        match &*request_data.read() {
+            Some(request_data) => {
+                let text_to_prove = format!("{}|{}", request_data.nonce, request_data.transactions);
+                let to_prove = text_to_prove.as_bytes();
+                let to_prove = CryptoHash::hash_bytes(to_prove); // sha256
+                let is_valid = request_data
+                    .signature
+                    .verify(to_prove.as_bytes(), &request_data.public_key)
+                    && request_data.nonce > Date::now() as u64 - 1000 * 60 * 5
+                    && request_data.nonce <= Date::now() as u64;
+                is_valid
+                    .then(|| {
+                        apps.get()
+                            .apps
+                            .iter()
+                            .find(|app| {
+                                app.public_key == request_data.public_key
+                                    && app.account_id == request_data.account_id
+                                    && app.logged_out_at.is_none()
+                            })
+                            .cloned()
+                    })
+                    .flatten()
+            }
+            _ => None,
         }
     });
     Effect::new(move || {
-        if let Some(app) = connected_app() {
-            if accounts_context.accounts.get().selected_account_id != Some(app.account_id.clone()) {
-                accounts_context.set_accounts.update(|accounts| {
-                    accounts.selected_account_id = Some(app.account_id);
-                });
-            }
+        if let Some(app) = connected_app()
+            && accounts_context.accounts.get().selected_account_id != Some(app.account_id.clone())
+        {
+            accounts_context.set_accounts.update(|accounts| {
+                accounts.selected_account_id = Some(app.account_id);
+            });
         }
     });
 
@@ -765,23 +768,22 @@ pub fn SendTransactions() -> impl IntoView {
         };
 
         // Update app settings if checkboxes are checked
-        if let Some(app) = connected_app() {
-            if let Some(receiver_id) = common_receiver.get() {
-                set_apps.update(|state| {
-                    if let Some(app_to_update) = state.apps.iter_mut().find(|a| {
-                        a.account_id == app.account_id
-                            && a.public_key == app.public_key
-                            && a.logged_out_at.is_none()
-                    }) {
-                        if remember_contract.get() {
-                            app_to_update.autoconfirm_contracts.insert(receiver_id);
-                            if remember_non_financial.get() {
-                                app_to_update.autoconfirm_non_financial = true;
-                            }
-                        }
+        if let Some(app) = connected_app()
+            && let Some(receiver_id) = common_receiver.get()
+        {
+            set_apps.update(|state| {
+                if let Some(app_to_update) = state.apps.iter_mut().find(|a| {
+                    a.account_id == app.account_id
+                        && a.public_key == app.public_key
+                        && a.logged_out_at.is_none()
+                }) && remember_contract.get()
+                {
+                    app_to_update.autoconfirm_contracts.insert(receiver_id);
+                    if remember_non_financial.get() {
+                        app_to_update.autoconfirm_non_financial = true;
                     }
-                });
-            }
+                }
+            });
         }
 
         let deserialized_transactions =

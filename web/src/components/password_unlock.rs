@@ -82,12 +82,15 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
         let password = password_input.get();
         if !password.is_empty() {
             if is_unlocking.get_untracked() {
-                if let Some(abortable) = set_auto_attempt_abortable.write_untracked().take() {
-                    // Abort the previous attempt if password input changed
-                    // while previous attempt still in progress
-                    abortable.abort();
-                } else {
-                    return;
+                match set_auto_attempt_abortable.write_untracked().take() {
+                    Some(abortable) => {
+                        // Abort the previous attempt if password input changed
+                        // while previous attempt still in progress
+                        abortable.abort();
+                    }
+                    _ => {
+                        return;
+                    }
                 }
             }
             set_error(None);

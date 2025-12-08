@@ -1,12 +1,12 @@
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
-    Json, Router,
 };
 use chrono::{DateTime, Utc};
-use rocksdb::{Options, DB};
+use rocksdb::{DB, Options};
 use serde::{Deserialize, Serialize};
 use std::{env, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 use tower_http::cors::CorsLayer;
@@ -78,10 +78,10 @@ impl AppState {
 
         for item in iterator {
             let (key, value) = item?;
-            if let Ok(stored_data) = serde_json::from_slice::<StoredData>(&value) {
-                if stored_data.expires_at <= Utc::now() {
-                    keys_to_delete.push(key.to_vec());
-                }
+            if let Ok(stored_data) = serde_json::from_slice::<StoredData>(&value)
+                && stored_data.expires_at <= Utc::now()
+            {
+                keys_to_delete.push(key.to_vec());
             }
         }
 

@@ -9,9 +9,9 @@ use crate::{
         rpc_context::RpcContext,
     },
     utils::{
-        format_account_id, format_duration, format_token_amount, get_ft_metadata,
-        get_nft_collection_metadata, EventLogData, FtBurnLog, FtMintLog, FtTransferLog, NftBurnLog,
-        NftMintLog, NftTransferLog, RefDclSwapLog, NEP141_EVENT_STANDARD_STRING,
+        EventLogData, FtBurnLog, FtMintLog, FtTransferLog, NEP141_EVENT_STANDARD_STRING,
+        NftBurnLog, NftMintLog, NftTransferLog, RefDclSwapLog, format_account_id, format_duration,
+        format_token_amount, get_ft_metadata, get_nft_collection_metadata,
     },
 };
 use base64::{self, Engine};
@@ -20,11 +20,11 @@ use icondata::{LuArrowRight, LuCalendar, LuClock, LuPackage, LuPackageOpen};
 use leptos::prelude::*;
 use leptos_icons::Icon;
 use near_min_api::{
+    ExperimentalTxDetails, RpcClient,
     types::{
         AccessKeyPermissionView, AccountId, AccountIdRef, ActionView, Balance,
         FinalExecutionOutcomeWithReceiptView, NearToken, ReceiptEnumView,
     },
-    ExperimentalTxDetails, RpcClient,
 };
 use serde::Deserialize;
 
@@ -70,17 +70,18 @@ async fn fetch_transactions() -> Vec<TransactionResponse> {
             }
         }
     };
-    if let Ok(response) = reqwest::get(format!(
+    match reqwest::get(format!(
         "{history_service_addr}/api/transactions/{selected_account_id}"
     ))
     .await
     {
-        response
+        Ok(response) => response
             .json::<Vec<TransactionResponse>>()
             .await
-            .unwrap_or_default()
-    } else {
-        vec![]
+            .unwrap_or_default(),
+        _ => {
+            vec![]
+        }
     }
 }
 
@@ -331,7 +332,7 @@ pub fn History() -> impl IntoView {
 fn display_transaction(
     transaction: &FinalExecutionOutcomeWithReceiptView,
     tx_type: TransactionType,
-) -> impl IntoAny {
+) -> impl IntoAny + use<> {
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let RpcContext { client, .. } = expect_context::<RpcContext>();
     let Some(me) = accounts().selected_account_id else {
@@ -608,70 +609,77 @@ fn add_staking_actions(
             .logs
             .iter()
         {
-            if let Some(log) = log.strip_prefix("@") {
-                if let Some((account_id, rest)) = log.split_once(" ") {
-                    if account_id == me {
-                        if let Some(rest) = rest.strip_prefix("staking ") {
-                            if let Some((amount, _)) = rest.split_once(".") {
-                                if let Ok(amount) = amount.parse::<u128>() {
-                                    actions.push(view! {
-                                        <div class="flex items-center gap-2">
-                                            <Icon
-                                                icon=icondata::LuLock
-                                                width="40"
-                                                height="40"
-                                                attr:class="min-w-[40px] min-h-[40px]"
-                                            />
-                                            <span>Stake {format_token_amount(amount, 24, "NEAR")}</span>
-                                        </div>
-                                    }.into_any());
-                                }
+            if let Some(log) = log.strip_prefix("@")
+                && let Some((account_id, rest)) = log.split_once(" ")
+                && account_id == me
+            {
+                if let Some(rest) = rest.strip_prefix("staking ") {
+                    if let Some((amount, _)) = rest.split_once(".")
+                        && let Ok(amount) = amount.parse::<u128>()
+                    {
+                        actions.push(
+                            view! {
+                                <div class="flex items-center gap-2">
+                                    <Icon
+                                        icon=icondata::LuLock
+                                        width="40"
+                                        height="40"
+                                        attr:class="min-w-[40px] min-h-[40px]"
+                                    />
+                                    <span>Stake {format_token_amount(amount, 24, "NEAR")}</span>
+                                </div>
                             }
-                        } else if let Some(rest) = rest.strip_prefix("unstaking ") {
-                            if let Some((amount, _)) = rest.split_once(".") {
-                                if let Ok(amount) = amount.parse::<u128>() {
-                                    actions.push(view! {
-                                        <div class="flex items-center gap-2">
-                                            <Icon
-                                                icon=icondata::LuLockOpen
-                                                width="40"
-                                                height="40"
-                                                attr:class="min-w-[40px] min-h-[40px]"
-                                            />
-                                            <span>
-                                                Start unstaking {format_token_amount(amount, 24, "NEAR")}
-                                            </span>
-                                        </div>
-                                    }.into_any());
-                                }
-                            }
-                        } else if let Some(rest) = rest.strip_prefix("withdrawing ") {
-                            if let Some((amount, _)) = rest.split_once(".") {
-                                if let Ok(amount) = amount.parse::<u128>() {
-                                    actions.push(view! {
-                                        <div class="flex items-center gap-2">
-                                            <Icon
-                                                icon=icondata::LuDownload
-                                                width="40"
-                                                height="40"
-                                                attr:class="min-w-[40px] min-h-[40px]"
-                                            />
-                                            <span>
-                                                Withdraw {format_token_amount(amount, 24, "NEAR")}
-                                            </span>
-                                        </div>
-                                    }.into_any());
-                                    let withdrawing = actions_config
-                                        .withdrawing_from_staking
-                                        .entry(receipt.receiver_id.clone())
-                                        .or_default();
-                                    *withdrawing = withdrawing
-                                        .checked_add(NearToken::from_yoctonear(amount))
-                                        .unwrap();
-                                }
-                            }
-                        }
+                            .into_any(),
+                        );
                     }
+                } else if let Some(rest) = rest.strip_prefix("unstaking ") {
+                    if let Some((amount, _)) = rest.split_once(".")
+                        && let Ok(amount) = amount.parse::<u128>()
+                    {
+                        actions.push(
+                            view! {
+                                <div class="flex items-center gap-2">
+                                    <Icon
+                                        icon=icondata::LuLockOpen
+                                        width="40"
+                                        height="40"
+                                        attr:class="min-w-[40px] min-h-[40px]"
+                                    />
+                                    <span>
+                                        Start unstaking {format_token_amount(amount, 24, "NEAR")}
+                                    </span>
+                                </div>
+                            }
+                            .into_any(),
+                        );
+                    }
+                } else if let Some(rest) = rest.strip_prefix("withdrawing ")
+                    && let Some((amount, _)) = rest.split_once(".")
+                    && let Ok(amount) = amount.parse::<u128>()
+                {
+                    actions.push(
+                        view! {
+                            <div class="flex items-center gap-2">
+                                <Icon
+                                    icon=icondata::LuDownload
+                                    width="40"
+                                    height="40"
+                                    attr:class="min-w-[40px] min-h-[40px]"
+                                />
+                                <span>
+                                    Withdraw {format_token_amount(amount, 24, "NEAR")}
+                                </span>
+                            </div>
+                        }
+                        .into_any(),
+                    );
+                    let withdrawing = actions_config
+                        .withdrawing_from_staking
+                        .entry(receipt.receiver_id.clone())
+                        .or_default();
+                    *withdrawing = withdrawing
+                        .checked_add(NearToken::from_yoctonear(amount))
+                        .unwrap();
                 }
             }
         }
@@ -692,41 +700,41 @@ fn add_near_actions(
         } = &receipt.receipt
         {
             for action in tx_actions.iter() {
-                if let ActionView::Transfer { deposit } = action {
-                    if !deposit.is_zero() {
-                        if receipt.predecessor_id == me {
-                            actions.push(
-                                view! {
-                                    <div class="flex items-center gap-2">
-                                        <img
-                                            src=format!(
-                                                "data:image/svg+xml;base64,{}",
-                                                base64::prelude::BASE64_STANDARD
-                                                    .encode(include_bytes!("../data/near.svg")),
-                                            )
-                                            width="40"
-                                            height="40"
-                                            class="rounded-full"
-                                        />
-                                        <span>
-                                            Transfer
-                                            {format_token_amount(deposit.as_yoctonear(), 24, "NEAR")}
-                                        </span>
-                                    </div>
-                                }
-                                .into_any(),
-                            );
-                        }
-                        if receipt.receiver_id == me && receipt.predecessor_id != "system" {
-                            if let Some(withdraw_amount) = actions_config
-                                .withdrawing_from_staking
-                                .remove(&receipt.predecessor_id)
-                            {
-                                if withdraw_amount == *deposit {
-                                    continue;
-                                }
+                if let ActionView::Transfer { deposit } = action
+                    && !deposit.is_zero()
+                {
+                    if receipt.predecessor_id == me {
+                        actions.push(
+                            view! {
+                                <div class="flex items-center gap-2">
+                                    <img
+                                        src=format!(
+                                            "data:image/svg+xml;base64,{}",
+                                            base64::prelude::BASE64_STANDARD
+                                                .encode(include_bytes!("../data/near.svg")),
+                                        )
+                                        width="40"
+                                        height="40"
+                                        class="rounded-full"
+                                    />
+                                    <span>
+                                        Transfer
+                                        {format_token_amount(deposit.as_yoctonear(), 24, "NEAR")}
+                                    </span>
+                                </div>
                             }
-                            actions.push(
+                            .into_any(),
+                        );
+                    }
+                    if receipt.receiver_id == me && receipt.predecessor_id != "system" {
+                        if let Some(withdraw_amount) = actions_config
+                            .withdrawing_from_staking
+                            .remove(&receipt.predecessor_id)
+                            && withdraw_amount == *deposit
+                        {
+                            continue;
+                        }
+                        actions.push(
                                 if actions_config
                                     .storage_deposit_to
                                     .contains(&receipt.predecessor_id)
@@ -772,7 +780,6 @@ fn add_near_actions(
                                     .into_any()
                                 },
                             );
-                        }
                     }
                 }
             }
@@ -800,10 +807,11 @@ fn add_storage_actions(
                     deposit,
                     ..
                 } = action
+                    && method_name == "storage_deposit"
+                    && receipt.predecessor_id == me
                 {
-                    if method_name == "storage_deposit" && receipt.predecessor_id == me {
-                        let deposit_amount = *deposit;
-                        actions.push(
+                    let deposit_amount = *deposit;
+                    actions.push(
                             view! {
                                 <div class="flex items-center gap-2">
                                     <img
@@ -829,10 +837,9 @@ fn add_storage_actions(
                             }
                             .into_any(),
                         );
-                        actions_config
-                            .storage_deposit_to
-                            .insert(receipt.receiver_id.clone());
-                    }
+                    actions_config
+                        .storage_deposit_to
+                        .insert(receipt.receiver_id.clone());
                 }
             }
         }
@@ -860,50 +867,47 @@ fn add_wrap_actions(
             .logs
             .iter()
         {
-            if let Some(deposit_details) = log.strip_prefix("Deposit ") {
-                if let Some((amount, receiver)) = deposit_details.split_once(" NEAR to ") {
-                    if let (Ok(amount), Ok(depositor)) =
-                        (amount.parse::<u128>(), receiver.parse::<AccountId>())
-                    {
-                        if depositor == me {
-                            actions.push(
-                                view! {
-                                    <div class="flex items-center gap-2">
-                                        <Icon
-                                            icon=LuPackage
-                                            width="40"
-                                            height="40"
-                                            attr:class="min-w-[40px] min-h-[40px]"
-                                        />
-                                        <span>Wrap {format_token_amount(amount, 24, "NEAR")}</span>
-                                    </div>
-                                }
-                                .into_any(),
-                            );
-                        }
+            if let Some(deposit_details) = log.strip_prefix("Deposit ")
+                && let Some((amount, receiver)) = deposit_details.split_once(" NEAR to ")
+                && let (Ok(amount), Ok(depositor)) =
+                    (amount.parse::<u128>(), receiver.parse::<AccountId>())
+                && depositor == me
+            {
+                actions.push(
+                    view! {
+                        <div class="flex items-center gap-2">
+                            <Icon
+                                icon=LuPackage
+                                width="40"
+                                height="40"
+                                attr:class="min-w-[40px] min-h-[40px]"
+                            />
+                            <span>Wrap {format_token_amount(amount, 24, "NEAR")}</span>
+                        </div>
                     }
-                }
+                    .into_any(),
+                );
             }
-            if let Some(withdraw_details) = log.strip_prefix("Withdraw ") {
-                if let Some((amount, receiver)) = withdraw_details.split_once(" NEAR from ") {
-                    if let (Ok(amount), Ok(withdrawer)) =
-                        (amount.parse::<u128>(), receiver.parse::<AccountId>())
-                    {
-                        if withdrawer == me {
-                            actions.push(view! {
-                                <div class="flex items-center gap-2">
-                                    <Icon
-                                        icon=LuPackageOpen
-                                        width="40"
-                                        height="40"
-                                        attr:class="min-w-[40px] min-h-[40px]"
-                                    />
-                                    <span>Unwrap {format_token_amount(amount, 24, "NEAR")}</span>
-                                </div>
-                            }.into_any());
-                        }
+            if let Some(withdraw_details) = log.strip_prefix("Withdraw ")
+                && let Some((amount, receiver)) = withdraw_details.split_once(" NEAR from ")
+                && let (Ok(amount), Ok(withdrawer)) =
+                    (amount.parse::<u128>(), receiver.parse::<AccountId>())
+                && withdrawer == me
+            {
+                actions.push(
+                    view! {
+                        <div class="flex items-center gap-2">
+                            <Icon
+                                icon=LuPackageOpen
+                                width="40"
+                                height="40"
+                                attr:class="min-w-[40px] min-h-[40px]"
+                            />
+                            <span>Unwrap {format_token_amount(amount, 24, "NEAR")}</span>
+                        </div>
                     }
-                }
+                    .into_any(),
+                );
             }
         }
     }
@@ -930,13 +934,13 @@ fn add_dex_actions(
                 .logs
                 .iter()
             {
-                if let Ok(log) = EventLogData::<RefDclSwapLog>::deserialize(log) {
-                    if log.validate() {
-                        for swap in log.data.iter().cloned() {
-                            if swap.swapper == me {
-                                actions_config.ft_event_format = TokenEventFormat::Short;
-                                swap_exchange_logo = Some("/history-rhea.svg");
-                            }
+                if let Ok(log) = EventLogData::<RefDclSwapLog>::deserialize(log)
+                    && log.validate()
+                {
+                    for swap in log.data.iter().cloned() {
+                        if swap.swapper == me {
+                            actions_config.ft_event_format = TokenEventFormat::Short;
+                            swap_exchange_logo = Some("/history-rhea.svg");
                         }
                     }
                 }
@@ -1730,55 +1734,50 @@ fn add_harvestmoon_actions(
     _rpc_client: RpcClient,
 ) {
     for receipt in transaction.receipts.iter() {
-        if receipt.receiver_id == "aa-harvest-moon.near" && receipt.predecessor_id == me {
-            if let ReceiptEnumView::Action {
+        if receipt.receiver_id == "aa-harvest-moon.near"
+            && receipt.predecessor_id == me
+            && let ReceiptEnumView::Action {
                 actions: tx_actions,
                 ..
             } = &receipt.receipt
-            {
-                for action in tx_actions.iter() {
-                    if let ActionView::FunctionCall {
-                        method_name, args, ..
-                    } = action
-                    {
-                        if method_name == "recruit_tinkers" {
-                            #[derive(Debug, Deserialize)]
-                            struct Args {
-                                // 0: basic, 1: advanced, 2: expert
-                                union_contract_id: u8,
-                                count: usize,
-                            }
-                            if let Ok(args) = serde_json::from_slice::<Args>(args) {
-                                let mut tinkers = HashMap::new();
-                                for log in transaction
-                                    .final_outcome
-                                    .receipts_outcome
-                                    .iter()
-                                    .find(|r| r.id == receipt.receipt_id)
-                                    .expect("receipt outcome not found")
-                                    .outcome
-                                    .logs
-                                    .iter()
+        {
+            for action in tx_actions.iter() {
+                if let ActionView::FunctionCall {
+                    method_name, args, ..
+                } = action
+                {
+                    if method_name == "recruit_tinkers" {
+                        #[derive(Debug, Deserialize)]
+                        struct Args {
+                            // 0: basic, 1: advanced, 2: expert
+                            union_contract_id: u8,
+                            count: usize,
+                        }
+                        if let Ok(args) = serde_json::from_slice::<Args>(args) {
+                            let mut tinkers = HashMap::new();
+                            for log in transaction
+                                .final_outcome
+                                .receipts_outcome
+                                .iter()
+                                .find(|r| r.id == receipt.receipt_id)
+                                .expect("receipt outcome not found")
+                                .outcome
+                                .logs
+                                .iter()
+                            {
+                                if let Some(tinker_info) = log.strip_prefix("Added ")
+                                    && let Some((count, rest)) =
+                                        tinker_info.split_once(" count of tinker_id ")
+                                    && let Some((tinker_id, _)) =
+                                        rest.split_once(" to space tinker count for account ")
+                                    && let (Ok(count), Ok(tinker_id)) =
+                                        (count.parse::<usize>(), tinker_id.parse::<u8>())
                                 {
-                                    if let Some(tinker_info) = log.strip_prefix("Added ") {
-                                        if let Some((count, rest)) =
-                                            tinker_info.split_once(" count of tinker_id ")
-                                        {
-                                            if let Some((tinker_id, _)) = rest
-                                                .split_once(" to space tinker count for account ")
-                                            {
-                                                if let (Ok(count), Ok(tinker_id)) = (
-                                                    count.parse::<usize>(),
-                                                    tinker_id.parse::<u8>(),
-                                                ) {
-                                                    // 1 = intern, 2 = researcher, 3 = scientist, 4 = genius, 5 = brain
-                                                    *tinkers.entry(tinker_id).or_insert(0) += count;
-                                                }
-                                            }
-                                        }
-                                    }
+                                    // 1 = intern, 2 = researcher, 3 = scientist, 4 = genius, 5 = brain
+                                    *tinkers.entry(tinker_id).or_insert(0) += count;
                                 }
-                                actions.push(view! {
+                            }
+                            actions.push(view! {
                                     <div class="flex flex-col gap-2">
                                         <div class="flex items-center gap-2">
                                             <img
@@ -1836,25 +1835,24 @@ fn add_harvestmoon_actions(
                                         }}
                                     </div>
                                 }.into_any());
+                        }
+                    }
+                    if method_name == "harvest" {
+                        actions.push(
+                            view! {
+                                <div class="flex items-center gap-2">
+                                    <img
+                                        src="/history-harvest.png"
+                                        width="40"
+                                        height="40"
+                                        style="animation: none !important;"
+                                    />
+                                    <span>Harvest</span>
+                                </div>
                             }
-                        }
-                        if method_name == "harvest" {
-                            actions.push(
-                                view! {
-                                    <div class="flex items-center gap-2">
-                                        <img
-                                            src="/history-harvest.png"
-                                            width="40"
-                                            height="40"
-                                            style="animation: none !important;"
-                                        />
-                                        <span>Harvest</span>
-                                    </div>
-                                }
-                                .into_any(),
-                            );
-                            actions_config.ft_event_format = TokenEventFormat::Short;
-                        }
+                            .into_any(),
+                        );
+                        actions_config.ft_event_format = TokenEventFormat::Short;
                     }
                 }
             }
@@ -1879,52 +1877,52 @@ fn add_lnc_actions(
         } = &receipt.receipt
         {
             for action in tx_actions.iter() {
-                if let ActionView::FunctionCall { method_name, .. } = action {
-                    if method_name == "n_learns_notification_event" {
-                        for log in transaction
-                            .final_outcome
-                            .receipts_outcome
-                            .iter()
-                            .find(|r| r.id == receipt.receipt_id)
-                            .expect("receipt outcome not found")
-                            .outcome
-                            .logs
-                            .iter()
-                        {
-                            let num = log
-                                .chars()
-                                .rev()
-                                .take_while(|c| c.is_ascii_digit())
-                                .collect::<String>();
-                            let nlearns = num.parse::<Balance>().unwrap_or_default();
-                            let nlearns = if let Some(rest) = log.strip_suffix(&num) {
-                                if rest.ends_with('-') {
-                                    format!("-{nlearns}")
-                                } else {
-                                    format!("+{nlearns}")
-                                }
+                if let ActionView::FunctionCall { method_name, .. } = action
+                    && method_name == "n_learns_notification_event"
+                {
+                    for log in transaction
+                        .final_outcome
+                        .receipts_outcome
+                        .iter()
+                        .find(|r| r.id == receipt.receipt_id)
+                        .expect("receipt outcome not found")
+                        .outcome
+                        .logs
+                        .iter()
+                    {
+                        let num = log
+                            .chars()
+                            .rev()
+                            .take_while(|c| c.is_ascii_digit())
+                            .collect::<String>();
+                        let nlearns = num.parse::<Balance>().unwrap_or_default();
+                        let nlearns = if let Some(rest) = log.strip_suffix(&num) {
+                            if rest.ends_with('-') {
+                                format!("-{nlearns}")
                             } else {
                                 format!("+{nlearns}")
-                            };
-                            let log = log.trim_end_matches(&num).trim_end_matches('-').to_owned();
-                            actions.push(
-                                view! {
-                                    <div class="flex items-center gap-2">
-                                        <img
-                                            src="/history-lnc.png"
-                                            width="40"
-                                            height="40"
-                                            class="rounded-full"
-                                        />
-                                        <div class="flex flex-col gap-1">
-                                            <span>{nlearns}" nL"</span>
-                                            <span class="text-xs">{log}</span>
-                                        </div>
+                            }
+                        } else {
+                            format!("+{nlearns}")
+                        };
+                        let log = log.trim_end_matches(&num).trim_end_matches('-').to_owned();
+                        actions.push(
+                            view! {
+                                <div class="flex items-center gap-2">
+                                    <img
+                                        src="/history-lnc.png"
+                                        width="40"
+                                        height="40"
+                                        class="rounded-full"
+                                    />
+                                    <div class="flex flex-col gap-1">
+                                        <span>{nlearns}" nL"</span>
+                                        <span class="text-xs">{log}</span>
                                     </div>
-                                }
-                                .into_any(),
-                            );
-                        }
+                                </div>
+                            }
+                            .into_any(),
+                        );
                     }
                 }
             }

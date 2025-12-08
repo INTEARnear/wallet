@@ -10,8 +10,9 @@ use crate::{
     },
     pages::nfts::{fetch_nft_metadata, fetch_nft_token},
     utils::{
-        format_token_amount, format_token_amount_full_precision, format_token_amount_no_hide,
-        format_usd_value_no_hide, generate_qr_code, get_ft_metadata, proxify_url, Resolution,
+        Resolution, format_token_amount, format_token_amount_full_precision,
+        format_token_amount_no_hide, format_usd_value_no_hide, generate_qr_code, get_ft_metadata,
+        proxify_url,
     },
 };
 use bigdecimal::{BigDecimal, Zero};
@@ -19,11 +20,11 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_icons::Icon;
 use near_min_api::{
-    types::{
-        near_crypto::{KeyType, PublicKey, SecretKey},
-        AccountId, Action as NearAction, Balance, Finality, FunctionCallAction, NearGas, NearToken,
-    },
     QueryFinality, RpcClient,
+    types::{
+        AccountId, Action as NearAction, Balance, Finality, FunctionCallAction, NearGas, NearToken,
+        near_crypto::{KeyType, PublicKey, SecretKey},
+    },
 };
 
 use crate::{

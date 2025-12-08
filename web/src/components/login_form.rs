@@ -4,20 +4,20 @@ use futures_timer::Delay;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_use::{use_event_listener, use_window};
-use near_min_api::types::Finality;
-use near_min_api::types::{near_crypto::SecretKey, AccountId};
 use near_min_api::QueryFinality;
+use near_min_api::types::Finality;
+use near_min_api::types::{AccountId, near_crypto::SecretKey};
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen;
 
 use crate::components::account_selector::{
-    seed_phrase_to_key, AccountCreateParent, AccountCreateRecoveryMethod, LoginMethod, ModalState,
+    AccountCreateParent, AccountCreateRecoveryMethod, LoginMethod, ModalState, seed_phrase_to_key,
 };
 use crate::components::derivation_path_input::DerivationPathInput;
 use crate::components::seed_phrase_input::SeedPhraseInput;
 use crate::contexts::account_selector_context::AccountSelectorContext;
 use crate::contexts::accounts_context::{
-    format_ledger_error, Account, AccountsContext, SecretKeyHolder,
+    Account, AccountsContext, SecretKeyHolder, format_ledger_error,
 };
 use crate::contexts::network_context::Network;
 use crate::contexts::security_log_context::add_security_log;
@@ -56,28 +56,27 @@ async fn find_accounts_by_public_key(
         (Network::Testnet, "https://test.api.fastnear.com"),
     ] {
         let url = format!("{api_url}/v0/public_key/{public_key}");
-        if let Ok(response) = reqwest::get(url).await {
-            if let Ok(data) = response.json::<serde_json::Value>().await {
-                if let Some(account_ids) = data.get("account_ids").and_then(|ids| ids.as_array()) {
-                    let accounts: Vec<(AccountId, Network)> = account_ids
+        if let Ok(response) = reqwest::get(url).await
+            && let Ok(data) = response.json::<serde_json::Value>().await
+            && let Some(account_ids) = data.get("account_ids").and_then(|ids| ids.as_array())
+        {
+            let accounts: Vec<(AccountId, Network)> = account_ids
+                .iter()
+                .filter_map(|id| {
+                    id.as_str()
+                        .and_then(|s| s.parse::<AccountId>().ok())
+                        .map(|id| (id, network.clone()))
+                })
+                .filter(|(id, _)| {
+                    !accounts_context
+                        .accounts
+                        .get_untracked()
+                        .accounts
                         .iter()
-                        .filter_map(|id| {
-                            id.as_str()
-                                .and_then(|s| s.parse::<AccountId>().ok())
-                                .map(|id| (id, network.clone()))
-                        })
-                        .filter(|(id, _)| {
-                            !accounts_context
-                                .accounts
-                                .get_untracked()
-                                .accounts
-                                .iter()
-                                .any(|a| a.account_id == *id)
-                        })
-                        .collect();
-                    all_accounts.extend(accounts);
-                }
-            }
+                        .any(|a| a.account_id == *id)
+                })
+                .collect();
+            all_accounts.extend(accounts);
         }
     }
 
@@ -151,35 +150,30 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                     (Network::Mainnet, "https://events-v3.intear.tech"),
                                     (Network::Testnet, "https://events-v3-testnet.intear.tech"),
                                 ] {
-                                    let url = format!("{}/v3/log_nep297/users_by_ethereum_address?ethereum_address={}", api_base, address.to_string().to_lowercase());
+                                    let url = format!(
+                                        "{}/v3/log_nep297/users_by_ethereum_address?ethereum_address={}",
+                                        api_base,
+                                        address.to_string().to_lowercase()
+                                    );
 
-                                    if let Ok(response) = reqwest::get(&url).await {
-                                        if let Ok(data) = response.json::<serde_json::Value>().await
-                                        {
-                                            if let Some(users) = data.as_array() {
-                                                for user in users {
-                                                    if let Some(near_account_id) = user
-                                                        .get("near_account_id")
-                                                        .and_then(|id| id.as_str())
-                                                    {
-                                                        if let Ok(account_id) =
-                                                            near_account_id.parse::<AccountId>()
-                                                        {
-                                                            if !accounts_context
-                                                                .accounts
-                                                                .get_untracked()
-                                                                .accounts
-                                                                .iter()
-                                                                .any(|a| a.account_id == account_id)
-                                                            {
-                                                                all_accounts.push((
-                                                                    account_id,
-                                                                    network.clone(),
-                                                                ));
-                                                            }
-                                                        }
-                                                    }
-                                                }
+                                    if let Ok(response) = reqwest::get(&url).await
+                                        && let Ok(data) = response.json::<serde_json::Value>().await
+                                        && let Some(users) = data.as_array()
+                                    {
+                                        for user in users {
+                                            if let Some(near_account_id) = user
+                                                .get("near_account_id")
+                                                .and_then(|id| id.as_str())
+                                                && let Ok(account_id) =
+                                                    near_account_id.parse::<AccountId>()
+                                                && !accounts_context
+                                                    .accounts
+                                                    .get_untracked()
+                                                    .accounts
+                                                    .iter()
+                                                    .any(|a| a.account_id == account_id)
+                                            {
+                                                all_accounts.push((account_id, network.clone()));
                                             }
                                         }
                                     }
@@ -288,21 +282,21 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                     .await
                                 {
                                     Ok(resp) => {
-                                        if let Ok(response_data) =
-                                            resp.json::<RecoverAccountResponse>().await
-                                        {
-                                            if response_data.success {
-                                                // Wait for the key to be added
-                                                let rpc_client = network.default_rpc_client();
-                                                let mut attempts = 0;
-                                                const MAX_ATTEMPTS: usize = 30;
+                                        match resp.json::<RecoverAccountResponse>().await {
+                                            Ok(response_data) => {
+                                                if response_data.success {
+                                                    // Wait for the key to be added
+                                                    let rpc_client = network.default_rpc_client();
+                                                    let mut attempts = 0;
+                                                    const MAX_ATTEMPTS: usize = 30;
 
-                                                while attempts < MAX_ATTEMPTS {
-                                                    if attempts > 0 {
-                                                        Delay::new(Duration::from_secs(1)).await;
-                                                    }
+                                                    while attempts < MAX_ATTEMPTS {
+                                                        if attempts > 0 {
+                                                            Delay::new(Duration::from_secs(1))
+                                                                .await;
+                                                        }
 
-                                                    match rpc_client
+                                                        match rpc_client
                                                         .get_access_key(
                                                             account_id.clone(),
                                                             public_key.clone(),
@@ -341,19 +335,21 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                             }
                                                         }
                                                     }
+                                                    }
+                                                } else {
+                                                    set_error.set(Some(format!(
+                                                        "Recovery failed: {}",
+                                                        response_data.message
+                                                    )));
+                                                    set_import_in_progress(false);
                                                 }
-                                            } else {
-                                                set_error.set(Some(format!(
-                                                    "Recovery failed: {}",
-                                                    response_data.message
-                                                )));
+                                            }
+                                            _ => {
+                                                set_error.set(Some(
+                                                    "Failed to parse recovery response".to_string(),
+                                                ));
                                                 set_import_in_progress(false);
                                             }
-                                        } else {
-                                            set_error.set(Some(
-                                                "Failed to parse recovery response".to_string(),
-                                            ));
-                                            set_import_in_progress(false);
                                         }
                                     }
                                     Err(e) => {
@@ -380,35 +376,29 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                     (Network::Mainnet, "https://events-v3.intear.tech"),
                                     (Network::Testnet, "https://events-v3-testnet.intear.tech"),
                                 ] {
-                                    let url = format!("{}/v3/log_nep297/users_by_solana_address?solana_address={}", api_base, address);
+                                    let url = format!(
+                                        "{}/v3/log_nep297/users_by_solana_address?solana_address={}",
+                                        api_base, address
+                                    );
 
-                                    if let Ok(response) = reqwest::get(&url).await {
-                                        if let Ok(data) = response.json::<serde_json::Value>().await
-                                        {
-                                            if let Some(users) = data.as_array() {
-                                                for user in users {
-                                                    if let Some(near_account_id) = user
-                                                        .get("near_account_id")
-                                                        .and_then(|id| id.as_str())
-                                                    {
-                                                        if let Ok(account_id) =
-                                                            near_account_id.parse::<AccountId>()
-                                                        {
-                                                            if !accounts_context
-                                                                .accounts
-                                                                .get_untracked()
-                                                                .accounts
-                                                                .iter()
-                                                                .any(|a| a.account_id == account_id)
-                                                            {
-                                                                all_accounts.push((
-                                                                    account_id,
-                                                                    network.clone(),
-                                                                ));
-                                                            }
-                                                        }
-                                                    }
-                                                }
+                                    if let Ok(response) = reqwest::get(&url).await
+                                        && let Ok(data) = response.json::<serde_json::Value>().await
+                                        && let Some(users) = data.as_array()
+                                    {
+                                        for user in users {
+                                            if let Some(near_account_id) = user
+                                                .get("near_account_id")
+                                                .and_then(|id| id.as_str())
+                                                && let Ok(account_id) =
+                                                    near_account_id.parse::<AccountId>()
+                                                && !accounts_context
+                                                    .accounts
+                                                    .get_untracked()
+                                                    .accounts
+                                                    .iter()
+                                                    .any(|a| a.account_id == account_id)
+                                            {
+                                                all_accounts.push((account_id, network.clone()));
                                             }
                                         }
                                     }
@@ -516,25 +506,25 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                     .await
                                 {
                                     Ok(resp) => {
-                                        if let Ok(response_data) =
-                                            resp.json::<serde_json::Value>().await
-                                        {
-                                            if response_data
-                                                .get("success")
-                                                .and_then(|s| s.as_bool())
-                                                .unwrap_or(false)
-                                            {
-                                                // Wait for the key to be added
-                                                let rpc_client = network.default_rpc_client();
-                                                let mut attempts = 0;
-                                                const MAX_ATTEMPTS: usize = 30;
+                                        match resp.json::<serde_json::Value>().await {
+                                            Ok(response_data) => {
+                                                if response_data
+                                                    .get("success")
+                                                    .and_then(|s| s.as_bool())
+                                                    .unwrap_or(false)
+                                                {
+                                                    // Wait for the key to be added
+                                                    let rpc_client = network.default_rpc_client();
+                                                    let mut attempts = 0;
+                                                    const MAX_ATTEMPTS: usize = 30;
 
-                                                while attempts < MAX_ATTEMPTS {
-                                                    if attempts > 0 {
-                                                        Delay::new(Duration::from_secs(1)).await;
-                                                    }
+                                                    while attempts < MAX_ATTEMPTS {
+                                                        if attempts > 0 {
+                                                            Delay::new(Duration::from_secs(1))
+                                                                .await;
+                                                        }
 
-                                                    match rpc_client
+                                                        match rpc_client
                                                         .get_access_key(
                                                             account_id.clone(),
                                                             public_key.clone(),
@@ -573,23 +563,25 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                             }
                                                         }
                                                     }
+                                                    }
+                                                } else {
+                                                    let message = response_data
+                                                        .get("message")
+                                                        .and_then(|m| m.as_str())
+                                                        .unwrap_or("Recovery failed");
+                                                    set_error.set(Some(format!(
+                                                        "Recovery failed: {}",
+                                                        message
+                                                    )));
+                                                    set_import_in_progress(false);
                                                 }
-                                            } else {
-                                                let message = response_data
-                                                    .get("message")
-                                                    .and_then(|m| m.as_str())
-                                                    .unwrap_or("Recovery failed");
-                                                set_error.set(Some(format!(
-                                                    "Recovery failed: {}",
-                                                    message
-                                                )));
+                                            }
+                                            _ => {
+                                                set_error.set(Some(
+                                                    "Failed to parse recovery response".to_string(),
+                                                ));
                                                 set_import_in_progress(false);
                                             }
-                                        } else {
-                                            set_error.set(Some(
-                                                "Failed to parse recovery response".to_string(),
-                                            ));
-                                            set_import_in_progress(false);
                                         }
                                     }
                                     Err(e) => {
@@ -780,18 +772,21 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
         set_ethereum_connection_in_progress(true);
         let request = JsWalletRequest::RequestEthereumWalletConnection;
 
-        if let Ok(js_value) = serde_wasm_bindgen::to_value(&request) {
-            let origin = window()
-                .location()
-                .origin()
-                .unwrap_or_else(|_| "*".to_string());
-            if window().post_message(&js_value, &origin).is_err() {
-                log::error!("Failed to send Ethereum connection request");
+        match serde_wasm_bindgen::to_value(&request) {
+            Ok(js_value) => {
+                let origin = window()
+                    .location()
+                    .origin()
+                    .unwrap_or_else(|_| "*".to_string());
+                if window().post_message(&js_value, &origin).is_err() {
+                    log::error!("Failed to send Ethereum connection request");
+                    set_ethereum_connection_in_progress(false);
+                }
+            }
+            _ => {
+                log::error!("Failed to serialize Ethereum connection request");
                 set_ethereum_connection_in_progress(false);
             }
-        } else {
-            log::error!("Failed to serialize Ethereum connection request");
-            set_ethereum_connection_in_progress(false);
         }
     };
 
@@ -803,18 +798,21 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
         set_solana_connection_in_progress(true);
         let request = JsWalletRequest::RequestSolanaWalletConnection;
 
-        if let Ok(js_value) = serde_wasm_bindgen::to_value(&request) {
-            let origin = window()
-                .location()
-                .origin()
-                .unwrap_or_else(|_| "*".to_string());
-            if window().post_message(&js_value, &origin).is_err() {
-                log::error!("Failed to send Solana connection request");
+        match serde_wasm_bindgen::to_value(&request) {
+            Ok(js_value) => {
+                let origin = window()
+                    .location()
+                    .origin()
+                    .unwrap_or_else(|_| "*".to_string());
+                if window().post_message(&js_value, &origin).is_err() {
+                    log::error!("Failed to send Solana connection request");
+                    set_solana_connection_in_progress(false);
+                }
+            }
+            _ => {
+                log::error!("Failed to serialize Solana connection request");
                 set_solana_connection_in_progress(false);
             }
-        } else {
-            log::error!("Failed to serialize Solana connection request");
-            set_solana_connection_in_progress(false);
         }
     };
 
@@ -827,19 +825,22 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
 
         let request = JsWalletRequest::LedgerConnect;
 
-        if let Ok(js_value) = serde_wasm_bindgen::to_value(&request) {
-            let origin = window()
-                .location()
-                .origin()
-                .unwrap_or_else(|_| "*".to_string());
+        match serde_wasm_bindgen::to_value(&request) {
+            Ok(js_value) => {
+                let origin = window()
+                    .location()
+                    .origin()
+                    .unwrap_or_else(|_| "*".to_string());
 
-            if window().post_message(&js_value, &origin).is_err() {
-                log::error!("Failed to send Ledger connection request");
+                if window().post_message(&js_value, &origin).is_err() {
+                    log::error!("Failed to send Ledger connection request");
+                    set_ledger_connection_in_progress(false);
+                }
+            }
+            _ => {
+                log::error!("Failed to serialize Ledger connection request");
                 set_ledger_connection_in_progress(false);
             }
-        } else {
-            log::error!("Failed to serialize Ledger connection request");
-            set_ledger_connection_in_progress(false);
         }
     };
 
@@ -1545,9 +1546,9 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                                 let request = JsWalletRequest::RequestEthereumWalletSignature {
                                                                                     message_to_sign: message,
                                                                                 };
-                                                                                if let Ok(js_value) = serde_wasm_bindgen::to_value(
+                                                                                match serde_wasm_bindgen::to_value(
                                                                                     &request,
-                                                                                ) {
+                                                                                ) { Ok(js_value) => {
                                                                                     let origin = window()
                                                                                         .location()
                                                                                         .origin()
@@ -1557,11 +1558,11 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                                         set_error
                                                                                             .set(Some("Failed to request signature".to_string()));
                                                                                     }
-                                                                                } else {
+                                                                                } _ => {
                                                                                     log::error!("Failed to serialize signature request");
                                                                                     set_error
                                                                                         .set(Some("Failed to request signature".to_string()));
-                                                                                }
+                                                                                }}
                                                                             } else {
                                                                                 set_error
                                                                                     .set(
@@ -1784,9 +1785,9 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                                 let request = JsWalletRequest::RequestSolanaWalletSignature {
                                                                                     message_to_sign: message,
                                                                                 };
-                                                                                if let Ok(js_value) = serde_wasm_bindgen::to_value(
+                                                                                match serde_wasm_bindgen::to_value(
                                                                                     &request,
-                                                                                ) {
+                                                                                ) { Ok(js_value) => {
                                                                                     let origin = window()
                                                                                         .location()
                                                                                         .origin()
@@ -1796,11 +1797,11 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                                         set_error
                                                                                             .set(Some("Failed to request signature".to_string()));
                                                                                     }
-                                                                                } else {
+                                                                                } _ => {
                                                                                     log::error!("Failed to serialize signature request");
                                                                                     set_error
                                                                                         .set(Some("Failed to request signature".to_string()));
-                                                                                }
+                                                                                }}
                                                                             } else {
                                                                                 set_error
                                                                                     .set(
@@ -1902,9 +1903,9 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                 let request = JsWalletRequest::LedgerGetPublicKey {
                                                                     path,
                                                                 };
-                                                                if let Ok(js_value) = serde_wasm_bindgen::to_value(
+                                                                match serde_wasm_bindgen::to_value(
                                                                     &request,
-                                                                ) {
+                                                                ) { Ok(js_value) => {
                                                                     let origin = window()
                                                                         .location()
                                                                         .origin()
@@ -1913,12 +1914,12 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                         log::error!("Failed to send Ledger public key request");
                                                                         set_ledger_getting_public_key(false);
                                                                     }
-                                                                } else {
+                                                                } _ => {
                                                                     log::error!(
                                                                         "Failed to serialize Ledger public key request"
                                                                     );
                                                                     set_ledger_getting_public_key(false);
-                                                                }
+                                                                }}
                                                             }
                                                         >
                                                             <span class="relative flex items-center justify-center gap-2">

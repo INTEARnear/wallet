@@ -1,7 +1,7 @@
 use std::{str::FromStr, time::Duration};
 
 use crate::components::account_selector::{
-    mnemonic_to_key, AccountCreateParent, AccountCreateRecoveryMethod, ModalState,
+    AccountCreateParent, AccountCreateRecoveryMethod, ModalState, mnemonic_to_key,
 };
 use crate::components::danger_confirm_input::DangerConfirmInput;
 use crate::components::derivation_path_input::DerivationPathInput;
@@ -21,15 +21,15 @@ use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_router::hooks::use_navigate;
 use leptos_use::{use_event_listener, use_window};
-use near_min_api::types::near_crypto::PublicKey;
 use near_min_api::types::AccountId;
+use near_min_api::types::near_crypto::PublicKey;
 use near_min_api::{
+    QueryFinality,
     types::{
         AccessKey, AccessKeyPermission, AccessKeyPermissionView, Action, AddKeyAction, CryptoHash,
         DeleteKeyAction, Finality, FunctionCallAction, GlobalContractIdentifier, NearGas,
         NearToken, UseGlobalContractAction,
     },
-    QueryFinality,
 };
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_wasm_bindgen;
@@ -501,20 +501,24 @@ pub fn AccountSettings() -> impl IntoView {
         set_ledger_connection_in_progress(true);
         set_ledger_error.set(None);
         let request = JsWalletRequest::LedgerConnect;
-        if let Ok(js_value) = serde_wasm_bindgen::to_value(&request) {
-            let origin = window()
-                .location()
-                .origin()
-                .unwrap_or_else(|_| "*".to_string());
-            if window().post_message(&js_value, &origin).is_err() {
-                set_ledger_error.set(Some("Failed to send Ledger connection request".to_string()));
+        match serde_wasm_bindgen::to_value(&request) {
+            Ok(js_value) => {
+                let origin = window()
+                    .location()
+                    .origin()
+                    .unwrap_or_else(|_| "*".to_string());
+                if window().post_message(&js_value, &origin).is_err() {
+                    set_ledger_error
+                        .set(Some("Failed to send Ledger connection request".to_string()));
+                    set_ledger_connection_in_progress(false);
+                }
+            }
+            _ => {
+                set_ledger_error.set(Some(
+                    "Failed to serialize Ledger connection request".to_string(),
+                ));
                 set_ledger_connection_in_progress(false);
             }
-        } else {
-            set_ledger_error.set(Some(
-                "Failed to serialize Ledger connection request".to_string(),
-            ));
-            set_ledger_connection_in_progress(false);
         }
     };
 
@@ -546,12 +550,11 @@ pub fn AccountSettings() -> impl IntoView {
     let copy_seed = move |_| {
         if let Some(account) = accounts_context.accounts.get().accounts.iter().find(|acc| {
             acc.account_id == accounts_context.accounts.get().selected_account_id.unwrap()
-        }) {
-            if let Some(seed_phrase) = &account.seed_phrase {
-                let _ = window().navigator().clipboard().write_text(seed_phrase);
-                set_copied_seed(true);
-                set_timeout(move || set_copied_seed(false), Duration::from_millis(2000));
-            }
+        }) && let Some(seed_phrase) = &account.seed_phrase
+        {
+            let _ = window().navigator().clipboard().write_text(seed_phrase);
+            set_copied_seed(true);
+            set_timeout(move || set_copied_seed(false), Duration::from_millis(2000));
         }
     };
     let copy_key = move |_| {
@@ -583,31 +586,34 @@ pub fn AccountSettings() -> impl IntoView {
                 // and will be fixed once the accounts are loaded
                 return Err("".to_string());
             };
-            if let Ok(account) = rpc_client
+            match rpc_client
                 .view_account(selected_account_id, QueryFinality::Finality(Finality::None))
                 .await
             {
-                if account.code_hash != Default::default() {
-                    return Err(
-                        "Your wallet is a smart contract, no additional features are available"
-                            .to_string(),
-                    );
-                }
-                if let Some(global_contract_hash) = account.global_contract_hash {
-                    if let Some(version) = SMART_WALLET_VERSIONS
-                        .iter()
-                        .find(|(hash, _, _)| *hash == global_contract_hash)
-                    {
-                        Ok(Some(version))
-                    } else {
-                        Err("Your wallet is a global smart contract, no additional features are available".to_string())
+                Ok(account) => {
+                    if account.code_hash != Default::default() {
+                        return Err(
+                            "Your wallet is a smart contract, no additional features are available"
+                                .to_string(),
+                        );
                     }
-                } else {
-                    Ok(None)
+                    if let Some(global_contract_hash) = account.global_contract_hash {
+                        if let Some(version) = SMART_WALLET_VERSIONS
+                            .iter()
+                            .find(|(hash, _, _)| *hash == global_contract_hash)
+                        {
+                            Ok(Some(version))
+                        } else {
+                            Err("Your wallet is a global smart contract, no additional features are available".to_string())
+                        }
+                    } else {
+                        Ok(None)
+                    }
                 }
-            } else {
-                log::error!("Failed to fetch account");
-                Err("Failed to fetch account".to_string())
+                _ => {
+                    log::error!("Failed to fetch account");
+                    Err("Failed to fetch account".to_string())
+                }
             }
         }
     });
@@ -976,7 +982,7 @@ pub fn AccountSettings() -> impl IntoView {
 
             let intents_transactions = match network.get() {
                 Network::Mainnet => {
-                    if let Ok(keys) = rpc_client
+                    match rpc_client
                         .call::<Vec<PublicKey>>(
                             "intents.near".parse().unwrap(),
                             "public_keys_of",
@@ -987,33 +993,34 @@ pub fn AccountSettings() -> impl IntoView {
                         )
                         .await
                     {
-                        // If the user has more than 30 keys, we need to split the actions into
-                        // chunks of 30 because of 300 TGas per-transaction limit
-                        if !keys.is_empty() {
-                            let actions: Vec<Vec<Action>> = keys
-                                .into_iter()
-                                .map(|key| {
-                                    Action::FunctionCall(Box::new(FunctionCallAction {
-                                        method_name: "remove_public_key".to_string(),
-                                        args: serde_json::json!({
-                                            "public_key": key,
-                                        })
-                                        .to_string()
-                                        .into_bytes(),
-                                        gas: NearGas::from_tgas(10).as_gas(),
-                                        deposit: NearToken::from_yoctonear(1),
-                                    }))
-                                })
-                                .collect::<Vec<_>>()
-                                .chunks(30)
-                                .map(|chunk| chunk.to_vec())
-                                .collect();
-                            Some(actions)
-                        } else {
-                            None
+                        Ok(keys) => {
+                            // If the user has more than 30 keys, we need to split the actions into
+                            // chunks of 30 because of 300 TGas per-transaction limit
+                            if !keys.is_empty() {
+                                let actions: Vec<Vec<Action>> = keys
+                                    .into_iter()
+                                    .map(|key| {
+                                        Action::FunctionCall(Box::new(FunctionCallAction {
+                                            method_name: "remove_public_key".to_string(),
+                                            args: serde_json::json!({
+                                                "public_key": key,
+                                            })
+                                            .to_string()
+                                            .into_bytes(),
+                                            gas: NearGas::from_tgas(10).as_gas(),
+                                            deposit: NearToken::from_yoctonear(1),
+                                        }))
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .chunks(30)
+                                    .map(|chunk| chunk.to_vec())
+                                    .collect();
+                                Some(actions)
+                            } else {
+                                None
+                            }
                         }
-                    } else {
-                        None
+                        _ => None,
                     }
                 }
                 Network::Testnet => None,
@@ -1115,10 +1122,10 @@ pub fn AccountSettings() -> impl IntoView {
 
     let is_ledger_account = move || {
         let accs = accounts_context.accounts.get();
-        if let Some(selected_id) = &accs.selected_account_id {
-            if let Some(account) = accs.accounts.iter().find(|a| &a.account_id == selected_id) {
-                return matches!(account.secret_key, SecretKeyHolder::Ledger { .. });
-            }
+        if let Some(selected_id) = &accs.selected_account_id
+            && let Some(account) = accs.accounts.iter().find(|a| &a.account_id == selected_id)
+        {
+            return matches!(account.secret_key, SecretKeyHolder::Ledger { .. });
         }
         false
     };
@@ -1524,9 +1531,9 @@ pub fn AccountSettings() -> impl IntoView {
                                                 let request = JsWalletRequest::LedgerGetPublicKey {
                                                     path,
                                                 };
-                                                if let Ok(js_value) = serde_wasm_bindgen::to_value(
+                                                match serde_wasm_bindgen::to_value(
                                                     &request,
-                                                ) {
+                                                ) { Ok(js_value) => {
                                                     let origin = window()
                                                         .location()
                                                         .origin()
@@ -1538,7 +1545,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                             );
                                                         set_ledger_getting_public_key(false);
                                                     }
-                                                } else {
+                                                } _ => {
                                                     set_ledger_error
                                                         .set(
                                                             Some(
@@ -1546,7 +1553,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                             ),
                                                         );
                                                     set_ledger_getting_public_key(false);
-                                                }
+                                                }}
                                             }
                                             class="w-full flex items-center justify-center gap-2 p-4 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 transition-colors font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                             disabled=move || ledger_getting_public_key.get()
@@ -2045,9 +2052,9 @@ pub fn AccountSettings() -> impl IntoView {
                                                                     let request = JsWalletRequest::RequestEthereumWalletSignature {
                                                                         message_to_sign: message,
                                                                     };
-                                                                    if let Ok(js_value) = serde_wasm_bindgen::to_value(
+                                                                    match serde_wasm_bindgen::to_value(
                                                                         &request,
-                                                                    ) {
+                                                                    ) { Ok(js_value) => {
                                                                         let origin = window()
                                                                             .location()
                                                                             .origin()
@@ -2056,10 +2063,10 @@ pub fn AccountSettings() -> impl IntoView {
                                                                             log::error!("Failed to send signature request");
                                                                             set_recovery_change_in_progress(false);
                                                                         }
-                                                                    } else {
+                                                                    } _ => {
                                                                         log::error!("Failed to serialize signature request");
                                                                         set_recovery_change_in_progress(false);
-                                                                    }
+                                                                    }}
                                                                 }
                                                             }
                                                         }
@@ -2251,9 +2258,9 @@ pub fn AccountSettings() -> impl IntoView {
                                                                     let request = JsWalletRequest::RequestSolanaWalletSignature {
                                                                         message_to_sign: message,
                                                                     };
-                                                                    if let Ok(js_value) = serde_wasm_bindgen::to_value(
+                                                                    match serde_wasm_bindgen::to_value(
                                                                         &request,
-                                                                    ) {
+                                                                    ) { Ok(js_value) => {
                                                                         let origin = window()
                                                                             .location()
                                                                             .origin()
@@ -2262,10 +2269,10 @@ pub fn AccountSettings() -> impl IntoView {
                                                                             log::error!("Failed to send Solana signature request");
                                                                             set_recovery_change_in_progress(false);
                                                                         }
-                                                                    } else {
+                                                                    } _ => {
                                                                         log::error!("Failed to serialize Solana signature request");
                                                                         set_recovery_change_in_progress(false);
-                                                                    }
+                                                                    }}
                                                                 }
                                                             }
                                                         }

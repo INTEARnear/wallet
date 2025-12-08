@@ -3,9 +3,9 @@ use chrono::{DateTime, Utc};
 use leptos::prelude::*;
 use leptos_icons::*;
 use near_min_api::{
-    types::{near_crypto::PublicKey, AccountId, Finality, NearToken, U128},
-    utils::dec_format,
     QueryFinality,
+    types::{AccountId, Finality, NearToken, U128, near_crypto::PublicKey},
+    utils::dec_format,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -35,8 +35,8 @@ use crate::{
     },
     pages::nfts::fetch_nfts,
     utils::{
-        balance_to_decimal, decimal_to_balance, format_account_id_no_hide, format_duration,
-        format_token_amount, proxify_url, Resolution,
+        Resolution, balance_to_decimal, decimal_to_balance, format_account_id_no_hide,
+        format_duration, format_token_amount, proxify_url,
     },
 };
 
@@ -383,7 +383,7 @@ pub fn Gifts() -> impl IntoView {
         };
 
         set_selected_fungible_tokens.update(|tokens| {
-            for (token, _, ref mut amount_error) in tokens.iter_mut() {
+            for (token, _, amount_error) in tokens.iter_mut() {
                 if token.token.account_id == token_data.token.account_id {
                     *amount_error = error.clone();
                     break;
@@ -406,7 +406,7 @@ pub fn Gifts() -> impl IntoView {
         let trimmed_max_amount = trim_to_three_decimals(max_amount_str);
 
         set_selected_fungible_tokens.update(|tokens| {
-            for (token, ref mut amount, _) in tokens.iter_mut() {
+            for (token, amount, _) in tokens.iter_mut() {
                 if token.token.account_id == token_data.token.account_id {
                     *amount = trimmed_max_amount.clone();
                     break;
@@ -959,8 +959,8 @@ pub fn Gifts() -> impl IntoView {
                                                                                         initial_value=contract_id.to_string()
                                                                                         class="bg-neutral-800 border-neutral-700 text-white rounded-lg"
                                                                                         on_change=Callback::new(move |value: String| {
-                                                                                            if let Ok(new_contract_id) = value.parse::<AccountId>() {
-                                                                                                if let Some(collection) = collections_clone_2
+                                                                                            if let Ok(new_contract_id) = value.parse::<AccountId>()
+                                                                                                && let Some(collection) = collections_clone_2
                                                                                                     .iter()
                                                                                                     .find(|c| c.contract_id == new_contract_id)
                                                                                                 {
@@ -980,7 +980,6 @@ pub fn Gifts() -> impl IntoView {
                                                                                                         }
                                                                                                     }
                                                                                                 }
-                                                                                            }
                                                                                         })
                                                                                     />
                                                                                 </div>

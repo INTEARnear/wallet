@@ -2,7 +2,7 @@ use crate::contexts::accounts_context::AccountsContext;
 use leptos::{html::Div, prelude::*};
 use leptos_icons::*;
 use leptos_router::{
-    components::{Outlet, A},
+    components::{A, Outlet},
     hooks::use_location,
 };
 use leptos_use::use_event_listener;
@@ -22,7 +22,7 @@ pub use connected_apps::ConnectedAppsSettings;
 pub use developer::DeveloperSettings;
 pub use developer_create_token::DeveloperCreateToken;
 pub use developer_sandbox::DeveloperSandbox;
-pub use preferences::{PreferencesSettings, ToggleSwitch, SLIPPAGE_PRESETS};
+pub use preferences::{PreferencesSettings, SLIPPAGE_PRESETS, ToggleSwitch};
 pub use security::SecuritySettings;
 pub use security_log::SecurityLogPage;
 use web_sys::{ScrollBehavior, ScrollToOptions};

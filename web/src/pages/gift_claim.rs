@@ -1,23 +1,23 @@
-use base64::{prelude::BASE64_STANDARD, Engine};
+use base64::{Engine, prelude::BASE64_STANDARD};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_icons::*;
 use leptos_router::components::A;
 use leptos_router::hooks::use_params_map;
 use near_min_api::{
-    types::{
-        near_crypto::Signature, AccountId, Action as NearAction, Finality, FunctionCallAction,
-        NearGas, NearToken,
-    },
     QueryFinality,
+    types::{
+        AccountId, Action as NearAction, Finality, FunctionCallAction, NearGas, NearToken,
+        near_crypto::Signature,
+    },
 };
 use serde::{Deserialize, Serialize};
 use web_sys::js_sys::Date;
 
 use crate::{
     components::{
-        gift_amount_display::{parse_gift_private_key_to_secret, GiftAmountDisplay},
-        gift_modals::{format_gift_tokens_for_message, GiftToken},
+        gift_amount_display::{GiftAmountDisplay, parse_gift_private_key_to_secret},
+        gift_modals::{GiftToken, format_gift_tokens_for_message},
     },
     contexts::{
         accounts_context::{AccountsContext, SecretKeyHolder},
@@ -28,7 +28,7 @@ use crate::{
         },
     },
     pages::gifts::{Drop, DropStatus},
-    utils::{format_token_amount, sign_nep413, NEP413Payload},
+    utils::{NEP413Payload, format_token_amount, sign_nep413},
 };
 
 const SLIMEDROP_CONTRACT_MAINNET: &str = "slimedrop.intear.near";

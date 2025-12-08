@@ -11,13 +11,13 @@ use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_router::components::A;
 use leptos_use::{
-    use_event_listener, use_event_listener_with_options, use_interval_fn,
-    use_interval_fn_with_options, UseEventListenerOptions, UseIntervalFnOptions,
+    UseEventListenerOptions, UseIntervalFnOptions, use_event_listener,
+    use_event_listener_with_options, use_interval_fn, use_interval_fn_with_options,
 };
 use near_min_api::types::Finality;
 use near_min_api::types::{
-    near_crypto::{ED25519SecretKey, SecretKey},
     AccountId,
+    near_crypto::{ED25519SecretKey, SecretKey},
 };
 use near_min_api::{Error, QueryFinality};
 use serde::Deserialize;
@@ -32,7 +32,7 @@ use crate::contexts::security_log_context::add_security_log;
 use crate::contexts::{
     account_selector_context::AccountSelectorContext, accounts_context::AccountsContext,
 };
-use crate::utils::{is_debug_enabled, proxify_url, Resolution};
+use crate::utils::{Resolution, is_debug_enabled, proxify_url};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SocialProfileData {
@@ -407,15 +407,15 @@ pub fn AccountSelector() -> impl IntoView {
     let (original_container_height, set_original_container_height) = signal::<Option<i32>>(None);
 
     let _ = use_event_listener(window(), mousemove, move |event| {
-        if let Some(drag) = drag_state.get() {
-            if drag.is_active {
-                set_drag_state.update(|d| {
-                    if let Some(drag) = d {
-                        drag.y_delta += event.movement_y() as f64;
-                        drag.mouse_y = event.client_y() as f64;
-                    }
-                });
-            }
+        if let Some(drag) = drag_state.get()
+            && drag.is_active
+        {
+            set_drag_state.update(|d| {
+                if let Some(drag) = d {
+                    drag.y_delta += event.movement_y() as f64;
+                    drag.mouse_y = event.client_y() as f64;
+                }
+            });
         }
     });
 
@@ -433,22 +433,22 @@ pub fn AccountSelector() -> impl IntoView {
         window(),
         touchmove,
         move |event: TouchEvent| {
-            if let Some(drag) = drag_state.get() {
-                if drag.is_active {
-                    event.prevent_default();
-                    if let Some(touch) = event.touches().get(0) {
-                        let current_y = touch.client_y() as f64;
-                        if let Some(last_y) = last_touch_y.get() {
-                            let movement_y = current_y - last_y;
-                            set_drag_state.update(|d| {
-                                if let Some(drag) = d {
-                                    drag.y_delta += movement_y;
-                                    drag.mouse_y = current_y;
-                                }
-                            });
-                        }
-                        set_last_touch_y.set(Some(current_y));
+            if let Some(drag) = drag_state.get()
+                && drag.is_active
+            {
+                event.prevent_default();
+                if let Some(touch) = event.touches().get(0) {
+                    let current_y = touch.client_y() as f64;
+                    if let Some(last_y) = last_touch_y.get() {
+                        let movement_y = current_y - last_y;
+                        set_drag_state.update(|d| {
+                            if let Some(drag) = d {
+                                drag.y_delta += movement_y;
+                                drag.mouse_y = current_y;
+                            }
+                        });
                     }
+                    set_last_touch_y.set(Some(current_y));
                 }
             }
         },
@@ -474,19 +474,19 @@ pub fn AccountSelector() -> impl IntoView {
 
     let _ = use_event_listener(scroll_container_ref, scroll, move |_| {
         if let Some(drag) = drag_state.get() {
-            if drag.is_active {
-                if let Some(container) = scroll_container_ref.get() {
-                    let current_scroll = container.scroll_top();
-                    if let Some(last_scroll) = last_scroll_pos.get() {
-                        let scroll_delta = current_scroll - last_scroll;
-                        set_drag_state.update(|d| {
-                            if let Some(d) = d {
-                                d.y_delta += scroll_delta as f64;
-                            }
-                        });
-                    }
-                    set_last_scroll_pos.set(Some(current_scroll));
+            if drag.is_active
+                && let Some(container) = scroll_container_ref.get()
+            {
+                let current_scroll = container.scroll_top();
+                if let Some(last_scroll) = last_scroll_pos.get() {
+                    let scroll_delta = current_scroll - last_scroll;
+                    set_drag_state.update(|d| {
+                        if let Some(d) = d {
+                            d.y_delta += scroll_delta as f64;
+                        }
+                    });
                 }
+                set_last_scroll_pos.set(Some(current_scroll));
             }
         } else {
             set_last_scroll_pos.set(None);
@@ -592,10 +592,10 @@ pub fn AccountSelector() -> impl IntoView {
 
                 for (account, result) in accs.into_iter().zip(results.into_iter()) {
                     let public_key = account.secret_key.public_key();
-                    if let Err(Error::OtherQueryError(err)) = result {
-                        if err == format!("access key {public_key} does not exist while viewing") {
-                            logged_out_accounts.push(account.clone());
-                        }
+                    if let Err(Error::OtherQueryError(err)) = result
+                        && err == format!("access key {public_key} does not exist while viewing")
+                    {
+                        logged_out_accounts.push(account.clone());
                     }
                 }
             }
@@ -609,10 +609,10 @@ pub fn AccountSelector() -> impl IntoView {
                     accounts
                         .accounts
                         .retain(|a| !logged_out_account_ids.contains(&a.account_id));
-                    if let Some(selected_id) = accounts.selected_account_id.as_ref() {
-                        if logged_out_account_ids.contains(selected_id) {
-                            accounts.selected_account_id = None;
-                        }
+                    if let Some(selected_id) = accounts.selected_account_id.as_ref()
+                        && logged_out_account_ids.contains(selected_id)
+                    {
+                        accounts.selected_account_id = None;
                     }
                 });
 
@@ -683,10 +683,10 @@ pub fn AccountSelector() -> impl IntoView {
             {
                 set_profile_images.update(|images| {
                     for account_id in account_ids {
-                        if let Some(account_data) = response.accounts.get(&account_id) {
-                            if let Some(profile) = &account_data.profile {
-                                if let Some(image) = &profile.image {
-                                    if let Some(_ipfs_cid) = &image.ipfs_cid {
+                        if let Some(account_data) = response.accounts.get(&account_id)
+                            && let Some(profile) = &account_data.profile
+                                && let Some(image) = &profile.image
+                                    && let Some(_ipfs_cid) = &image.ipfs_cid {
                                         images.insert(
                                             account_id.clone(),
                                             Some(format!(
@@ -695,9 +695,6 @@ pub fn AccountSelector() -> impl IntoView {
                                             )),
                                         );
                                     }
-                                }
-                            }
-                        }
                         images.entry(account_id).or_insert(None);
                     }
                 });
@@ -844,8 +841,8 @@ pub fn AccountSelector() -> impl IntoView {
                                                         );
                                                     set_timeout(
                                                         move || {
-                                                            if let Some(drag_state) = drag_state.get() {
-                                                                if drag_state.start_index == index {
+                                                            if let Some(drag_state) = drag_state.get()
+                                                                && drag_state.start_index == index {
                                                                     set_drag_state
                                                                         .update(|d| {
                                                                             if let Some(d) = d {
@@ -853,7 +850,6 @@ pub fn AccountSelector() -> impl IntoView {
                                                                             }
                                                                         });
                                                                 }
-                                                            }
                                                         },
                                                         Duration::from_millis(DRAG_ACTIVATION_DELAY_MS),
                                                     );
@@ -880,8 +876,8 @@ pub fn AccountSelector() -> impl IntoView {
                                                             );
                                                         set_timeout(
                                                             move || {
-                                                                if let Some(drag_state) = drag_state.get() {
-                                                                    if drag_state.start_index == index {
+                                                                if let Some(drag_state) = drag_state.get()
+                                                                    && drag_state.start_index == index {
                                                                         set_drag_state
                                                                             .update(|d| {
                                                                                 if let Some(d) = d {
@@ -889,7 +885,6 @@ pub fn AccountSelector() -> impl IntoView {
                                                                                 }
                                                                             });
                                                                     }
-                                                                }
                                                             },
                                                             Duration::from_millis(DRAG_ACTIVATION_DELAY_MS),
                                                         );

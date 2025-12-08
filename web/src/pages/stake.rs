@@ -9,15 +9,15 @@ use leptos_icons::*;
 use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_params_map};
 use leptos_use::{use_interval, use_interval_fn};
-use near_min_api::types::{Balance, EpochHeight, ViewStateResult, U128};
+use near_min_api::types::{Balance, EpochHeight, U128, ViewStateResult};
 use near_min_api::{
+    CallError, Error, QueryFinality, RpcClient,
     types::{
         AccountId, AccountIdRef, Action, BlockHeightDelta, BlockId, BlockReference, BlockView,
         CurrentEpochValidatorInfo, EpochReference, Finality, FunctionCallAction, NearGas,
         NearToken,
     },
     utils::dec_format,
-    CallError, Error, QueryFinality, RpcClient,
 };
 use rand::rngs::OsRng;
 use rand::seq::SliceRandom;
@@ -37,8 +37,8 @@ use crate::components::projected_revenue::{ProjectedRevenue, ProjectedRevenueMod
 use crate::components::transaction_modals::{TransactionErrorModal, TransactionSuccessModal};
 use crate::contexts::tokens_context::TokenInfo;
 use crate::utils::{
-    fetch_token_info, format_usd_value, power_of_10, proxify_url, Resolution, StorageBalance,
-    USDT_DECIMALS,
+    Resolution, StorageBalance, USDT_DECIMALS, fetch_token_info, format_usd_value, power_of_10,
+    proxify_url,
 };
 use crate::{
     contexts::{
@@ -289,23 +289,21 @@ fn ValidatorCard(
                         .accounts
                         .get_untracked()
                         .selected_account_id
+                        && let Ok(epoch_info) = rpc_client.validators(EpochReference::Latest).await
                     {
-                        if let Ok(epoch_info) = rpc_client.validators(EpochReference::Latest).await
-                        {
-                            let current_epoch_height = epoch_info.epoch_height;
-                            let epoch_start_block_height = epoch_info.epoch_start_height;
+                        let current_epoch_height = epoch_info.epoch_height;
+                        let epoch_start_block_height = epoch_info.epoch_start_height;
 
-                            if let Ok(new_time) = calculate_estimated_unlock_time(
-                                rpc_client,
-                                pool_account_id.clone(),
-                                user_account_id.clone(),
-                                current_epoch_height,
-                                epoch_start_block_height,
-                            )
-                            .await
-                            {
-                                estimated_unlock_time.set(new_time);
-                            }
+                        if let Ok(new_time) = calculate_estimated_unlock_time(
+                            rpc_client,
+                            pool_account_id.clone(),
+                            user_account_id.clone(),
+                            current_epoch_height,
+                            epoch_start_block_height,
+                        )
+                        .await
+                        {
+                            estimated_unlock_time.set(new_time);
                         }
                     }
                 });
@@ -393,6 +391,7 @@ fn ValidatorCard(
                                                 "Unclaimed"
                                                 <div class="w-full space-y-1">
                                                     {move || {
+                                                        #[allow(clippy::redundant_iter_cloned)]
                                                         validator()
                                                             .unclaimed_rewards
                                                             .iter()
@@ -814,44 +813,63 @@ fn ValidatorCard(
                             <div class="text-sm" style:color=apy_color>
                                 {apy_str}
                             </div>
-                            {validator()
-                                .active_farms
-                                .iter()
-                                .cloned()
-                                .map(|farm| {
-                                    view! {
-                                        <div>
-                                            {move || {
-                                                let farm_period = farm.end_date - farm.start_date;
-                                                if farm_period.is_zero() {
-                                                    ().into_any()
-                                                } else {
-                                                    let annual_amount = (BigDecimal::from(farm.amount)
-                                                        * BigDecimal::from(NANOSECONDS_IN_YEAR))
-                                                        / BigDecimal::from(farm_period.num_nanoseconds().unwrap());
-                                                    let token_symbol = &farm.token.metadata.symbol;
-                                                    if farm.token.price_usd_raw > BigDecimal::from(0) {
-                                                        let annual_amount_decimal = balance_to_decimal(
-                                                            annual_amount.to_u128().unwrap_or(0),
-                                                            farm.token.metadata.decimals,
-                                                        );
-                                                        let annual_usd_value = &annual_amount_decimal
-                                                            * &farm.token.price_usd_raw / power_of_10(USDT_DECIMALS);
-                                                        let total_stake_decimal = balance_to_decimal(
-                                                            validator().total_stake.as_yoctonear(),
-                                                            24,
-                                                        );
-                                                        let total_stake_usd = &total_stake_decimal * &near_price();
-                                                        if total_stake_usd > BigDecimal::from(0) {
-                                                            let additional_apy = (&annual_usd_value / &total_stake_usd)
-                                                                * BigDecimal::from(100);
-                                                            view! {
-                                                                <div class="text-green-400 text-xs">
-                                                                    {format!("+{:.2}% in {}", additional_apy, token_symbol)}
-                                                                </div>
+                            {
+                                #[allow(clippy::redundant_iter_cloned)]
+                                validator()
+                                    .active_farms
+                                    .iter()
+                                    .cloned()
+                                    .map(|farm| {
+                                        view! {
+                                            <div>
+                                                {move || {
+                                                    let farm_period = farm.end_date - farm.start_date;
+                                                    if farm_period.is_zero() {
+                                                        ().into_any()
+                                                    } else {
+                                                        let annual_amount = (BigDecimal::from(farm.amount)
+                                                            * BigDecimal::from(NANOSECONDS_IN_YEAR))
+                                                            / BigDecimal::from(farm_period.num_nanoseconds().unwrap());
+                                                        let token_symbol = &farm.token.metadata.symbol;
+                                                        if farm.token.price_usd_raw > BigDecimal::from(0) {
+                                                            let annual_amount_decimal = balance_to_decimal(
+                                                                annual_amount.to_u128().unwrap_or(0),
+                                                                farm.token.metadata.decimals,
+                                                            );
+                                                            let annual_usd_value = &annual_amount_decimal
+                                                                * &farm.token.price_usd_raw / power_of_10(USDT_DECIMALS);
+                                                            let total_stake_decimal = balance_to_decimal(
+                                                                validator().total_stake.as_yoctonear(),
+                                                                24,
+                                                            );
+                                                            let total_stake_usd = &total_stake_decimal * &near_price();
+                                                            if total_stake_usd > BigDecimal::from(0) {
+                                                                let additional_apy = (&annual_usd_value / &total_stake_usd)
+                                                                    * BigDecimal::from(100);
+                                                                view! {
+                                                                    <div class="text-green-400 text-xs">
+                                                                        {format!("+{:.2}% in {}", additional_apy, token_symbol)}
+                                                                    </div>
+                                                                }
+                                                                    .into_any()
+                                                            } else {
+                                                                view! {
+                                                                    <div class="text-green-400 text-xs">
+                                                                        {format!(
+                                                                            "+ {} {} / year",
+                                                                            format_token_amount_no_hide(
+                                                                                annual_amount.to_u128().unwrap_or(0),
+                                                                                farm.token.metadata.decimals,
+                                                                                "",
+                                                                            ),
+                                                                            token_symbol,
+                                                                        )}
+                                                                    </div>
+                                                                }
+                                                                    .into_any()
                                                             }
-                                                                .into_any()
                                                         } else {
+                                                            // No price data, show token amount
                                                             view! {
                                                                 <div class="text-green-400 text-xs">
                                                                     {format!(
@@ -867,29 +885,13 @@ fn ValidatorCard(
                                                             }
                                                                 .into_any()
                                                         }
-                                                    } else {
-                                                        // No price data, show token amount
-                                                        view! {
-                                                            <div class="text-green-400 text-xs">
-                                                                {format!(
-                                                                    "+ {} {} / year",
-                                                                    format_token_amount_no_hide(
-                                                                        annual_amount.to_u128().unwrap_or(0),
-                                                                        farm.token.metadata.decimals,
-                                                                        "",
-                                                                    ),
-                                                                    token_symbol,
-                                                                )}
-                                                            </div>
-                                                        }
-                                                            .into_any()
                                                     }
-                                                }
-                                            }}
-                                        </div>
-                                    }
-                                })
-                                .collect_view()}
+                                                }}
+                                            </div>
+                                        }
+                                    })
+                                    .collect_view()
+                                }
                             <div class="text-gray-400 text-xs">"APY"</div>
                             <div class="text-gray-500 text-xs">{fee_str}</div>
                         }
@@ -1357,12 +1359,12 @@ pub fn Stake() -> impl IntoView {
                         }
                     };
                     let fastnear_url = format!("{api_url}/v1/account/{user_account_id}/staking");
-                    if let Ok(resp) = reqwest::get(&fastnear_url).await {
-                        if let Ok(json_raw) = resp.json::<FastNearResponseRaw>().await {
-                            for p in json_raw.pools {
-                                if let Ok(acc) = p.pool_id.parse::<AccountId>() {
-                                    pools_set.insert(acc);
-                                }
+                    if let Ok(resp) = reqwest::get(&fastnear_url).await
+                        && let Ok(json_raw) = resp.json::<FastNearResponseRaw>().await
+                    {
+                        for p in json_raw.pools {
+                            if let Ok(acc) = p.pool_id.parse::<AccountId>() {
+                                pools_set.insert(acc);
                             }
                         }
                     }
@@ -1485,72 +1487,68 @@ pub fn Stake() -> impl IntoView {
 
                         let mut unclaimed_requests = Vec::new();
                         for validator in &validators {
-                            if validator.user_staked >= BAL_THRESHOLD {
-                                if let Some(farm_data) = all_farm_data.get(&validator.account_id) {
-                                    for farm in farm_data {
-                                        unclaimed_requests.push((
-                                            validator.account_id.clone(),
-                                            "get_unclaimed_reward",
-                                            serde_json::json!({
-                                                "account_id": user_account_id,
-                                                "farm_id": farm.farm_id
-                                            }),
-                                            QueryFinality::Finality(Finality::DoomSlug),
-                                        ));
-                                    }
+                            if validator.user_staked >= BAL_THRESHOLD
+                                && let Some(farm_data) = all_farm_data.get(&validator.account_id)
+                            {
+                                for farm in farm_data {
+                                    unclaimed_requests.push((
+                                        validator.account_id.clone(),
+                                        "get_unclaimed_reward",
+                                        serde_json::json!({
+                                            "account_id": user_account_id,
+                                            "farm_id": farm.farm_id
+                                        }),
+                                        QueryFinality::Finality(Finality::DoomSlug),
+                                    ));
                                 }
                             }
                         }
 
-                        if !unclaimed_requests.is_empty() {
-                            if let Ok(unclaimed_results) = rpc_client
+                        if !unclaimed_requests.is_empty()
+                            && let Ok(unclaimed_results) = rpc_client
                                 .batch_call::<U128>(unclaimed_requests.clone())
                                 .await
-                            {
-                                let mut unclaimed_idx = 0;
-                                for validator in &mut validators {
-                                    if validator.user_staked >= BAL_THRESHOLD {
-                                        if let Some(farm_data) =
-                                            all_farm_data.get(&validator.account_id)
-                                        {
-                                            let mut unclaimed_by_token: HashMap<
-                                                AccountId,
-                                                Balance,
-                                            > = HashMap::new();
+                        {
+                            let mut unclaimed_idx = 0;
+                            for validator in &mut validators {
+                                if validator.user_staked >= BAL_THRESHOLD
+                                    && let Some(farm_data) =
+                                        all_farm_data.get(&validator.account_id)
+                                {
+                                    let mut unclaimed_by_token: HashMap<AccountId, Balance> =
+                                        HashMap::new();
 
-                                            for farm in farm_data {
-                                                if unclaimed_idx < unclaimed_results.len() {
-                                                    if let Ok(unclaimed_amount) =
-                                                        &unclaimed_results[unclaimed_idx]
-                                                    {
-                                                        let amount: Balance = **unclaimed_amount;
-                                                        if amount > 0 {
-                                                            *unclaimed_by_token
-                                                                .entry(farm.token_id.clone())
-                                                                .or_insert(0) += amount;
-                                                        }
-                                                    }
-                                                    unclaimed_idx += 1;
+                                    for farm in farm_data {
+                                        if unclaimed_idx < unclaimed_results.len() {
+                                            if let Ok(unclaimed_amount) =
+                                                &unclaimed_results[unclaimed_idx]
+                                            {
+                                                let amount: Balance = **unclaimed_amount;
+                                                if amount > 0 {
+                                                    *unclaimed_by_token
+                                                        .entry(farm.token_id.clone())
+                                                        .or_insert(0) += amount;
                                                 }
                                             }
-
-                                            let mut unclaimed_rewards = Vec::new();
-                                            for (token_id, total_amount) in unclaimed_by_token {
-                                                if let Some(token_info) = fetch_token_info(
-                                                    token_id,
-                                                    network_context.network.get(),
-                                                )
-                                                .await
-                                                {
-                                                    unclaimed_rewards.push(UnclaimedReward {
-                                                        token: token_info,
-                                                        amount: total_amount,
-                                                    });
-                                                }
-                                            }
-                                            validator.unclaimed_rewards = unclaimed_rewards;
+                                            unclaimed_idx += 1;
                                         }
                                     }
+
+                                    let mut unclaimed_rewards = Vec::new();
+                                    for (token_id, total_amount) in unclaimed_by_token {
+                                        if let Some(token_info) = fetch_token_info(
+                                            token_id,
+                                            network_context.network.get(),
+                                        )
+                                        .await
+                                        {
+                                            unclaimed_rewards.push(UnclaimedReward {
+                                                token: token_info,
+                                                amount: total_amount,
+                                            });
+                                        }
+                                    }
+                                    validator.unclaimed_rewards = unclaimed_rewards;
                                 }
                             }
                         }
@@ -1691,10 +1689,10 @@ pub fn Stake() -> impl IntoView {
                                                 .max(
                                                     compute_match_score(&query, validator.account_id.as_ref()),
                                                 );
-                                            if let Some(details) = &validator.details {
-                                                if let Some(name) = &details.name {
-                                                    score = score.max(compute_match_score(&query, name));
-                                                }
+                                            if let Some(details) = &validator.details
+                                                && let Some(name) = &details.name
+                                            {
+                                                score = score.max(compute_match_score(&query, name));
                                             }
                                             if score > 0 {
                                                 Some((validator.clone(), score))
@@ -1763,7 +1761,9 @@ pub fn Stake() -> impl IntoView {
                                         .filter_map(|v| v.active_info.as_ref())
                                         .map(|v| v.stake)
                                         .sum();
-                                    log::info!("total_staked: {}", NearToken::from_yoctonear(total_staked));
+                                    log::info!(
+                                        "total_staked: {}", NearToken::from_yoctonear(total_staked)
+                                    );
                                     log::info!("near_total_supply: {}", near_total_supply());
                                     let near_total_supply = near_total_supply();
                                     let calculated_apy = {

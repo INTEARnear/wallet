@@ -12,8 +12,8 @@ use crate::{
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
     utils::{
-        balance_to_decimal, format_token_amount, format_usd_value, power_of_10, StorageBalance,
-        USDT_DECIMALS,
+        StorageBalance, USDT_DECIMALS, balance_to_decimal, format_token_amount, format_usd_value,
+        power_of_10,
     },
 };
 use bigdecimal::{BigDecimal, ToPrimitive};
@@ -22,8 +22,8 @@ use leptos::task::spawn_local;
 use leptos_icons::Icon;
 use leptos_router::components::A;
 use near_min_api::{
-    types::{Action, Finality, FunctionCallAction, NearGas, NearToken},
     QueryFinality,
+    types::{Action, Finality, FunctionCallAction, NearGas, NearToken},
 };
 
 #[component]

@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use bigdecimal::{num_bigint::Sign, BigDecimal, FromPrimitive, RoundingMode, Zero};
+use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, Zero, num_bigint::Sign};
 use chrono::{DateTime, TimeDelta, Utc};
 use leptos::prelude::AnyView;
 use leptos::prelude::*;
@@ -16,12 +16,12 @@ use leptos_router::{
     location::Location,
 };
 use near_min_api::{
+    QueryFinality, RpcClient,
     types::{
-        near_crypto::PublicKey, AccountId, AccountIdRef, Action, Balance, CryptoHash, Finality,
-        FunctionCallAction, NearGas, NearToken, U128,
+        AccountId, AccountIdRef, Action, Balance, CryptoHash, Finality, FunctionCallAction,
+        NearGas, NearToken, U128, near_crypto::PublicKey,
     },
     utils::dec_format,
-    QueryFinality, RpcClient,
 };
 use serde::{Deserialize, Serialize};
 
@@ -294,29 +294,24 @@ pub fn Swap() -> impl IntoView {
         tokens.track();
         let tokens_list = tokens.get();
 
-        if let Some(current_token_in) = token_in.get_untracked() {
-            if let Some(updated_token) = tokens_list
+        if let Some(current_token_in) = token_in.get_untracked()
+            && let Some(updated_token) = tokens_list
                 .iter()
                 .find(|t| t.token.account_id == current_token_in.token.account_id)
-            {
-                if updated_token.balance != current_token_in.balance
-                    || updated_token.token.price_usd_hardcoded
-                        != current_token_in.token.price_usd_hardcoded
-                {
-                    set_token_in.set(Some(updated_token.clone()));
-                }
-            }
+            && (updated_token.balance != current_token_in.balance
+                || updated_token.token.price_usd_hardcoded
+                    != current_token_in.token.price_usd_hardcoded)
+        {
+            set_token_in.set(Some(updated_token.clone()));
         }
 
-        if let Some(current_token_out) = token_out.get_untracked() {
-            if let Some(updated_token) = tokens_list
+        if let Some(current_token_out) = token_out.get_untracked()
+            && let Some(updated_token) = tokens_list
                 .iter()
                 .find(|t| t.token.account_id == current_token_out.token.account_id)
-            {
-                if updated_token.balance != current_token_out.balance {
-                    set_token_out.set(Some(updated_token.clone()));
-                }
-            }
+            && updated_token.balance != current_token_out.balance
+        {
+            set_token_out.set(Some(updated_token.clone()));
         }
     });
 
@@ -507,39 +502,37 @@ pub fn Swap() -> impl IntoView {
         let token_out_data = token_out.get();
         validated_amount_entered.track();
 
-        if let (Some(token_in), Some(token_out)) = (token_in_data, token_out_data) {
-            if let Some(validated_amount) = validated_amount_entered.get() {
-                if let Some(swap_request) =
-                    create_swap_request(token_in, token_out, validated_amount, current_mode)
-                {
-                    // Request 1: Fast, skip intents. When skipping intents,
-                    // usually the best quote is found in less than 2 seconds.
-                    get_routes_action.dispatch((
-                        swap_request.clone(),
-                        WaitMode::Fast {
-                            skip_intents: true,
-                            duration: Duration::from_millis(2000),
-                        },
-                    ));
-                    if selected_dexes.get().contains(&DexId::NearIntents) {
-                        // Request 2: Fast, include intents. When including intents,
-                        // usually takes nearly 2 seconds.
-                        get_routes_action.dispatch((
-                            swap_request.clone(),
-                            WaitMode::Fast {
-                                skip_intents: false,
-                                duration: Duration::from_millis(2000),
-                            },
-                        ));
-                        // Request 3: Full, include intents. Takes nearly 3 seconds.
-                        set_routes_action_handle.set(Some(get_routes_action.dispatch((
-                            swap_request,
-                            WaitMode::Full {
-                                duration: Duration::from_millis(3000),
-                            },
-                        ))));
-                    }
-                }
+        if let (Some(token_in), Some(token_out)) = (token_in_data, token_out_data)
+            && let Some(validated_amount) = validated_amount_entered.get()
+            && let Some(swap_request) =
+                create_swap_request(token_in, token_out, validated_amount, current_mode)
+        {
+            // Request 1: Fast, skip intents. When skipping intents,
+            // usually the best quote is found in less than 2 seconds.
+            get_routes_action.dispatch((
+                swap_request.clone(),
+                WaitMode::Fast {
+                    skip_intents: true,
+                    duration: Duration::from_millis(2000),
+                },
+            ));
+            if selected_dexes.get().contains(&DexId::NearIntents) {
+                // Request 2: Fast, include intents. When including intents,
+                // usually takes nearly 2 seconds.
+                get_routes_action.dispatch((
+                    swap_request.clone(),
+                    WaitMode::Fast {
+                        skip_intents: false,
+                        duration: Duration::from_millis(2000),
+                    },
+                ));
+                // Request 3: Full, include intents. Takes nearly 3 seconds.
+                set_routes_action_handle.set(Some(get_routes_action.dispatch((
+                    swap_request,
+                    WaitMode::Full {
+                        duration: Duration::from_millis(3000),
+                    },
+                ))));
             }
         }
     });
@@ -610,12 +603,11 @@ pub fn Swap() -> impl IntoView {
                     let Some(validated_amount) = validated_amount_entered.get_untracked() else {
                         return;
                     };
-                    if let Some(last_dispatched_at) = last_dispatched_at.get_untracked() {
-                        if Utc::now() - last_dispatched_at
+                    if let Some(last_dispatched_at) = last_dispatched_at.get_untracked()
+                        && Utc::now() - last_dispatched_at
                             < TimeDelta::from_std(Duration::from_secs(5)).unwrap()
-                        {
-                            return;
-                        }
+                    {
+                        return;
                     }
                     if let Some(swap_request) = create_swap_request(
                         token_in,
@@ -1197,8 +1189,8 @@ pub fn Swap() -> impl IntoView {
                                     }
                             }
                             on:click=move |_| {
-                                if let Some(Ok(routes)) = get_routes_action.value().get() {
-                                    if let Some(best_route) = routes.routes.first() {
+                                if let Some(Ok(routes)) = get_routes_action.value().get()
+                                    && let Some(best_route) = routes.routes.first() {
                                         let Some(validated_amount_entered) = validated_amount_entered
                                             .get() else {
                                             log::error!(
@@ -1297,7 +1289,6 @@ pub fn Swap() -> impl IntoView {
                                             set_amount_entered.set("".to_string());
                                         }
                                     }
-                                }
                             }
                         >
                             {move || {
@@ -1743,34 +1734,31 @@ async fn execute_route(
 
     let final_wrap_balance = get_ft_balance(&account.account_id, wrap_near_id, &rpc).await;
 
-    if route.needs_unwrap {
-        if let Some(wrap_near_balance) = initial_wrap_balance {
-            if let Some(new_wrap_near_balance) = final_wrap_balance {
-                if let Some(difference) = new_wrap_near_balance.checked_sub(wrap_near_balance) {
-                    if !difference.is_zero() {
-                        set_tx_overlay_mode.set(OverlayMode::Background);
-                        let (rx, enqueued_tx) = EnqueuedTransaction::create(
-                            format!("{description} ({steps}/{steps})"),
-                            account.account_id.clone(),
-                            "wrap.near".parse().unwrap(),
-                            vec![Action::FunctionCall(Box::new(FunctionCallAction {
-                                method_name: "near_withdraw".to_string(),
-                                args: serde_json::to_vec(&serde_json::json!({
-                                    "amount": difference.to_string(),
-                                }))
-                                .unwrap(),
-                                gas: NearGas::from_tgas(5).as_gas(),
-                                deposit: NearToken::from_yoctonear(1),
-                            }))],
-                        );
-                        add_transaction.update(|txs| {
-                            txs.push(enqueued_tx);
-                        });
-                        let _ = rx.await;
-                    }
-                }
-            }
-        }
+    if route.needs_unwrap
+        && let Some(wrap_near_balance) = initial_wrap_balance
+        && let Some(new_wrap_near_balance) = final_wrap_balance
+        && let Some(difference) = new_wrap_near_balance.checked_sub(wrap_near_balance)
+        && !difference.is_zero()
+    {
+        set_tx_overlay_mode.set(OverlayMode::Background);
+        let (rx, enqueued_tx) = EnqueuedTransaction::create(
+            format!("{description} ({steps}/{steps})"),
+            account.account_id.clone(),
+            "wrap.near".parse().unwrap(),
+            vec![Action::FunctionCall(Box::new(FunctionCallAction {
+                method_name: "near_withdraw".to_string(),
+                args: serde_json::to_vec(&serde_json::json!({
+                    "amount": difference.to_string(),
+                }))
+                .unwrap(),
+                gas: NearGas::from_tgas(5).as_gas(),
+                deposit: NearToken::from_yoctonear(1),
+            }))],
+        );
+        add_transaction.update(|txs| {
+            txs.push(enqueued_tx);
+        });
+        let _ = rx.await;
     }
 
     let final_balance_futures = vec![

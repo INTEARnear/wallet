@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::{
     components::select::{Select, SelectOption},
     contexts::{
-        accounts_context::{AccountsContext, PasswordAction, ENCRYPTION_MEMORY_COST_KB},
+        accounts_context::{AccountsContext, ENCRYPTION_MEMORY_COST_KB, PasswordAction},
         config_context::{ConfigContext, PasswordRememberDuration},
     },
     pages::settings::ToggleSwitch,
@@ -15,7 +15,7 @@ use leptos::task::spawn_local;
 use leptos_icons::*;
 use leptos_router::components::A;
 use leptos_router::hooks::use_location;
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use serde::Deserialize;
 use web_sys::js_sys::{Object, Reflect};
 
@@ -172,15 +172,15 @@ pub fn SecuritySettings() -> impl IntoView {
             {
                 Ok(estimate) => {
                     if let Some(estimate_obj) = Object::try_from(&estimate) {
-                        if let Ok(usage_prop) = Reflect::get(estimate_obj, &"usage".into()) {
-                            if let Some(usage) = usage_prop.as_f64() {
-                                set_storage_usage(Some(usage as u64));
-                            }
+                        if let Ok(usage_prop) = Reflect::get(estimate_obj, &"usage".into())
+                            && let Some(usage) = usage_prop.as_f64()
+                        {
+                            set_storage_usage(Some(usage as u64));
                         }
-                        if let Ok(quota_prop) = Reflect::get(estimate_obj, &"quota".into()) {
-                            if let Some(quota) = quota_prop.as_f64() {
-                                set_storage_quota(Some(quota as u64));
-                            }
+                        if let Ok(quota_prop) = Reflect::get(estimate_obj, &"quota".into())
+                            && let Some(quota) = quota_prop.as_f64()
+                        {
+                            set_storage_quota(Some(quota as u64));
                         }
                     }
                 }
@@ -292,29 +292,29 @@ pub fn SecuritySettings() -> impl IntoView {
 
     // Watch for encryption completion
     Effect::new(move || {
-        if let Some(result) = accounts_context.set_password.value().get() {
-            if encrypting_accounts.get_untracked() {
-                if let Err(e) = result.as_ref() {
-                    log::error!("Failed to encrypt accounts: {}", e);
-                }
-                set_encryption_result(Some(result));
-                set_encrypting_accounts(false);
-                set_timeout(move || set_encryption_result(None), Duration::from_secs(2));
+        if let Some(result) = accounts_context.set_password.value().get()
+            && encrypting_accounts.get_untracked()
+        {
+            if let Err(e) = result.as_ref() {
+                log::error!("Failed to encrypt accounts: {}", e);
             }
+            set_encryption_result(Some(result));
+            set_encrypting_accounts(false);
+            set_timeout(move || set_encryption_result(None), Duration::from_secs(2));
         }
     });
 
     // Watch for password removal completion
     Effect::new(move || {
-        if let Some(result) = accounts_context.set_password.value().get() {
-            if removing_password.get_untracked() {
-                set_remove_password_result(Some(result));
-                set_removing_password(false);
-                set_timeout(
-                    move || set_remove_password_result(None),
-                    Duration::from_secs(2),
-                );
-            }
+        if let Some(result) = accounts_context.set_password.value().get()
+            && removing_password.get_untracked()
+        {
+            set_remove_password_result(Some(result));
+            set_removing_password(false);
+            set_timeout(
+                move || set_remove_password_result(None),
+                Duration::from_secs(2),
+            );
         }
     });
 

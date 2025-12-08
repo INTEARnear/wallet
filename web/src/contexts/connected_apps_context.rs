@@ -3,8 +3,8 @@ use std::collections::HashSet;
 use chrono::{DateTime, Utc};
 use leptos::prelude::*;
 use near_min_api::types::{
-    near_crypto::{PublicKey, SecretKey},
     AccountId, Action, NearToken, TransferAction,
+    near_crypto::{PublicKey, SecretKey},
 };
 use serde::{Deserialize, Serialize};
 
@@ -121,10 +121,10 @@ fn load_apps() -> ConnectedAppsState {
 }
 
 fn save_apps(apps: &ConnectedAppsState) {
-    if let Some(storage) = get_local_storage() {
-        if let Ok(json) = serde_json::to_string(apps) {
-            let _ = storage.set_item(CONNECTED_APPS_KEY, &json);
-        }
+    if let Some(storage) = get_local_storage()
+        && let Ok(json) = serde_json::to_string(apps)
+    {
+        let _ = storage.set_item(CONNECTED_APPS_KEY, &json);
     }
 }
 

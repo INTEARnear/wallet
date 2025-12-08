@@ -2,7 +2,7 @@ use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_router::hooks::{use_location, use_navigate};
 use near_min_api::types::{
-    near_crypto::PublicKey, AccessKey, AccessKeyPermission, Action, AddKeyAction,
+    AccessKey, AccessKeyPermission, Action, AddKeyAction, near_crypto::PublicKey,
 };
 
 use crate::{

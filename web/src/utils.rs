@@ -1,23 +1,23 @@
-use base64::{prelude::BASE64_STANDARD, Engine};
-use bigdecimal::{num_bigint::BigInt, BigDecimal, One, ToPrimitive, Zero};
+use base64::{Engine, prelude::BASE64_STANDARD};
+use bigdecimal::{BigDecimal, One, ToPrimitive, Zero, num_bigint::BigInt};
 use borsh::BorshSerialize;
 use cached::proc_macro::cached;
 use futures_util::lock::Mutex;
 use leptos::prelude::*;
 use near_min_api::{
+    RpcClient,
     types::{
-        near_crypto::{PublicKey, Signature},
         AccessKey as NearAccessKey, AccessKeyPermission, AccountId, AccountIdRef,
         Action as NearAction, AddKeyAction, Balance, CreateAccountAction, DelegateAction,
         DeleteAccountAction, DeleteKeyAction, DeployContractAction, FunctionCallAction,
         FunctionCallPermission, NearToken, StakeAction, TransferAction,
+        near_crypto::{PublicKey, Signature},
     },
     utils::dec_format,
-    RpcClient,
 };
 use serde::Deserialize;
 use std::{fmt::Display, ops::Deref, str::FromStr, time::Duration};
-use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
+use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use web_sys::js_sys::{Promise, Reflect};
 
 use crate::contexts::{
@@ -186,12 +186,12 @@ pub fn format_duration(duration: Duration) -> String {
 
 pub fn format_account_id(account_id: &AccountIdRef) -> AnyView {
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
-    if let Some(selected_account) = accounts().selected_account_id {
-        if selected_account == *account_id {
-            let ConfigContext { config, .. } = expect_context::<ConfigContext>();
-            if config().amounts_hidden {
-                return "😭".into_any();
-            }
+    if let Some(selected_account) = accounts().selected_account_id
+        && selected_account == *account_id
+    {
+        let ConfigContext { config, .. } = expect_context::<ConfigContext>();
+        if config().amounts_hidden {
+            return "😭".into_any();
         }
     }
     format_account_id_no_hide(account_id)
@@ -835,18 +835,18 @@ pub fn decimal_to_balance(decimal: BigDecimal, decimals: u32) -> Balance {
 }
 
 pub fn is_debug_enabled() -> bool {
-    if let Ok(debug_value) = Reflect::get(&window(), &"DEBUG".into()) {
-        if debug_value.as_bool().unwrap_or(false) {
-            return true;
-        }
+    if let Ok(debug_value) = Reflect::get(&window(), &"DEBUG".into())
+        && debug_value.as_bool().unwrap_or(false)
+    {
+        return true;
     }
 
-    if let Ok(Some(local_storage)) = window().local_storage() {
-        if let Ok(Some(debug_value)) = local_storage.get_item("DEBUG") {
-            let debug_str = debug_value.trim().to_lowercase();
-            if !debug_str.is_empty() {
-                return true;
-            }
+    if let Ok(Some(local_storage)) = window().local_storage()
+        && let Ok(Some(debug_value)) = local_storage.get_item("DEBUG")
+    {
+        let debug_str = debug_value.trim().to_lowercase();
+        if !debug_str.is_empty() {
+            return true;
         }
     }
     false

@@ -1,21 +1,21 @@
 use axum::extract::ws::{Message, WebSocket};
 use axum::{
+    Json, Router,
     extract::{Path, State, WebSocketUpgrade},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
-    Json, Router,
 };
 use futures_util::{SinkExt, StreamExt};
 use nanoid::nanoid;
 use near_min_api::{
-    types::{
-        near_crypto::{PublicKey, Signature},
-        AccessKeyPermissionView, AccountId, Finality,
-    },
     QueryFinality, RpcClient,
+    types::{
+        AccessKeyPermissionView, AccountId, Finality,
+        near_crypto::{PublicKey, Signature},
+    },
 };
-use rocksdb::{Options, DB};
+use rocksdb::{DB, Options};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use std::{
@@ -191,7 +191,7 @@ async fn verify_account(
         Network::Mainnet => &app_state.mainnet_rpc_client,
         Network::Testnet => &app_state.testnet_rpc_client,
     };
-    if let Ok(key) = client
+    match client
         .get_access_key(
             account_id.clone(),
             public_key.clone(),
@@ -199,13 +199,14 @@ async fn verify_account(
         )
         .await
     {
-        if matches!(key.permission, AccessKeyPermissionView::FullAccess) {
-            AccountVerificationResult::Verified
-        } else {
-            AccountVerificationResult::Invalid
+        Ok(key) => {
+            if matches!(key.permission, AccessKeyPermissionView::FullAccess) {
+                AccountVerificationResult::Verified
+            } else {
+                AccountVerificationResult::Invalid
+            }
         }
-    } else {
-        AccountVerificationResult::Invalid
+        _ => AccountVerificationResult::Invalid,
     }
 }
 
@@ -606,12 +607,11 @@ async fn handle_websocket_connection(socket: WebSocket, state: AppState) {
             let mut current_notification = notification_result;
             while let Ok(notification) = current_notification {
                 let message = WsServerMessage::LoggedOut(notification);
-                if let Ok(json) = serde_json::to_string(&message) {
-                    if sender.send(Message::Text(json.into())).await.is_err() {
+                if let Ok(json) = serde_json::to_string(&message)
+                    && sender.send(Message::Text(json.into())).await.is_err() {
                         client_disconnected = true;
                         break;
                     }
-                }
 
                 match rx.recv().await {
                     Ok(next_notification) => current_notification = Ok(next_notification),

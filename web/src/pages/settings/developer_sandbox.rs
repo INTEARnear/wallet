@@ -3,12 +3,12 @@ use leptos_icons::*;
 use leptos_router::hooks::use_params_map;
 use leptos_use::use_interval_fn;
 use near_min_api::{
+    QueryFinality, RpcClient,
     types::{
-        near_crypto::{KeyType, SecretKey},
         AccessKey, AccountContract, AccountId, Action, CryptoHash, Finality, FunctionCallAction,
         NearGas, NearToken, StateRecord,
+        near_crypto::{KeyType, SecretKey},
     },
-    QueryFinality, RpcClient,
 };
 use reqwest::Url;
 use std::time::Duration;

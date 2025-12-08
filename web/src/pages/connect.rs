@@ -6,13 +6,13 @@ use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_router::hooks::use_location;
 use near_min_api::types::{
-    near_crypto::{ED25519SecretKey, KeyType, PublicKey, SecretKey, Signature},
     AccessKey, AccessKeyPermission, AccountId, Action, AddKeyAction, CryptoHash,
     FunctionCallPermission, NearToken,
+    near_crypto::{ED25519SecretKey, KeyType, PublicKey, SecretKey, Signature},
 };
 use serde::{Deserialize, Deserializer, Serialize};
 use wasm_bindgen::JsCast;
-use web_sys::{js_sys::Date, Window};
+use web_sys::{Window, js_sys::Date};
 
 use crate::contexts::{
     accounts_context::{AccountsContext, SecretKeyHolder},
@@ -21,7 +21,7 @@ use crate::contexts::{
     security_log_context::add_security_log,
     transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
 };
-use crate::utils::{format_account_id, is_debug_enabled, sign_nep413, NEP413Payload};
+use crate::utils::{NEP413Payload, format_account_id, is_debug_enabled, sign_nep413};
 use crate::{
     contexts::account_selector_context::AccountSelectorContext,
     pages::sign_message::{MessageDisplay, MessageToSign, SignedMessage},
@@ -302,11 +302,11 @@ pub fn Connect() -> impl IntoView {
     Effect::new(move |_| {
         let location = use_location();
         let params = location.query.get();
-        if let Some(session_id) = params.get("session_id") {
-            if !session_id.is_empty() {
-                log::info!("Found session_id in URL: {session_id}");
-                retrieve_bridge_session(session_id.clone());
-            }
+        if let Some(session_id) = params.get("session_id")
+            && !session_id.is_empty()
+        {
+            log::info!("Found session_id in URL: {session_id}");
+            retrieve_bridge_session(session_id.clone());
         }
     });
 
@@ -325,49 +325,46 @@ pub fn Connect() -> impl IntoView {
         }
     };
 
-    let opener = || {
-        if let Ok(opener) = window().opener() {
+    let opener = || match window().opener() {
+        Ok(opener) => {
             let opener = opener.unchecked_into::<Window>();
-            if opener.is_truthy() {
-                opener
-            } else {
-                window()
-            }
-        } else {
-            window()
+            if opener.is_truthy() { opener } else { window() }
         }
+        _ => window(),
     };
 
     let is_public_key_valid = Memo::new(move |_| {
-        if let Some(request_data) = &*request_data.read() {
-            let Ok(message) = serde_json::from_str::<ConnectMessage>(&request_data.message) else {
-                return false;
-            };
+        match &*request_data.read() {
+            Some(request_data) => {
+                let Ok(message) = serde_json::from_str::<ConnectMessage>(&request_data.message)
+                else {
+                    return false;
+                };
 
-            // No origin check in V2+
-            if matches!(request_data.version, Version::V1)
-                && message.origin != origin_for_post_message()
-                && message.origin != "*"
-            {
-                return false;
+                // No origin check in V2+
+                if matches!(request_data.version, Version::V1)
+                    && message.origin != origin_for_post_message()
+                    && message.origin != "*"
+                {
+                    return false;
+                }
+
+                let text_to_prove = format!("{}|{}", request_data.nonce, request_data.message);
+                let to_prove = text_to_prove.as_bytes();
+                let to_prove = CryptoHash::hash_bytes(to_prove); // sha256
+                let is_valid = request_data
+                    .signature
+                    .verify(to_prove.as_bytes(), &request_data.public_key)
+                    && request_data.nonce > Date::now() as u64 - 1000 * 60 * 5
+                    && request_data.nonce <= Date::now() as u64;
+
+                if !is_valid {
+                    return false;
+                }
+
+                true
             }
-
-            let text_to_prove = format!("{}|{}", request_data.nonce, request_data.message);
-            let to_prove = text_to_prove.as_bytes();
-            let to_prove = CryptoHash::hash_bytes(to_prove); // sha256
-            let is_valid = request_data
-                .signature
-                .verify(to_prove.as_bytes(), &request_data.public_key)
-                && request_data.nonce > Date::now() as u64 - 1000 * 60 * 5
-                && request_data.nonce <= Date::now() as u64;
-
-            if !is_valid {
-                return false;
-            }
-
-            true
-        } else {
-            false
+            _ => false,
         }
     });
 
@@ -380,20 +377,25 @@ pub fn Connect() -> impl IntoView {
             );
         }
 
-        if let Ok(message) = serde_wasm_bindgen::from_value::<ReceiveMessage>(event.data()) {
-            if is_debug_enabled() {
-                log::info!("Successfully parsed message: {:?}", message);
-            }
-            match message {
-                ReceiveMessage::SignIn { data } => {
-                    process_sign_in(data, event.origin());
+        match serde_wasm_bindgen::from_value::<ReceiveMessage>(event.data()) {
+            Ok(message) => {
+                if is_debug_enabled() {
+                    log::info!("Successfully parsed message: {:?}", message);
                 }
-                ReceiveMessage::TauriWalletSession { session_id } => {
-                    retrieve_bridge_session(session_id);
+                match message {
+                    ReceiveMessage::SignIn { data } => {
+                        process_sign_in(data, event.origin());
+                    }
+                    ReceiveMessage::TauriWalletSession { session_id } => {
+                        retrieve_bridge_session(session_id);
+                    }
                 }
             }
-        } else if is_debug_enabled() {
-            log::info!("Failed to parse message as ReceiveMessage");
+            _ => {
+                if is_debug_enabled() {
+                    log::info!("Failed to parse message as ReceiveMessage");
+                }
+            }
         }
     });
 
@@ -598,10 +600,7 @@ pub fn Connect() -> impl IntoView {
                 });
 
                 // Continue with function call key addition if needed
-                if add_function_call_key && request_data.contract_id.is_some() {
-                    let contract_id = request_data
-                        .contract_id
-                        .expect("Contract ID must be present, otherwise checkbox can't be checked");
+                if add_function_call_key && let Some(contract_id) = request_data.contract_id {
                     let method_names = request_data.method_names.clone().unwrap_or_default();
 
                     let action = Action::AddKey(Box::new(AddKeyAction {

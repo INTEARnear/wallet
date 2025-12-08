@@ -250,11 +250,12 @@ pub fn DeveloperCreateToken() -> impl IntoView {
 
             let _ = JsFuture::from(promise).await;
 
-            if let Ok(result) = file_reader.result() {
-                if let Some(original_data_url) = result.as_string() {
-                    // Crop to square using canvas
-                    let js_code = format!(
-                        r#"(function() {{
+            if let Ok(result) = file_reader.result()
+                && let Some(original_data_url) = result.as_string()
+            {
+                // Crop to square using canvas
+                let js_code = format!(
+                    r#"(function() {{
                             return new Promise((resolve, reject) => {{
                                 const img = new Image();
                                 img.onload = function() {{
@@ -274,26 +275,22 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                                 img.src = `{original_data_url}`;
                             }});
                         }})()"#
-                    );
+                );
 
-                    if let Ok(promise_val) = web_sys::js_sys::eval(&js_code) {
-                        if let Ok(promise) = promise_val.dyn_into::<web_sys::js_sys::Promise>() {
-                            if let Ok(cropped_result) = JsFuture::from(promise).await {
-                                if let Some(cropped_data_url) = cropped_result.as_string() {
-                                    let current_quality = form_data.get_untracked().image_quality;
+                if let Ok(promise_val) = web_sys::js_sys::eval(&js_code)
+                    && let Ok(promise) = promise_val.dyn_into::<web_sys::js_sys::Promise>()
+                    && let Ok(cropped_result) = JsFuture::from(promise).await
+                    && let Some(cropped_data_url) = cropped_result.as_string()
+                {
+                    let current_quality = form_data.get_untracked().image_quality;
 
-                                    if let Ok(data_url) =
-                                        process_image(cropped_data_url.clone(), current_quality)
-                                            .await
-                                    {
-                                        set_form_data.update(|f| {
-                                            f.image = Some(data_url);
-                                            f.original_image_data_url = Some(cropped_data_url);
-                                        });
-                                    }
-                                }
-                            }
-                        }
+                    if let Ok(data_url) =
+                        process_image(cropped_data_url.clone(), current_quality).await
+                    {
+                        set_form_data.update(|f| {
+                            f.image = Some(data_url);
+                            f.original_image_data_url = Some(cropped_data_url);
+                        });
                     }
                 }
             }
@@ -302,10 +299,10 @@ pub fn DeveloperCreateToken() -> impl IntoView {
 
     let handle_image_upload = move |ev: Event| {
         let input: HtmlInputElement = ev.target().unwrap().unchecked_into();
-        if let Some(files) = input.files() {
-            if let Some(file) = files.get(0) {
-                read_file_as_data_url(file.into());
-            }
+        if let Some(files) = input.files()
+            && let Some(file) = files.get(0)
+        {
+            read_file_as_data_url(file.into());
         }
     };
 
@@ -313,14 +310,14 @@ pub fn DeveloperCreateToken() -> impl IntoView {
         if let Some(clipboard_data) = ev.clipboard_data() {
             let items = clipboard_data.items();
             for i in 0..items.length() {
-                if let Some(item) = items.get(i) {
-                    if item.type_().starts_with("image/") {
-                        ev.prevent_default();
-                        if let Ok(Some(blob)) = item.get_as_file() {
-                            read_file_as_data_url(blob.into());
-                        }
-                        break;
+                if let Some(item) = items.get(i)
+                    && item.type_().starts_with("image/")
+                {
+                    ev.prevent_default();
+                    if let Ok(Some(blob)) = item.get_as_file() {
+                        read_file_as_data_url(blob.into());
                     }
+                    break;
                 }
             }
         }

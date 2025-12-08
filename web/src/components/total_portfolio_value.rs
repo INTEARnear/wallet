@@ -4,8 +4,8 @@ use crate::contexts::network_context::{Network, NetworkContext};
 use crate::contexts::rpc_context::RpcContext;
 use crate::contexts::tokens_context::TokensContext;
 use crate::utils::{
-    balance_to_decimal, format_token_amount, format_usd_value, get_ft_metadata, is_tauri,
-    power_of_10, USDT_DECIMALS,
+    USDT_DECIMALS, balance_to_decimal, format_token_amount, format_usd_value, get_ft_metadata,
+    is_tauri, power_of_10,
 };
 use bigdecimal::{BigDecimal, ToPrimitive};
 use futures_util::future::join_all;
@@ -104,15 +104,11 @@ fn AirdropButton(
                             .json(&claim_request)
                             .send()
                             .await
-                        {
-                            if response.status().is_success() {
-                                if let Ok(json) = response.json::<serde_json::Value>().await {
-                                    if json.get("code").and_then(|v| v.as_i64()) == Some(0) {
+                            && response.status().is_success()
+                                && let Ok(json) = response.json::<serde_json::Value>().await
+                                    && json.get("code").and_then(|v| v.as_i64()) == Some(0) {
                                         reload_trigger.update(|n| *n += 1);
                                     }
-                                }
-                            }
-                        }
                         set_is_claiming.set(false);
                     });
                 }
@@ -200,14 +196,12 @@ pub fn TotalPortfolioValue() -> impl IntoView {
                 for &(airdrop_id, _) in AIRDROPS {
                     let url = format!("{}/airdrop/{}/{}", proxy_base, airdrop_id, account_id);
 
-                    if let Ok(response) = reqwest::get(&url).await {
-                        if let Ok(airdrop_response) = response.json::<AirdropResponse>().await {
-                            if airdrop_response.data.claimable
-                                && !airdrop_response.data.claim_tokens.is_empty()
-                            {
-                                all_airdrops.push((airdrop_id, airdrop_response.data.claim_tokens));
-                            }
-                        }
+                    if let Ok(response) = reqwest::get(&url).await
+                        && let Ok(airdrop_response) = response.json::<AirdropResponse>().await
+                        && airdrop_response.data.claimable
+                        && !airdrop_response.data.claim_tokens.is_empty()
+                    {
+                        all_airdrops.push((airdrop_id, airdrop_response.data.claim_tokens));
                     }
                 }
 

@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use leptos_icons::*;
 use leptos_router::hooks::{use_location, use_navigate};
-use near_min_api::types::{near_crypto::SecretKey, AccountId};
+use near_min_api::types::{AccountId, near_crypto::SecretKey};
 
 use crate::contexts::{
     accounts_context::{Account, AccountsContext, SecretKeyHolder},

@@ -97,9 +97,9 @@ pub fn Select(
                     }
                 >
                     {move || {
-                        if let Some(current) = current_option.get() {
+                        match current_option.get() { Some(current) => {
                             (current.label)()
-                        } else {
+                        } _ => {
                             view! {
                                 <span class="truncate text-gray-400">
                                     {placeholder
@@ -108,7 +108,7 @@ pub fn Select(
                                 </span>
                             }
                                 .into_any()
-                        }
+                        }}
                     }}
                     <Icon
                         icon=icondata::LuChevronDown

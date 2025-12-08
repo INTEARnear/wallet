@@ -2,11 +2,11 @@ use leptos::prelude::*;
 use leptos_icons::*;
 use leptos_router::hooks::use_location;
 use near_min_api::{
-    types::{
-        near_crypto::{ED25519SecretKey, SecretKey},
-        AccountId, Finality,
-    },
     QueryFinality,
+    types::{
+        AccountId, Finality,
+        near_crypto::{ED25519SecretKey, SecretKey},
+    },
 };
 
 use crate::{
@@ -23,7 +23,7 @@ use crate::{
         gifts::{Drop, DropStatus},
         nfts::{fetch_nft_metadata, fetch_nft_token},
     },
-    utils::{format_account_id, proxify_url, Resolution},
+    utils::{Resolution, format_account_id, proxify_url},
 };
 
 const SLIMEDROP_CONTRACT_MAINNET: &str = "slimedrop.intear.near";

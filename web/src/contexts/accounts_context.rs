@@ -5,26 +5,26 @@ use std::pin::Pin;
 use std::sync::mpmc;
 use std::time::Duration;
 
-use aes_gcm::aead::{rand_core::RngCore, Aead, OsRng};
+use aes_gcm::aead::{Aead, OsRng, rand_core::RngCore};
 use aes_gcm::{Aes256Gcm, Key, KeyInit, Nonce};
 use argon2::{Argon2, ParamsBuilder};
 use base64::prelude::BASE64_STANDARD;
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
 use futures_timer::Delay;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_use::{use_document, use_event_listener, use_window};
-use near_min_api::types::near_crypto::{KeyType, PublicKey, Signature};
 use near_min_api::types::CryptoHash;
+use near_min_api::types::near_crypto::{KeyType, PublicKey, Signature};
 use near_min_api::types::{
-    near_crypto::{ED25519SecretKey, SecretKey},
     AccountId,
+    near_crypto::{ED25519SecretKey, SecretKey},
 };
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen;
 use wasm_bindgen::JsValue;
-use wasm_bindgen::{closure::Closure, JsCast};
+use wasm_bindgen::{JsCast, closure::Closure};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::js_sys::Reflect;
 
@@ -296,15 +296,16 @@ async fn save_accounts(accounts: &AccountsState, cipher: Option<Cipher>) -> Resu
         }
     }
 
-    if let Some(storage) = get_local_storage() {
-        if let Ok(json) = serde_json::to_string(accounts) {
-            let _ = storage.set_item(ACCOUNTS_KEY, &json);
-            Ok(())
-        } else {
-            Err("Failed to serialize accounts".to_string())
+    match get_local_storage() {
+        Some(storage) => {
+            if let Ok(json) = serde_json::to_string(accounts) {
+                let _ = storage.set_item(ACCOUNTS_KEY, &json);
+                Ok(())
+            } else {
+                Err("Failed to serialize accounts".to_string())
+            }
         }
-    } else {
-        Err("localStorage not available".to_string())
+        _ => Err("localStorage not available".to_string()),
     }
 }
 
@@ -396,14 +397,17 @@ async fn save_encrypted_accounts(cipher: Cipher, accounts: AccountsState) -> Res
         nonce: general_purpose::STANDARD.encode(nonce_bytes),
     };
 
-    if let Some(storage) = get_local_storage() {
-        let encrypted_json = serde_json::to_string(&encrypted_accounts)
-            .map_err(|e| format!("Failed to serialize encrypted data: {}", e))?;
-        storage
-            .set_item(ENCRYPTED_ACCOUNTS_KEY, &encrypted_json)
-            .map_err(|e| format!("Failed to save to localStorage: {:?}", e))?;
-    } else {
-        return Err("localStorage not available".to_string());
+    match get_local_storage() {
+        Some(storage) => {
+            let encrypted_json = serde_json::to_string(&encrypted_accounts)
+                .map_err(|e| format!("Failed to serialize encrypted data: {}", e))?;
+            storage
+                .set_item(ENCRYPTED_ACCOUNTS_KEY, &encrypted_json)
+                .map_err(|e| format!("Failed to save to localStorage: {:?}", e))?;
+        }
+        _ => {
+            return Err("localStorage not available".to_string());
+        }
     }
 
     Ok(())
@@ -572,24 +576,23 @@ async fn store_cipher_to_service(key_bytes: [u8; 32], duration_seconds: u64) -> 
         invalidates_at: expires_at,
     };
 
-    if let Some(storage) = get_local_storage() {
-        if let Ok(json) = serde_json::to_string(&service_data) {
-            let _ = storage.set_item(PASSWORD_SERVICE_KEY, &json);
-        }
+    if let Some(storage) = get_local_storage()
+        && let Ok(json) = serde_json::to_string(&service_data)
+    {
+        let _ = storage.set_item(PASSWORD_SERVICE_KEY, &json);
     }
 
     Ok(())
 }
 
 async fn retrieve_cipher_from_service() -> Result<Option<Cipher>, String> {
-    let password_storage_service_data = if let Some(storage) = get_local_storage() {
-        storage
+    let password_storage_service_data = match get_local_storage() {
+        Some(storage) => storage
             .get_item(PASSWORD_SERVICE_KEY)
             .ok()
             .flatten()
-            .and_then(|json| serde_json::from_str::<PasswordServiceData>(&json).ok())
-    } else {
-        None
+            .and_then(|json| serde_json::from_str::<PasswordServiceData>(&json).ok()),
+        _ => None,
     };
     let Some(service_data) = password_storage_service_data else {
         return Ok(None);
@@ -675,85 +678,78 @@ pub fn provide_accounts_context() {
     if has_encrypted_data() && cipher.get_untracked().is_none() {
         spawn_local(async move {
             set_is_loading_cipher(true);
-            if let Ok(Some(retrieved_cipher)) = retrieve_cipher_from_service().await {
-                if let Ok(encrypted_accounts) = get_encrypted_accounts() {
-                    let encrypted_data = match general_purpose::STANDARD
-                        .decode(&encrypted_accounts.encrypted_data)
-                    {
+            if let Ok(Some(retrieved_cipher)) = retrieve_cipher_from_service().await
+                && let Ok(encrypted_accounts) = get_encrypted_accounts()
+            {
+                let encrypted_data =
+                    match general_purpose::STANDARD.decode(&encrypted_accounts.encrypted_data) {
                         Ok(data) => data,
                         Err(_) => {
                             set_is_loading_cipher(false);
                             return;
                         }
                     };
-                    let nonce_bytes =
-                        match general_purpose::STANDARD.decode(&encrypted_accounts.nonce) {
-                            Ok(data) => data,
-                            Err(_) => {
-                                set_is_loading_cipher(false);
-                                return;
-                            }
+                let nonce_bytes = match general_purpose::STANDARD.decode(&encrypted_accounts.nonce)
+                {
+                    Ok(data) => data,
+                    Err(_) => {
+                        set_is_loading_cipher(false);
+                        return;
+                    }
+                };
+
+                let nonce = Nonce::from_slice(&nonce_bytes);
+                let encrypted_data = if is_tauri() {
+                    let (tx, rx) = futures_channel::oneshot::channel();
+                    let nonce = *nonce;
+                    spawn_local(async move {
+                        let key_promise = tauri_invoke_no_args("get_os_encryption_key");
+                        let key_future = JsFuture::from(key_promise);
+                        let Ok(key_js) = key_future.await else {
+                            tx.send(Err("Failed to get key".to_string())).unwrap();
+                            return;
                         };
-
-                    let nonce = Nonce::from_slice(&nonce_bytes);
-                    let encrypted_data = if is_tauri() {
-                        let (tx, rx) = futures_channel::oneshot::channel();
-                        let nonce = *nonce;
-                        spawn_local(async move {
-                            let key_promise = tauri_invoke_no_args("get_os_encryption_key");
-                            let key_future = JsFuture::from(key_promise);
-                            let Ok(key_js) = key_future.await else {
-                                tx.send(Err("Failed to get key".to_string())).unwrap();
-                                return;
-                            };
-                            let Some(key_string) = key_js.as_string() else {
-                                tx.send(Err("Key is not a string".to_string())).unwrap();
-                                return;
-                            };
-                            let Ok(key_bytes) = BASE64_STANDARD.decode(&key_string) else {
-                                tx.send(Err("Failed to decode key".to_string())).unwrap();
-                                return;
-                            };
-                            let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
-                            let cipher = Aes256Gcm::new(key);
-                            let Ok(decrypted_data) =
-                                cipher.decrypt(&nonce, encrypted_data.as_ref())
-                            else {
-                                tx.send(Err(
-                                    "Failed to decrypt data using OS key on client".to_string()
-                                ))
-                                .unwrap();
-                                return;
-                            };
-                            tx.send(Ok(decrypted_data)).unwrap();
-                        });
-                        match rx.await.unwrap() {
-                            Ok(decrypted_data) => decrypted_data,
-                            Err(e) => {
-                                log::error!("Failed to decrypt data using OS key on client: {}", e);
-                                return;
-                            }
-                        }
-                    } else {
-                        encrypted_data
-                    };
-
-                    if let Ok(decrypted_data) = retrieved_cipher
-                        .cipher
-                        .decrypt(nonce, encrypted_data.as_ref())
-                    {
-                        if let Ok(accounts_json) = String::from_utf8(decrypted_data) {
-                            if let Ok(decrypted_accounts) =
-                                serde_json::from_str::<AccountsState>(&accounts_json)
-                            {
-                                set_cipher(Some(retrieved_cipher));
-                                set_accounts(decrypted_accounts);
-                                web_sys::console::log_1(
-                                    &"Loaded accounts from stored cipher".into(),
-                                );
-                            }
+                        let Some(key_string) = key_js.as_string() else {
+                            tx.send(Err("Key is not a string".to_string())).unwrap();
+                            return;
+                        };
+                        let Ok(key_bytes) = BASE64_STANDARD.decode(&key_string) else {
+                            tx.send(Err("Failed to decode key".to_string())).unwrap();
+                            return;
+                        };
+                        let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
+                        let cipher = Aes256Gcm::new(key);
+                        let Ok(decrypted_data) = cipher.decrypt(&nonce, encrypted_data.as_ref())
+                        else {
+                            tx.send(Err(
+                                "Failed to decrypt data using OS key on client".to_string()
+                            ))
+                            .unwrap();
+                            return;
+                        };
+                        tx.send(Ok(decrypted_data)).unwrap();
+                    });
+                    match rx.await.unwrap() {
+                        Ok(decrypted_data) => decrypted_data,
+                        Err(e) => {
+                            log::error!("Failed to decrypt data using OS key on client: {}", e);
+                            return;
                         }
                     }
+                } else {
+                    encrypted_data
+                };
+
+                if let Ok(decrypted_data) = retrieved_cipher
+                    .cipher
+                    .decrypt(nonce, encrypted_data.as_ref())
+                    && let Ok(accounts_json) = String::from_utf8(decrypted_data)
+                    && let Ok(decrypted_accounts) =
+                        serde_json::from_str::<AccountsState>(&accounts_json)
+                {
+                    set_cipher(Some(retrieved_cipher));
+                    set_accounts(decrypted_accounts);
+                    web_sys::console::log_1(&"Loaded accounts from stored cipher".into());
                 }
             }
             set_is_loading_cipher(false);

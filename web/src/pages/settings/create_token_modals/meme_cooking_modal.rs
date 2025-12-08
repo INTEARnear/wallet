@@ -142,10 +142,10 @@ fn validate_hard_cap(hard_cap_str: &str, soft_cap_str: &str) -> Option<String> {
         return Some(format!("Hard Cap must be between {MIN_CAP} and {MAX_CAP}"));
     }
 
-    if let Some(soft_cap) = parse_near_amount(soft_cap_str) {
-        if hard_cap < soft_cap {
-            return Some("Hard Cap must be greater than or equal to Soft Cap".to_string());
-        }
+    if let Some(soft_cap) = parse_near_amount(soft_cap_str)
+        && hard_cap < soft_cap
+    {
+        return Some("Hard Cap must be greater than or equal to Soft Cap".to_string());
     }
 
     None
@@ -437,13 +437,17 @@ where
                                                         outcome.final_outcome.transaction.hash;
                                                     match outcome.final_outcome.status {
                                                         FinalExecutionStatus::SuccessValue(_) => {
-                                                            log::info!("Meme Cooking launch successful: {tx_hash}");
+                                                            log::info!(
+                                                                "Meme Cooking launch successful: {tx_hash}"
+                                                            );
                                                             modal_context.modal.set(Some(Box::new(move || {
                                                                 view! { <MemeCookingSuccessModal token_symbol=token_symbol.clone() /> }.into_any()
                                                             })));
                                                         }
                                                         FinalExecutionStatus::Failure(_) => {
-                                                            log::error!("Meme Cooking launch failed: {tx_hash}");
+                                                            log::error!(
+                                                                "Meme Cooking launch failed: {tx_hash}"
+                                                            );
                                                             modal_context.modal.set(Some(Box::new(move || {
                                                                 view! { <MemeCookingErrorModal tx_hash=tx_hash /> }.into_any()
                                                             })));

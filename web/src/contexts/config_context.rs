@@ -252,10 +252,10 @@ fn load_config() -> WalletConfig {
 }
 
 fn save_config(config: &WalletConfig) {
-    if let Some(storage) = get_local_storage() {
-        if let Ok(json) = serde_json::to_string(config) {
-            let _ = storage.set_item(CONFIG_KEY, &json);
-        }
+    if let Some(storage) = get_local_storage()
+        && let Ok(json) = serde_json::to_string(config)
+    {
+        let _ = storage.set_item(CONFIG_KEY, &json);
     }
 }
 

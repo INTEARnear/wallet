@@ -38,16 +38,15 @@ pub fn DerivationPathInput(
     on_change: Callback<()>,
 ) -> impl IntoView {
     let handle_paste = move |ev: web_sys::ClipboardEvent| {
-        if let Some(clipboard_data) = ev.clipboard_data() {
-            if let Ok(pasted_text) = clipboard_data.get_data("text") {
-                if let Some((account, change, address)) = parse_derivation_path(&pasted_text) {
-                    ev.prevent_default();
-                    set_ledger_account_number.set(account);
-                    set_ledger_change_number.set(change);
-                    set_ledger_address_number.set(address);
-                    on_change.run(());
-                }
-            }
+        if let Some(clipboard_data) = ev.clipboard_data()
+            && let Ok(pasted_text) = clipboard_data.get_data("text")
+            && let Some((account, change, address)) = parse_derivation_path(&pasted_text)
+        {
+            ev.prevent_default();
+            set_ledger_account_number.set(account);
+            set_ledger_change_number.set(change);
+            set_ledger_address_number.set(address);
+            on_change.run(());
         }
     };
 
@@ -69,11 +68,10 @@ pub fn DerivationPathInput(
                         style="border-radius: 0.375rem 0 0 0.375rem;"
                         prop:value=move || ledger_account_number.get().to_string()
                         on:focus=move |ev| {
-                            if let Some(target) = ev.target() {
-                                if let Ok(input) = target.dyn_into::<web_sys::HtmlInputElement>() {
+                            if let Some(target) = ev.target()
+                                && let Ok(input) = target.dyn_into::<web_sys::HtmlInputElement>() {
                                     input.select();
                                 }
-                            }
                         }
                         on:paste=handle_paste
                         on:input=move |ev| {
@@ -102,11 +100,10 @@ pub fn DerivationPathInput(
                         class="w-6 bg-neutral-900/50 text-white rounded-none border-x-0 border-t-0 border-b border-neutral-700 px-0.5 py-1 focus:outline-none text-base text-center"
                         prop:value=move || ledger_change_number.get().to_string()
                         on:focus=move |ev| {
-                            if let Some(target) = ev.target() {
-                                if let Ok(input) = target.dyn_into::<web_sys::HtmlInputElement>() {
+                            if let Some(target) = ev.target()
+                                && let Ok(input) = target.dyn_into::<web_sys::HtmlInputElement>() {
                                     input.select();
                                 }
-                            }
                         }
                         on:paste=handle_paste
                         on:input=move |ev| {
@@ -127,11 +124,10 @@ pub fn DerivationPathInput(
                         style="border-radius: 0 0.375rem 0.375rem 0;"
                         prop:value=move || ledger_address_number.get().to_string()
                         on:focus=move |ev| {
-                            if let Some(target) = ev.target() {
-                                if let Ok(input) = target.dyn_into::<web_sys::HtmlInputElement>() {
+                            if let Some(target) = ev.target()
+                                && let Ok(input) = target.dyn_into::<web_sys::HtmlInputElement>() {
                                     input.select();
                                 }
-                            }
                         }
                         on:paste=handle_paste
                         on:input=move |ev| {
