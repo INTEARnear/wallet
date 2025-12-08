@@ -1536,10 +1536,11 @@ fn HistoryItem(
                         </div>
                         <div class="flex items-center gap-1 mt-1">
                             <div class="text-sm text-gray-300">
-                                {entry
-                                    .amount_in_formatted
-                                    .trim_end_matches('0')
-                                    .trim_end_matches('.')} " " {entry.origin_token_symbol.clone()}
+                                {
+                                    let amount = entry.amount_in_formatted.clone();
+                                    let amount = amount.trim_end_matches('0').trim_end_matches('.');
+                                    amount.to_string()
+                                } " " {entry.origin_token_symbol.clone()}
                             </div>
                             <CopyButton text=entry
                                 .amount_in_formatted
