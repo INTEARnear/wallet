@@ -2886,31 +2886,11 @@ dependencies = [
 
 [[package]]
 name = "derive_more"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a9b99b9cbbe49445b21764dc0625032a89b145a2642e67603e1c936f5458d05"
-dependencies = [
- "derive_more-impl 1.0.0",
-]
-
-[[package]]
-name = "derive_more"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10b768e943bed7bf2cab53df09f4bc34bfd217cdb57d971e769874c9a6710618"
 dependencies = [
- "derive_more-impl 2.1.0",
-]
-
-[[package]]
-name = "derive_more-impl"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb7330aeadfbe296029522e6c40f315320aba36fc43a5b3632f3795348f3bd22"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.111",
+ "derive_more-impl",
 ]
 
 [[package]]
@@ -5830,9 +5810,9 @@ dependencies = [
 
 [[package]]
 name = "near-account-id"
-version = "1.1.4"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "975bb8e272af403d97656893f71e095e1b178ccee571b3ec4a193152be0248f5"
+checksum = "d895dcfceb6eeec6c76c0ed861b9422cb918ad857fa321c78eaa577a90514707"
 dependencies = [
  "borsh",
  "serde",
@@ -5840,9 +5820,9 @@ dependencies = [
 
 [[package]]
 name = "near-config-utils"
-version = "0.29.2"
+version = "0.34.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b992cca8d3b00f34b37f638c9632a97b734656151294e7a29b60b93b8a92948"
+checksum = "5abe35e6d4b5e7575706ad607412e0f1e628e1786fcffc96c6e16aea10cebfe4"
 dependencies = [
  "anyhow",
  "json_comments",
@@ -5852,15 +5832,15 @@ dependencies = [
 
 [[package]]
 name = "near-crypto"
-version = "0.29.2"
+version = "0.34.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "938773caf4ce15aa435d422fd5823e5302a260c93dbd070281eecae74f1a2559"
+checksum = "705d23809bf4847ccb7d0fc2141a12b68e0d950cd425fb1cb1cffc547b73f08a"
 dependencies = [
  "blake2",
  "borsh",
  "bs58 0.4.0",
  "curve25519-dalek 4.1.3",
- "derive_more 1.0.0",
+ "derive_more 2.1.0",
  "ed25519-dalek 2.2.0",
  "hex",
  "near-account-id",
@@ -5913,15 +5893,15 @@ dependencies = [
 
 [[package]]
 name = "near-schema-checker-core"
-version = "0.29.2"
+version = "0.34.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00d54cd2888814fc2398316ec6d870754d7dd08704233bda770a75360afc8a7b"
+checksum = "d3652cdf9b13de96d9b23b4ad954652aaa84bdeec5168d8b8c7c229c7d36f41a"
 
 [[package]]
 name = "near-schema-checker-lib"
-version = "0.29.2"
+version = "0.34.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "311745157f685c26e05ca8532efbfcc09f63ab9fc7d94b824b2c75946ef37197"
+checksum = "8de81b55e49e8a0bf679f87aee27c6521d5b9a4a73474f753b2a127529ecf78a"
 dependencies = [
  "near-schema-checker-core",
  "near-schema-checker-macro",
@@ -5929,15 +5909,15 @@ dependencies = [
 
 [[package]]
 name = "near-schema-checker-macro"
-version = "0.29.2"
+version = "0.34.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "515c63689e1e7940ac34629ad9d16ba8fd6bea58ad8ddbd4acf705d6149f3c77"
+checksum = "79d63d022e686c6b92426c98f011908037730d557e815d6c813d5686030a6b53"
 
 [[package]]
 name = "near-stdx"
-version = "0.29.2"
+version = "0.34.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bf9306662fe8ced267a85aa1d3fc9205f1968d88b9ddbb9a03c657da8457533"
+checksum = "a501d5074c5c341725fe801ed191f45ef97e0a4d54d6ef5c3e87363930d4d0b1"
 
 [[package]]
 name = "near-token"

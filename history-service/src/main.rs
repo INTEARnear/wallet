@@ -380,13 +380,13 @@ async fn fetch_transaction_details(
         let db = db.clone();
         let serialized = serde_json::to_vec(&tx_details).unwrap();
 
-        tokio::task::spawn_blocking(move || {
+        let _ = tokio::task::spawn_blocking(move || {
             if let Err(e) = db.put(transaction_id.as_ref(), &serialized) {
                 tracing::error!("Failed to cache transaction {}: {}", transaction_id, e);
             } else {
                 tracing::debug!("Cached transaction: {}", transaction_id);
             }
-        });
+        }).await;
     }
 
     Ok(tx_details)
