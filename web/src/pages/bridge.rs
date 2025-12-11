@@ -15,7 +15,6 @@ use near_min_api::{
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, str::FromStr, time::Duration};
 
-use crate::contexts::network_context::{Network, NetworkContext};
 use crate::pages::settings::open_live_chat;
 use crate::utils::{decimal_to_balance, generate_qr_code};
 use crate::{
@@ -26,12 +25,12 @@ use crate::{
     contexts::accounts_context::AccountsContext,
     data::bridge_networks::{ChainInfo, NETWORK_NAMES},
 };
+use crate::{
+    contexts::network_context::{Network, NetworkContext},
+    data::bridge_networks::{USDC_ON_NEAR, USDT_ON_NEAR, WRAPPED_NEAR},
+};
 
-const DESTINATION_USDC: &str =
-    "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1";
-const DESTINATION_USDT: &str = "nep141:usdt.tether-token.near";
-const DESTINATION_NEAR: &str = "nep141:wrap.near";
-const DB_NAME: &str = "bridge_history";
+const DB_NAME: &str = "receive_bridge_history";
 
 async fn setup_db() -> Result<Database, deli::Error> {
     let db = Database::builder(DB_NAME)
@@ -772,7 +771,7 @@ fn ToNearTab(
             .into_iter()
             .map(|token| {
                 let asset_name = token.asset_name.clone();
-                SelectOption::new(token.defuse_asset_identifier.clone(), move || {
+                SelectOption::new(asset_name.clone(), move || {
                     view! { {asset_name.clone()} }.into_any()
                 })
             })
@@ -787,6 +786,7 @@ fn ToNearTab(
                     options=network_options
                     placeholder="Choose a network...".to_string()
                     class="bg-neutral-700 text-white rounded-lg"
+                    filter_enabled=true
                     on_change=Callback::new(move |value: String| {
                         let previously_selected_network = selected_network.get_untracked();
                         if previously_selected_network.is_some_and(|n| n.display_name == value) {
@@ -800,7 +800,7 @@ fn ToNearTab(
                             set_selected_network(Some(chain_info));
                         }
                     })
-                    initial_value="Select Network"
+                    // initial_value="Select Network"
                 />
             </div>
 
@@ -811,12 +811,13 @@ fn ToNearTab(
                         options=token_options
                         placeholder="Choose a token...".to_string()
                         class="bg-neutral-700 text-white rounded-lg"
+                        filter_enabled=true
                         on_change=Callback::new(move |value: String| {
                             if !value.is_empty() {
                                 if let Some(token) = tokens_stored
                                     .get_value()
                                     .into_iter()
-                                    .find(|t| t.defuse_asset_identifier == value)
+                                    .find(|t| t.asset_name == value)
                                 {
                                     set_selected_token(Some(token));
                                 }
@@ -986,6 +987,7 @@ fn StablesTab(
                     options=network_options
                     placeholder="Choose a network...".to_string()
                     class="bg-neutral-700 text-white rounded-lg"
+                    filter_enabled=true
                     on_change=Callback::new(move |value: String| {
                         let previously_selected_network = selected_network.get_untracked();
                         if previously_selected_network.is_some_and(|n| n.display_name == value) {
@@ -1069,9 +1071,9 @@ fn TokenDepositForm(
         let current_recipient = recipient();
         let current_chain_info = chain_info.get();
         let destination_asset = match receive_token_symbol.get().as_str() {
-            "USDC" => DESTINATION_USDC,
-            "USDT" => DESTINATION_USDT,
-            "NEAR" => DESTINATION_NEAR,
+            "USDC" => format!("nep141:{USDC_ON_NEAR}"),
+            "USDT" => format!("nep141:{USDT_ON_NEAR}"),
+            "NEAR" => format!("nep141:{WRAPPED_NEAR}"),
             _ => unreachable!("Invalid destination asset"),
         };
 
@@ -1199,9 +1201,9 @@ fn TokenDepositForm(
         let current_recipient = recipient();
         let current_chain_info = chain_info.get();
         let destination_asset = match receive_token_symbol.get().as_str() {
-            "USDC" => DESTINATION_USDC,
-            "USDT" => DESTINATION_USDT,
-            "NEAR" => DESTINATION_NEAR,
+            "USDC" => format!("nep141:{USDC_ON_NEAR}"),
+            "USDT" => format!("nep141:{USDT_ON_NEAR}"),
+            "NEAR" => format!("nep141:{WRAPPED_NEAR}"),
             _ => unreachable!("Invalid destination asset"),
         };
 
