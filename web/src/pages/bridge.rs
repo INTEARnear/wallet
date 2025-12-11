@@ -1,7 +1,10 @@
 use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
+use deli::{CursorDirection, Database, Model};
 use futures_util::FutureExt;
+use itertools::Itertools;
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use leptos_icons::*;
 use leptos_router::components::A;
 use leptos_use::{UseIntervalReturn, use_interval};
@@ -12,7 +15,6 @@ use near_min_api::{
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, str::FromStr, time::Duration};
 
-use crate::contexts::accounts_context::AccountsContext;
 use crate::contexts::network_context::{Network, NetworkContext};
 use crate::pages::settings::open_live_chat;
 use crate::utils::{decimal_to_balance, generate_qr_code};
@@ -20,50 +22,204 @@ use crate::{
     components::select::{Select, SelectOption},
     utils::format_token_amount_full_precision,
 };
+use crate::{
+    contexts::accounts_context::AccountsContext,
+    data::bridge_networks::{ChainInfo, NETWORK_NAMES},
+};
 
 const DESTINATION_USDC: &str =
     "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1";
 const DESTINATION_USDT: &str = "nep141:usdt.tether-token.near";
 const DESTINATION_NEAR: &str = "nep141:wrap.near";
-const BRIDGE_HISTORY_KEY: &str = "smile_wallet_bridge_history";
+const DB_NAME: &str = "bridge_history";
 
-fn load_bridge_history() -> Vec<BridgeHistoryEntry> {
-    if let Some(storage) = window().local_storage().ok().flatten()
-        && let Ok(Some(json)) = storage.get_item(BRIDGE_HISTORY_KEY)
-        && let Ok(history) = serde_json::from_str::<Vec<BridgeHistoryEntry>>(&json)
-    {
-        return history;
-    }
+async fn setup_db() -> Result<Database, deli::Error> {
+    let db = Database::builder(DB_NAME)
+        .version(1)
+        .add_model::<BridgeHistoryEntry>()
+        .build()
+        .await;
 
-    Vec::new()
-}
-
-fn save_bridge_history(history: &[BridgeHistoryEntry]) {
-    if let Some(storage) = window().local_storage().ok().flatten()
-        && let Ok(json) = serde_json::to_string(history)
-    {
-        let _ = storage.set_item(BRIDGE_HISTORY_KEY, &json);
+    match db {
+        Ok(db) => Ok(db),
+        Err(e) => {
+            log::error!("Failed to open bridge history database: {e:?}");
+            Err(e)
+        }
     }
 }
 
-fn add_to_bridge_history(entry: BridgeHistoryEntry) {
-    let mut history = load_bridge_history();
+async fn load_bridge_history_page(
+    start_index: u32,
+    limit: u32,
+) -> Result<Vec<BridgeHistoryEntry>, String> {
+    match setup_db().await {
+        Ok(db) => {
+            let tx = db
+                .transaction()
+                .with_model::<BridgeHistoryEntry>()
+                .build()
+                .map_err(|e| format!("Failed to create transaction: {e:?}"))?;
 
-    if let Some(existing) = history
-        .iter_mut()
-        .find(|e| e.deposit_address == entry.deposit_address)
-    {
-        *existing = entry;
-    } else {
-        history.insert(0, entry);
+            let store = BridgeHistoryEntry::with_transaction(&tx)
+                .map_err(|e| format!("Failed to instantiate store: {e:?}"))?;
+            let Ok(Some(mut cursor)) = store.cursor(.., Some(CursorDirection::Prev)).await else {
+                return Ok(Vec::new());
+            };
+            let mut values = Vec::new();
+            cursor.advance(start_index).await.ok();
+            while let Ok(Some(value)) = cursor.value() {
+                values.push(value);
+                if values.len() >= limit as usize {
+                    break;
+                }
+                if let Err(e) = cursor.advance(1).await {
+                    log::error!("Failed to advance cursor: {e:?}");
+                    break;
+                }
+            }
+            Ok(values)
+        }
+        Err(e) => Err(e.to_string()),
     }
+}
 
-    // Keep only the last 100 entries
-    if history.len() > 100 {
-        history.truncate(100);
+async fn count_bridge_history() -> Result<u32, String> {
+    match setup_db().await {
+        Ok(db) => {
+            let tx = db
+                .transaction()
+                .with_model::<BridgeHistoryEntry>()
+                .build()
+                .map_err(|e| format!("Failed to create transaction: {e:?}"))?;
+
+            let store = BridgeHistoryEntry::with_transaction(&tx)
+                .map_err(|e| format!("Failed to instantiate store: {e:?}"))?;
+            store
+                .count(..)
+                .await
+                .map_err(|e| format!("Failed to count entries: {e:?}"))
+        }
+        Err(e) => Err(e.to_string()),
     }
+}
 
-    save_bridge_history(&history);
+async fn add_to_bridge_history(entry: AddBridgeHistoryEntry) -> Result<u32, String> {
+    match setup_db().await {
+        Ok(db) => {
+            let tx_read = db
+                .transaction()
+                .with_model::<BridgeHistoryEntry>()
+                .build()
+                .map_err(|e| format!("Failed to create read transaction: {e:?}"))?;
+
+            let store_read = BridgeHistoryEntry::with_transaction(&tx_read)
+                .map_err(|e| format!("Failed to instantiate store: {e:?}"))?;
+
+            let mut existing_entry: Option<BridgeHistoryEntry> = None;
+            if let Ok(Some(mut cursor)) = store_read.cursor(.., Some(CursorDirection::Next)).await {
+                loop {
+                    let Ok(Some(value)) = cursor.value() else {
+                        break;
+                    };
+                    if value.deposit_address == entry.deposit_address {
+                        existing_entry = Some(value);
+                        break;
+                    }
+                    if cursor.advance(1).await.is_err() {
+                        break;
+                    }
+                }
+            }
+
+            let tx = db
+                .transaction()
+                .writable()
+                .with_model::<BridgeHistoryEntry>()
+                .build()
+                .map_err(|e| format!("Failed to create transaction: {e:?}"))?;
+
+            let store = BridgeHistoryEntry::with_transaction(&tx)
+                .map_err(|e| format!("Failed to instantiate store: {e:?}"))?;
+
+            if let Some(mut existing) = existing_entry {
+                // Update existing entry
+                existing.deposit_address = entry.deposit_address;
+                existing.amount_in_formatted = entry.amount_in_formatted;
+                existing.amount_out_formatted = entry.amount_out_formatted;
+                existing.origin_token_symbol = entry.origin_token_symbol;
+                existing.destination_token_symbol = entry.destination_token_symbol;
+                existing.network_display = entry.network_display;
+                existing.created_at = entry.created_at;
+                existing.deadline = entry.deadline;
+                existing.status = entry.status;
+
+                store
+                    .update(&existing)
+                    .await
+                    .map_err(|e| format!("Failed to update entry: {e:?}"))?;
+                tx.commit()
+                    .await
+                    .map_err(|e| format!("Failed to commit transaction: {e:?}"))?;
+                Ok(existing.id)
+            } else {
+                // Add new entry
+                let id = store
+                    .add(&entry)
+                    .await
+                    .map_err(|e| format!("Failed to add entry: {e:?}"))?;
+
+                tx.commit()
+                    .await
+                    .map_err(|e| format!("Failed to commit transaction: {e:?}"))?;
+                Ok(id)
+            }
+        }
+        Err(e) => Err(format!("Failed to open database: {e:?}")),
+    }
+}
+
+async fn update_bridge_history_status(
+    deposit_address: DepositAddress,
+    status: DepositStatus,
+) -> Result<(), String> {
+    match setup_db().await {
+        Ok(db) => {
+            let tx = db
+                .transaction()
+                .writable()
+                .with_model::<BridgeHistoryEntry>()
+                .build()
+                .map_err(|e| format!("Failed to create transaction: {e:?}"))?;
+
+            let store = BridgeHistoryEntry::with_transaction(&tx)
+                .map_err(|e| format!("Failed to instantiate store: {e:?}"))?;
+
+            if let Ok(Some(mut cursor)) = store.cursor(.., Some(CursorDirection::Next)).await {
+                loop {
+                    let Ok(Some(mut entry)) = cursor.value() else {
+                        break;
+                    };
+                    if entry.deposit_address == deposit_address {
+                        entry.status = Some(status);
+                        store
+                            .update(&entry)
+                            .await
+                            .map_err(|e| format!("Failed to update entry: {e:?}"))?;
+                        tx.commit()
+                            .await
+                            .map_err(|e| format!("Failed to commit transaction: {e:?}"))?;
+                        return Ok(());
+                    }
+                    if cursor.advance(1).await.is_err() {
+                        break;
+                    }
+                }
+            }
+            Err("Entry not found".to_string())
+        }
+        Err(e) => Err(format!("Failed to open database: {e:?}")),
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,6 +231,7 @@ struct SupportedTokensResponse {
 #[serde(rename_all = "camelCase")]
 struct QuoteRequest {
     dry: bool,
+    deposit_mode: DepositMode,
     swap_type: SwapType,
     slippage_tolerance: u32,
     origin_asset: String,
@@ -89,6 +246,13 @@ struct QuoteRequest {
     deadline: DateTime<Utc>,
     referral: AccountId,
     quote_waiting_time_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+enum DepositMode {
+    Simple,
+    Memo,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -137,7 +301,11 @@ struct Quote {
     amount_in_formatted: String,
     amount_out: String,
     amount_out_formatted: String,
+    /// Always present for non-dry quotes
     deposit_address: Option<String>,
+    /// Present for non-dry quotes if requested with DepositMode::Memo
+    deposit_memo: Option<String>,
+    /// Always present for non-dry quotes
     deadline: Option<DateTime<Utc>>,
 }
 
@@ -226,10 +394,12 @@ enum Tab {
     History,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Model)]
 #[serde(rename_all = "camelCase")]
 struct BridgeHistoryEntry {
-    deposit_address: String,
+    #[deli(auto_increment)]
+    id: u32,
+    deposit_address: DepositAddress,
     amount_in_formatted: String,
     amount_out_formatted: String,
     origin_token_symbol: String,
@@ -246,52 +416,14 @@ enum StableCoin {
     Usdt,
 }
 
-pub const NETWORK_NAMES: &[((&str, &str), &str)] = &[
-    (("eth", "1"), "Ethereum"),
-    (("eth", "10"), "Optimism"),
-    (("eth", "56"), "BNB Chain"),
-    (("eth", "100"), "Gnosis"),
-    (("eth", "137"), "Polygon"),
-    (("eth", "143"), "Monad"),
-    (("eth", "196"), "X Layer"),
-    (("eth", "8453"), "Base"),
-    (("eth", "36900"), "ADI Testnet"),
-    (("eth", "42161"), "Arbitrum"),
-    (("eth", "43114"), "Avalanche"),
-    (("eth", "80094"), "Berachain"),
-    (("btc", "mainnet"), "Bitcoin"),
-    (("doge", "mainnet"), "Dogecoin"),
-    (("sol", "mainnet"), "Solana"),
-    (("xrp", "mainnet"), "Ripple"),
-    (("zec", "mainnet"), "Zcash"),
-    (("tron", "mainnet"), "Tron"),
-    (("aptos", "mainnet"), "Aptos"),
-    (("cardano", "mainnet"), "Cardano"),
-    (("stellar", "mainnet"), "Stellar"),
-    (("ton", "mainnet"), "TON"),
-    (("sui", "mainnet"), "Sui"),
-    (("ltc", "mainnet"), "Litecoin"),
-    (("bch", "mainnet"), "Bitcoin Cash"),
-];
-
-fn get_network_name(network_key: &str) -> Option<&'static str> {
-    let mut parts = network_key.splitn(3, ':');
-    let chain = parts.next()?;
-    let network = parts.next()?;
+fn get_chain_info(defuse_asset_identifier: &str) -> Option<&'static ChainInfo<'static>> {
+    let mut parts = defuse_asset_identifier.splitn(3, ':');
+    let chain_type = parts.next()?;
+    let chain_id = parts.next()?;
 
     NETWORK_NAMES
         .iter()
-        .find(|((c, n), _)| *c == chain && *n == network)
-        .map(|(_, name)| *name)
-}
-
-fn extract_network_key(defuse_asset_identifier: &str) -> String {
-    let mut parts = defuse_asset_identifier.splitn(3, ':');
-    if let (Some(chain_type), Some(chain_id)) = (parts.next(), parts.next()) {
-        format!("{chain_type}:{chain_id}")
-    } else {
-        defuse_asset_identifier.to_string()
-    }
+        .find(|c| c.chain_type == chain_type && c.chain_id == chain_id)
 }
 
 #[derive(Debug, Clone)]
@@ -300,7 +432,13 @@ struct TerminalScreenData {
     quote: Quote,
     receive_token_symbol: String,
     recipient: AccountId,
-    deposit_address: String,
+    deposit_address: DepositAddress,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Hash, Eq)]
+pub enum DepositAddress {
+    Simple(String),
+    WithMemo(String, String),
 }
 
 #[component]
@@ -377,11 +515,10 @@ pub fn Bridge() -> impl IntoView {
                     <span>"Back"</span>
                 </A>
 
-                <Show
-                    when=move || terminal_screen.get().is_some()
-                    fallback=move || {
+                {move || match terminal_screen.get() {
+                    None => {
                         view! {
-                            <div class="flex flex-col items-center justify-center min-h-[60vh] gap-6">
+                            <div class="flex flex-col items-center gap-6">
                                 <h1 class="text-2xl font-bold text-white mb-4">"Bridge"</h1>
 
                                 <div class="flex gap-2 w-full max-w-md">
@@ -490,101 +627,95 @@ pub fn Bridge() -> impl IntoView {
                                 </Suspense>
                             </div>
                         }
+                            .into_any()
                     }
-                >
-
-                    {move || {
-                        terminal_screen
-                            .get()
-                            .map(|data| {
-                                match data.status {
-                                    DepositStatus::Success => {
-                                        let amount_formatted = if let Ok(amount) = BigDecimal::from_str(
-                                            &data.quote.amount_out_formatted,
-                                        ) {
-                                            format!("{amount:.6}")
-                                        } else {
-                                            data.quote
-                                                .amount_out_formatted
-                                                .trim_end_matches('0')
-                                                .trim_end_matches('.')
-                                                .to_string()
-                                        };
-                                        view! {
-                                            <div class="flex flex-col items-center justify-center gap-6 py-8 min-h-[60vh]">
-                                                <div class="w-16 h-16 rounded-full bg-green-400/20 flex items-center justify-center">
-                                                    <Icon
-                                                        icon=icondata::LuCheck
-                                                        width="48"
-                                                        height="48"
-                                                        attr:class="text-green-400"
-                                                    />
-                                                </div>
-                                                <h2 class="text-2xl font-bold text-white">
-                                                    "Bridge Complete!"
-                                                </h2>
-                                                <div class="bg-neutral-800 rounded-lg p-6 max-w-md w-full">
-                                                    <div class="text-center">
-                                                        <p class="text-gray-400 text-sm mb-2">"You received"</p>
-                                                        <p class="text-3xl font-bold text-white">
-                                                            {amount_formatted
-                                                                .trim_end_matches('0')
-                                                                .trim_end_matches('.')} " " {data.receive_token_symbol}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                <p class="text-gray-400 text-center max-w-md">
-                                                    "Your tokens have been successfully bridged to NEAR."
+                    Some(data) => {
+                        match data.status {
+                            DepositStatus::Success => {
+                                let amount_formatted = if let Ok(amount) = BigDecimal::from_str(
+                                    &data.quote.amount_out_formatted,
+                                ) {
+                                    format!("{amount:.6}")
+                                } else {
+                                    data.quote
+                                        .amount_out_formatted
+                                        .trim_end_matches('0')
+                                        .trim_end_matches('.')
+                                        .to_string()
+                                };
+                                view! {
+                                    <div class="flex flex-col items-center gap-6 py-8">
+                                        <div class="w-16 h-16 rounded-full bg-green-400/20 flex items-center justify-center">
+                                            <Icon
+                                                icon=icondata::LuCheck
+                                                width="48"
+                                                height="48"
+                                                attr:class="text-green-400"
+                                            />
+                                        </div>
+                                        <h2 class="text-2xl font-bold text-white">
+                                            "Bridge Complete!"
+                                        </h2>
+                                        <div class="bg-neutral-800 rounded-lg p-6 max-w-md w-full">
+                                            <div class="text-center">
+                                                <p class="text-gray-400 text-sm mb-2">"You received"</p>
+                                                <p class="text-3xl font-bold text-white">
+                                                    "≈"
+                                                    {amount_formatted
+                                                        .trim_end_matches('0')
+                                                        .trim_end_matches('.')} " " {data.receive_token_symbol}
                                                 </p>
-                                                <A
-                                                    href="/"
-                                                    attr:class="w-full max-w-md bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-center text-base"
-                                                >
-                                                    "Done"
-                                                </A>
                                             </div>
-                                        }
-                                            .into_any()
-                                    }
-                                    DepositStatus::Failed | DepositStatus::Refunded => {
-                                        view! {
-                                            <div class="flex flex-col items-center justify-center gap-6 py-8 min-h-[60vh]">
-                                                <div class="w-16 h-16 rounded-full bg-red-400/20 flex items-center justify-center">
-                                                    <Icon
-                                                        icon=icondata::LuX
-                                                        width="48"
-                                                        height="48"
-                                                        attr:class="text-red-400"
-                                                    />
-                                                </div>
-                                                <h2 class="text-2xl font-bold text-white">
-                                                    "Bridge Failed"
-                                                </h2>
-                                                <p class="text-gray-400 text-center max-w-md">
-                                                    "Your bridge transaction has failed. Please contact support for assistance."
-                                                </p>
-                                                <button
-                                                    class="w-full max-w-md bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-base"
-                                                    on:click=move |_| {
-                                                        open_live_chat(
-                                                            data.recipient.clone(),
-                                                            Some(data.deposit_address.clone()),
-                                                        )
-                                                    }
-                                                >
-                                                    "Contact Support"
-                                                </button>
-                                            </div>
-                                        }
-                                            .into_any()
-                                    }
-                                    _ => ().into_any(),
+                                        </div>
+                                        <p class="text-gray-400 text-center max-w-md">
+                                            "Your tokens have been successfully bridged to NEAR."
+                                        </p>
+                                        <A
+                                            href="/"
+                                            attr:class="w-full max-w-md bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-center text-base"
+                                        >
+                                            "Done"
+                                        </A>
+                                    </div>
                                 }
-                            })
-                            .unwrap_or_else(|| ().into_any())
-                    }}
-
-                </Show>
+                                    .into_any()
+                            }
+                            DepositStatus::Failed | DepositStatus::Refunded => {
+                                view! {
+                                    <div class="flex flex-col items-center gap-6 py-8">
+                                        <div class="w-16 h-16 rounded-full bg-red-400/20 flex items-center justify-center">
+                                            <Icon
+                                                icon=icondata::LuX
+                                                width="48"
+                                                height="48"
+                                                attr:class="text-red-400"
+                                            />
+                                        </div>
+                                        <h2 class="text-2xl font-bold text-white">
+                                            "Bridge Failed"
+                                        </h2>
+                                        <p class="text-gray-400 text-center max-w-md">
+                                            "Your bridge transaction has failed. Please contact support for assistance."
+                                        </p>
+                                        <button
+                                            class="w-full max-w-md bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-base"
+                                            on:click=move |_| {
+                                                open_live_chat(
+                                                    data.recipient.clone(),
+                                                    Some(data.deposit_address.clone()),
+                                                )
+                                            }
+                                        >
+                                            "Contact Support"
+                                        </button>
+                                    </div>
+                                }
+                                    .into_any()
+                            }
+                            _ => ().into_any(),
+                        }
+                    }
+                }}
             </div>
         </Show>
     }
@@ -596,35 +727,27 @@ fn ToNearTab(
     set_terminal_screen: WriteSignal<Option<TerminalScreenData>>,
 ) -> impl IntoView {
     let tokens_stored = StoredValue::new(tokens.clone());
-    let networks = {
-        let mut network_list: Vec<String> = tokens
-            .iter()
-            .map(|t| extract_network_key(&t.defuse_asset_identifier))
-            .filter(|network_key| get_network_name(network_key).is_some())
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect();
-        network_list.sort_by(|a, b| {
-            let name_a = get_network_name(a).unwrap();
-            let name_b = get_network_name(b).unwrap();
-            name_a.cmp(name_b)
-        });
-        network_list
-    };
+    let networks = tokens
+        .iter()
+        .filter_map(|t| get_chain_info(&t.defuse_asset_identifier))
+        .sorted_unstable_by_key(|c| c.display_name)
+        .dedup_by(|c1, c2| c1.display_name == c2.display_name)
+        .collect::<Vec<_>>();
+    let networks_clone = networks.clone();
 
     let network_options = Signal::derive(move || {
         networks
             .iter()
-            .map(|network| {
-                let display_name = get_network_name(network).unwrap().to_string();
-                SelectOption::new(network.clone(), move || {
-                    view! { <span>{display_name.clone()}</span> }.into_any()
+            .map(|chain_info| {
+                let display_name = chain_info.display_name.to_string();
+                SelectOption::new(display_name.clone(), move || {
+                    view! { {display_name.clone()} }.into_any()
                 })
             })
             .collect::<Vec<_>>()
     });
 
-    let (selected_network, set_selected_network) = signal::<Option<String>>(None);
+    let (selected_network, set_selected_network) = signal::<Option<&'static ChainInfo>>(None);
     let (selected_token, set_selected_token) = signal::<Option<BridgeToken>>(None);
 
     let network_tokens = move || {
@@ -632,7 +755,10 @@ fn ToNearTab(
             let mut token_list: Vec<BridgeToken> = tokens_stored
                 .get_value()
                 .into_iter()
-                .filter(|t| t.defuse_asset_identifier.starts_with(&network))
+                .filter(|t| {
+                    t.defuse_asset_identifier
+                        .starts_with(&format!("{}:{}:", network.chain_type, network.chain_id))
+                })
                 .collect();
             token_list.sort_by(|a, b| a.asset_name.cmp(&b.asset_name));
             token_list
@@ -647,7 +773,7 @@ fn ToNearTab(
             .map(|token| {
                 let asset_name = token.asset_name.clone();
                 SelectOption::new(token.defuse_asset_identifier.clone(), move || {
-                    view! { <span>{asset_name.clone()}</span> }.into_any()
+                    view! { {asset_name.clone()} }.into_any()
                 })
             })
             .collect::<Vec<_>>()
@@ -662,14 +788,23 @@ fn ToNearTab(
                     placeholder="Choose a network...".to_string()
                     class="bg-neutral-700 text-white rounded-lg"
                     on_change=Callback::new(move |value: String| {
-                        set_selected_network(if value.is_empty() { None } else { Some(value) });
+                        let previously_selected_network = selected_network.get_untracked();
+                        if previously_selected_network.is_some_and(|n| n.display_name == value) {
+                            return;
+                        }
                         set_selected_token(None);
+                        if let Some(chain_info) = networks_clone
+                            .iter()
+                            .find(|ci| ci.display_name == value)
+                        {
+                            set_selected_network(Some(chain_info));
+                        }
                     })
                     initial_value="Select Network"
                 />
             </div>
 
-            <Show when=move || selected_network.get().is_some()>
+            <Show when=move || selected_network.read().is_some()>
                 <div class="bg-neutral-800 rounded-lg p-4">
                     <label class="text-gray-400 text-sm mb-2 block">"Select Token"</label>
                     <Select
@@ -694,9 +829,12 @@ fn ToNearTab(
                 </div>
             </Show>
 
-            <Show when=move || selected_token.get().is_some()>
+            <Show when=move || {
+                selected_token.read().is_some() && selected_network.read().is_some()
+            }>
                 <TokenDepositForm
                     token=selected_token
+                    chain_info=selected_network
                     receive_token_symbol=Signal::derive(|| "NEAR".to_string())
                     set_terminal_screen=set_terminal_screen
                 />
@@ -713,38 +851,30 @@ fn StablesTab(
     set_terminal_screen: WriteSignal<Option<TerminalScreenData>>,
 ) -> impl IntoView {
     let tokens_stored = StoredValue::new(tokens.clone());
-    let (selected_network, set_selected_network) = signal::<Option<String>>(None);
+    let (selected_network, set_selected_network) = signal::<Option<&'static ChainInfo>>(None);
     let (selected_token, set_selected_token) = signal::<Option<BridgeToken>>(None);
 
-    let stable_networks = move || {
+    let networks = move || {
         let stable_name = match selected_stable.get() {
             StableCoin::Usdc => "USDC",
             StableCoin::Usdt => "USDT",
         };
-
-        let mut network_list: Vec<String> = tokens
+        tokens
             .iter()
             .filter(|t| t.asset_name.to_uppercase() == stable_name)
-            .map(|t| extract_network_key(&t.defuse_asset_identifier))
-            .filter(|network_key| get_network_name(network_key).is_some())
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect();
-        network_list.sort_by(|a, b| {
-            let name_a = get_network_name(a).unwrap();
-            let name_b = get_network_name(b).unwrap();
-            name_a.cmp(name_b)
-        });
-        network_list
+            .filter_map(|t| get_chain_info(&t.defuse_asset_identifier))
+            .sorted_unstable_by_key(|c| c.display_name)
+            .dedup_by(|c1, c2| c1.display_name == c2.display_name)
+            .collect::<Vec<_>>()
     };
-
-    let stable_network_options = Signal::derive(move || {
-        stable_networks()
+    let networks_clone = networks.clone();
+    let network_options = Signal::derive(move || {
+        networks()
             .into_iter()
-            .map(|network| {
-                let display_name = get_network_name(&network).unwrap().to_string();
-                SelectOption::new(network.clone(), move || {
-                    view! { <span>{display_name.clone()}</span> }.into_any()
+            .map(|chain_info| {
+                let display_name = chain_info.display_name.to_string();
+                SelectOption::new(display_name.clone(), move || {
+                    view! { {display_name.clone()} }.into_any()
                 })
             })
             .collect::<Vec<_>>()
@@ -760,7 +890,8 @@ fn StablesTab(
         if let Some(network) = selected_network.get() {
             if let Some(token) = tokens_stored.get_value().into_iter().find(|t| {
                 t.asset_name.to_uppercase() == stable_name
-                    && t.defuse_asset_identifier.starts_with(&network)
+                    && t.defuse_asset_identifier
+                        .starts_with(&format!("{}:{}:", network.chain_type, network.chain_id))
             }) {
                 set_selected_token(Some(token));
             } else {
@@ -792,8 +923,11 @@ fn StablesTab(
                                     .get_value()
                                     .into_iter()
                                     .find(|t| {
-                                        t.defuse_asset_identifier.starts_with(&network)
-                                            && t.asset_name.to_uppercase() == "USDC"
+                                        t
+                                            .defuse_asset_identifier
+                                            .starts_with(
+                                                &format!("{}:{}:", network.chain_type, network.chain_id),
+                                            ) && t.asset_name.to_uppercase() == "USDC"
                                     })
                                 {
                                     set_selected_token(Some(token.clone()));
@@ -825,8 +959,11 @@ fn StablesTab(
                                     .get_value()
                                     .into_iter()
                                     .find(|t| {
-                                        t.defuse_asset_identifier.starts_with(&network)
-                                            && t.asset_name.to_uppercase() == "USDT"
+                                        t
+                                            .defuse_asset_identifier
+                                            .starts_with(
+                                                &format!("{}:{}:", network.chain_type, network.chain_id),
+                                            ) && t.asset_name.to_uppercase() == "USDT"
                                     })
                                 {
                                     set_selected_token(Some(token.clone()));
@@ -846,19 +983,32 @@ fn StablesTab(
             <div class="bg-neutral-800 rounded-lg p-4">
                 <label class="text-gray-400 text-sm mb-2 block">"Select Network"</label>
                 <Select
-                    options=stable_network_options
+                    options=network_options
                     placeholder="Choose a network...".to_string()
                     class="bg-neutral-700 text-white rounded-lg"
                     on_change=Callback::new(move |value: String| {
-                        set_selected_network(if value.is_empty() { None } else { Some(value) });
+                        let previously_selected_network = selected_network.get_untracked();
+                        if previously_selected_network.is_some_and(|n| n.display_name == value) {
+                            return;
+                        }
+                        set_selected_token(None);
+                        if let Some(chain_info) = networks_clone()
+                            .into_iter()
+                            .find(|ci| ci.display_name == value)
+                        {
+                            set_selected_network(Some(chain_info));
+                        }
                     })
                     initial_value="Select Network"
                 />
             </div>
 
-            <Show when=move || selected_token.get().is_some()>
+            <Show when=move || {
+                selected_token.read().is_some() && selected_network.read().is_some()
+            }>
                 <TokenDepositForm
                     token=selected_token
+                    chain_info=selected_network
                     receive_token_symbol=Signal::derive(move || {
                         match selected_stable.get() {
                             StableCoin::Usdc => "USDC".to_string(),
@@ -875,6 +1025,7 @@ fn StablesTab(
 #[component]
 fn TokenDepositForm(
     token: ReadSignal<Option<BridgeToken>>,
+    chain_info: ReadSignal<Option<&'static ChainInfo<'static>>>,
     receive_token_symbol: Signal<String>,
     set_terminal_screen: WriteSignal<Option<TerminalScreenData>>,
 ) -> impl IntoView {
@@ -916,6 +1067,7 @@ fn TokenDepositForm(
         let current_token = token();
         let current_amount = amount.get();
         let current_recipient = recipient();
+        let current_chain_info = chain_info.get();
         let destination_asset = match receive_token_symbol.get().as_str() {
             "USDC" => DESTINATION_USDC,
             "USDT" => DESTINATION_USDT,
@@ -924,6 +1076,9 @@ fn TokenDepositForm(
         };
 
         async move {
+            let Some(current_chain_info) = current_chain_info else {
+                return Err("No chain info, can't get a quote".to_string());
+            };
             if current_amount.trim().is_empty() {
                 return Err("Empty amount".to_string());
             }
@@ -939,8 +1094,12 @@ fn TokenDepositForm(
 
             let request = QuoteRequest {
                 dry: true,
+                deposit_mode: match current_chain_info.requires_memo {
+                    true => DepositMode::Memo,
+                    false => DepositMode::Simple,
+                },
                 swap_type: SwapType::ExactInput,
-                slippage_tolerance: 100,
+                slippage_tolerance: 1000,
                 origin_asset: current_token.intents_token_id.clone(),
                 deposit_type: DepositType::OriginChain,
                 destination_asset: destination_asset.to_string(),
@@ -979,7 +1138,12 @@ fn TokenDepositForm(
     });
 
     // Guaranteed to be Some for non-dry quotes
-    let deposit_address = move || quote_data.get().map(|q| q.deposit_address.clone().unwrap());
+    let deposit_address = move || {
+        quote_data.get().map(|q| match q.deposit_memo {
+            Some(memo) => DepositAddress::WithMemo(q.deposit_address.clone().unwrap(), memo),
+            None => DepositAddress::Simple(q.deposit_address.clone().unwrap()),
+        })
+    };
 
     let (deposit_status, set_deposit_status) = signal::<Option<DepositStatus>>(None);
 
@@ -991,12 +1155,15 @@ fn TokenDepositForm(
             let current_recipient = recipient();
             let current_symbol = receive_token_symbol.get();
             leptos::task::spawn_local(async move {
-                if let Ok(response) = reqwest::Client::new()
-                    .get(format!(
+                let status_url = match &address {
+                    DepositAddress::WithMemo(address, memo) => format!(
+                        "https://1click.chaindefuser.com/v0/status?depositAddress={address}&depositMemo={memo}"
+                    ),
+                    DepositAddress::Simple(address) => format!(
                         "https://1click.chaindefuser.com/v0/status?depositAddress={address}"
-                    ))
-                    .send()
-                    .await
+                    ),
+                };
+                if let Ok(response) = reqwest::Client::new().get(status_url).send().await
                     && let Ok(status_response) = response.json::<StatusResponse>().await
                 {
                     let status = status_response.status;
@@ -1030,6 +1197,7 @@ fn TokenDepositForm(
         let current_token = token();
         let current_amount = amount.get();
         let current_recipient = recipient();
+        let current_chain_info = chain_info.get();
         let destination_asset = match receive_token_symbol.get().as_str() {
             "USDC" => DESTINATION_USDC,
             "USDT" => DESTINATION_USDT,
@@ -1041,6 +1209,13 @@ fn TokenDepositForm(
         set_error_message(None);
 
         leptos::task::spawn_local(async move {
+            let Some(current_chain_info) = current_chain_info else {
+                set_error_message(Some(
+                    "No chain info, can't create a deposit address".to_string(),
+                ));
+                set_is_creating_address(false);
+                return;
+            };
             // Parse amount and convert to base units
             let parsed_amount = match BigDecimal::from_str(&current_amount) {
                 Ok(amt) => amt,
@@ -1058,8 +1233,13 @@ fn TokenDepositForm(
 
             let request = QuoteRequest {
                 dry: false,
+                deposit_mode: if current_chain_info.requires_memo {
+                    DepositMode::Memo
+                } else {
+                    DepositMode::Simple
+                },
                 swap_type: SwapType::ExactInput,
-                slippage_tolerance: 100,
+                slippage_tolerance: 1000,
                 origin_asset: current_token.intents_token_id.clone(),
                 deposit_type: DepositType::OriginChain,
                 destination_asset: destination_asset.to_string(),
@@ -1085,13 +1265,14 @@ fn TokenDepositForm(
                         let quote = quote_response.quote.clone();
                         set_quote_data(Some(quote.clone()));
 
-                        let network_key = extract_network_key(&current_token.defuse_asset_identifier);
-                        let network_display = get_network_name(&network_key)
-                            .unwrap_or(&network_key)
-                            .to_string();
+                        let network_display = current_chain_info
+                            .display_name.to_string();
 
-                        let history_entry = BridgeHistoryEntry {
-                            deposit_address: quote.deposit_address.clone().unwrap_or_default(),
+                        let history_entry = AddBridgeHistoryEntry {
+                            deposit_address: match quote.deposit_memo {
+                                Some(memo) => DepositAddress::WithMemo(quote.deposit_address.clone().unwrap(), memo),
+                                None => DepositAddress::Simple(quote.deposit_address.clone().unwrap()),
+                            },
                             amount_in_formatted: quote.amount_in_formatted.clone(),
                             amount_out_formatted: quote.amount_out_formatted.clone(),
                             origin_token_symbol: current_token.asset_name.clone(),
@@ -1103,15 +1284,18 @@ fn TokenDepositForm(
                             status: None,
                         };
 
-                        add_to_bridge_history(history_entry);
+                        spawn_local(async move {
+                            if let Err(e) = add_to_bridge_history(history_entry).await {
+                                log::error!("Failed to add bridge history entry: {e}");
+                            }
+                        });
 
                         set_is_creating_address(false);
                     }
                     Err(e) => {
                         let error_msg = format!("{e}");
-                        let network_key = extract_network_key(&current_token.defuse_asset_identifier);
-                        let network_display = get_network_name(&network_key)
-                            .unwrap_or(&network_key);
+                        let network_display = current_chain_info
+                            .display_name.to_string();
 
                         if error_msg.contains("error decoding response body") {
                             set_error_message(Some(format!(
@@ -1138,12 +1322,20 @@ fn TokenDepositForm(
             <Show
                 when=move || quote_data.get().is_none()
                 fallback=move || {
-
                     view! {
                         <div class="flex flex-col gap-4 items-center">
-                            <Show when=move || deposit_address().is_some()>
+                            <Show when=move || {
+                                deposit_address()
+                                    .is_some_and(|address| {
+                                        matches!(address, DepositAddress::Simple(_))
+                                    })
+                            }>
                                 <QRCodeDisplay
-                                    address=deposit_address().unwrap_or_default()
+                                    address=match deposit_address() {
+                                        Some(DepositAddress::Simple(address)) => address,
+                                        Some(DepositAddress::WithMemo(_, _)) => unreachable!(),
+                                        None => unreachable!(),
+                                    }
                                     size_class="w-64 h-64"
                                 />
                             </Show>
@@ -1184,18 +1376,38 @@ fn TokenDepositForm(
                                     </div>
                                 </div>
                                 <CopyableAddress
-                                    address=deposit_address().unwrap_or_default()
+                                    address=match deposit_address() {
+                                        Some(DepositAddress::Simple(address)) => address,
+                                        Some(DepositAddress::WithMemo(address, _)) => address,
+                                        None => String::new(),
+                                    }
                                     label="To address:"
                                 />
 
-                                <div class="text-[10px] text-gray-400 text-center px-2">
-                                    "Bridge service is provided by Near Intents, HOT Bridge, and Omnibridge. While generally trusted in the ecosystem, these bridges are not affiliated with Intear, so we can provide limited customer support"
+                                {move || {
+                                    deposit_address()
+                                        .map(|address| match address {
+                                            DepositAddress::WithMemo(_, memo) => {
+                                                view! {
+                                                    <CopyableAddress
+                                                        address=memo
+                                                        label="With memo (IMPORTANT):"
+                                                    />
+                                                }
+                                                    .into_any()
+                                            }
+                                            DepositAddress::Simple(_) => ().into_any(),
+                                        })
+                                }}
+
+                                <div class="text-[10px] text-gray-400 text-center px-2 leading-2.5">
+                                    "Bridge service is provided by Near Intents, HOT Bridge, and Omnibridge. While they have good reputation in the ecosystem and uptime, these bridges are not affiliated with Intear, so we can provide limited customer support."
                                 </div>
                             </div>
 
                             <div class="flex items-center justify-center gap-2">
                                 <p class="text-sm text-gray-400 text-center">
-                                    "Send the exact amount shown above to receive "
+                                    "Send the exact amount shown above to receive ≈"
                                     {move || {
                                         quote_data
                                             .get()
@@ -1244,9 +1456,32 @@ fn TokenDepositForm(
                             <div class="flex justify-between items-center text-xs w-full gap-6">
                                 <div>
                                     {move || {
+                                        countdown_counter.track();
                                         if let Some(status) = deposit_status.get() {
+                                            let is_expired = quote_data
+                                                .get()
+                                                .and_then(|q| q.deadline)
+                                                .map(|deadline| deadline < Utc::now())
+                                                .unwrap_or(false);
+                                            let should_show_expired = is_expired
+                                                && matches!(
+                                                    status,
+                                                    DepositStatus::PendingDeposit
+                                                    | DepositStatus::IncompleteDeposit
+                                                );
+
                                             view! {
-                                                <span class=status.color_class()>{status.display()}</span>
+                                                <span class=if should_show_expired {
+                                                    "text-red-400"
+                                                } else {
+                                                    status.color_class()
+                                                }>
+                                                    {if should_show_expired {
+                                                        "Expired"
+                                                    } else {
+                                                        status.display()
+                                                    }}
+                                                </span>
                                             }
                                                 .into_any()
                                         } else {
@@ -1381,44 +1616,185 @@ fn TokenDepositForm(
 
 #[component]
 fn HistoryTab() -> impl IntoView {
-    let (history, _set_history) = signal(load_bridge_history());
-    let (expanded_entry, set_expanded_entry) = signal::<Option<String>>(None);
+    let (expanded_entries, set_expanded_entries) = signal(HashSet::<DepositAddress>::new());
+    let (current_page, set_current_page) = signal(0);
+
+    const ITEMS_PER_PAGE: u32 = 5;
+
+    let history_resource = LocalResource::new(move || {
+        let page = current_page.get();
+        async move {
+            let start_index = page * ITEMS_PER_PAGE;
+            load_bridge_history_page(start_index, ITEMS_PER_PAGE)
+                .await
+                .map_err(|e| format!("Failed to load history: {e}"))
+        }
+    });
+
+    let total_count_resource = LocalResource::new(move || async move {
+        count_bridge_history()
+            .await
+            .map_err(|e| format!("Failed to count history: {e}"))
+    });
+
+    let total_pages = Signal::derive(move || {
+        total_count_resource
+            .get()
+            .and_then(|result| result.ok())
+            .map(|total| {
+                if total == 0 {
+                    0
+                } else {
+                    total.div_ceil(ITEMS_PER_PAGE)
+                }
+            })
+            .unwrap_or(0)
+    });
 
     view! {
         <div class="w-full max-w-2xl">
             <div class="bg-neutral-800 rounded-lg p-4 flex flex-col gap-3">
-                <Show
-                    when=move || !history.get().is_empty()
-                    fallback=move || {
-                        view! {
-                            <div class="text-center py-8 text-gray-400">
-                                <Icon
-                                    icon=icondata::LuHistory
-                                    width="48"
-                                    height="48"
-                                    attr:class="mx-auto mb-4 opacity-50"
-                                />
-                                <p>"No bridge history yet"</p>
-                            </div>
-                        }
+                <Suspense fallback=move || {
+                    view! {
+                        <div class="text-center py-8 text-gray-400">
+                            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+                            <p>"Loading history..."</p>
+                        </div>
                     }
-                >
-                    <div class="flex flex-col gap-2">
-                        <For
-                            each=move || history.get()
-                            key=|entry| entry.deposit_address.clone()
-                            children=move |entry: BridgeHistoryEntry| {
-                                view! {
-                                    <HistoryItem
-                                        entry=entry
-                                        expanded_entry=expanded_entry
-                                        set_expanded_entry=set_expanded_entry
-                                    />
+                }>
+                    {move || {
+                        match history_resource.get() {
+                            Some(Ok(history)) => {
+                                if history.is_empty() {
+                                    view! {
+                                        <div class="text-center py-8 text-gray-400">
+                                            <Icon
+                                                icon=icondata::LuHistory
+                                                width="48"
+                                                height="48"
+                                                attr:class="mx-auto mb-4 opacity-50"
+                                            />
+                                            <p>"No bridge history yet"</p>
+                                        </div>
+                                    }
+                                        .into_any()
+                                } else {
+                                    view! {
+                                        <div class="flex flex-col gap-2">
+                                            <For
+                                                each=move || history.clone()
+                                                key=|entry| entry.id
+                                                children=move |entry: BridgeHistoryEntry| {
+                                                    let deposit_address = entry.deposit_address.clone();
+                                                    let expanded = Signal::derive(move || {
+                                                        expanded_entries.get().contains(&deposit_address)
+                                                    });
+                                                    let deposit_address = entry.deposit_address.clone();
+                                                    let toggle_expanded = Callback::new(move |value: bool| {
+                                                        let deposit_address = deposit_address.clone();
+                                                        set_expanded_entries
+                                                            .update(move |set| {
+                                                                if value {
+                                                                    set.insert(deposit_address.clone());
+                                                                } else {
+                                                                    set.remove(&deposit_address);
+                                                                }
+                                                            });
+                                                    });
+                                                    view! {
+                                                        <HistoryItem
+                                                            entry=entry
+                                                            expanded=expanded
+                                                            toggle_expanded=toggle_expanded
+                                                        />
+                                                    }
+                                                }
+                                            />
+                                        </div>
+                                        <Show when=move || {
+                                            let pages = total_pages.get();
+                                            pages > 1
+                                        }>
+                                            <div class="flex items-center justify-center gap-2 mt-4">
+                                                <button
+                                                    class=move || {
+                                                        format!(
+                                                            "px-3 py-1 rounded-lg transition-colors text-sm {}",
+                                                            if current_page.get() == 0 {
+                                                                "bg-neutral-700 text-gray-500 cursor-not-allowed"
+                                                            } else {
+                                                                "bg-neutral-700 text-white hover:bg-neutral-600 cursor-pointer"
+                                                            },
+                                                        )
+                                                    }
+                                                    disabled=move || current_page.get() == 0
+                                                    on:click=move |_| {
+                                                        if current_page.get() > 0 {
+                                                            set_current_page(current_page.get() - 1);
+                                                        }
+                                                    }
+                                                >
+                                                    "Previous"
+                                                </button>
+                                                <span class="text-gray-400 text-sm">
+                                                    {move || {
+                                                        format!(
+                                                            "Page {} of {}",
+                                                            current_page.get() + 1,
+                                                            total_pages.get(),
+                                                        )
+                                                    }}
+                                                </span>
+                                                <button
+                                                    class=move || {
+                                                        format!(
+                                                            "px-3 py-1 rounded-lg transition-colors text-sm {}",
+                                                            if current_page.get() >= total_pages.get().saturating_sub(1)
+                                                            {
+                                                                "bg-neutral-700 text-gray-500 cursor-not-allowed"
+                                                            } else {
+                                                                "bg-neutral-700 text-white hover:bg-neutral-600 cursor-pointer"
+                                                            },
+                                                        )
+                                                    }
+                                                    disabled=move || {
+                                                        current_page.get() >= total_pages.get().saturating_sub(1)
+                                                    }
+                                                    on:click=move |_| {
+                                                        if current_page.get() < total_pages.get().saturating_sub(1)
+                                                        {
+                                                            set_current_page(current_page.get() + 1);
+                                                        }
+                                                    }
+                                                >
+                                                    "Next"
+                                                </button>
+                                            </div>
+                                        </Show>
+                                    }
+                                        .into_any()
                                 }
                             }
-                        />
-                    </div>
-                </Show>
+                            Some(Err(e)) => {
+                                view! {
+                                    <div class="text-center py-8 text-red-400">
+                                        <p>"Failed to load history: " {e}</p>
+                                    </div>
+                                }
+                                    .into_any()
+                            }
+                            None => {
+                                view! {
+                                    <div class="text-center py-8 text-gray-400">
+                                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+                                        <p>"Loading history..."</p>
+                                    </div>
+                                }
+                                    .into_any()
+                            }
+                        }
+                    }}
+                </Suspense>
             </div>
         </div>
     }
@@ -1427,8 +1803,8 @@ fn HistoryTab() -> impl IntoView {
 #[component]
 fn HistoryItem(
     entry: BridgeHistoryEntry,
-    expanded_entry: ReadSignal<Option<String>>,
-    set_expanded_entry: WriteSignal<Option<String>>,
+    expanded: Signal<bool>,
+    toggle_expanded: Callback<bool>,
 ) -> impl IntoView {
     let accounts_context = expect_context::<AccountsContext>();
 
@@ -1458,13 +1834,15 @@ fn HistoryItem(
         status_counter.track();
         if !is_terminal() {
             leptos::task::spawn_local(async move {
-                if let Ok(response) = reqwest::Client::new()
-                    .get(format!(
-                        "https://1click.chaindefuser.com/v0/status?depositAddress={}",
-                        deposit_address_stored.read_value()
-                    ))
-                    .send()
-                    .await
+                let status_url = match &*deposit_address_stored.read_value() {
+                    DepositAddress::WithMemo(address, memo) => format!(
+                        "https://1click.chaindefuser.com/v0/status?depositAddress={address}&depositMemo={memo}"
+                    ),
+                    DepositAddress::Simple(address) => format!(
+                        "https://1click.chaindefuser.com/v0/status?depositAddress={address}"
+                    ),
+                };
+                if let Ok(response) = reqwest::Client::new().get(status_url).send().await
                     && let Ok(status_response) = response.json::<serde_json::Value>().await
                     && let Some(status_str) = status_response.get("status").and_then(|s| s.as_str())
                     && let Ok(status) =
@@ -1476,31 +1854,41 @@ fn HistoryItem(
                         status,
                         DepositStatus::Success | DepositStatus::Failed | DepositStatus::Refunded
                     ) {
-                        let mut history = load_bridge_history();
-                        if let Some(entry) = history
-                            .iter_mut()
-                            .find(|e| e.deposit_address == deposit_address_stored.get_value())
-                        {
-                            entry.status = Some(status);
-                            save_bridge_history(&history);
-                        }
+                        let deposit_addr = deposit_address_stored.get_value();
+                        spawn_local(async move {
+                            if let Err(e) = update_bridge_history_status(deposit_addr, status).await
+                            {
+                                log::error!("Failed to update bridge history status: {e}");
+                            }
+                        });
                     }
                 }
             });
         }
     });
 
-    let is_expanded =
-        move || expanded_entry.get().as_ref() == Some(&*deposit_address_stored.read_value());
+    let status_display = move || {
+        let is_expired = entry.deadline < Utc::now();
 
-    let status_display = move || match current_status.get() {
-        Some(DepositStatus::PendingDeposit) => ("Waiting for deposit", "text-yellow-400"),
-        Some(DepositStatus::KnownDepositTx) => ("Deposit detected", "text-blue-400"),
-        Some(DepositStatus::Processing) => ("Processing", "text-blue-400"),
-        Some(DepositStatus::Success) => ("Success", "text-green-400"),
-        Some(DepositStatus::Failed) | Some(DepositStatus::Refunded) => ("Failed", "text-red-400"),
-        Some(DepositStatus::IncompleteDeposit) => ("Incomplete", "text-orange-400"),
-        None => ("Pending", "text-gray-400"),
+        match current_status.get() {
+            Some(status) => {
+                let should_show_expired = is_expired
+                    && matches!(
+                        status,
+                        DepositStatus::PendingDeposit | DepositStatus::IncompleteDeposit
+                    );
+
+                if should_show_expired {
+                    ("Expired".to_string(), "text-red-400".to_string())
+                } else {
+                    (
+                        status.display().to_string(),
+                        status.color_class().to_string(),
+                    )
+                }
+            }
+            None => ("Loading".to_string(), "text-gray-400".to_string()),
+        }
     };
 
     let is_pending = move || {
@@ -1534,7 +1922,7 @@ fn HistoryItem(
             let hours = duration.num_hours();
             let minutes = duration.num_minutes() % 60;
             let seconds = duration.num_seconds() % 60;
-            format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+            format!("Expires: {:02}:{:02}:{:02}", hours, minutes, seconds)
         }
     };
 
@@ -1543,11 +1931,7 @@ fn HistoryItem(
             <button
                 class="w-full p-4 text-left hover:bg-neutral-600 transition-colors"
                 on:click=move |_| {
-                    if is_expanded() {
-                        set_expanded_entry(None);
-                    } else {
-                        set_expanded_entry(Some(deposit_address_stored.get_value()));
-                    }
+                    toggle_expanded.run(!expanded.get());
                 }
             >
                 <div class="flex justify-between items-start gap-4">
@@ -1582,11 +1966,7 @@ fn HistoryItem(
                             <div class="text-xs text-gray-500 mt-1">
                                 {move || {
                                     let countdown = countdown_text();
-                                    if !countdown.is_empty() {
-                                        format!("Expires: {}", countdown)
-                                    } else {
-                                        String::new()
-                                    }
+                                    if !countdown.is_empty() { countdown } else { String::new() }
                                 }}
                             </div>
                         </Show>
@@ -1596,7 +1976,7 @@ fn HistoryItem(
                         width="20"
                         height="20"
                         attr:class=move || {
-                            if is_expanded() {
+                            if expanded.get() {
                                 "transform rotate-180 transition-transform"
                             } else {
                                 "transition-transform"
@@ -1606,22 +1986,35 @@ fn HistoryItem(
                 </div>
             </button>
 
-            <Show when=move || is_expanded()>
+            <Show when=expanded>
                 <div class="px-4 pb-4 border-t border-neutral-600 pt-4">
                     <div class="space-y-3">
                         <CopyableAddress
-                            address=entry.deposit_address.clone()
+                            address=match entry.deposit_address.clone() {
+                                DepositAddress::Simple(address) => address,
+                                DepositAddress::WithMemo(address, _) => address,
+                            }
                             label="Deposit Address"
                         />
+
+                        {match entry.deposit_address.clone() {
+                            DepositAddress::WithMemo(_, memo) => {
+                                view! {
+                                    <CopyableAddress address=memo label="With memo (IMPORTANT):" />
+                                }
+                                    .into_any()
+                            }
+                            DepositAddress::Simple(_) => ().into_any(),
+                        }}
 
                         <div>
                             <p class="text-sm text-gray-400 mb-1">"Expected to receive"</p>
                             <p class="text-white">
                                 {if let Ok(amount) = entry.amount_out_formatted.parse::<f64>() {
-                                    format!("{:.6} {}", amount, entry.destination_token_symbol)
+                                    format!("≈{:.6} {}", amount, entry.destination_token_symbol)
                                 } else {
                                     format!(
-                                        "{} {}",
+                                        "≈{} {}",
                                         entry
                                             .amount_out_formatted
                                             .trim_end_matches('0')
@@ -1632,8 +2025,17 @@ fn HistoryItem(
                             </p>
                         </div>
 
-                        <Show when=is_pending>
-                            <QRCodeDisplay address=deposit_address_stored.get_value() />
+                        <Show when=move || {
+                            is_pending()
+                                && matches!(
+                                    deposit_address_stored.get_value(),
+                                    DepositAddress::Simple(_)
+                                )
+                        }>
+                            <QRCodeDisplay address=match deposit_address_stored.get_value() {
+                                DepositAddress::Simple(address) => address,
+                                DepositAddress::WithMemo(_, _) => unreachable!(),
+                            } />
                         </Show>
 
                         <Show when=is_failed>

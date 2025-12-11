@@ -1,4 +1,4 @@
-use crate::contexts::accounts_context::AccountsContext;
+use crate::{contexts::accounts_context::AccountsContext, pages::bridge::DepositAddress};
 use leptos::{html::Div, prelude::*};
 use leptos_icons::*;
 use leptos_router::{
@@ -28,7 +28,10 @@ pub use security::SecuritySettings;
 pub use security_log::SecurityLogPage;
 use web_sys::{ScrollBehavior, ScrollToOptions};
 
-pub fn open_live_chat(selected_account_id: AccountId, bridge_deposit_address: Option<String>) {
+pub fn open_live_chat(
+    selected_account_id: AccountId,
+    bridge_deposit_address: Option<DepositAddress>,
+) {
     let message = JsWalletRequest::ChatwootOpen {
         account_id: selected_account_id,
         bridge_deposit_address,

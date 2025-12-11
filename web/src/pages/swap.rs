@@ -1377,7 +1377,7 @@ pub fn Swap() -> impl IntoView {
                                                     }
                                                 />
                                                 <span class="text-gray-300 text-sm">
-                                                    "Show confirmation modal before swapping"
+                                                    "Ask confirmation before swapping"
                                                 </span>
                                             </label>
                                         </div>

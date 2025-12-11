@@ -386,7 +386,8 @@ async fn fetch_transaction_details(
             } else {
                 tracing::debug!("Cached transaction: {}", transaction_id);
             }
-        }).await;
+        })
+        .await;
     }
 
     Ok(tx_details)
