@@ -22,7 +22,6 @@ use crate::{
     components::danger_confirm_input::DangerConfirmInput,
     contexts::{
         accounts_context::{Account, AccountsContext},
-        config_context::ConfigContext,
         connected_apps_context::{
             ConnectedAppsContext, action_attaches_deposit, is_dangerous_action,
         },
@@ -388,14 +387,6 @@ fn TransactionList(
     expanded_actions: ReadSignal<HashSet<(usize, usize)>>,
     set_expanded_actions: WriteSignal<HashSet<(usize, usize)>>,
 ) -> impl IntoView {
-    let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
-
-    let toggle_details = move |_| {
-        set_config.update(|cfg| {
-            cfg.show_transaction_details = !cfg.show_transaction_details;
-        });
-    };
-
     view! {
         <div class="flex flex-col gap-4">
             <div class="p-3 bg-neutral-900/50 rounded-lg border border-neutral-800">
@@ -405,58 +396,26 @@ fn TransactionList(
             </div>
 
             <div>
-                <div class="flex justify-between items-center mb-2">
-                    <p class="text-neutral-300 text-sm font-medium">"Transaction Details:"</p>
-                    <button
-                        class="text-blue-400 hover:text-blue-300 transition-colors text-sm px-2"
-                        on:click=toggle_details
-                    >
-                        {move || {
-                            if config.get().show_transaction_details {
-                                "Hide details"
-                            } else {
-                                "Show details"
-                            }
-                        }}
-                    </button>
-                </div>
                 {move || {
-                    if config.get().show_transaction_details {
-                        view! {
-                            <div class="flex flex-col divide-y divide-neutral-700/50">
-                                {transactions
-                                    .iter()
-                                    .enumerate()
-                                    .map(|(tx_idx, tx)| {
-                                        view! {
-                                            <TransactionItem
-                                                tx=tx
-                                                tx_idx=tx_idx
-                                                expanded_actions=expanded_actions
-                                                set_expanded_actions=set_expanded_actions
-                                            />
-                                        }
-                                    })
-                                    .collect_view()}
-                            </div>
-                        }
-                            .into_any()
-                    } else {
-                        view! {
-                            <div class="p-3 bg-neutral-800/50 rounded-lg text-neutral-400 text-sm">
-                                {format!(
-                                    "{} {}",
-                                    transactions.len(),
-                                    if transactions.len() == 1 {
-                                        "transaction"
-                                    } else {
-                                        "transactions"
-                                    },
-                                )} " to be executed"
-                            </div>
-                        }
-                            .into_any()
+                    view! {
+                        <div class="flex flex-col divide-y divide-neutral-700/50">
+                            {transactions
+                                .iter()
+                                .enumerate()
+                                .map(|(tx_idx, tx)| {
+                                    view! {
+                                        <TransactionItem
+                                            tx=tx
+                                            tx_idx=tx_idx
+                                            expanded_actions=expanded_actions
+                                            set_expanded_actions=set_expanded_actions
+                                        />
+                                    }
+                                })
+                                .collect_view()}
+                        </div>
                     }
+                        .into_any()
                 }}
             </div>
         </div>
