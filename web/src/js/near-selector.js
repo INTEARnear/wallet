@@ -65,6 +65,19 @@ async function initialize() {
                 throw new Error("Network mismatch");
             }
             signerId = signerId ?? near.accountId();
+
+            for (const action of actions) {
+                if (action.type === "DeployContract") {
+                    if (action.params.code instanceof Uint8Array) {
+                        action.params.code = Array.from(action.params.code);
+                    }
+                }
+                if (action.type === "DeployGlobalContract") {
+                    if (action.params.code instanceof Uint8Array) {
+                        action.params.code = Array.from(action.params.code);
+                    }
+                }
+            }
             const result = await near.state._adapter.sendTransactions({ transactions: [{ signerId, receiverId, actions }] });
             return toObject(result.outcomes[0]);
         },

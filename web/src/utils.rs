@@ -8,15 +8,17 @@ use near_min_api::{
     RpcClient,
     types::{
         AccessKey as NearAccessKey, AccessKeyPermission, AccountId, AccountIdRef,
-        Action as NearAction, AddKeyAction, Balance, CreateAccountAction, DelegateAction,
-        DeleteAccountAction, DeleteKeyAction, DeployContractAction, FunctionCallAction,
-        FunctionCallPermission, NearToken, StakeAction, TransferAction,
+        Action as NearAction, AddKeyAction, Balance, CreateAccountAction, CryptoHash,
+        DelegateAction, DeleteAccountAction, DeleteKeyAction, DeployContractAction,
+        DeployGlobalContractAction, FunctionCallAction, FunctionCallPermission,
+        GlobalContractDeployMode, GlobalContractIdentifier, NearToken, StakeAction, TransferAction,
+        UseGlobalContractAction,
         near_crypto::{PublicKey, Signature},
     },
     utils::dec_format,
 };
 use serde::Deserialize;
-use std::{fmt::Display, ops::Deref, str::FromStr, time::Duration};
+use std::{fmt::Display, ops::Deref, str::FromStr, sync::Arc, time::Duration};
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use web_sys::js_sys::{Promise, Reflect};
 
@@ -720,14 +722,27 @@ pub struct WalletSelectorTransaction {
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum WalletSelectorContractIdentifier {
+    AccountId(AccountId),
+    CodeHash(CryptoHash),
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub enum WalletSelectorDeployMode {
+    CodeHash,
+    AccountId,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(tag = "type", content = "params")]
 pub enum WalletSelectorAction {
     CreateAccount,
     DeployContract {
         code: Vec<u8>,
     },
+    #[serde(rename_all = "camelCase")]
     FunctionCall {
-        #[serde(rename = "methodName")]
         method_name: String,
         args: serde_json::Value,
         #[serde(with = "dec_format")]
@@ -739,25 +754,33 @@ pub enum WalletSelectorAction {
         #[serde(with = "dec_format")]
         deposit: Balance,
     },
+    #[serde(rename_all = "camelCase")]
     Stake {
         #[serde(with = "dec_format")]
         stake: Balance,
-        #[serde(rename = "publicKey")]
         public_key: PublicKey,
     },
+    #[serde(rename_all = "camelCase")]
     AddKey {
-        #[serde(rename = "publicKey")]
         public_key: PublicKey,
-        #[serde(rename = "accessKey")]
         access_key: WalletSelectorAccessKey,
     },
+    #[serde(rename_all = "camelCase")]
     DeleteKey {
-        #[serde(rename = "publicKey")]
         public_key: PublicKey,
     },
+    #[serde(rename_all = "camelCase")]
     DeleteAccount {
-        #[serde(rename = "beneficiaryId")]
         beneficiary_id: AccountId,
+    },
+    #[serde(rename_all = "camelCase")]
+    UseGlobalContract {
+        contract_identifier: WalletSelectorContractIdentifier,
+    },
+    #[serde(rename_all = "camelCase")]
+    DeployGlobalContract {
+        code: Vec<u8>,
+        deploy_mode: WalletSelectorDeployMode,
     },
 }
 
@@ -835,6 +858,27 @@ impl From<WalletSelectorAction> for NearAction {
             }
             WalletSelectorAction::DeleteAccount { beneficiary_id } => {
                 NearAction::DeleteAccount(DeleteAccountAction { beneficiary_id })
+            }
+            WalletSelectorAction::UseGlobalContract {
+                contract_identifier,
+            } => NearAction::UseGlobalContract(Box::new(UseGlobalContractAction {
+                contract_identifier: match contract_identifier {
+                    WalletSelectorContractIdentifier::AccountId(account_id) => {
+                        GlobalContractIdentifier::AccountId(account_id)
+                    }
+                    WalletSelectorContractIdentifier::CodeHash(code_hash) => {
+                        GlobalContractIdentifier::CodeHash(code_hash)
+                    }
+                },
+            })),
+            WalletSelectorAction::DeployGlobalContract { code, deploy_mode } => {
+                NearAction::DeployGlobalContract(DeployGlobalContractAction {
+                    code: Arc::from(code),
+                    deploy_mode: match deploy_mode {
+                        WalletSelectorDeployMode::CodeHash => GlobalContractDeployMode::CodeHash,
+                        WalletSelectorDeployMode::AccountId => GlobalContractDeployMode::AccountId,
+                    },
+                })
             }
         }
     }

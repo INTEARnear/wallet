@@ -3,7 +3,8 @@ use std::collections::HashSet;
 use chrono::{DateTime, Utc};
 use leptos::prelude::*;
 use near_min_api::types::{
-    AccountId, Action, NearToken, TransferAction,
+    AccountId, Action, DeployGlobalContractAction, GlobalContractDeployMode, NearToken,
+    TransferAction,
     near_crypto::{PublicKey, SecretKey},
 };
 use serde::{Deserialize, Serialize};
@@ -88,10 +89,14 @@ pub fn is_dangerous_action(action: &Action) -> bool {
         Action::AddKey(_)
             | Action::DeleteKey(_)
             | Action::DeployContract(_)
-            | Action::DeployGlobalContract(_)
             | Action::DeleteAccount(_)
             | Action::Delegate(_)
             | Action::Stake(_)
+            | Action::UseGlobalContract(_)
+            | Action::DeployGlobalContract(DeployGlobalContractAction {
+                deploy_mode: GlobalContractDeployMode::AccountId,
+                ..
+            })
     )
 }
 

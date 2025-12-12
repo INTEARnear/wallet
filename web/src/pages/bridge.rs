@@ -800,7 +800,6 @@ fn ToNearTab(
                             set_selected_network(Some(chain_info));
                         }
                     })
-                    // initial_value="Select Network"
                 />
             </div>
 
@@ -825,7 +824,6 @@ fn ToNearTab(
                                 set_selected_token(None);
                             }
                         })
-                        initial_value="Select Token"
                     />
                 </div>
             </Show>
@@ -1001,7 +999,6 @@ fn StablesTab(
                             set_selected_network(Some(chain_info));
                         }
                     })
-                    initial_value="Select Network"
                 />
             </div>
 

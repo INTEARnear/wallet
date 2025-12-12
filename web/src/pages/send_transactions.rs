@@ -32,7 +32,8 @@ use crate::{
     },
     pages::connect::submit_tauri_response,
     utils::{
-        WalletSelectorAccessKeyPermission, WalletSelectorAction, WalletSelectorTransaction,
+        WalletSelectorAccessKeyPermission, WalletSelectorAction, WalletSelectorContractIdentifier,
+        WalletSelectorDeployMode, WalletSelectorTransaction, format_token_amount_no_hide,
         is_debug_enabled,
     },
 };
@@ -213,6 +214,40 @@ fn TransactionAction(
             }
             WalletSelectorAction::DeleteAccount { beneficiary_id } => {
                 format!("Delete Account (funds go to {beneficiary_id})")
+            }
+            WalletSelectorAction::UseGlobalContract {
+                contract_identifier,
+            } => {
+                format!(
+                    "Deploy Global Contract on this account from {}",
+                    match contract_identifier {
+                        WalletSelectorContractIdentifier::AccountId(account_id) =>
+                            format!("account {account_id}"),
+                        WalletSelectorContractIdentifier::CodeHash(code_hash) =>
+                            format!("code hash {code_hash}"),
+                    }
+                )
+            }
+            WalletSelectorAction::DeployGlobalContract { code, deploy_mode } => {
+                const GLOBAL_CONTRACT_DEPLOY_MULTIPLIER: usize = 10;
+                format!(
+                    "Deploy Global Contract {} and bind to {} for {}",
+                    CryptoHash::hash_bytes(code),
+                    match deploy_mode {
+                        WalletSelectorDeployMode::CodeHash => "the code hash",
+                        WalletSelectorDeployMode::AccountId => "this account",
+                    },
+                    format_token_amount_no_hide(
+                        "0.00001 NEAR"
+                            .parse::<NearToken>()
+                            .unwrap()
+                            .saturating_mul(code.len() as u128)
+                            .saturating_mul(GLOBAL_CONTRACT_DEPLOY_MULTIPLIER as u128)
+                            .as_yoctonear(),
+                        24,
+                        "NEAR",
+                    )
+                )
             }
         }
     };
@@ -633,6 +668,7 @@ pub fn SendTransactions() -> impl IntoView {
             .get()
             .and_then(|request_data| {
                 serde_json::from_str::<Vec<WalletSelectorTransaction>>(&request_data.transactions)
+                    .inspect_err(|e| log::error!("Failed to deserialize transactions: {e}"))
                     .ok()
             })
             .map(|txs| txs.to_vec())
