@@ -386,7 +386,10 @@ pub fn build_explorer_url(deposit_address: &DepositAddress) -> String {
             format!("https://explorer.near-intents.org/transactions/{}", address)
         }
         DepositAddress::WithMemo(address, memo) => {
-            format!("https://explorer.near-intents.org/transactions/{}_{}", address, memo)
+            format!(
+                "https://explorer.near-intents.org/transactions/{}_{}",
+                address, memo
+            )
         }
     }
 }

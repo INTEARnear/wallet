@@ -17,10 +17,11 @@ use crate::{
     data::bridge_networks::{BRIDGEABLE_TOKENS, ChainInfo, USDC_ON_NEAR, USDT_ON_NEAR},
     pages::settings::open_live_chat,
     utils::{
-        StorageBalance, balance_to_decimal, decimal_to_balance, format_token_amount, format_token_amount_full_precision,
+        StorageBalance, balance_to_decimal, decimal_to_balance, format_token_amount,
+        format_token_amount_full_precision,
     },
 };
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, FromPrimitive};
 use chrono::Utc;
 use itertools::Itertools;
 use leptos::prelude::*;
@@ -276,8 +277,8 @@ pub fn SendBridge() -> impl IntoView {
                                     if message == "Failed to get quote" {
                                         return Err(format!("{} on {} is temporarily out of liquidity", metadata.symbol, network.display_name));
                                     }
-                                    if let Some(min_amount_str) = message.strip_prefix("Amount is too low for bridge, try at least ") {
-                                        if let Ok(min_amount_raw) = min_amount_str.parse::<u128>() {
+                                    if let Some(min_amount_str) = message.strip_prefix("Amount is too low for bridge, try at least ")
+                                        && let Ok(min_amount_raw) = min_amount_str.parse::<u128>() {
                                             let min_amount_decimal = balance_to_decimal(min_amount_raw, metadata.decimals);
                                             let mut min_amount_formatted = min_amount_decimal.to_string();
                                             if min_amount_formatted.contains('.') {
@@ -288,7 +289,6 @@ pub fn SendBridge() -> impl IntoView {
                                             }
                                             return Err(format!("Amount is too low for bridge, try at least {} {}", min_amount_formatted, metadata.symbol));
                                         }
-                                    }
                                 }
                             let error_msg = format!("{e}");
                             if error_msg.contains("error decoding response body") {
@@ -804,15 +804,48 @@ pub fn SendBridge() -> impl IntoView {
 
                                                                     <div class="flex flex-col gap-2">
                                                                         <label class="text-gray-400">"Amount"</label>
-                                                                        <input
-                                                                            type="text"
-                                                                            class="w-full focus:ring-2 bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 text-base"
-                                                                            placeholder="0.00"
-                                                                            prop:value=amount
-                                                                            on:input=move |ev| {
-                                                                                set_amount.set(event_target_value(&ev));
-                                                                            }
-                                                                        />
+                                                                        <div class="relative">
+                                                                            <input
+                                                                                type="text"
+                                                                                class="w-full focus:ring-2 bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 text-base"
+                                                                                placeholder="0.00"
+                                                                                prop:value=amount
+                                                                                on:input=move |ev| {
+                                                                                    set_amount.set(event_target_value(&ev));
+                                                                                }
+                                                                            />
+                                                                            <button
+                                                                                class="absolute right-3 top-1/2 -translate-y-1/2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm px-3 py-1 rounded-lg transition-colors duration-200 no-mobile-ripple"
+                                                                                on:click=move |_| {
+                                                                                    if let Some(token_data) = token_data() {
+                                                                                        let max_amount_decimal = balance_to_decimal(
+                                                                                            token_data.balance,
+                                                                                            token_data.token.metadata.decimals,
+                                                                                        );
+                                                                                        let gas_cost_decimal = if token_data.token.account_id
+                                                                                            == Token::Near
+                                                                                        {
+                                                                                            BigDecimal::from_f64(0.0001).unwrap_or_default()
+                                                                                        } else {
+                                                                                            BigDecimal::from(0)
+                                                                                        };
+                                                                                        let final_amount_decimal = (&max_amount_decimal
+                                                                                            - &gas_cost_decimal)
+                                                                                            .max(BigDecimal::from(0));
+                                                                                        let mut max_amount_str = final_amount_decimal.to_string();
+                                                                                        if max_amount_str.contains('.') {
+                                                                                            max_amount_str = max_amount_str
+                                                                                                .trim_end_matches('0')
+                                                                                                .trim_end_matches('.')
+                                                                                                .to_string();
+                                                                                        }
+                                                                                        set_amount.set(max_amount_str);
+                                                                                    }
+                                                                                }
+                                                                            >
+                                                                                MAX
+                                                                            </button>
+                                                                        </div>
                                                                         <div class="mt-1 text-sm text-gray-400">
                                                                             {move || {
                                                                                 let metadata = token_meta().unwrap();

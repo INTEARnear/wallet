@@ -740,8 +740,8 @@ fn TokenDepositForm(
                                     if message == "Failed to get quote" {
                                         return Err(format!("{} on {} is temporarily out of liquidity", current_token.asset_name, current_chain_info.display_name));
                                     }
-                                    if let Some(min_amount_str) = message.strip_prefix("Amount is too low for bridge, try at least ") {
-                                        if let Ok(min_amount_raw) = min_amount_str.parse::<u128>() {
+                                    if let Some(min_amount_str) = message.strip_prefix("Amount is too low for bridge, try at least ")
+                                        && let Ok(min_amount_raw) = min_amount_str.parse::<u128>() {
                                             let min_amount_decimal = balance_to_decimal(min_amount_raw, current_token.decimals);
                                             let mut min_amount_formatted = min_amount_decimal.to_string();
                                             if min_amount_formatted.contains('.') {
@@ -752,7 +752,6 @@ fn TokenDepositForm(
                                             }
                                             return Err(format!("Amount is too low for bridge, try at least {} {}", min_amount_formatted, current_token.asset_name));
                                         }
-                                    }
                                 }
                             let error_msg = format!("{e}");
                             if error_msg.contains("error decoding response body") {
