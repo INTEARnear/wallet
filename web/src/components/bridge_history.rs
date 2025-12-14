@@ -380,6 +380,17 @@ impl DepositStatus {
     }
 }
 
+pub fn build_explorer_url(deposit_address: &DepositAddress) -> String {
+    match deposit_address {
+        DepositAddress::Simple(address) => {
+            format!("https://explorer.near-intents.org/transactions/{}", address)
+        }
+        DepositAddress::WithMemo(address, memo) => {
+            format!("https://explorer.near-intents.org/transactions/{}_{}", address, memo)
+        }
+    }
+}
+
 pub async fn fetch_deposit_status(
     deposit_address: &DepositAddress,
 ) -> Result<StatusResponse, String> {
@@ -547,7 +558,6 @@ pub fn HistoryTab() -> impl IntoView {
                                                             .and_then(|result| result.ok())
                                                     });
                                                     let on_status_loaded = Callback::new(move |_: ()| {
-                                                        log::info!("Status loaded for entry {entry_id}");
                                                         set_loaded_statuses
                                                             .update(|set| {
                                                                 set.insert(entry_id);
@@ -709,8 +719,8 @@ fn ReceiveHistoryItem(
         status_counter.track();
         if !is_terminal() {
             spawn_local(async move {
-                let deposit_addr = deposit_address_stored.get_value();
-                if let Ok(status_response) = fetch_deposit_status(&deposit_addr).await {
+                let deposit_address = deposit_address_stored.get_value();
+                if let Ok(status_response) = fetch_deposit_status(&deposit_address).await {
                     set_status_data.set(Some(status_response));
                     on_status_loaded.run(());
                 }
@@ -1018,6 +1028,131 @@ fn ReceiveHistoryItem(
                             </p>
                         </div>
 
+                        <div>
+                            <p class="text-sm text-gray-400 mb-1">"Intents Explorer"</p>
+                            <a
+                                href=build_explorer_url(&deposit_address_stored.get_value())
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="text-blue-400 hover:text-blue-300 transition-colors text-sm break-all"
+                            >
+                                "View on Intents Explorer"
+                            </a>
+                        </div>
+
+                        <Show when=move || {
+                            status_data
+                                .get()
+                                .map(|data| {
+                                    !data.swap_details.near_tx_hashes.is_empty()
+                                        || !data.swap_details.origin_chain_tx_hashes.is_empty()
+                                        || !data.swap_details.destination_chain_tx_hashes.is_empty()
+                                })
+                                .unwrap_or(false)
+                        }>
+                            <div>
+                                <p class="text-sm text-gray-400 mb-2">"Transaction Links"</p>
+                                <div class="space-y-2">
+                                    {move || {
+                                        status_data
+                                            .get()
+                                            .map(|data| {
+                                                let near_hashes = data.swap_details.near_tx_hashes.clone();
+                                                let origin_hashes = data
+                                                    .swap_details
+                                                    .origin_chain_tx_hashes
+                                                    .clone();
+                                                let dest_hashes = data
+                                                    .swap_details
+                                                    .destination_chain_tx_hashes
+                                                    .clone();
+                                                view! {
+                                                    <Show when={
+                                                        let near_hashes = near_hashes.clone();
+                                                        move || !near_hashes.is_empty()
+                                                    }>
+                                                        <div class="space-y-1">
+                                                            <p class="text-xs text-gray-500">"NEAR Transactions"</p>
+                                                            {near_hashes
+                                                                .iter()
+                                                                .map(|tx_hash| {
+                                                                    let url = format!("https://nearblocks.io/txns/{tx_hash}");
+                                                                    view! {
+                                                                        <a
+                                                                            href=url
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            class="text-blue-400 hover:text-blue-300 transition-colors text-xs break-all block"
+                                                                        >
+                                                                            {format!("{tx_hash}")}
+                                                                        </a>
+                                                                    }
+                                                                })
+                                                                .collect_view()}
+                                                        </div>
+                                                    </Show>
+                                                    <Show when={
+                                                        let origin_hashes = origin_hashes.clone();
+                                                        move || !origin_hashes.is_empty()
+                                                    }>
+                                                        <div class="space-y-1">
+                                                            <p class="text-xs text-gray-500">
+                                                                "Origin Chain Transactions"
+                                                            </p>
+                                                            {origin_hashes
+                                                                .iter()
+                                                                .map(|chain_tx| {
+                                                                    let url = chain_tx.explorer_url.clone();
+                                                                    let hash = chain_tx.hash.clone();
+                                                                    view! {
+                                                                        <a
+                                                                            href=url
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            class="text-blue-400 hover:text-blue-300 transition-colors text-xs break-all block"
+                                                                        >
+                                                                            {hash}
+                                                                        </a>
+                                                                    }
+                                                                })
+                                                                .collect_view()}
+                                                        </div>
+                                                    </Show>
+                                                    <Show when={
+                                                        let dest_hashes = dest_hashes.clone();
+                                                        move || !dest_hashes.is_empty()
+                                                    }>
+                                                        <div class="space-y-1">
+                                                            <p class="text-xs text-gray-500">
+                                                                "Destination Chain Transactions"
+                                                            </p>
+                                                            {dest_hashes
+                                                                .iter()
+                                                                .map(|chain_tx| {
+                                                                    let url = chain_tx.explorer_url.clone();
+                                                                    let hash = chain_tx.hash.clone();
+                                                                    view! {
+                                                                        <a
+                                                                            href=url
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            class="text-blue-400 hover:text-blue-300 transition-colors text-xs break-all block"
+                                                                        >
+                                                                            {hash}
+                                                                        </a>
+                                                                    }
+                                                                })
+                                                                .collect_view()}
+                                                        </div>
+                                                    </Show>
+                                                }
+                                                    .into_any()
+                                            })
+                                    }}
+                                </div>
+                            </div>
+                        </Show>
+
                         <Show when=move || {
                             is_pending()
                                 && matches!(
@@ -1089,8 +1224,8 @@ fn SendHistoryItem(
         status_counter.track();
         if !is_terminal() {
             spawn_local(async move {
-                let deposit_addr = deposit_address_stored.get_value();
-                if let Ok(status_response) = fetch_deposit_status(&deposit_addr).await {
+                let deposit_address = deposit_address_stored.get_value();
+                if let Ok(status_response) = fetch_deposit_status(&deposit_address).await {
                     set_status_data.set(Some(status_response));
                     on_status_loaded.run(());
                 }
@@ -1324,6 +1459,131 @@ fn SendHistoryItem(
 
                             </p>
                         </div>
+
+                        <div>
+                            <p class="text-sm text-gray-400 mb-1">"Intents Explorer"</p>
+                            <a
+                                href=build_explorer_url(&deposit_address_stored.get_value())
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="text-blue-400 hover:text-blue-300 transition-colors text-sm break-all"
+                            >
+                                "View on Intents Explorer"
+                            </a>
+                        </div>
+
+                        <Show when=move || {
+                            status_data
+                                .get()
+                                .map(|data| {
+                                    !data.swap_details.near_tx_hashes.is_empty()
+                                        || !data.swap_details.origin_chain_tx_hashes.is_empty()
+                                        || !data.swap_details.destination_chain_tx_hashes.is_empty()
+                                })
+                                .unwrap_or(false)
+                        }>
+                            <div>
+                                <p class="text-sm text-gray-400 mb-2">"Transaction Links"</p>
+                                <div class="space-y-2">
+                                    {move || {
+                                        status_data
+                                            .get()
+                                            .map(|data| {
+                                                let near_hashes = data.swap_details.near_tx_hashes.clone();
+                                                let origin_hashes = data
+                                                    .swap_details
+                                                    .origin_chain_tx_hashes
+                                                    .clone();
+                                                let dest_hashes = data
+                                                    .swap_details
+                                                    .destination_chain_tx_hashes
+                                                    .clone();
+                                                view! {
+                                                    <Show when={
+                                                        let near_hashes = near_hashes.clone();
+                                                        move || !near_hashes.is_empty()
+                                                    }>
+                                                        <div class="space-y-1">
+                                                            <p class="text-xs text-gray-500">"NEAR Transactions"</p>
+                                                            {near_hashes
+                                                                .iter()
+                                                                .map(|tx_hash| {
+                                                                    let url = format!("https://nearblocks.io/txns/{tx_hash}");
+                                                                    view! {
+                                                                        <a
+                                                                            href=url
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            class="text-blue-400 hover:text-blue-300 transition-colors text-xs break-all block"
+                                                                        >
+                                                                            {format!("{tx_hash}")}
+                                                                        </a>
+                                                                    }
+                                                                })
+                                                                .collect_view()}
+                                                        </div>
+                                                    </Show>
+                                                    <Show when={
+                                                        let origin_hashes = origin_hashes.clone();
+                                                        move || !origin_hashes.is_empty()
+                                                    }>
+                                                        <div class="space-y-1">
+                                                            <p class="text-xs text-gray-500">
+                                                                "Origin Chain Transactions"
+                                                            </p>
+                                                            {origin_hashes
+                                                                .iter()
+                                                                .map(|chain_tx| {
+                                                                    let url = chain_tx.explorer_url.clone();
+                                                                    let hash = chain_tx.hash.clone();
+                                                                    view! {
+                                                                        <a
+                                                                            href=url
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            class="text-blue-400 hover:text-blue-300 transition-colors text-xs break-all block"
+                                                                        >
+                                                                            {hash}
+                                                                        </a>
+                                                                    }
+                                                                })
+                                                                .collect_view()}
+                                                        </div>
+                                                    </Show>
+                                                    <Show when={
+                                                        let dest_hashes = dest_hashes.clone();
+                                                        move || !dest_hashes.is_empty()
+                                                    }>
+                                                        <div class="space-y-1">
+                                                            <p class="text-xs text-gray-500">
+                                                                "Destination Chain Transactions"
+                                                            </p>
+                                                            {dest_hashes
+                                                                .iter()
+                                                                .map(|chain_tx| {
+                                                                    let url = chain_tx.explorer_url.clone();
+                                                                    let hash = chain_tx.hash.clone();
+                                                                    view! {
+                                                                        <a
+                                                                            href=url
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            class="text-blue-400 hover:text-blue-300 transition-colors text-xs break-all block"
+                                                                        >
+                                                                            {hash}
+                                                                        </a>
+                                                                    }
+                                                                })
+                                                                .collect_view()}
+                                                        </div>
+                                                    </Show>
+                                                }
+                                                    .into_any()
+                                            })
+                                    }}
+                                </div>
+                            </div>
+                        </Show>
 
                         <Show when=is_failed>
                             <button

@@ -26,13 +26,14 @@ use crate::contexts::network_context::{Network, NetworkContext};
 use crate::data::bridge_networks::{
     ChainInfo, NETWORK_NAMES, USDC_ON_NEAR, USDT_ON_NEAR, WRAPPED_NEAR,
 };
+use crate::utils::balance_to_decimal;
 use crate::utils::decimal_to_balance;
 use crate::utils::format_token_amount_full_precision;
 use crate::{
     components::{
         bridge_history::{
             AddBridgeHistoryEntry, DepositAddress, DepositStatus, HistoryTab,
-            add_to_bridge_history, fetch_deposit_status,
+            add_to_bridge_history, build_explorer_url, fetch_deposit_status,
         },
         bridge_termination_screen::BridgeTerminationScreen,
         copy_button::CopyButton,
@@ -406,7 +407,18 @@ fn ToNearTab(
                                 if let Some(token) = tokens_stored
                                     .get_value()
                                     .into_iter()
-                                    .find(|t| t.asset_name == value && t.defuse_asset_identifier.starts_with(&format!("{}:{}:", selected_network.unwrap().chain_type, selected_network.unwrap().chain_id)))
+                                    .find(|t| {
+                                        t.asset_name == value
+                                            && t
+                                                .defuse_asset_identifier
+                                                .starts_with(
+                                                    &format!(
+                                                        "{}:{}:",
+                                                        selected_network.unwrap().chain_type,
+                                                        selected_network.unwrap().chain_id,
+                                                    ),
+                                                )
+                                    })
                                 {
                                     set_selected_token(Some(token));
                                 }
@@ -716,14 +728,38 @@ fn TokenDepositForm(
                 .send()
                 .await
             {
-                Ok(response) => match response.json::<QuoteResponse>().await {
-                    Ok(quote_response) => Ok(quote_response.quote),
-                    Err(e) => {
-                        let error_msg = format!("{e}");
-                        if error_msg.contains("error decoding response body") {
-                            Err("".to_string())
-                        } else {
-                            Err(format!("Failed to parse quote: {error_msg}"))
+                Ok(response) => {
+                    let response_text = response.text().await
+                        .map_err(|e| format!("Failed to read response: {e}"))?;
+
+                    match serde_json::from_str::<QuoteResponse>(&response_text) {
+                        Ok(quote_response) => Ok(quote_response.quote),
+                        Err(e) => {
+                            if let Ok(error_json) = serde_json::from_str::<serde_json::Value>(&response_text)
+                                && let Some(message) = error_json.get("message").and_then(|m| m.as_str()) {
+                                    if message == "Failed to get quote" {
+                                        return Err(format!("{} on {} is temporarily out of liquidity", current_token.asset_name, current_chain_info.display_name));
+                                    }
+                                    if let Some(min_amount_str) = message.strip_prefix("Amount is too low for bridge, try at least ") {
+                                        if let Ok(min_amount_raw) = min_amount_str.parse::<u128>() {
+                                            let min_amount_decimal = balance_to_decimal(min_amount_raw, current_token.decimals);
+                                            let mut min_amount_formatted = min_amount_decimal.to_string();
+                                            if min_amount_formatted.contains('.') {
+                                                min_amount_formatted = min_amount_formatted
+                                                    .trim_end_matches('0')
+                                                    .trim_end_matches('.')
+                                                    .to_string();
+                                            }
+                                            return Err(format!("Amount is too low for bridge, try at least {} {}", min_amount_formatted, current_token.asset_name));
+                                        }
+                                    }
+                                }
+                            let error_msg = format!("{e}");
+                            if error_msg.contains("error decoding response body") {
+                                Err("".to_string())
+                            } else {
+                                Err(format!("Failed to parse quote: {error_msg}"))
+                            }
                         }
                     }
                 },
@@ -874,24 +910,12 @@ fn TokenDepositForm(
                         set_is_creating_address(false);
                     }
                     Err(e) => {
-                        let error_msg = format!("{e}");
-                        let network_display = current_chain_info
-                            .display_name.to_string();
-
-                        if error_msg.contains("error decoding response body") {
-                            set_error_message(Some(format!(
-                                "{} on {} is temporarily not available",
-                                current_token.asset_name,
-                                network_display
-                            )));
-                        } else {
-                            set_error_message(Some(format!("Failed to parse quote: {error_msg}")));
-                        }
+                        log::error!("Failed to create deposit address: {}", e);
                         set_is_creating_address(false);
                     }
                 },
                 Err(e) => {
-                    set_error_message(Some(format!("Failed to create deposit address: {e}")));
+                    log::error!("Failed to send request: {}", e);
                     set_is_creating_address(false);
                 }
             }
@@ -981,7 +1005,15 @@ fn TokenDepositForm(
                                 }}
 
                                 <div class="text-[10px] text-gray-400 text-center px-2 leading-2.5">
-                                    "Bridge service is provided by Near Intents, HOT Bridge, and Omnibridge. While they have good reputation in the ecosystem and uptime, these bridges are not affiliated with Intear, so we can provide limited customer support."
+                                    "Bridge service is provided by Near Intents, HOT Bridge, and Omnibridge. While they have good reputation in the ecosystem and uptime, these bridges are not affiliated with Intear, so we can provide limited customer support. "
+                                    <a
+                                        href="https://docs.near-intents.org/near-intents/integration/distribution-channels/1click-terms-of-service"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        class="text-blue-400 hover:text-blue-300 underline"
+                                    >
+                                        "Terms of Service"
+                                    </a>
                                 </div>
                             </div>
 
@@ -1111,6 +1143,20 @@ fn TokenDepositForm(
                                     .unwrap_or(false);
                                 if !is_terminal && deposit_address().is_some() {
                                     view! {
+                                        <div class="w-full">
+                                            <a
+                                                href=move || {
+                                                    deposit_address()
+                                                        .map(|addr| build_explorer_url(&addr))
+                                                        .unwrap_or_default()
+                                                }
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                class="text-blue-400 hover:text-blue-300 transition-colors text-sm break-all block text-center"
+                                            >
+                                                "View on Intents Explorer"
+                                            </a>
+                                        </div>
                                         <button
                                             class="w-full mt-2 bg-neutral-700 hover:bg-neutral-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors cursor-pointer text-sm"
                                             on:click=move |_| {

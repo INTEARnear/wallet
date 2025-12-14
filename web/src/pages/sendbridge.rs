@@ -3,7 +3,7 @@ use crate::{
         bridge_history::{
             AddBridgeHistoryEntry, DepositAddress, DepositMode, DepositStatus, DepositType,
             HistoryTab, QuoteData, QuoteRequest, QuoteResponse, RecipientType, RefundType,
-            SwapType, add_to_bridge_history,
+            SwapType, add_to_bridge_history, build_explorer_url,
         },
         bridge_termination_screen::BridgeTerminationScreen,
         select::{Select, SelectOption},
@@ -17,7 +17,7 @@ use crate::{
     data::bridge_networks::{BRIDGEABLE_TOKENS, ChainInfo, USDC_ON_NEAR, USDT_ON_NEAR},
     pages::settings::open_live_chat,
     utils::{
-        StorageBalance, decimal_to_balance, format_token_amount, format_token_amount_full_precision,
+        StorageBalance, balance_to_decimal, decimal_to_balance, format_token_amount, format_token_amount_full_precision,
     },
 };
 use bigdecimal::BigDecimal;
@@ -274,7 +274,20 @@ pub fn SendBridge() -> impl IntoView {
                                         return Err("Invalid recipient address".to_string());
                                     }
                                     if message == "Failed to get quote" {
-                                        return Err(format!("{} on {} is temporarily not available", metadata.symbol, network.display_name));
+                                        return Err(format!("{} on {} is temporarily out of liquidity", metadata.symbol, network.display_name));
+                                    }
+                                    if let Some(min_amount_str) = message.strip_prefix("Amount is too low for bridge, try at least ") {
+                                        if let Ok(min_amount_raw) = min_amount_str.parse::<u128>() {
+                                            let min_amount_decimal = balance_to_decimal(min_amount_raw, metadata.decimals);
+                                            let mut min_amount_formatted = min_amount_decimal.to_string();
+                                            if min_amount_formatted.contains('.') {
+                                                min_amount_formatted = min_amount_formatted
+                                                    .trim_end_matches('0')
+                                                    .trim_end_matches('.')
+                                                    .to_string();
+                                            }
+                                            return Err(format!("Amount is too low for bridge, try at least {} {}", min_amount_formatted, metadata.symbol));
+                                        }
                                     }
                                 }
                             let error_msg = format!("{e}");
@@ -625,6 +638,12 @@ pub fn SendBridge() -> impl IntoView {
                                         let current_quote = quote_for_polling.get().unwrap();
                                         let current_recipient = recipient_address.get();
                                         let current_metadata = token_meta.get().unwrap();
+                                        let deposit_address_for_explorer = current_quote
+                                            .deposit_address
+                                            .clone();
+                                        let deposit_address_for_support = current_quote
+                                            .deposit_address
+                                            .clone();
 
                                         view! {
                                             <div class="flex flex-col items-center gap-6 py-8">
@@ -653,6 +672,23 @@ pub fn SendBridge() -> impl IntoView {
                                                 <p class="text-gray-400 text-center max-w-md text-sm">
                                                     "Your transaction has been sent. Waiting for the bridge to complete..."
                                                 </p>
+                                                <div class="w-full">
+                                                    <a
+                                                        href=move || {
+                                                            deposit_address_for_explorer
+                                                                .as_ref()
+                                                                .map(|addr| {
+                                                                    build_explorer_url(&DepositAddress::Simple(addr.clone()))
+                                                                })
+                                                                .unwrap_or_default()
+                                                        }
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        class="text-blue-400 hover:text-blue-300 transition-colors text-sm break-all block text-center"
+                                                    >
+                                                        "View on Intents Explorer"
+                                                    </a>
+                                                </div>
                                                 <button
                                                     class="w-full max-w-md bg-neutral-700 hover:bg-neutral-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-base"
                                                     on:click=move |_| {
@@ -662,8 +698,7 @@ pub fn SendBridge() -> impl IntoView {
                                                                 .get()
                                                                 .selected_account_id
                                                                 .unwrap(),
-                                                            current_quote
-                                                                .deposit_address
+                                                            deposit_address_for_support
                                                                 .as_ref()
                                                                 .map(|addr| DepositAddress::Simple(addr.clone())),
                                                         )
@@ -747,11 +782,19 @@ pub fn SendBridge() -> impl IntoView {
 
                                                                 <Show when=move || selected_network.get().is_some()>
                                                                     <div class="flex flex-col gap-2">
-                                                                        <label class="text-gray-400">"Recipient Address"</label>
+                                                                        <label class="text-gray-400">
+                                                                            "Recipient Address on "
+                                                                            {selected_network().unwrap().display_name}" Network"
+                                                                        </label>
                                                                         <input
                                                                             type="text"
                                                                             class="w-full focus:ring-2 bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 text-base"
-                                                                            placeholder=selected_network().unwrap().example_address
+                                                                            placeholder=move || {
+                                                                                format!(
+                                                                                    "example: {}",
+                                                                                    selected_network().unwrap().example_address,
+                                                                                )
+                                                                            }
                                                                             prop:value=recipient_address
                                                                             on:input=move |ev| {
                                                                                 set_recipient_address.set(event_target_value(&ev));
@@ -900,7 +943,15 @@ pub fn SendBridge() -> impl IntoView {
                                                                     </Show>
 
                                                                     <div class="text-[10px] text-gray-400 text-center px-2 leading-2.5">
-                                                                        "Bridge service is provided by Near Intents, HOT Bridge, and Omnibridge. While they have good reputation in the ecosystem and uptime, these bridges are not affiliated with Intear, so we can provide limited customer support."
+                                                                        "Bridge service is provided by Near Intents, HOT Bridge, and Omnibridge. While they have good reputation in the ecosystem and uptime, these bridges are not affiliated with Intear, so we can provide limited customer support. "
+                                                                        <a
+                                                                            href="https://docs.near-intents.org/near-intents/integration/distribution-channels/1click-terms-of-service"
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            class="text-blue-400 hover:text-blue-300 underline"
+                                                                        >
+                                                                            "Terms of Service"
+                                                                        </a>
                                                                     </div>
 
                                                                     <button

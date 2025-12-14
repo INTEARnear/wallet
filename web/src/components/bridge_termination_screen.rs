@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use crate::components::bridge_history::{
     BridgeToken, DepositAddress, DepositStatus, StatusResponse, SupportedTokensResponse,
-    fetch_deposit_status,
+    build_explorer_url, fetch_deposit_status,
 };
 use crate::contexts::accounts_context::AccountsContext;
 use crate::pages::settings::open_live_chat;
@@ -83,17 +83,18 @@ pub fn BridgeTerminationScreen(deposit_address: DepositAddress, is_send: bool) -
                                             status_response=status_response
                                             supported_tokens=supported_tokens
                                             is_send=is_send
+                                            deposit_address=deposit_address.clone()
                                         />
                                     }
                                         .into_any()
                                 }
                                 DepositStatus::Failed | DepositStatus::Refunded => {
                                     let recipient_id = recipient();
-                                    let deposit_addr = deposit_address.clone();
+                                    let deposit_address = deposit_address.clone();
                                     view! {
                                         <FailureScreen
                                             recipient_id=recipient_id
-                                            deposit_address=deposit_addr
+                                            deposit_address=deposit_address
                                         />
                                     }
                                         .into_any()
@@ -145,6 +146,7 @@ fn SuccessScreen(
     status_response: StatusResponse,
     supported_tokens: LocalResource<Result<HashMap<String, BridgeToken>, String>>,
     is_send: bool,
+    deposit_address: DepositAddress,
 ) -> impl IntoView {
     let amount_formatted = status_response
         .quote_response
@@ -197,12 +199,23 @@ fn SuccessScreen(
                 <div class="text-center">
                     <p class="text-gray-400 text-sm mb-2">{label_text}</p>
                     <p class="text-3xl font-bold text-white break-all">
-                        {amount_formatted.trim_end_matches('0').trim_end_matches('.').to_string()} " "
-                        {token_symbol}
+                        {amount_formatted.trim_end_matches('0').trim_end_matches('.').to_string()}
+                        " " {token_symbol}
                     </p>
                 </div>
             </div>
             <p class="text-gray-400 text-center max-w-md">{message_text}</p>
+            <div class="w-full max-w-md bg-neutral-800 rounded-lg p-4">
+                <p class="text-sm text-gray-400 mb-2 text-center">"Transaction Explorer"</p>
+                <a
+                    href=build_explorer_url(&deposit_address)
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-blue-400 hover:text-blue-300 transition-colors text-sm break-all block text-center"
+                >
+                    "View on Intents Explorer"
+                </a>
+            </div>
             <A
                 href="/"
                 attr:class="w-full max-w-md bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-center text-base"
@@ -227,6 +240,17 @@ fn FailureScreen(
             <p class="text-gray-400 text-center max-w-md">
                 "Your bridge transaction has failed. Please contact support for assistance."
             </p>
+            <div class="w-full max-w-md bg-neutral-800 rounded-lg p-4">
+                <p class="text-sm text-gray-400 mb-2 text-center">"Transaction Explorer"</p>
+                <a
+                    href=build_explorer_url(&deposit_address)
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-blue-400 hover:text-blue-300 transition-colors text-sm break-all block text-center"
+                >
+                    "View on Intents Explorer"
+                </a>
+            </div>
             <button
                 class="w-full max-w-md bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-base"
                 on:click=move |_| {
