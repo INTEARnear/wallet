@@ -41,8 +41,8 @@ enum Tab {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum BridgeMode {
-    Send,    // ExactInput - user specifies amount to send
-    Receive, // ExactOutput - user specifies amount to receive
+    Send,
+    Receive,
 }
 
 #[derive(Debug, Clone)]
@@ -625,7 +625,6 @@ pub fn SendBridge() -> impl IntoView {
                                         let current_quote = quote_for_polling.get().unwrap();
                                         let current_recipient = recipient_address.get();
                                         let current_metadata = token_meta.get().unwrap();
-                                        // Check if we're waiting for bridge completion
 
                                         view! {
                                             <div class="flex flex-col items-center gap-6 py-8">

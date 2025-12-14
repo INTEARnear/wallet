@@ -869,8 +869,6 @@ fn ReceiveHistoryItem(
                 .trim_end_matches('.')
                 .to_string();
 
-            // ExactInput = user specifies input, output is approximate
-            // ExactOutput = user specifies output, input is approximate
             let is_exact_output = matches!(swap_type, SwapType::ExactOutput);
 
             (amount_in, amount_out, is_exact_output)
@@ -1027,7 +1025,7 @@ fn ReceiveHistoryItem(
                                     DepositAddress::Simple(_)
                                 )
                         }>
-                            <QRCodeDisplay address=match deposit_address_stored.get_value() {
+                            <QRCodeDisplay text=match deposit_address_stored.get_value() {
                                 DepositAddress::Simple(address) => address,
                                 DepositAddress::WithMemo(_, _) => unreachable!(),
                             } />
@@ -1206,8 +1204,6 @@ fn SendHistoryItem(
                 .trim_end_matches('.')
                 .to_string();
 
-            // ExactInput = user specifies input, output is approximate
-            // ExactOutput = user specifies output, input is approximate
             let is_exact_output = matches!(swap_type, SwapType::ExactOutput);
 
             (amount_in, amount_out, is_exact_output)

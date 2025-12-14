@@ -800,8 +800,7 @@ fn TokenDepositForm(
                 set_is_creating_address(false);
                 return;
             };
-            // Parse amount and convert to base units
-            let parsed_amount = match BigDecimal::from_str(&current_amount) {
+            let amount_bd = match BigDecimal::from_str(&current_amount) {
                 Ok(amt) => amt,
                 Err(_) => {
                     set_error_message(Some("Invalid amount".to_string()));
@@ -810,7 +809,7 @@ fn TokenDepositForm(
                 }
             };
 
-            let amount_raw = decimal_to_balance(parsed_amount, current_token.decimals);
+            let amount = decimal_to_balance(amount_bd, current_token.decimals);
 
             let now = Utc::now();
             let deadline = now + Duration::from_secs(60 * 60 * 24);
@@ -830,7 +829,7 @@ fn TokenDepositForm(
                 origin_asset: current_token.intents_token_id.clone(),
                 deposit_type: DepositType::OriginChain,
                 destination_asset: destination_asset.to_string(),
-                amount: amount_raw,
+                amount,
                 refund_to: current_recipient.to_string(),
                 refund_type: RefundType::Intents,
                 recipient: current_recipient.to_string(),
@@ -911,7 +910,7 @@ fn TokenDepositForm(
                                     })
                             }>
                                 <QRCodeDisplay
-                                    address=match deposit_address() {
+                                    text=match deposit_address() {
                                         Some(DepositAddress::Simple(address)) => address,
                                         Some(DepositAddress::WithMemo(_, _)) => unreachable!(),
                                         None => unreachable!(),

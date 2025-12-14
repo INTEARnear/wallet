@@ -2,15 +2,22 @@ use bigdecimal::BigDecimal;
 use leptos::prelude::*;
 use leptos_icons::*;
 use leptos_router::components::A;
+use rand::Rng;
+use rand::rngs::OsRng;
 
+use crate::components::copy_button::CopyButton;
+use crate::components::qrcode_display::QRCodeDisplay;
+use crate::contexts::accounts_context::AccountsContext;
 use crate::contexts::network_context::{Network, NetworkContext};
 
 #[component]
 pub fn Invoices() -> impl IntoView {
     let NetworkContext { network } = expect_context::<NetworkContext>();
+    let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let (usdc_amount, set_usdc_amount) = signal(String::new());
     let (has_typed_amount, set_has_typed_amount) = signal(false);
     let (amount_error, set_amount_error) = signal(Option::<String>::None);
+    let (invoice_link, set_invoice_link) = signal(Option::<String>::None);
 
     let check_amount = move |amount: String| {
         set_has_typed_amount.set(true);
@@ -41,9 +48,26 @@ pub fn Invoices() -> impl IntoView {
             && !usdc_amount.get().trim().is_empty()
     };
 
-    let handle_create_invoice = move |_: leptos::ev::MouseEvent| {
-        // TODO
-        log::info!("Creating invoice for {} USDC", usdc_amount.get());
+    let handle_create_invoice = move |_| {
+        let amount = usdc_amount.get();
+        let accounts_state = accounts.get();
+
+        if let Some(selected_account_id) = accounts_state.selected_account_id {
+            if let Ok(amount_f64) = amount.trim().parse::<f64>() {
+                let invoice_id: u128 = OsRng.r#gen();
+                let link = format!(
+                    "https://tearpay-demo.intear.tech/?amountUsd={}&invoiceId=inv-{}&recipientAddress={}",
+                    amount_f64, invoice_id, selected_account_id
+                );
+
+                log::info!("Created invoice link: {}", link);
+                set_invoice_link(Some(link));
+            } else {
+                log::error!("Failed to parse amount as f64");
+            }
+        } else {
+            log::error!("No account selected");
+        }
     };
 
     view! {
@@ -89,7 +113,9 @@ pub fn Invoices() -> impl IntoView {
                             "BETA"
                         </span>
                     </div>
-                    <p class="text-gray-400">"Create USDC invoices, payable from 25+ blockchains"</p>
+                    <p class="text-gray-400">
+                        "Create USDC invoices, payable from 25+ blockchains"
+                    </p>
                 </div>
 
                 <div class="bg-neutral-900/30 rounded-2xl p-3 md:p-6 space-y-4 md:space-y-6 max-w-md mx-auto w-full">
@@ -147,6 +173,26 @@ pub fn Invoices() -> impl IntoView {
                         "Create Invoice"
                     </button>
                 </div>
+
+                {move || {
+                    invoice_link
+                        .get()
+                        .map(|link| {
+                            view! {
+                                <div class="flex flex-col items-center gap-4">
+                                    <QRCodeDisplay text=link.clone() size_class="w-64 h-64" include_logo=true />
+
+                                    <div class="w-full bg-neutral-900/50 rounded-lg p-3 flex items-center gap-2">
+                                        <p class="text-sm text-gray-300 break-all font-mono flex-1">
+                                            {link.clone()}
+                                        </p>
+                                        <CopyButton text=Signal::derive(move || link.clone()) />
+                                    </div>
+                                </div>
+                            }
+                                .into_any()
+                        })
+                }}
 
                 <div class="bg-blue-900/20 border border-blue-500/30 rounded-xl p-4 max-w-md mx-auto w-full">
                     <div class="flex items-start gap-3">

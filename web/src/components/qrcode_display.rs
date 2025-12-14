@@ -4,13 +4,14 @@ use crate::utils::generate_qr_code;
 
 #[component]
 pub fn QRCodeDisplay(
-    address: String,
+    text: String,
     #[prop(optional)] size_class: Option<&'static str>,
+    #[prop(optional)] include_logo: bool,
 ) -> impl IntoView {
     let size = size_class.unwrap_or("w-48 h-48");
     let qr_code_resource = LocalResource::new(move || {
-        let addr = address.clone();
-        async move { generate_qr_code(&addr, false).await }
+        let text = text.clone();
+        async move { generate_qr_code(&text, include_logo).await }
     });
 
     view! {

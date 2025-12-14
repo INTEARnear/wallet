@@ -143,7 +143,15 @@ pub fn Receive() -> impl IntoView {
                             "Bridge"
                         </A>
                     </Show>
-                    <Show when=move || network.get() == Network::Mainnet>
+                    <Show when=move || {
+                        network.get() == Network::Mainnet
+                            && window()
+                                .location()
+                                .hostname()
+                                .ok()
+                                .map(|host| host.contains("staging"))
+                                .unwrap_or(false)
+                    }>
                         <A
                             href="/receive/invoices"
                             attr:class="w-full bg-neutral-700 hover:bg-neutral-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-center text-base relative"
