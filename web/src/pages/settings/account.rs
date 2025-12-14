@@ -3,6 +3,7 @@ use std::{str::FromStr, time::Duration};
 use crate::components::account_selector::{
     AccountCreateParent, AccountCreateRecoveryMethod, ModalState, mnemonic_to_key,
 };
+use crate::components::bridge_history::DepositAddress;
 use crate::components::danger_confirm_input::DangerConfirmInput;
 use crate::components::derivation_path_input::DerivationPathInput;
 use crate::contexts::accounts_context::format_ledger_error;
@@ -15,7 +16,6 @@ use crate::contexts::{
     security_log_context::add_security_log,
     transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
 };
-use crate::pages::bridge::DepositAddress;
 use bip39::Mnemonic;
 use chrono::NaiveDate;
 use leptos::{prelude::*, task::spawn_local};

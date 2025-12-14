@@ -1,5 +1,9 @@
 pub mod account_creation_form;
 pub mod account_selector;
+pub mod bridge_history;
+pub mod bridge_termination_screen;
+pub mod copy_button;
+pub mod copyable_address;
 pub mod danger_confirm_input;
 pub mod derivation_path_input;
 pub mod explore_components;
@@ -10,6 +14,7 @@ pub mod login_form;
 pub mod password_unlock;
 pub mod progressive_image;
 pub mod projected_revenue;
+pub mod qrcode_display;
 pub mod seed_phrase_input;
 pub mod select;
 pub mod send_modals;

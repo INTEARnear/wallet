@@ -121,7 +121,7 @@ pub fn History() -> impl IntoView {
                     }}
                 </button>
             </div>
-            <Suspense fallback=move || {
+            <Transition fallback=move || {
                 view! {
                     <div class="flex items-center justify-center h-32">
                         <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
@@ -280,12 +280,16 @@ pub fn History() -> impl IntoView {
                                                                                                 .expect("Selected account not found");
                                                                                             let explorer_url = match &selected_account.network {
                                                                                                 Network::Mainnet => "https://nearblocks.io".to_string(),
-                                                                                                Network::Testnet => "https://testnet.nearblocks.io".to_string(),
-                                                                                                Network::Localnet(network) => if let Some(url) = &network.explorer_url {
-                                                                                                    url.clone()
-                                                                                                } else {
-                                                                                                    return "#".to_string();
-                                                                                                },
+                                                                                                Network::Testnet => {
+                                                                                                    "https://testnet.nearblocks.io".to_string()
+                                                                                                }
+                                                                                                Network::Localnet(network) => {
+                                                                                                    if let Some(url) = &network.explorer_url {
+                                                                                                        url.clone()
+                                                                                                    } else {
+                                                                                                        return "#".to_string();
+                                                                                                    }
+                                                                                                }
                                                                                             };
                                                                                             format!("{explorer_url}/txns/{hash}")
                                                                                         }
@@ -324,7 +328,7 @@ pub fn History() -> impl IntoView {
                         ().into_any()
                     }
                 }}
-            </Suspense>
+            </Transition>
         </div>
     }
 }
@@ -435,10 +439,7 @@ fn add_account_actions(
                                     attr:class="min-w-[40px] min-h-[40px]"
                                 />
                                 <span>
-                                    "Create Account "
-                                    {move || format_account_id(
-                                        &receiver_id,
-                                    )}
+                                    "Create Account " {move || format_account_id(&receiver_id)}
                                 </span>
                             </div>
                         </div>
@@ -459,10 +460,8 @@ fn add_account_actions(
                                     attr:class="min-w-[40px] min-h-[40px]"
                                 />
                                 <span>
-                                    "Delete Account "
-                                    {move || format_account_id(
-                                        &receiver_id,
-                                    )} " and send remaining NEAR to "
+                                    "Delete Account " {move || format_account_id(&receiver_id)}
+                                    " and send remaining NEAR to "
                                     {move || format_account_id(&beneficiary_id)}
                                 </span>
                             </div>
@@ -666,9 +665,7 @@ fn add_staking_actions(
                                     height="40"
                                     attr:class="min-w-[40px] min-h-[40px]"
                                 />
-                                <span>
-                                    Withdraw {format_token_amount(amount, 24, "NEAR")}
-                                </span>
+                                <span>Withdraw {format_token_amount(amount, 24, "NEAR")}</span>
                             </div>
                         }
                         .into_any(),
@@ -1778,63 +1775,63 @@ fn add_harvestmoon_actions(
                                 }
                             }
                             actions.push(view! {
-                                    <div class="flex flex-col gap-2">
-                                        <div class="flex items-center gap-2">
-                                            <img
-                                                src=format!(
-                                                    "/history-contract-{}.png",
-                                                    match args.union_contract_id {
-                                                        1 => "basic",
-                                                        2 => "advanced",
-                                                        3 => "expert",
-                                                        _ => "unknown",
-                                                    },
-                                                )
-                                                width="40"
-                                                height="40"
-                                            />
-                                            <span>
-                                                "Recruit "{args.count}" tinker"
-                                                {if args.count > 1 { "s" } else { "" }}
-                                            </span>
-                                        </div>
-                                        {if !tinkers.is_empty() {
-                                            view! {
-                                                <div class="flex items-center gap-4 pl-12">
-                                                    {tinkers
-                                                        .iter()
-                                                        .map(|(tinker_id, count)| {
-                                                            view! {
-                                                                <div class="flex flex-col items-center gap-1">
-                                                                    <img
-                                                                        src=format!(
-                                                                            "/history-tinker-{}.png",
-                                                                            match tinker_id {
-                                                                                1 => "intern",
-                                                                                2 => "researcher",
-                                                                                3 => "scientist",
-                                                                                4 => "genius",
-                                                                                5 => "brain",
-                                                                                _ => "",
-                                                                            },
-                                                                        )
-                                                                        width="24"
-                                                                        height="24"
-                                                                        class="rounded-full"
-                                                                    />
-                                                                    <span class="text-sm">{*count}"x"</span>
-                                                                </div>
-                                                            }
-                                                        })
-                                                        .collect::<Vec<_>>()}
-                                                </div>
-                                            }
-                                                .into_any()
-                                        } else {
-                                            ().into_any()
-                                        }}
+                                <div class="flex flex-col gap-2">
+                                    <div class="flex items-center gap-2">
+                                        <img
+                                            src=format!(
+                                                "/history-contract-{}.png",
+                                                match args.union_contract_id {
+                                                    1 => "basic",
+                                                    2 => "advanced",
+                                                    3 => "expert",
+                                                    _ => "unknown",
+                                                },
+                                            )
+                                            width="40"
+                                            height="40"
+                                        />
+                                        <span>
+                                            "Recruit "{args.count}" tinker"
+                                            {if args.count > 1 { "s" } else { "" }}
+                                        </span>
                                     </div>
-                                }.into_any());
+                                    {if !tinkers.is_empty() {
+                                        view! {
+                                            <div class="flex items-center gap-4 pl-12">
+                                                {tinkers
+                                                    .iter()
+                                                    .map(|(tinker_id, count)| {
+                                                        view! {
+                                                            <div class="flex flex-col items-center gap-1">
+                                                                <img
+                                                                    src=format!(
+                                                                        "/history-tinker-{}.png",
+                                                                        match tinker_id {
+                                                                            1 => "intern",
+                                                                            2 => "researcher",
+                                                                            3 => "scientist",
+                                                                            4 => "genius",
+                                                                            5 => "brain",
+                                                                            _ => "",
+                                                                        },
+                                                                    )
+                                                                    width="24"
+                                                                    height="24"
+                                                                    class="rounded-full"
+                                                                />
+                                                                <span class="text-sm">{*count}"x"</span>
+                                                            </div>
+                                                        }
+                                                    })
+                                                    .collect::<Vec<_>>()}
+                                            </div>
+                                        }
+                                            .into_any()
+                                    } else {
+                                        ().into_any()
+                                    }}
+                                </div>
+                            }.into_any());
                         }
                     }
                     if method_name == "harvest" {

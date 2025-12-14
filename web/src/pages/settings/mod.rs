@@ -1,4 +1,6 @@
-use crate::{contexts::accounts_context::AccountsContext, pages::bridge::DepositAddress};
+use crate::{
+    components::bridge_history::DepositAddress, contexts::accounts_context::AccountsContext,
+};
 use leptos::{html::Div, prelude::*};
 use leptos_icons::*;
 use leptos_router::{

@@ -1,6 +1,5 @@
 use bigdecimal::BigDecimal;
-use chrono::{DateTime, Utc};
-use deli::{CursorDirection, Database, Model};
+use chrono::Utc;
 use futures_util::FutureExt;
 use itertools::Itertools;
 use leptos::prelude::*;
@@ -13,377 +12,70 @@ use near_min_api::{
     utils::dec_format,
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, str::FromStr, time::Duration};
+use std::{str::FromStr, time::Duration};
 
-use crate::pages::settings::open_live_chat;
-use crate::utils::{decimal_to_balance, generate_qr_code};
-use crate::{
-    components::select::{Select, SelectOption},
-    utils::format_token_amount_full_precision,
+use crate::components::{
+    bridge_history::{
+        DepositMode, DepositType, QuoteData, QuoteRequest, QuoteResponse, RecipientType,
+        RefundType, SwapType,
+    },
+    select::{Select, SelectOption},
 };
-use crate::{
-    contexts::accounts_context::AccountsContext,
-    data::bridge_networks::{ChainInfo, NETWORK_NAMES},
+use crate::contexts::accounts_context::AccountsContext;
+use crate::contexts::network_context::{Network, NetworkContext};
+use crate::data::bridge_networks::{
+    ChainInfo, NETWORK_NAMES, USDC_ON_NEAR, USDT_ON_NEAR, WRAPPED_NEAR,
 };
+use crate::utils::decimal_to_balance;
+use crate::utils::format_token_amount_full_precision;
 use crate::{
-    contexts::network_context::{Network, NetworkContext},
-    data::bridge_networks::{USDC_ON_NEAR, USDT_ON_NEAR, WRAPPED_NEAR},
+    components::{
+        bridge_history::{
+            AddBridgeHistoryEntry, DepositAddress, DepositStatus, HistoryTab,
+            add_to_bridge_history, fetch_deposit_status,
+        },
+        bridge_termination_screen::BridgeTerminationScreen,
+        copy_button::CopyButton,
+        copyable_address::CopyableAddress,
+        qrcode_display::QRCodeDisplay,
+    },
+    pages::settings::open_live_chat,
 };
-
-const DB_NAME: &str = "receive_bridge_history";
-
-async fn setup_db() -> Result<Database, deli::Error> {
-    let db = Database::builder(DB_NAME)
-        .version(1)
-        .add_model::<BridgeHistoryEntry>()
-        .build()
-        .await;
-
-    match db {
-        Ok(db) => Ok(db),
-        Err(e) => {
-            log::error!("Failed to open bridge history database: {e:?}");
-            Err(e)
-        }
-    }
-}
-
-async fn load_bridge_history_page(
-    start_index: u32,
-    limit: u32,
-) -> Result<Vec<BridgeHistoryEntry>, String> {
-    match setup_db().await {
-        Ok(db) => {
-            let tx = db
-                .transaction()
-                .with_model::<BridgeHistoryEntry>()
-                .build()
-                .map_err(|e| format!("Failed to create transaction: {e:?}"))?;
-
-            let store = BridgeHistoryEntry::with_transaction(&tx)
-                .map_err(|e| format!("Failed to instantiate store: {e:?}"))?;
-            let Ok(Some(mut cursor)) = store.cursor(.., Some(CursorDirection::Prev)).await else {
-                return Ok(Vec::new());
-            };
-            let mut values = Vec::new();
-            cursor.advance(start_index).await.ok();
-            while let Ok(Some(value)) = cursor.value() {
-                values.push(value);
-                if values.len() >= limit as usize {
-                    break;
-                }
-                if let Err(e) = cursor.advance(1).await {
-                    log::error!("Failed to advance cursor: {e:?}");
-                    break;
-                }
-            }
-            Ok(values)
-        }
-        Err(e) => Err(e.to_string()),
-    }
-}
-
-async fn count_bridge_history() -> Result<u32, String> {
-    match setup_db().await {
-        Ok(db) => {
-            let tx = db
-                .transaction()
-                .with_model::<BridgeHistoryEntry>()
-                .build()
-                .map_err(|e| format!("Failed to create transaction: {e:?}"))?;
-
-            let store = BridgeHistoryEntry::with_transaction(&tx)
-                .map_err(|e| format!("Failed to instantiate store: {e:?}"))?;
-            store
-                .count(..)
-                .await
-                .map_err(|e| format!("Failed to count entries: {e:?}"))
-        }
-        Err(e) => Err(e.to_string()),
-    }
-}
-
-async fn add_to_bridge_history(entry: AddBridgeHistoryEntry) -> Result<u32, String> {
-    match setup_db().await {
-        Ok(db) => {
-            let tx_read = db
-                .transaction()
-                .with_model::<BridgeHistoryEntry>()
-                .build()
-                .map_err(|e| format!("Failed to create read transaction: {e:?}"))?;
-
-            let store_read = BridgeHistoryEntry::with_transaction(&tx_read)
-                .map_err(|e| format!("Failed to instantiate store: {e:?}"))?;
-
-            let mut existing_entry: Option<BridgeHistoryEntry> = None;
-            if let Ok(Some(mut cursor)) = store_read.cursor(.., Some(CursorDirection::Next)).await {
-                loop {
-                    let Ok(Some(value)) = cursor.value() else {
-                        break;
-                    };
-                    if value.deposit_address == entry.deposit_address {
-                        existing_entry = Some(value);
-                        break;
-                    }
-                    if cursor.advance(1).await.is_err() {
-                        break;
-                    }
-                }
-            }
-
-            let tx = db
-                .transaction()
-                .writable()
-                .with_model::<BridgeHistoryEntry>()
-                .build()
-                .map_err(|e| format!("Failed to create transaction: {e:?}"))?;
-
-            let store = BridgeHistoryEntry::with_transaction(&tx)
-                .map_err(|e| format!("Failed to instantiate store: {e:?}"))?;
-
-            if let Some(mut existing) = existing_entry {
-                // Update existing entry
-                existing.deposit_address = entry.deposit_address;
-                existing.amount_in_formatted = entry.amount_in_formatted;
-                existing.amount_out_formatted = entry.amount_out_formatted;
-                existing.origin_token_symbol = entry.origin_token_symbol;
-                existing.destination_token_symbol = entry.destination_token_symbol;
-                existing.network_display = entry.network_display;
-                existing.created_at = entry.created_at;
-                existing.deadline = entry.deadline;
-                existing.status = entry.status;
-
-                store
-                    .update(&existing)
-                    .await
-                    .map_err(|e| format!("Failed to update entry: {e:?}"))?;
-                tx.commit()
-                    .await
-                    .map_err(|e| format!("Failed to commit transaction: {e:?}"))?;
-                Ok(existing.id)
-            } else {
-                // Add new entry
-                let id = store
-                    .add(&entry)
-                    .await
-                    .map_err(|e| format!("Failed to add entry: {e:?}"))?;
-
-                tx.commit()
-                    .await
-                    .map_err(|e| format!("Failed to commit transaction: {e:?}"))?;
-                Ok(id)
-            }
-        }
-        Err(e) => Err(format!("Failed to open database: {e:?}")),
-    }
-}
-
-async fn update_bridge_history_status(
-    deposit_address: DepositAddress,
-    status: DepositStatus,
-) -> Result<(), String> {
-    match setup_db().await {
-        Ok(db) => {
-            let tx = db
-                .transaction()
-                .writable()
-                .with_model::<BridgeHistoryEntry>()
-                .build()
-                .map_err(|e| format!("Failed to create transaction: {e:?}"))?;
-
-            let store = BridgeHistoryEntry::with_transaction(&tx)
-                .map_err(|e| format!("Failed to instantiate store: {e:?}"))?;
-
-            if let Ok(Some(mut cursor)) = store.cursor(.., Some(CursorDirection::Next)).await {
-                loop {
-                    let Ok(Some(mut entry)) = cursor.value() else {
-                        break;
-                    };
-                    if entry.deposit_address == deposit_address {
-                        entry.status = Some(status);
-                        store
-                            .update(&entry)
-                            .await
-                            .map_err(|e| format!("Failed to update entry: {e:?}"))?;
-                        tx.commit()
-                            .await
-                            .map_err(|e| format!("Failed to commit transaction: {e:?}"))?;
-                        return Ok(());
-                    }
-                    if cursor.advance(1).await.is_err() {
-                        break;
-                    }
-                }
-            }
-            Err("Entry not found".to_string())
-        }
-        Err(e) => Err(format!("Failed to open database: {e:?}")),
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct SupportedTokensResponse {
-    tokens: Vec<BridgeToken>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct QuoteRequest {
-    dry: bool,
-    deposit_mode: DepositMode,
-    swap_type: SwapType,
-    slippage_tolerance: u32,
-    origin_asset: String,
-    deposit_type: DepositType,
-    destination_asset: String,
-    #[serde(with = "dec_format")]
-    amount: Balance,
-    refund_to: AccountId,
-    refund_type: RefundType,
-    recipient: AccountId,
-    recipient_type: RecipientType,
-    deadline: DateTime<Utc>,
-    referral: AccountId,
-    quote_waiting_time_ms: u64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-enum DepositMode {
-    Simple,
-    Memo,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-enum SwapType {
-    ExactInput,
-    #[allow(dead_code)]
-    ExactOutput,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-enum DepositType {
-    OriginChain,
-    #[allow(dead_code)]
-    Intents,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-enum RefundType {
-    #[allow(dead_code)]
-    OriginChain,
-    Intents,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-enum RecipientType {
-    DestinationChain,
-    #[allow(dead_code)]
-    Intents,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct QuoteResponse {
-    quote: Quote,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
-struct Quote {
-    amount_in: String,
-    amount_in_formatted: String,
-    amount_out: String,
-    amount_out_formatted: String,
-    /// Always present for non-dry quotes
-    deposit_address: Option<String>,
-    /// Present for non-dry quotes if requested with DepositMode::Memo
-    deposit_memo: Option<String>,
-    /// Always present for non-dry quotes
-    deadline: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct StatusResponse {
-    status: DepositStatus,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-enum DepositStatus {
-    KnownDepositTx,
-    PendingDeposit,
-    IncompleteDeposit,
-    Processing,
-    Success,
-    Refunded,
-    Failed,
-}
-
-impl DepositStatus {
-    fn display(&self) -> &str {
-        match self {
-            DepositStatus::KnownDepositTx => "Deposit detected, please wait...",
-            DepositStatus::PendingDeposit => "Waiting for deposit",
-            DepositStatus::IncompleteDeposit => {
-                "Incomplete deposit, please deposit the rest of the amount to the same address"
-            }
-            DepositStatus::Processing => "Processing...",
-            DepositStatus::Success => "Success!",
-            DepositStatus::Refunded => {
-                "Something went wrong, please contact support in Settings to get assistance"
-            }
-            DepositStatus::Failed => {
-                "Bridge failed, please contact support in Settings to get assistance"
-            }
-        }
-    }
-
-    fn color_class(&self) -> &str {
-        match self {
-            DepositStatus::KnownDepositTx | DepositStatus::Processing => "text-blue-400",
-            DepositStatus::PendingDeposit => "text-gray-400",
-            DepositStatus::IncompleteDeposit => "text-yellow-400",
-            DepositStatus::Success => "text-green-400",
-            DepositStatus::Failed | DepositStatus::Refunded => "text-red-400",
-        }
-    }
+pub struct SupportedTokensResponse {
+    pub tokens: Vec<BridgeToken>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(dead_code)]
-struct BridgeToken {
-    defuse_asset_identifier: String,
-    near_token_id: AccountId,
-    decimals: u32,
-    asset_name: String,
+pub struct BridgeToken {
+    pub defuse_asset_identifier: String,
+    pub near_token_id: AccountId,
+    pub decimals: u32,
+    pub asset_name: String,
     #[serde(with = "dec_format")]
-    min_deposit_amount: Balance,
+    pub min_deposit_amount: Balance,
     #[serde(with = "dec_format")]
-    min_withdrawal_amount: Balance,
+    pub min_withdrawal_amount: Balance,
     #[serde(with = "dec_format")]
-    withdrawal_fee: Balance,
-    standard: String,
-    intents_token_id: String,
-    multi_token_id: Option<String>,
+    pub withdrawal_fee: Balance,
+    pub standard: String,
+    pub intents_token_id: String,
+    pub multi_token_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct JsonRpcRequest {
-    id: u32,
-    jsonrpc: String,
-    method: String,
-    params: Vec<SupportedTokensParams>,
+pub struct JsonRpcRequest {
+    pub id: u32,
+    pub jsonrpc: String,
+    pub method: String,
+    pub params: Vec<SupportedTokensParams>,
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct SupportedTokensParams {
-    chains: Vec<String>,
+pub struct SupportedTokensParams {
+    pub chains: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -391,22 +83,6 @@ enum Tab {
     ToNear,
     Stables,
     History,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Model)]
-#[serde(rename_all = "camelCase")]
-struct BridgeHistoryEntry {
-    #[deli(auto_increment)]
-    id: u32,
-    deposit_address: DepositAddress,
-    amount_in_formatted: String,
-    amount_out_formatted: String,
-    origin_token_symbol: String,
-    destination_token_symbol: String,
-    network_display: String,
-    created_at: DateTime<Utc>,
-    deadline: DateTime<Utc>,
-    status: Option<DepositStatus>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -427,17 +103,7 @@ fn get_chain_info(defuse_asset_identifier: &str) -> Option<&'static ChainInfo<'s
 
 #[derive(Debug, Clone)]
 struct TerminalScreenData {
-    status: DepositStatus,
-    quote: Quote,
-    receive_token_symbol: String,
-    recipient: AccountId,
     deposit_address: DepositAddress,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Hash, Eq)]
-pub enum DepositAddress {
-    Simple(String),
-    WithMemo(String, String),
 }
 
 #[component]
@@ -629,90 +295,13 @@ pub fn Bridge() -> impl IntoView {
                             .into_any()
                     }
                     Some(data) => {
-                        match data.status {
-                            DepositStatus::Success => {
-                                let amount_formatted = if let Ok(amount) = BigDecimal::from_str(
-                                    &data.quote.amount_out_formatted,
-                                ) {
-                                    format!("{amount:.6}")
-                                } else {
-                                    data.quote
-                                        .amount_out_formatted
-                                        .trim_end_matches('0')
-                                        .trim_end_matches('.')
-                                        .to_string()
-                                };
-                                view! {
-                                    <div class="flex flex-col items-center gap-6 py-8">
-                                        <div class="w-16 h-16 rounded-full bg-green-400/20 flex items-center justify-center">
-                                            <Icon
-                                                icon=icondata::LuCheck
-                                                width="48"
-                                                height="48"
-                                                attr:class="text-green-400"
-                                            />
-                                        </div>
-                                        <h2 class="text-2xl font-bold text-white">
-                                            "Bridge Complete!"
-                                        </h2>
-                                        <div class="bg-neutral-800 rounded-lg p-6 max-w-md w-full">
-                                            <div class="text-center">
-                                                <p class="text-gray-400 text-sm mb-2">"You received"</p>
-                                                <p class="text-3xl font-bold text-white">
-                                                    "≈"
-                                                    {amount_formatted
-                                                        .trim_end_matches('0')
-                                                        .trim_end_matches('.')} " " {data.receive_token_symbol}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <p class="text-gray-400 text-center max-w-md">
-                                            "Your tokens have been successfully bridged to NEAR."
-                                        </p>
-                                        <A
-                                            href="/"
-                                            attr:class="w-full max-w-md bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-center text-base"
-                                        >
-                                            "Done"
-                                        </A>
-                                    </div>
-                                }
-                                    .into_any()
-                            }
-                            DepositStatus::Failed | DepositStatus::Refunded => {
-                                view! {
-                                    <div class="flex flex-col items-center gap-6 py-8">
-                                        <div class="w-16 h-16 rounded-full bg-red-400/20 flex items-center justify-center">
-                                            <Icon
-                                                icon=icondata::LuX
-                                                width="48"
-                                                height="48"
-                                                attr:class="text-red-400"
-                                            />
-                                        </div>
-                                        <h2 class="text-2xl font-bold text-white">
-                                            "Bridge Failed"
-                                        </h2>
-                                        <p class="text-gray-400 text-center max-w-md">
-                                            "Your bridge transaction has failed. Please contact support for assistance."
-                                        </p>
-                                        <button
-                                            class="w-full max-w-md bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-base"
-                                            on:click=move |_| {
-                                                open_live_chat(
-                                                    data.recipient.clone(),
-                                                    Some(data.deposit_address.clone()),
-                                                )
-                                            }
-                                        >
-                                            "Contact Support"
-                                        </button>
-                                    </div>
-                                }
-                                    .into_any()
-                            }
-                            _ => ().into_any(),
+                        view! {
+                            <BridgeTerminationScreen
+                                deposit_address=data.deposit_address.clone()
+                                is_send=false
+                            />
                         }
+                            .into_any()
                     }
                 }}
             </div>
@@ -1037,7 +626,7 @@ fn TokenDepositForm(
             .expect("Token should be Some when form is shown")
     };
     let (amount, set_amount) = signal(String::new());
-    let (quote_data, set_quote_data) = signal::<Option<Quote>>(None);
+    let (quote_data, set_quote_data) = signal::<Option<QuoteData>>(None);
     let (is_creating_address, set_is_creating_address) = signal(false);
     let (error_message, set_error_message) = signal::<Option<String>>(None);
 
@@ -1098,18 +687,24 @@ fn TokenDepositForm(
                     false => DepositMode::Simple,
                 },
                 swap_type: SwapType::ExactInput,
-                slippage_tolerance: 1000,
+                slippage_tolerance: match receive_token_symbol.get().as_str() {
+                    "USDC" | "USDT" => 0,
+                    _ => 200,
+                },
                 origin_asset: current_token.intents_token_id.clone(),
                 deposit_type: DepositType::OriginChain,
                 destination_asset: destination_asset.to_string(),
                 amount: amount_raw,
-                refund_to: current_recipient.clone(),
+                refund_to: current_recipient.to_string(),
                 refund_type: RefundType::Intents,
-                recipient: current_recipient,
+                recipient: current_recipient.to_string(),
                 recipient_type: RecipientType::DestinationChain,
                 deadline,
                 referral: "wallet.intear.near".parse().unwrap(),
-                quote_waiting_time_ms: 1000,
+                quote_waiting_time_ms: 0,
+                app_fees: vec![],
+                virtual_chain_recipient: None,
+                virtual_chain_refund_recipient: None,
             };
 
             match reqwest::Client::new()
@@ -1150,34 +745,24 @@ fn TokenDepositForm(
         status_counter.track();
         if let Some(address) = deposit_address() {
             let address = address.clone();
-            let current_quote = quote_data.get();
-            let current_recipient = recipient();
-            let current_symbol = receive_token_symbol.get();
             leptos::task::spawn_local(async move {
-                let status_url = match &address {
-                    DepositAddress::WithMemo(address, memo) => format!(
-                        "https://1click.chaindefuser.com/v0/status?depositAddress={address}&depositMemo={memo}"
-                    ),
-                    DepositAddress::Simple(address) => format!(
-                        "https://1click.chaindefuser.com/v0/status?depositAddress={address}"
-                    ),
-                };
-                if let Ok(response) = reqwest::Client::new().get(status_url).send().await
-                    && let Ok(status_response) = response.json::<StatusResponse>().await
-                {
+                if deposit_status.get().is_some_and(|s| {
+                    matches!(
+                        s,
+                        DepositStatus::Success | DepositStatus::Failed | DepositStatus::Refunded
+                    )
+                }) {
+                    return;
+                }
+                if let Ok(status_response) = fetch_deposit_status(&address).await {
                     let status = status_response.status;
                     set_deposit_status.set(Some(status.clone()));
 
                     if matches!(
                         status,
                         DepositStatus::Success | DepositStatus::Failed | DepositStatus::Refunded
-                    ) && let Some(quote) = current_quote
-                    {
+                    ) {
                         set_terminal_screen.set(Some(TerminalScreenData {
-                            status,
-                            quote,
-                            receive_token_symbol: current_symbol,
-                            recipient: current_recipient,
                             deposit_address: address,
                         }));
                     }
@@ -1238,18 +823,24 @@ fn TokenDepositForm(
                     DepositMode::Simple
                 },
                 swap_type: SwapType::ExactInput,
-                slippage_tolerance: 1000,
+                slippage_tolerance: match receive_token_symbol.get().as_str() {
+                    "USDC" | "USDT" => 0,
+                    _ => 200,
+                },
                 origin_asset: current_token.intents_token_id.clone(),
                 deposit_type: DepositType::OriginChain,
                 destination_asset: destination_asset.to_string(),
                 amount: amount_raw,
-                refund_to: current_recipient.clone(),
+                refund_to: current_recipient.to_string(),
                 refund_type: RefundType::Intents,
-                recipient: current_recipient,
+                recipient: current_recipient.to_string(),
                 recipient_type: RecipientType::DestinationChain,
                 deadline,
                 referral: "wallet.intear.near".parse().unwrap(),
                 quote_waiting_time_ms: 2500,
+                app_fees: vec![],
+                virtual_chain_recipient: None,
+                virtual_chain_refund_recipient: None,
             };
 
             match reqwest::Client::new()
@@ -1264,23 +855,13 @@ fn TokenDepositForm(
                         let quote = quote_response.quote.clone();
                         set_quote_data(Some(quote.clone()));
 
-                        let network_display = current_chain_info
-                            .display_name.to_string();
-
                         let history_entry = AddBridgeHistoryEntry {
                             deposit_address: match quote.deposit_memo {
                                 Some(memo) => DepositAddress::WithMemo(quote.deposit_address.clone().unwrap(), memo),
                                 None => DepositAddress::Simple(quote.deposit_address.clone().unwrap()),
                             },
-                            amount_in_formatted: quote.amount_in_formatted.clone(),
-                            amount_out_formatted: quote.amount_out_formatted.clone(),
-                            origin_token_symbol: current_token.asset_name.clone(),
-                            destination_token_symbol: receive_token_symbol.get(),
-                            network_display,
                             created_at: Utc::now(),
-                            // Guaranteed to be Some for non-dry quotes
-                            deadline: quote.deadline.unwrap(),
-                            status: None,
+                            is_send: false,
                         };
 
                         spawn_local(async move {
@@ -1349,9 +930,8 @@ fn TokenDepositForm(
                                                     .get()
                                                     .map(|q| {
                                                         let decimals = token().decimals;
-                                                        let amount_u128 = q.amount_in.parse::<u128>().unwrap_or(0);
                                                         format_token_amount_full_precision(
-                                                            amount_u128,
+                                                            q.amount_in,
                                                             decimals,
                                                             &token().asset_name,
                                                         )
@@ -1515,6 +1095,35 @@ fn TokenDepositForm(
 
                                 </div>
                             </div>
+
+                            {move || {
+                                let is_terminal = deposit_status
+                                    .get()
+                                    .map(|s| {
+                                        matches!(
+                                            s,
+                                            DepositStatus::Success
+                                            | DepositStatus::Failed
+                                            | DepositStatus::Refunded
+                                        )
+                                    })
+                                    .unwrap_or(false);
+                                if !is_terminal && deposit_address().is_some() {
+                                    view! {
+                                        <button
+                                            class="w-full mt-2 bg-neutral-700 hover:bg-neutral-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors cursor-pointer text-sm"
+                                            on:click=move |_| {
+                                                open_live_chat(recipient(), deposit_address())
+                                            }
+                                        >
+                                            "Contact Support"
+                                        </button>
+                                    }
+                                        .into_any()
+                                } else {
+                                    ().into_any()
+                                }
+                            }}
                         </div>
                     }
                         .into_any()
@@ -1569,7 +1178,7 @@ fn TokenDepositForm(
                                             }
                                         }
                                     })
-                                    .unwrap_or_else(|| "Calculating...".to_string())
+                                    .unwrap_or_else(|| "Getting a quote...".to_string())
                             }}
 
                         </Suspense>
@@ -1610,595 +1219,5 @@ fn TokenDepositForm(
                 </button>
             </Show>
         </div>
-    }
-}
-
-#[component]
-fn HistoryTab() -> impl IntoView {
-    let (expanded_entries, set_expanded_entries) = signal(HashSet::<DepositAddress>::new());
-    let (current_page, set_current_page) = signal(0);
-
-    const ITEMS_PER_PAGE: u32 = 5;
-
-    let history_resource = LocalResource::new(move || {
-        let page = current_page.get();
-        async move {
-            let start_index = page * ITEMS_PER_PAGE;
-            load_bridge_history_page(start_index, ITEMS_PER_PAGE)
-                .await
-                .map_err(|e| format!("Failed to load history: {e}"))
-        }
-    });
-
-    let total_count_resource = LocalResource::new(move || async move {
-        count_bridge_history()
-            .await
-            .map_err(|e| format!("Failed to count history: {e}"))
-    });
-
-    let total_pages = Signal::derive(move || {
-        total_count_resource
-            .get()
-            .and_then(|result| result.ok())
-            .map(|total| {
-                if total == 0 {
-                    0
-                } else {
-                    total.div_ceil(ITEMS_PER_PAGE)
-                }
-            })
-            .unwrap_or(0)
-    });
-
-    view! {
-        <div class="w-full max-w-2xl">
-            <div class="bg-neutral-800 rounded-lg p-4 flex flex-col gap-3">
-                <Suspense fallback=move || {
-                    view! {
-                        <div class="text-center py-8 text-gray-400">
-                            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-                            <p>"Loading history..."</p>
-                        </div>
-                    }
-                }>
-                    {move || {
-                        match history_resource.get() {
-                            Some(Ok(history)) => {
-                                if history.is_empty() {
-                                    view! {
-                                        <div class="text-center py-8 text-gray-400">
-                                            <Icon
-                                                icon=icondata::LuHistory
-                                                width="48"
-                                                height="48"
-                                                attr:class="mx-auto mb-4 opacity-50"
-                                            />
-                                            <p>"No bridge history yet"</p>
-                                        </div>
-                                    }
-                                        .into_any()
-                                } else {
-                                    view! {
-                                        <div class="flex flex-col gap-2">
-                                            <For
-                                                each=move || history.clone()
-                                                key=|entry| entry.id
-                                                children=move |entry: BridgeHistoryEntry| {
-                                                    let deposit_address = entry.deposit_address.clone();
-                                                    let expanded = Signal::derive(move || {
-                                                        expanded_entries.get().contains(&deposit_address)
-                                                    });
-                                                    let deposit_address = entry.deposit_address.clone();
-                                                    let toggle_expanded = Callback::new(move |value: bool| {
-                                                        let deposit_address = deposit_address.clone();
-                                                        set_expanded_entries
-                                                            .update(move |set| {
-                                                                if value {
-                                                                    set.insert(deposit_address.clone());
-                                                                } else {
-                                                                    set.remove(&deposit_address);
-                                                                }
-                                                            });
-                                                    });
-                                                    view! {
-                                                        <HistoryItem
-                                                            entry=entry
-                                                            expanded=expanded
-                                                            toggle_expanded=toggle_expanded
-                                                        />
-                                                    }
-                                                }
-                                            />
-                                        </div>
-                                        <Show when=move || {
-                                            let pages = total_pages.get();
-                                            pages > 1
-                                        }>
-                                            <div class="flex items-center justify-center gap-2 mt-4">
-                                                <button
-                                                    class=move || {
-                                                        format!(
-                                                            "px-3 py-1 rounded-lg transition-colors text-sm {}",
-                                                            if current_page.get() == 0 {
-                                                                "bg-neutral-700 text-gray-500 cursor-not-allowed"
-                                                            } else {
-                                                                "bg-neutral-700 text-white hover:bg-neutral-600 cursor-pointer"
-                                                            },
-                                                        )
-                                                    }
-                                                    disabled=move || current_page.get() == 0
-                                                    on:click=move |_| {
-                                                        if current_page.get() > 0 {
-                                                            set_current_page(current_page.get() - 1);
-                                                        }
-                                                    }
-                                                >
-                                                    "Previous"
-                                                </button>
-                                                <span class="text-gray-400 text-sm">
-                                                    {move || {
-                                                        format!(
-                                                            "Page {} of {}",
-                                                            current_page.get() + 1,
-                                                            total_pages.get(),
-                                                        )
-                                                    }}
-                                                </span>
-                                                <button
-                                                    class=move || {
-                                                        format!(
-                                                            "px-3 py-1 rounded-lg transition-colors text-sm {}",
-                                                            if current_page.get() >= total_pages.get().saturating_sub(1)
-                                                            {
-                                                                "bg-neutral-700 text-gray-500 cursor-not-allowed"
-                                                            } else {
-                                                                "bg-neutral-700 text-white hover:bg-neutral-600 cursor-pointer"
-                                                            },
-                                                        )
-                                                    }
-                                                    disabled=move || {
-                                                        current_page.get() >= total_pages.get().saturating_sub(1)
-                                                    }
-                                                    on:click=move |_| {
-                                                        if current_page.get() < total_pages.get().saturating_sub(1)
-                                                        {
-                                                            set_current_page(current_page.get() + 1);
-                                                        }
-                                                    }
-                                                >
-                                                    "Next"
-                                                </button>
-                                            </div>
-                                        </Show>
-                                    }
-                                        .into_any()
-                                }
-                            }
-                            Some(Err(e)) => {
-                                view! {
-                                    <div class="text-center py-8 text-red-400">
-                                        <p>"Failed to load history: " {e}</p>
-                                    </div>
-                                }
-                                    .into_any()
-                            }
-                            None => {
-                                view! {
-                                    <div class="text-center py-8 text-gray-400">
-                                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-                                        <p>"Loading history..."</p>
-                                    </div>
-                                }
-                                    .into_any()
-                            }
-                        }
-                    }}
-                </Suspense>
-            </div>
-        </div>
-    }
-}
-
-#[component]
-fn HistoryItem(
-    entry: BridgeHistoryEntry,
-    expanded: Signal<bool>,
-    toggle_expanded: Callback<bool>,
-) -> impl IntoView {
-    let accounts_context = expect_context::<AccountsContext>();
-
-    let deposit_address = entry.deposit_address.clone();
-    let (current_status, set_current_status) = signal(entry.status);
-
-    let is_terminal = Memo::new(move |_| {
-        matches!(
-            current_status.get(),
-            Some(DepositStatus::Success)
-                | Some(DepositStatus::Failed)
-                | Some(DepositStatus::Refunded)
-        )
-    });
-
-    let UseIntervalReturn {
-        counter: status_counter,
-        ..
-    } = use_interval(10000);
-    let UseIntervalReturn {
-        counter: countdown_counter,
-        ..
-    } = use_interval(1000);
-
-    let deposit_address_stored = StoredValue::new(deposit_address.clone());
-    Effect::new(move || {
-        status_counter.track();
-        if !is_terminal() {
-            leptos::task::spawn_local(async move {
-                let status_url = match &*deposit_address_stored.read_value() {
-                    DepositAddress::WithMemo(address, memo) => format!(
-                        "https://1click.chaindefuser.com/v0/status?depositAddress={address}&depositMemo={memo}"
-                    ),
-                    DepositAddress::Simple(address) => format!(
-                        "https://1click.chaindefuser.com/v0/status?depositAddress={address}"
-                    ),
-                };
-                if let Ok(response) = reqwest::Client::new().get(status_url).send().await
-                    && let Ok(status_response) = response.json::<serde_json::Value>().await
-                    && let Some(status_str) = status_response.get("status").and_then(|s| s.as_str())
-                    && let Ok(status) =
-                        serde_json::from_value::<DepositStatus>(serde_json::json!(status_str))
-                {
-                    set_current_status.set(Some(status.clone()));
-
-                    if matches!(
-                        status,
-                        DepositStatus::Success | DepositStatus::Failed | DepositStatus::Refunded
-                    ) {
-                        let deposit_addr = deposit_address_stored.get_value();
-                        spawn_local(async move {
-                            if let Err(e) = update_bridge_history_status(deposit_addr, status).await
-                            {
-                                log::error!("Failed to update bridge history status: {e}");
-                            }
-                        });
-                    }
-                }
-            });
-        }
-    });
-
-    let status_display = move || {
-        let is_expired = entry.deadline < Utc::now();
-
-        match current_status.get() {
-            Some(status) => {
-                let should_show_expired = is_expired
-                    && matches!(
-                        status,
-                        DepositStatus::PendingDeposit | DepositStatus::IncompleteDeposit
-                    );
-
-                if should_show_expired {
-                    ("Expired".to_string(), "text-red-400".to_string())
-                } else {
-                    (
-                        status.display().to_string(),
-                        status.color_class().to_string(),
-                    )
-                }
-            }
-            None => ("Loading".to_string(), "text-gray-400".to_string()),
-        }
-    };
-
-    let is_pending = move || {
-        matches!(
-            current_status.get(),
-            Some(DepositStatus::PendingDeposit) | Some(DepositStatus::IncompleteDeposit) | None
-        )
-    };
-
-    let is_failed = move || {
-        matches!(
-            current_status.get(),
-            Some(DepositStatus::Failed) | Some(DepositStatus::Refunded)
-        )
-    };
-
-    let format_date = |date: DateTime<Utc>| date.format("%b %d, %Y %H:%M UTC").to_string();
-
-    let countdown_text = move || {
-        countdown_counter.track();
-        if is_terminal() {
-            return String::new();
-        }
-
-        let now = Utc::now();
-        let duration = entry.deadline.signed_duration_since(now);
-
-        if duration.num_seconds() <= 0 {
-            "Expired".to_string()
-        } else {
-            let hours = duration.num_hours();
-            let minutes = duration.num_minutes() % 60;
-            let seconds = duration.num_seconds() % 60;
-            format!("Expires: {:02}:{:02}:{:02}", hours, minutes, seconds)
-        }
-    };
-
-    view! {
-        <div class="bg-neutral-700 rounded-lg overflow-hidden">
-            <button
-                class="w-full p-4 text-left hover:bg-neutral-600 transition-colors"
-                on:click=move |_| {
-                    toggle_expanded.run(!expanded.get());
-                }
-            >
-                <div class="flex justify-between items-start gap-4">
-                    <div class="flex-1">
-                        <div class="flex items-center gap-2 mb-1">
-                            <span class="font-semibold text-white">
-                                {entry.origin_token_symbol.clone()} " → "
-                                {entry.destination_token_symbol.clone()}
-                            </span>
-                            <span class=move || {
-                                format!("text-sm {}", status_display().1)
-                            }>{move || status_display().0}</span>
-                        </div>
-                        <div class="text-sm text-gray-400">
-                            {entry.network_display} " • " {format_date(entry.created_at)}
-                        </div>
-                        <div class="flex items-center gap-1 mt-1">
-                            <div class="text-sm text-gray-300">
-                                {
-                                    let amount = entry.amount_in_formatted.clone();
-                                    let amount = amount.trim_end_matches('0').trim_end_matches('.');
-                                    amount.to_string()
-                                } " " {entry.origin_token_symbol.clone()}
-                            </div>
-                            <CopyButton text=entry
-                                .amount_in_formatted
-                                .trim_end_matches('0')
-                                .trim_end_matches('.')
-                                .to_string() />
-                        </div>
-                        <Show when=move || !is_terminal()>
-                            <div class="text-xs text-gray-500 mt-1">
-                                {move || {
-                                    let countdown = countdown_text();
-                                    if !countdown.is_empty() { countdown } else { String::new() }
-                                }}
-                            </div>
-                        </Show>
-                    </div>
-                    <Icon
-                        icon=icondata::LuChevronDown
-                        width="20"
-                        height="20"
-                        attr:class=move || {
-                            if expanded.get() {
-                                "transform rotate-180 transition-transform"
-                            } else {
-                                "transition-transform"
-                            }
-                        }
-                    />
-                </div>
-            </button>
-
-            <Show when=expanded>
-                <div class="px-4 pb-4 border-t border-neutral-600 pt-4">
-                    <div class="space-y-3">
-                        <CopyableAddress
-                            address=match entry.deposit_address.clone() {
-                                DepositAddress::Simple(address) => address,
-                                DepositAddress::WithMemo(address, _) => address,
-                            }
-                            label="Deposit Address"
-                        />
-
-                        {match entry.deposit_address.clone() {
-                            DepositAddress::WithMemo(_, memo) => {
-                                view! {
-                                    <CopyableAddress address=memo label="With memo (IMPORTANT):" />
-                                }
-                                    .into_any()
-                            }
-                            DepositAddress::Simple(_) => ().into_any(),
-                        }}
-
-                        <div>
-                            <p class="text-sm text-gray-400 mb-1">"Expected to receive"</p>
-                            <p class="text-white">
-                                {if let Ok(amount) = entry.amount_out_formatted.parse::<f64>() {
-                                    format!("≈{:.6} {}", amount, entry.destination_token_symbol)
-                                } else {
-                                    format!(
-                                        "≈{} {}",
-                                        entry
-                                            .amount_out_formatted
-                                            .trim_end_matches('0')
-                                            .trim_end_matches('.'),
-                                        entry.destination_token_symbol,
-                                    )
-                                }}
-                            </p>
-                        </div>
-
-                        <Show when=move || {
-                            is_pending()
-                                && matches!(
-                                    deposit_address_stored.get_value(),
-                                    DepositAddress::Simple(_)
-                                )
-                        }>
-                            <QRCodeDisplay address=match deposit_address_stored.get_value() {
-                                DepositAddress::Simple(address) => address,
-                                DepositAddress::WithMemo(_, _) => unreachable!(),
-                            } />
-                        </Show>
-
-                        <Show when=is_failed>
-                            <button
-                                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-                                on:click=move |_| {
-                                    open_live_chat(
-                                        accounts_context
-                                            .accounts
-                                            .get_untracked()
-                                            .selected_account_id
-                                            .unwrap(),
-                                        Some(deposit_address_stored.get_value()),
-                                    )
-                                }
-                            >
-                                "Contact Support"
-                            </button>
-                        </Show>
-                    </div>
-                </div>
-            </Show>
-        </div>
-    }
-}
-
-#[component]
-fn QRCodeDisplay(
-    address: String,
-    #[prop(optional)] size_class: Option<&'static str>,
-) -> impl IntoView {
-    let size = size_class.unwrap_or("w-48 h-48");
-    let qr_code_resource = LocalResource::new(move || {
-        let addr = address.clone();
-        async move { generate_qr_code(&addr, false).await }
-    });
-
-    view! {
-        <div class="flex flex-col items-center gap-2">
-            <Suspense fallback=move || {
-                view! {
-                    <div class=format!(
-                        "{} bg-neutral-800 rounded-lg flex items-center justify-center",
-                        size,
-                    )>
-                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-                    </div>
-                }
-            }>
-                {move || {
-                    qr_code_resource
-                        .get()
-                        .map(|qr_result| {
-                            if let Ok(qr_code_data_url) = qr_result {
-                                view! {
-                                    <img
-                                        src=qr_code_data_url
-                                        alt="QR Code for deposit address"
-                                        class=format!("{} rounded-lg", size)
-                                    />
-                                }
-                                    .into_any()
-                            } else {
-                                view! {
-                                    <div class=format!(
-                                        "{} bg-neutral-800 rounded-lg flex items-center justify-center text-red-400",
-                                        size,
-                                    )>"Failed to generate QR code"</div>
-                                }
-                                    .into_any()
-                            }
-                        })
-                }}
-            </Suspense>
-        </div>
-    }
-}
-
-#[component]
-fn CopyableAddress(
-    address: String,
-    #[prop(optional)] label: Option<&'static str>,
-) -> impl IntoView {
-    let (is_copied, set_is_copied) = signal(false);
-
-    let address_clone = address.clone();
-    view! {
-        <div>
-            {label
-                .map(|l| {
-                    view! { <p class="text-sm text-gray-400 mb-2">{l}</p> }
-                })} <div class="flex items-center gap-2 w-full bg-neutral-600 rounded-lg p-3">
-                <span class="text-white text-sm font-mono break-all flex-1">{address}</span>
-                <button
-                    class="bg-neutral-500 hover:bg-neutral-400 rounded-lg p-2 transition-colors cursor-pointer flex-shrink-0"
-                    on:click=move |_| {
-                        let clipboard = window().navigator().clipboard();
-                        let _ = clipboard.write_text(&address_clone);
-                        set_is_copied(true);
-                        set_timeout(move || set_is_copied(false), Duration::from_millis(2000));
-                    }
-                    title="Copy address"
-                >
-                    {move || {
-                        if is_copied.get() {
-                            view! {
-                                <Icon
-                                    icon=icondata::LuCheck
-                                    width="20"
-                                    height="20"
-                                    attr:class="text-green-400"
-                                />
-                            }
-                                .into_any()
-                        } else {
-                            view! {
-                                <Icon
-                                    icon=icondata::LuCopy
-                                    width="20"
-                                    height="20"
-                                    attr:class="text-white"
-                                />
-                            }
-                                .into_any()
-                        }
-                    }}
-                </button>
-            </div>
-        </div>
-    }
-}
-
-#[component]
-fn CopyButton(text: String) -> impl IntoView {
-    let (is_copied, set_is_copied) = signal(false);
-
-    let text_clone = text.clone();
-    view! {
-        <button
-            class="text-gray-400 hover:text-white transition-colors cursor-pointer shrink-0"
-            on:click=move |ev| {
-                ev.stop_propagation();
-                let clipboard = window().navigator().clipboard();
-                let _ = clipboard.write_text(&text_clone);
-                set_is_copied(true);
-                set_timeout(move || set_is_copied(false), Duration::from_millis(2000));
-            }
-            title="Copy amount"
-        >
-            {move || {
-                if is_copied.get() {
-                    view! {
-                        <Icon
-                            icon=icondata::LuCheck
-                            width="16"
-                            height="16"
-                            attr:class="text-green-400"
-                        />
-                    }
-                        .into_any()
-                } else {
-                    view! { <Icon icon=icondata::LuCopy width="16" height="16" /> }.into_any()
-                }
-            }}
-        </button>
     }
 }

@@ -1,5 +1,4 @@
 pub mod auto_import_secret_key;
-pub mod bridge;
 pub mod connect;
 pub mod explore;
 pub mod gift_claim;
@@ -10,8 +9,10 @@ pub mod invoices;
 pub mod login;
 pub mod nfts;
 pub mod receive;
+pub mod receivebridge;
 pub mod send;
 pub mod send_transactions;
+pub mod sendbridge;
 pub mod settings;
 pub mod sign_message;
 pub mod stake;
