@@ -46,6 +46,7 @@ impl Display for BridgeableTokenStandard<'_> {
     }
 }
 
+#[derive(Debug)]
 pub struct ChainInfo<'a> {
     pub chain_type: &'a str,
     pub chain_id: &'a str,

@@ -149,7 +149,7 @@ pub fn Receive() -> impl IntoView {
                                 .location()
                                 .hostname()
                                 .ok()
-                                .map(|host| host.contains("staging"))
+                                .map(|host| host.contains("staging") || host.contains("127.0.0.1"))
                                 .unwrap_or(false)
                     }>
                         <A

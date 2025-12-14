@@ -402,10 +402,11 @@ fn ToNearTab(
                         filter_enabled=true
                         on_change=Callback::new(move |value: String| {
                             if !value.is_empty() {
+                                let selected_network = selected_network.get_untracked();
                                 if let Some(token) = tokens_stored
                                     .get_value()
                                     .into_iter()
-                                    .find(|t| t.asset_name == value)
+                                    .find(|t| t.asset_name == value && t.defuse_asset_identifier.starts_with(&format!("{}:{}:", selected_network.unwrap().chain_type, selected_network.unwrap().chain_id)))
                                 {
                                     set_selected_token(Some(token));
                                 }
@@ -682,9 +683,10 @@ fn TokenDepositForm(
 
             let request = QuoteRequest {
                 dry: true,
-                deposit_mode: match current_chain_info.requires_memo {
-                    true => DepositMode::Memo,
-                    false => DepositMode::Simple,
+                deposit_mode: if current_chain_info.requires_memo {
+                    DepositMode::Memo
+                } else {
+                    DepositMode::Simple
                 },
                 swap_type: SwapType::ExactInput,
                 slippage_tolerance: match receive_token_symbol.get().as_str() {
