@@ -197,7 +197,7 @@ fn SuccessScreen(
                 <div class="text-center">
                     <p class="text-gray-400 text-sm mb-2">{label_text}</p>
                     <p class="text-3xl font-bold text-white break-all">
-                        {amount_formatted.trim_end_matches('0').trim_end_matches('.')} " "
+                        {amount_formatted.trim_end_matches('0').trim_end_matches('.').to_string()} " "
                         {token_symbol}
                     </p>
                 </div>
