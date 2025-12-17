@@ -757,7 +757,8 @@ fn TokenDepositForm(
                             if error_msg.contains("error decoding response body") {
                                 Err("".to_string())
                             } else {
-                                Err(format!("Failed to parse quote: {error_msg}"))
+                                log::error!("Failed to parse quote: {error_msg}");
+                                Err(format!("Token temporarily not available"))
                             }
                         }
                     }

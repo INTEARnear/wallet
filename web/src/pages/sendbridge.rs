@@ -294,7 +294,8 @@ pub fn SendBridge() -> impl IntoView {
                             if error_msg.contains("error decoding response body") {
                                 Err("".to_string())
                             } else {
-                                Err(format!("Failed to parse quote: {error_msg}"))
+                                log::error!("Failed to parse quote: {error_msg}");
+                                Err(format!("Token temporarily not available"))
                             }
                         }
                     }
@@ -562,12 +563,12 @@ pub fn SendBridge() -> impl IntoView {
                         }
                     }
                     Err(e) => {
-                        log::error!("Failed to parse quote response: {}", e);
+                        log::error!("Failed to parse quote response: {e}");
                         set_is_sending.set(false);
                     }
                 },
                 Err(e) => {
-                    log::error!("Failed to send bridge request: {}", e);
+                    log::error!("Failed to send bridge request: {e}");
                     set_is_sending.set(false);
                 }
             }
