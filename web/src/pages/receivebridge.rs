@@ -758,7 +758,7 @@ fn TokenDepositForm(
                                 Err("".to_string())
                             } else {
                                 log::error!("Failed to parse quote: {error_msg}");
-                                Err(format!("Token temporarily not available"))
+                                Err(format!("Token temporarily not available to bridge"))
                             }
                         }
                     }
