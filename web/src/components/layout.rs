@@ -247,11 +247,11 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
             }
         }>
             <div
-                class="flex justify-center items-center h-screen overflow-hidden bg-black lg:bg-[linear-gradient(rgba(0,0,0,0.75),rgba(0,0,0,0.75)),var(--bg-image)] lg:bg-cover lg:bg-center lg:bg-no-repeat"
+                class="flex justify-center items-center h-[100svh] lg:h-screen overflow-hidden overflow-y-hidden bg-black lg:bg-[linear-gradient(rgba(0,0,0,0.75),rgba(0,0,0,0.75)),var(--bg-image)] lg:bg-cover lg:bg-center lg:bg-no-repeat"
                 style=move || format!("--bg-image: url('{}')", random_background.get())
             >
                 <div
-                    class="h-[100dvh] absolute top-0 lg:top-[30px] bottom-0 w-full lg:h-[calc(100%-60px)] lg:w-[600px] bg-neutral-950 lg:rounded-3xl transition-all duration-150 flex flex-col"
+                    class="h-[100svh] absolute top-0 lg:top-[30px] bottom-0 w-full lg:h-[calc(100%-60px)] lg:w-[600px] bg-neutral-950 lg:rounded-3xl transition-all duration-150 flex flex-col"
                     on:touchstart=handle_touch_start
                     on:touchmove=handle_touch_move
                     on:touchend=handle_touch_end
