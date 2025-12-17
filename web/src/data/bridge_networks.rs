@@ -536,14 +536,6 @@ const BASE: ChainInfo = ChainInfo {
     example_address: "0x2CfF890f0378a11913B6129B2E97417a2c302680",
 };
 
-const ADI_TESTNET: ChainInfo = ChainInfo {
-    chain_type: "eth",
-    chain_id: "36900",
-    display_name: "ADI Testnet",
-    requires_memo: false,
-    example_address: "0x2CfF890f0378a11913B6129B2E97417a2c302680",
-};
-
 const ARBITRUM: ChainInfo = ChainInfo {
     chain_type: "eth",
     chain_id: "42161",
@@ -681,7 +673,6 @@ pub const NETWORK_NAMES: &[ChainInfo] = &[
     MONAD,
     X_LAYER,
     BASE,
-    ADI_TESTNET,
     ARBITRUM,
     AVALANCHE,
     BERACHAIN,
