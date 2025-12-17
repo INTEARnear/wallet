@@ -39,6 +39,7 @@ const AMOUNT_SUFFIXES: &[(u64, &str)] = &[
     (1_000, "K"),
 ];
 
+#[track_caller]
 pub fn format_token_amount(balance: Balance, decimals: u32, symbol: &str) -> String {
     let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     if config().amounts_hidden {
@@ -47,6 +48,7 @@ pub fn format_token_amount(balance: Balance, decimals: u32, symbol: &str) -> Str
     format_token_amount_no_hide(balance, decimals, symbol)
 }
 
+#[track_caller]
 pub fn format_token_amount_no_hide(amount: Balance, decimals: u32, symbol: &str) -> String {
     let short = if let Some(config_context) = use_context::<ConfigContext>() {
         config_context.config.get().short_amounts
@@ -112,6 +114,7 @@ pub fn format_token_amount_full_precision(amount: Balance, decimals: u32, symbol
     format!("{amount} {symbol}")
 }
 
+#[track_caller]
 pub fn format_usd_value(value: BigDecimal) -> String {
     let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     if config().amounts_hidden {
@@ -120,6 +123,7 @@ pub fn format_usd_value(value: BigDecimal) -> String {
     format_usd_value_no_hide(value)
 }
 
+#[track_caller]
 pub fn format_usd_value_no_hide(value: BigDecimal) -> String {
     let one = BigDecimal::from(1);
     if value.abs() < one {
@@ -186,6 +190,7 @@ pub fn format_duration(duration: Duration) -> String {
     }
 }
 
+#[track_caller]
 pub fn format_account_id(account_id: &AccountIdRef) -> AnyView {
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     if let Some(selected_account) = accounts().selected_account_id
@@ -199,6 +204,7 @@ pub fn format_account_id(account_id: &AccountIdRef) -> AnyView {
     format_account_id_no_hide(account_id)
 }
 
+#[track_caller]
 pub fn format_account_id_no_hide(account_id: &AccountIdRef) -> AnyView {
     view! {
         <span class="items-center gap-1 inline-flex max-w-full">
@@ -208,6 +214,7 @@ pub fn format_account_id_no_hide(account_id: &AccountIdRef) -> AnyView {
     .into_any()
 }
 
+#[track_caller]
 pub fn format_account_id_full(account_id: &AccountIdRef) -> AnyView {
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     if let Some(selected_account) = accounts().selected_account_id

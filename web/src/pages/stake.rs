@@ -334,7 +334,7 @@ fn ValidatorCard(
                     }}
                     <div class="text-xs text-gray-400 text-center">
                         "Total Stake" <div style:color=stake_color class="text-center w-full">
-                            {format_token_amount_no_hide(
+                            {move || format_token_amount_no_hide(
                                 validator().total_stake.as_yoctonear(),
                                 24,
                                 "NEAR",
@@ -813,63 +813,45 @@ fn ValidatorCard(
                             <div class="text-sm" style:color=apy_color>
                                 {apy_str}
                             </div>
-                            {
-                                #[allow(clippy::redundant_iter_cloned)]
-                                validator()
-                                    .active_farms
-                                    .iter()
-                                    .cloned()
-                                    .map(|farm| {
-                                        view! {
-                                            <div>
-                                                {move || {
-                                                    let farm_period = farm.end_date - farm.start_date;
-                                                    if farm_period.is_zero() {
-                                                        ().into_any()
-                                                    } else {
-                                                        let annual_amount = (BigDecimal::from(farm.amount)
-                                                            * BigDecimal::from(NANOSECONDS_IN_YEAR))
-                                                            / BigDecimal::from(farm_period.num_nanoseconds().unwrap());
-                                                        let token_symbol = &farm.token.metadata.symbol;
-                                                        if farm.token.price_usd_raw > BigDecimal::from(0) {
-                                                            let annual_amount_decimal = balance_to_decimal(
-                                                                annual_amount.to_u128().unwrap_or(0),
-                                                                farm.token.metadata.decimals,
-                                                            );
-                                                            let annual_usd_value = &annual_amount_decimal
-                                                                * &farm.token.price_usd_raw / power_of_10(USDT_DECIMALS);
-                                                            let total_stake_decimal = balance_to_decimal(
-                                                                validator().total_stake.as_yoctonear(),
-                                                                24,
-                                                            );
-                                                            let total_stake_usd = &total_stake_decimal * &near_price();
-                                                            if total_stake_usd > BigDecimal::from(0) {
-                                                                let additional_apy = (&annual_usd_value / &total_stake_usd)
-                                                                    * BigDecimal::from(100);
-                                                                view! {
-                                                                    <div class="text-green-400 text-xs">
-                                                                        {format!("+{:.2}% in {}", additional_apy, token_symbol)}
-                                                                    </div>
-                                                                }
-                                                                    .into_any()
-                                                            } else {
-                                                                view! {
-                                                                    <div class="text-green-400 text-xs">
-                                                                        {format!(
-                                                                            "+ {} {} / year",
-                                                                            format_token_amount_no_hide(
-                                                                                annual_amount.to_u128().unwrap_or(0),
-                                                                                farm.token.metadata.decimals,
-                                                                                "",
-                                                                            ),
-                                                                            token_symbol,
-                                                                        )}
-                                                                    </div>
-                                                                }
-                                                                    .into_any()
+                            {#[allow(clippy::redundant_iter_cloned)]
+                            validator()
+                                .active_farms
+                                .iter()
+                                .cloned()
+                                .map(|farm| {
+                                    view! {
+                                        <div>
+                                            {move || {
+                                                let farm_period = farm.end_date - farm.start_date;
+                                                if farm_period.is_zero() {
+                                                    ().into_any()
+                                                } else {
+                                                    let annual_amount = (BigDecimal::from(farm.amount)
+                                                        * BigDecimal::from(NANOSECONDS_IN_YEAR))
+                                                        / BigDecimal::from(farm_period.num_nanoseconds().unwrap());
+                                                    let token_symbol = &farm.token.metadata.symbol;
+                                                    if farm.token.price_usd_raw > BigDecimal::from(0) {
+                                                        let annual_amount_decimal = balance_to_decimal(
+                                                            annual_amount.to_u128().unwrap_or(0),
+                                                            farm.token.metadata.decimals,
+                                                        );
+                                                        let annual_usd_value = &annual_amount_decimal
+                                                            * &farm.token.price_usd_raw / power_of_10(USDT_DECIMALS);
+                                                        let total_stake_decimal = balance_to_decimal(
+                                                            validator().total_stake.as_yoctonear(),
+                                                            24,
+                                                        );
+                                                        let total_stake_usd = &total_stake_decimal * &near_price();
+                                                        if total_stake_usd > BigDecimal::from(0) {
+                                                            let additional_apy = (&annual_usd_value / &total_stake_usd)
+                                                                * BigDecimal::from(100);
+                                                            view! {
+                                                                <div class="text-green-400 text-xs">
+                                                                    {format!("+{:.2}% in {}", additional_apy, token_symbol)}
+                                                                </div>
                                                             }
+                                                                .into_any()
                                                         } else {
-                                                            // No price data, show token amount
                                                             view! {
                                                                 <div class="text-green-400 text-xs">
                                                                     {format!(
@@ -885,13 +867,29 @@ fn ValidatorCard(
                                                             }
                                                                 .into_any()
                                                         }
+                                                    } else {
+                                                        // No price data, show token amount
+                                                        view! {
+                                                            <div class="text-green-400 text-xs">
+                                                                {format!(
+                                                                    "+ {} {} / year",
+                                                                    format_token_amount_no_hide(
+                                                                        annual_amount.to_u128().unwrap_or(0),
+                                                                        farm.token.metadata.decimals,
+                                                                        "",
+                                                                    ),
+                                                                    token_symbol,
+                                                                )}
+                                                            </div>
+                                                        }
+                                                            .into_any()
                                                     }
-                                                }}
-                                            </div>
-                                        }
-                                    })
-                                    .collect_view()
-                                }
+                                                }
+                                            }}
+                                        </div>
+                                    }
+                                })
+                                .collect_view()}
                             <div class="text-gray-400 text-xs">"APY"</div>
                             <div class="text-gray-500 text-xs">{fee_str}</div>
                         }

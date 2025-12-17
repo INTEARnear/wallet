@@ -172,8 +172,8 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
             {
                 if delta_x > SWIPE_X_THRESHOLD_PX {
                     set_account_selector_state(true);
-                    set_account_selector_progress(0.0);
                 }
+                set_account_selector_progress(0.0);
                 set_is_left_edge_swipe(false);
             }
         }

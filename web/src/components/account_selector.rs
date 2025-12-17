@@ -390,9 +390,9 @@ pub fn AccountSelector() -> impl IntoView {
         swipe_progress,
         is_expanded,
         set_expanded,
+        set_swipe_progress,
         modal_state,
         set_modal_state,
-        ..
     } = expect_context::<AccountSelectorContext>();
     let (show_security_alert, set_show_security_alert) = signal(false);
     let (profile_images, set_profile_images) =
@@ -791,7 +791,10 @@ pub fn AccountSelector() -> impl IntoView {
                         <div>
                             <div
                                 class="absolute inset-0 bg-neutral-950/40 backdrop-blur-[2px] lg:rounded-3xl"
-                                on:click=move |_| set_expanded(false)
+                                on:click=move |_| {
+                                    set_expanded(false);
+                                    set_swipe_progress(0.0);
+                                }
                             />
                             <div class="absolute left-0 top-0 bottom-0 w-[100px] bg-neutral-950 lg:rounded-l-3xl">
                                 <div class="p-2 h-full bg-neutral-950 flex flex-col lg:rounded-l-3xl">
@@ -922,7 +925,7 @@ pub fn AccountSelector() -> impl IntoView {
                                                     <Icon icon=icondata::LuPlus width="16" height="16" />
                                                 </div>
                                             </div>
-                                            <div class="text-xs text-center">Add</div>
+                                            <div class="text-xs text-center">"Add"</div>
                                         </button>
 
                                         <A
@@ -935,7 +938,7 @@ pub fn AccountSelector() -> impl IntoView {
                                                     <Icon icon=icondata::LuSettings width="16" height="16" />
                                                 </div>
                                             </div>
-                                            <div class="text-xs text-center">Settings</div>
+                                            <div class="text-xs text-center">"Settings"</div>
                                         </A>
                                     </div>
                                 </div>
