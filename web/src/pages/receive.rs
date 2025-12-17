@@ -134,7 +134,7 @@ pub fn Receive() -> impl IntoView {
                     }
                 }}
 
-                <div class="flex flex-col gap-3 w-full max-w-md mt-4">
+                <div class="flex flex-col gap-3 w-full max-w-md mt-16">
                     <Show when=move || network.get() == Network::Mainnet>
                         <A
                             href="/receive/bridge"
