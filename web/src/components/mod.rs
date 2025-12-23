@@ -19,6 +19,7 @@ pub mod seed_phrase_input;
 pub mod select;
 pub mod send_modals;
 pub mod social_link;
+pub mod swap_for_gas_modal;
 pub mod token_balance_list;
 pub mod token_selector;
 pub mod tooltip;

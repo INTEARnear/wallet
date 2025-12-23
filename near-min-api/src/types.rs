@@ -6890,6 +6890,7 @@ impl fmt::Display for ServerError {
     Serialize,
     Deserialize,
     Clone,
+    Copy,
     PartialEq,
     Eq,
     PartialOrd,
@@ -6899,6 +6900,27 @@ impl fmt::Display for ServerError {
     derive_more::Deref,
     derive_more::From,
     derive_more::Into,
+    Default,
 )]
 #[serde(transparent)]
 pub struct U128(#[serde(with = "dec_format")] u128);
+
+#[derive(
+    Debug,
+    Serialize,
+    Deserialize,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    borsh::BorshSerialize,
+    borsh::BorshDeserialize,
+    derive_more::Deref,
+    derive_more::From,
+    derive_more::Into,
+    Default,
+)]
+#[serde(transparent)]
+pub struct U64(#[serde(with = "dec_format")] u64);

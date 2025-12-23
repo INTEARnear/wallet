@@ -1,3 +1,5 @@
+mod router;
+
 use alloy_primitives::Signature;
 use axum::{
     Router,
@@ -6,22 +8,37 @@ use axum::{
     response::IntoResponse,
     routing::post,
 };
-use dotenv::dotenv;
+use base64::{Engine, prelude::BASE64_STANDARD};
+use borsh::{BorshDeserialize, BorshSerialize};
+use dotenvy::dotenv;
 use near_min_api::{
     QueryFinality, RpcClient,
     types::{
-        AccountId, Action, BlockReference, CreateAccountAction, CryptoHash, FinalExecutionStatus,
-        Finality, FunctionCallAction, NearGas, NearToken, SignedDelegateAction, SignedTransaction,
-        Transaction, TransactionV0, TxExecutionStatus,
+        AccountId, Action, BlockHeight, BlockReference, CreateAccountAction, CryptoHash,
+        FinalExecutionStatus, Finality, FunctionCallAction, NearGas, NearToken,
+        SignedDelegateAction, SignedTransaction, Transaction, TransactionV0, TxExecutionStatus,
+        U64, U128,
         near_crypto::{PublicKey, SecretKey},
     },
 };
 use rand::seq::SliceRandom;
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, env, net::SocketAddr, sync::Arc, time::Duration};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_with::serde_as;
+use std::{
+    collections::{BTreeMap, HashMap},
+    env,
+    fmt::Display,
+    hash::Hash,
+    net::SocketAddr,
+    str::FromStr,
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 use tokio::sync::Mutex;
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::EnvFilter;
+
+use crate::router::{Amount, DexId, Slippage, SwapRequest, TokenId, get_routes};
 
 #[derive(Debug, Deserialize)]
 struct CreateAccountRequest {
@@ -82,7 +99,7 @@ struct AppState {
     relayer_keys: Vec<SecretKey>,
     desired_finality: TxExecutionStatus,
     network: Network,
-    deposit_amount: NearToken,
+    create_account_deposit_amount: NearToken,
 }
 
 #[tokio::main]
@@ -99,7 +116,7 @@ async fn main() {
 
     tracing::info!("Starting account creation service...");
 
-    let deposit_amount = env::var("CREATE_ACCOUNT_DEPOSIT")
+    let create_account_deposit_amount = env::var("CREATE_ACCOUNT_DEPOSIT")
         .map(|s| {
             s.parse::<NearToken>()
                 .expect("Invalid CREATE_ACCOUNT_DEPOSIT format")
@@ -176,7 +193,7 @@ async fn main() {
             })
             .unwrap_or(TxExecutionStatus::Final),
         network,
-        deposit_amount,
+        create_account_deposit_amount,
     };
 
     let app = Router::new()
@@ -186,8 +203,18 @@ async fn main() {
             "/relay-signed-delegate-action",
             post(relay_signed_delegate_action),
         )
+        .route("/swap-for-gas", post(swap_for_gas))
         .layer(CorsLayer::permissive())
-        .with_state(state);
+        .with_state(state.clone());
+
+    let balance_check_state = state.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            check_otc_balances(&balance_check_state).await;
+        }
+    });
 
     let addr = env::var("ACCOUNT_CREATION_SERVICE_BIND")
         .map(|s| {
@@ -242,13 +269,14 @@ async fn create_account(
             )
         })?;
 
-    let actual_deposit = if account.amount >= state.deposit_amount.saturating_mul(2) {
-        state.deposit_amount
+    let actual_deposit = if account.amount >= state.create_account_deposit_amount.saturating_mul(2)
+    {
+        state.create_account_deposit_amount
     } else {
         tracing::warn!(
             "Insufficient balance for 2x deposit. Account balance: {}, Required: {}",
             account.amount,
-            state.deposit_amount
+            state.create_account_deposit_amount
         );
         NearToken::from_yoctonear(0)
     };
@@ -630,6 +658,94 @@ async fn relay_signed_delegate_action(
     }
 }
 
+const SWAP_FOR_GAS_WHITELIST: &[&str] = &[
+    "jambo-1679.meme-cooking.near",
+    "usdt.tether-token.near",
+    "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+    "nbtc.bridge.near",
+    "zec.omft.near",
+];
+
+#[axum::debug_handler]
+async fn swap_for_gas(
+    State(state): State<AppState>,
+    Json(payload): Json<SwapForGasRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    if !SWAP_FOR_GAS_WHITELIST.contains(&payload.token_contract_id.as_str()) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "This token can't be used in swap for gas".to_string(),
+        ));
+    }
+
+    tracing::info!(
+        "Received swap for gas request from user {}",
+        payload.user_id
+    );
+    let relayer_key = state
+        .relayer_keys
+        .first()
+        .expect("No private keys available");
+    let nonce = rand::random::<u128>();
+    let current_time_millis = SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    let expiry_millis = current_time_millis + 15_000;
+    let inverse_route = get_routes(SwapRequest {
+        token_in: TokenId::Near,
+        token_out: TokenId::Nep141(payload.token_contract_id.clone()),
+        amount: Amount::AmountIn("0.3 NEAR".parse::<NearToken>().unwrap().as_yoctonear()),
+        max_wait_ms: 3_000,
+        slippage: Slippage::Auto {
+            max_slippage: 0.1,
+            min_slippage: 0.001,
+        },
+        dexes: Some(vec![DexId::Rhea]),
+        trader_account_id: Some(state.relayer_id.clone()),
+        signing_public_key: Some(relayer_key.public_key()),
+    })
+    .await?;
+    let inverse_route = inverse_route.first().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "No route found".to_string(),
+    ))?;
+    let trade_intent = OtcTradeIntent {
+        user_id: state.relayer_id.clone(),
+        asset_in: AssetId::Near,
+        asset_out: AssetId::Nep141(payload.token_contract_id),
+        amount_in: U128::from("0.3 NEAR".parse::<NearToken>().unwrap().as_yoctonear()),
+        amount_out: U128::from(match inverse_route.estimated_amount {
+            Amount::AmountIn(_) => unreachable!(),
+            Amount::AmountOut(amount) => amount / 10 * 9, // 10% fee
+        }),
+        validity: OtcValidity {
+            expiry: Some(OtcExpiryCondition::Timestamp {
+                milliseconds: U64::from(expiry_millis),
+            }),
+            nonce: Some(U128::from(nonce)),
+            only_for_whitelisted_parties: Some(vec![payload.user_id]),
+        },
+    };
+    let hash = CryptoHash::hash_borsh(&trade_intent);
+    let signature = relayer_key.sign(hash.as_bytes());
+    let signature_bytes = match signature {
+        near_min_api::types::near_crypto::Signature::ED25519(signature) => {
+            signature.to_bytes().to_vec()
+        }
+        near_min_api::types::near_crypto::Signature::SECP256K1(signature) => {
+            <[u8; 65]>::from(signature).to_vec()
+        }
+    };
+    let authorized_trade_intent = OtcAuthorizedTradeIntent {
+        trade_intent,
+        authorization_method: OtcAuthorizationMethod::Signature(signature_bytes),
+    };
+    Ok(Json(SwapForGasResponse {
+        authorized_trade_intent,
+    }))
+}
+
 async fn validate_signed_delegate_action(
     #[allow(unused)] state: AppState,
     signed_delegate_action: &SignedDelegateAction,
@@ -678,11 +794,536 @@ async fn validate_signed_delegate_action(
             false
         }
     };
-    if !is_subaccount_creation && !is_gift_claim {
+    let is_add_key = {
+        if signed_delegate_action.delegate_action.actions.len() != 1 {
+            tracing::error!("Actions length is not 1");
+            false
+        } else if let Action::AddKey(_) = signed_delegate_action.delegate_action.actions[0]
+            .clone()
+            .into()
+        {
+            true
+        } else {
+            tracing::error!("Actions is not a AddKey action");
+            false
+        }
+    };
+    let is_swap_for_gas = {
+        if signed_delegate_action.delegate_action.actions.len() != 1 {
+            tracing::error!("Actions length is not 1");
+            false
+        } else if let Action::FunctionCall(f) = signed_delegate_action.delegate_action.actions[0]
+            .clone()
+            .into()
+        {
+            if SWAP_FOR_GAS_WHITELIST
+                .contains(&signed_delegate_action.delegate_action.receiver_id.as_str())
+            {
+                if f.method_name == "ft_transfer_call"
+                    && let Ok(args) = serde_json::from_slice::<serde_json::Value>(&f.args)
+                    && args.get("receiver_id")
+                        == Some(&serde_json::Value::String("dex.intear.near".to_string()))
+                {
+                    if let Some(serde_json::Value::String(msg)) = args.get("msg")
+                        && let Some(ft_transfer_amount) = args
+                            .get("amount")
+                            .and_then(|v| v.as_str())
+                            .and_then(|s| s.parse::<u128>().ok())
+                    {
+                        if let Ok(operations) = serde_json::from_str::<Vec<Operation>>(msg) {
+                            if operations.len() != 1 {
+                                tracing::error!("operations array length is not 1");
+                                false
+                            } else if let Some(Operation::DexCall {
+                                dex_id,
+                                method,
+                                args,
+                                attached_assets,
+                            }) = operations.first()
+                            {
+                                let valid_dex_id = dex_id == "slimedragon.near/otc";
+                                let valid_method = method == "match";
+
+                                let valid_args = if let Ok(args) = BASE64_STANDARD.decode(args) {
+                                    if let Ok(match_args) = borsh::from_slice::<OtcMatchArgs>(&args)
+                                    {
+                                        if !matches!(
+                                            match_args.output_destination,
+                                            OtcOutputDestination::WithdrawToUser
+                                        ) {
+                                            tracing::error!(
+                                                "output_destination must be WithdrawToUser, got {:?}",
+                                                match_args.output_destination
+                                            );
+                                            false
+                                        } else if match_args.authorized_trade_intents.len() != 2 {
+                                            tracing::error!(
+                                                "Expected exactly 2 authorized trade intents, got {}",
+                                                match_args.authorized_trade_intents.len()
+                                            );
+                                            false
+                                        } else {
+                                            let first_intent =
+                                                &match_args.authorized_trade_intents[0];
+
+                                            let valid_signature =
+                                                if let OtcAuthorizationMethod::Signature(
+                                                    sig_bytes,
+                                                ) = &first_intent.authorization_method
+                                                {
+                                                    let relayer_key = state
+                                                        .relayer_keys
+                                                        .first()
+                                                        .expect("No relayer keys");
+                                                    let hash = CryptoHash::hash_borsh(
+                                                        &first_intent.trade_intent,
+                                                    );
+                                                    if let Ok(signature) = near_min_api::types::near_crypto::Signature::from_parts(relayer_key.key_type(), sig_bytes) {
+                                                        signature.verify(
+                                                            hash.as_bytes(),
+                                                            &relayer_key.public_key(),
+                                                        )
+                                                    } else {
+                                                        tracing::error!("Failed to deserialize signature");
+                                                        false
+                                                    }
+                                                } else {
+                                                    tracing::error!(
+                                                        "First intent authorization method is not Signature"
+                                                    );
+                                                    false
+                                                };
+
+                                            let valid_timestamp = if let Some(
+                                                OtcExpiryCondition::Timestamp { milliseconds },
+                                            ) =
+                                                first_intent.trade_intent.validity.expiry
+                                            {
+                                                let current_time_millis = SystemTime::now()
+                                                    .duration_since(std::time::UNIX_EPOCH)
+                                                    .unwrap()
+                                                    .as_millis()
+                                                    as u64;
+                                                let expiry_millis = *milliseconds;
+
+                                                if expiry_millis < current_time_millis {
+                                                    tracing::error!(
+                                                        "First intent has expired: expiry={}, current={}",
+                                                        expiry_millis,
+                                                        current_time_millis
+                                                    );
+                                                    false
+                                                } else {
+                                                    true
+                                                }
+                                            } else {
+                                                tracing::error!(
+                                                    "First intent does not have timestamp expiry"
+                                                );
+                                                false
+                                            };
+
+                                            let valid_attached_assets = {
+                                                println!("first_intent: {:?}", first_intent);
+                                                let expected_asset =
+                                                    &first_intent.trade_intent.asset_out;
+                                                let expected_amount =
+                                                    first_intent.trade_intent.amount_out;
+
+                                                if let Some(attached_amount) =
+                                                    attached_assets.get(expected_asset)
+                                                {
+                                                    if *attached_amount == expected_amount
+                                                        && ft_transfer_amount == *expected_amount
+                                                    {
+                                                        true
+                                                    } else {
+                                                        tracing::error!(
+                                                            "attached_assets amount mismatch"
+                                                        );
+                                                        false
+                                                    }
+                                                } else {
+                                                    tracing::error!(
+                                                        "attached_assets does not contain expected asset: {}",
+                                                        expected_asset
+                                                    );
+                                                    false
+                                                }
+                                            };
+
+                                            valid_signature
+                                                && valid_timestamp
+                                                && valid_attached_assets
+                                        }
+                                    } else {
+                                        tracing::error!("Failed to deserialize OtcMatchArgs");
+                                        false
+                                    }
+                                } else {
+                                    tracing::error!("args is not valid base64");
+                                    false
+                                };
+
+                                valid_dex_id && valid_method && valid_args
+                            } else {
+                                tracing::error!("first operation is not a DexCall");
+                                false
+                            }
+                        } else {
+                            tracing::error!("msg is not valid");
+                            false
+                        }
+                    } else {
+                        tracing::error!("msg field is missing or not a string");
+                        false
+                    }
+                } else {
+                    tracing::error!("Actions is not a ft_transfer_call action");
+                    false
+                }
+            } else {
+                tracing::error!("Receiver ID is not whitelisted for swap for gas");
+                false
+            }
+        } else {
+            tracing::error!("Actions is not a FunctionCall action");
+            false
+        }
+    };
+    if !is_subaccount_creation && !is_gift_claim && !is_add_key && !is_swap_for_gas {
         return Err((
             StatusCode::BAD_REQUEST,
             "Not a supported transaction".to_string(),
         ));
     }
     Ok(())
+}
+
+#[derive(
+    PartialEq, Eq, Hash, Clone, PartialOrd, Ord, Debug, BorshSerialize, borsh::BorshDeserialize,
+)]
+pub enum AssetId {
+    Near,
+    Nep141(AccountId),
+    Nep245(AccountId, String),
+    Nep171(AccountId, String),
+}
+
+impl Display for AssetId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AssetId::Near => write!(f, "near"),
+            AssetId::Nep141(contract_id) => write!(f, "nep141:{contract_id}"),
+            AssetId::Nep245(contract_id, token_id) => write!(f, "nep245:{contract_id}:{token_id}"),
+            AssetId::Nep171(contract_id, token_id) => write!(f, "nep171:{contract_id}:{token_id}"),
+        }
+    }
+}
+
+impl FromStr for AssetId {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "near" => Ok(AssetId::Near),
+            _ => match s.split_once(':') {
+                Some(("nep141", contract_id)) => {
+                    Ok(AssetId::Nep141(contract_id.parse().map_err(|e| {
+                        format!("Invalid account id {contract_id}: {e}")
+                    })?))
+                }
+                Some(("nep245", rest)) => {
+                    if let Some((contract_id, token_id)) = rest.split_once(':') {
+                        Ok(AssetId::Nep245(
+                            contract_id
+                                .parse()
+                                .map_err(|e| format!("Invalid account id {contract_id}: {e}"))?,
+                            token_id.to_string(),
+                        ))
+                    } else {
+                        Err(format!("Invalid asset id: {s}"))
+                    }
+                }
+                Some(("nep171", rest)) => {
+                    if let Some((contract_id, token_id)) = rest.split_once(':') {
+                        Ok(AssetId::Nep171(
+                            contract_id
+                                .parse()
+                                .map_err(|e| format!("Invalid account id {contract_id}: {e}"))?,
+                            token_id.to_string(),
+                        ))
+                    } else {
+                        Err(format!("Invalid asset id: {s}"))
+                    }
+                }
+                _ => Err(format!("Invalid asset id: {s}")),
+            },
+        }
+    }
+}
+
+impl Serialize for AssetId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serde::Serialize::serialize(&self.to_string(), serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for AssetId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s: String = Deserialize::deserialize(deserializer)?;
+        AssetId::from_str(&s).map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Serialize, Deserialize, BorshSerialize, borsh::BorshDeserialize, Debug)]
+struct OtcTradeIntent {
+    user_id: AccountId,
+    asset_in: AssetId,
+    asset_out: AssetId,
+    amount_in: U128,
+    amount_out: U128,
+    validity: OtcValidity,
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+pub enum AccountOrDexId {
+    Account(AccountId),
+    Dex(String),
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub enum Operation {
+    /// Call a method on a dex.
+    DexCall {
+        dex_id: String,
+        method: String,
+        args: String,
+        attached_assets: BTreeMap<AssetId, U128>,
+    },
+    /// Transfer assets to a different account or dex.
+    TransferAsset {
+        to: AccountOrDexId,
+        asset_id: AssetId,
+        amount: U128,
+    },
+}
+
+#[derive(Debug, BorshDeserialize)]
+struct OtcMatchArgs {
+    authorized_trade_intents: Vec<OtcAuthorizedTradeIntent>,
+    output_destination: OtcOutputDestination,
+}
+
+#[derive(Default, PartialEq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Debug)]
+struct OtcValidity {
+    expiry: Option<OtcExpiryCondition>,
+    nonce: Option<U128>,
+    only_for_whitelisted_parties: Option<Vec<AccountId>>,
+}
+
+#[derive(
+    PartialEq, Clone, Copy, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Debug,
+)]
+enum OtcExpiryCondition {
+    BlockHeight(BlockHeight),
+    Timestamp { milliseconds: U64 },
+}
+
+#[derive(Serialize, Deserialize, BorshSerialize, BorshDeserialize, Debug)]
+#[serde_as]
+enum OtcAuthorizationMethod {
+    Signature(#[serde_as(as = "Base64")] Vec<u8>),
+    Predecessor,
+}
+
+#[derive(Serialize, Deserialize, BorshSerialize, BorshDeserialize, Debug)]
+struct OtcAuthorizedTradeIntent {
+    trade_intent: OtcTradeIntent,
+    authorization_method: OtcAuthorizationMethod,
+}
+
+#[derive(borsh::BorshDeserialize, Debug)]
+#[allow(unused)]
+enum OtcOutputDestination {
+    InternalOtcBalance,
+    IntearDexBalance,
+    WithdrawToUser,
+}
+
+#[derive(Deserialize)]
+struct SwapForGasRequest {
+    user_id: AccountId,
+    token_contract_id: AccountId,
+}
+
+#[derive(Serialize, Debug)]
+struct SwapForGasResponse {
+    authorized_trade_intent: OtcAuthorizedTradeIntent,
+}
+
+async fn get_otc_balance(
+    rpc_client: &RpcClient,
+    relayer_id: AccountId,
+    asset_id: AssetId,
+) -> Result<U128, String> {
+    #[derive(BorshSerialize)]
+    struct GetBalanceArgs {
+        user_id: AccountId,
+        asset_id: AssetId,
+    }
+
+    let result = rpc_client
+        .call::<String>(
+            "dex.intear.near".parse().unwrap(),
+            "dex_view",
+            serde_json::json!({
+                "dex_id": "slimedragon.near/otc",
+                "method": "get_balance",
+                "args": BASE64_STANDARD.encode(borsh::to_vec(&GetBalanceArgs {
+                    user_id: relayer_id.clone(),
+                    asset_id: asset_id.clone(),
+                }).unwrap()),
+            }),
+            QueryFinality::Finality(Finality::DoomSlug),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    let Ok(result_bytes) = BASE64_STANDARD.decode(result) else {
+        return Err("Failed to decode result".to_string());
+    };
+    let result: Option<U128> = borsh::from_slice(&result_bytes).map_err(|e| e.to_string())?;
+    Ok(result.unwrap_or_default())
+}
+
+#[derive(BorshSerialize)]
+struct WithdrawAssetsArgs {
+    assets: Vec<WithdrawRequest>,
+}
+
+#[derive(BorshSerialize)]
+struct WithdrawRequest {
+    asset_id: AssetId,
+    amount: Option<U128>,
+    to: Option<AccountId>,
+    to_inner_balance: bool,
+}
+
+async fn check_otc_balances(state: &AppState) {
+    tracing::info!("Checking OTC balances for whitelisted tokens...");
+
+    let mut assets_to_withdraw = Vec::new();
+
+    for token_contract_id in SWAP_FOR_GAS_WHITELIST {
+        let asset_id = AssetId::Nep141(
+            token_contract_id
+                .parse()
+                .expect("Invalid token contract id in whitelist"),
+        );
+
+        match get_otc_balance(
+            &state.rpc_client,
+            state.relayer_id.clone(),
+            asset_id.clone(),
+        )
+        .await
+        {
+            Ok(balance) => {
+                let balance_u128: u128 = balance.into();
+                tracing::info!("OTC Balance for {}: {}", token_contract_id, balance_u128);
+
+                if balance_u128 > 0 {
+                    assets_to_withdraw.push(WithdrawRequest {
+                        asset_id,
+                        amount: None,
+                        to: None,
+                        to_inner_balance: false,
+                    });
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to get OTC balance for {}: {}", token_contract_id, e);
+            }
+        }
+    }
+
+    if !assets_to_withdraw.is_empty() {
+        tracing::info!("Withdrawing {} assets from OTC", assets_to_withdraw.len());
+
+        let relayer_key = state
+            .relayer_keys
+            .first()
+            .expect("No private keys available");
+
+        let access_key = match state
+            .rpc_client
+            .get_access_key(
+                state.relayer_id.clone(),
+                relayer_key.public_key(),
+                QueryFinality::Finality(Finality::None),
+            )
+            .await
+        {
+            Ok(key) => key,
+            Err(e) => {
+                tracing::error!("Failed to get access key for withdrawal: {}", e);
+                return;
+            }
+        };
+
+        let block_hash = match state
+            .rpc_client
+            .block(BlockReference::Finality(Finality::Final))
+            .await
+            .map(|block| block.header.hash)
+        {
+            Ok(hash) => hash,
+            Err(e) => {
+                tracing::error!("Failed to fetch block hash for withdrawal: {}", e);
+                return;
+            }
+        };
+
+        let withdraw_action = Action::FunctionCall(Box::new(FunctionCallAction {
+            method_name: "dex_call".to_string(),
+            args: serde_json::to_vec(&serde_json::json!({
+                "dex_id": "slimedragon.near/otc",
+                "method": "withdraw_assets",
+                "args": BASE64_STANDARD.encode(borsh::to_vec(&WithdrawAssetsArgs {
+                    assets: assets_to_withdraw,
+                }).unwrap()),
+                "attached_assets": {},
+            }))
+            .unwrap(),
+            gas: NearGas::from_tgas(300).as_gas(),
+            deposit: NearToken::from_yoctonear(1),
+        }));
+
+        let tx = Transaction::V0(TransactionV0 {
+            signer_id: state.relayer_id.clone(),
+            public_key: relayer_key.public_key(),
+            nonce: access_key.nonce + 1,
+            receiver_id: "dex.intear.near".parse().unwrap(),
+            block_hash,
+            actions: vec![withdraw_action],
+        });
+
+        let (tx_hash, _) = tx.get_hash_and_size();
+        let signature = relayer_key.sign(tx_hash.as_ref());
+        let signed_tx = SignedTransaction::new(signature, tx);
+
+        match state.rpc_client.send_tx(signed_tx).await {
+            Ok(_) => {
+                tracing::info!("Withdrawal transaction sent: {}", tx_hash);
+            }
+            Err(e) => {
+                tracing::error!("Failed to send withdrawal transaction: {}", e);
+            }
+        }
+    }
 }

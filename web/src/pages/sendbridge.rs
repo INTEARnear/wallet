@@ -295,7 +295,7 @@ pub fn SendBridge() -> impl IntoView {
                                 Err("".to_string())
                             } else {
                                 log::error!("Failed to parse quote: {error_msg}");
-                                Err(format!("Token temporarily not available to bridge"))
+                                Err("Token temporarily not available to bridge".to_string())
                             }
                         }
                     }

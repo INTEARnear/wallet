@@ -97,6 +97,9 @@ pub fn format_token_amount_no_hide(amount: Balance, decimals: u32, symbol: &str)
         x if x.abs() >= BigDecimal::from_str("0.000001").unwrap() => {
             format!("{normalized_decimal:.7}")
         }
+        x if x.abs() >= BigDecimal::from_str("0.0000001").unwrap() => {
+            format!("{normalized_decimal:.8}")
+        }
         _ => "0".to_string(),
     };
     format!("{formatted_balance} {symbol}")

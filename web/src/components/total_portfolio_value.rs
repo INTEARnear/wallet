@@ -1,152 +1,16 @@
-use crate::contexts::accounts_context::AccountsContext;
-use crate::contexts::config_context::ConfigContext;
-use crate::contexts::network_context::{Network, NetworkContext};
-use crate::contexts::rpc_context::RpcContext;
-use crate::contexts::tokens_context::TokensContext;
-use crate::utils::{
-    USDT_DECIMALS, balance_to_decimal, format_token_amount, format_usd_value, get_ft_metadata,
-    is_tauri, power_of_10,
+use crate::components::swap_for_gas_modal::{
+    MIN_NEAR_BALANCE_FOR_GAS, MIN_TOKEN_VALUE_USD, SWAP_FOR_GAS_WHITELIST, SwapForGasModal,
 };
+use crate::contexts::config_context::ConfigContext;
+use crate::contexts::modal_context::ModalContext;
+use crate::contexts::network_context::{Network, NetworkContext};
+use crate::contexts::tokens_context::{Token, TokensContext};
+use crate::utils::{USDT_DECIMALS, balance_to_decimal, format_usd_value, is_tauri, power_of_10};
 use bigdecimal::{BigDecimal, ToPrimitive};
-use futures_util::future::join_all;
 use leptos::prelude::*;
-use leptos::task::spawn_local;
 use leptos_icons::*;
 use leptos_router::components::A;
-use near_min_api::types::{AccountId, Balance};
-use near_min_api::utils::dec_format;
-use serde::{Deserialize, Serialize};
-
-const AIRDROPS: &[(i32, &str)] = &[];
-
-#[derive(Debug, Clone, Deserialize)]
-struct AirdropClaimToken {
-    token_addr: AccountId,
-    #[serde(with = "dec_format")]
-    reward_amount: Balance,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct AirdropData {
-    claimable: bool,
-    claim_tokens: Vec<AirdropClaimToken>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct AirdropResponse {
-    data: AirdropData,
-}
-
-#[derive(Serialize)]
-struct AirdropClaimRequest {
-    addr: AccountId,
-    airdrop_id: i32,
-}
-
-#[component]
-fn AirdropButton(
-    airdrop_id: i32,
-    tokens: Vec<AirdropClaimToken>,
-    reload_trigger: WriteSignal<u32>,
-) -> impl IntoView {
-    let airdrop_name = AIRDROPS
-        .iter()
-        .find(|(id, _)| *id == airdrop_id)
-        .map(|(_, name)| *name)
-        .unwrap_or("Unknown Airdrop");
-
-    let accounts_context = expect_context::<AccountsContext>();
-    let RpcContext { client, .. } = expect_context::<RpcContext>();
-    let (is_claiming, set_is_claiming) = signal(false);
-
-    let tokens_for_resource = tokens.clone();
-    let tokens_metadata = LocalResource::new(move || {
-        let tokens = tokens_for_resource.clone();
-        async move {
-            let metadata_futures = tokens.into_iter().map(|token| async {
-                get_ft_metadata(token.token_addr, client.get_untracked())
-                    .await
-                    .ok()
-            });
-
-            join_all(metadata_futures).await
-        }
-    });
-
-    let selected_account_id_memo =
-        Memo::new(move |_| accounts_context.accounts.get().selected_account_id);
-
-    view! {
-        <button
-            class=move || {
-                if is_claiming.get() {
-                    "inline-flex items-center gap-2 py-1.5 px-3 rounded-full bg-green-500/10 border border-green-500/20 text-green-300 opacity-50 cursor-not-allowed"
-                } else {
-                    "inline-flex items-center gap-2 py-1.5 px-3 rounded-full bg-green-500/10 border border-green-500/20 text-green-300 hover:bg-green-500/20 transition-colors cursor-pointer"
-                }
-            }
-            disabled=move || is_claiming.get()
-            on:click=move |_| {
-                if is_claiming.get() {
-                    return;
-                }
-                if let Some(account_id) = selected_account_id_memo() {
-                    set_is_claiming.set(true);
-                    spawn_local(async move {
-                        let proxy_base = dotenvy_macro::dotenv!("SHARED_NFT_PROXY_SERVICE_ADDR");
-                        let claim_url = format!("{}/airdrop/claim", proxy_base);
-                        let claim_request = AirdropClaimRequest {
-                            addr: account_id,
-                            airdrop_id,
-                        };
-                        if let Ok(response) = reqwest::Client::new()
-                            .post(&claim_url)
-                            .json(&claim_request)
-                            .send()
-                            .await
-                            && response.status().is_success()
-                                && let Ok(json) = response.json::<serde_json::Value>().await
-                                    && json.get("code").and_then(|v| v.as_i64()) == Some(0) {
-                                        reload_trigger.update(|n| *n += 1);
-                                    }
-                        set_is_claiming.set(false);
-                    });
-                }
-            }
-        >
-            <Icon icon=icondata::LuGift width="16" height="16" />
-            <span class="text-xs font-medium">
-                {
-                    let tokens_for_display = tokens.clone();
-                    move || {
-                        if is_claiming.get() {
-                            format!("{}: Claiming...", airdrop_name)
-                        } else if let Some(metadata_results) = tokens_metadata.get() {
-                            let formatted_tokens: Vec<String> = tokens_for_display
-                                .iter()
-                                .zip(metadata_results.iter())
-                                .map(|(token, metadata_opt)| {
-                                    if let Some(metadata) = metadata_opt {
-                                        format_token_amount(
-                                            token.reward_amount,
-                                            metadata.decimals,
-                                            &metadata.symbol,
-                                        )
-                                    } else {
-                                        format!("{} {}", token.reward_amount, token.token_addr)
-                                    }
-                                })
-                                .collect();
-                            format!("{}: {}", airdrop_name, formatted_tokens.join(", "))
-                        } else {
-                            format!("{}: Loading...", airdrop_name)
-                        }
-                    }
-                }
-            </span>
-        </button>
-    }
-}
+use std::str::FromStr;
 
 #[component]
 pub fn TotalPortfolioValue() -> impl IntoView {
@@ -156,8 +20,8 @@ pub fn TotalPortfolioValue() -> impl IntoView {
         ..
     } = expect_context::<TokensContext>();
     let ConfigContext { set_config, .. } = expect_context::<ConfigContext>();
+    let ModalContext { modal } = expect_context::<ModalContext>();
     let network = expect_context::<NetworkContext>().network;
-    let accounts_context = expect_context::<AccountsContext>();
     let (last_tap, set_last_tap) = signal(0u64);
 
     // Check storage persistence
@@ -177,42 +41,6 @@ pub fn TotalPortfolioValue() -> impl IntoView {
                 .and_then(|v| v.as_bool())
                 .unwrap_or(true),
             Err(_) => true,
-        }
-    });
-
-    // Check airdrop eligibility for all airdrops
-    let (airdrop_reload_trigger, set_airdrop_reload_trigger) = signal(0u32);
-    let airdrop_data = LocalResource::new(move || {
-        airdrop_reload_trigger.track();
-        let account_id = accounts_context.accounts.get().selected_account_id;
-        async move {
-            if AIRDROPS.is_empty() {
-                return None;
-            }
-            if let Some(account_id) = account_id {
-                let mut all_airdrops = Vec::new();
-                let proxy_base = dotenvy_macro::dotenv!("SHARED_NFT_PROXY_SERVICE_ADDR");
-
-                for &(airdrop_id, _) in AIRDROPS {
-                    let url = format!("{}/airdrop/{}/{}", proxy_base, airdrop_id, account_id);
-
-                    if let Ok(response) = reqwest::get(&url).await
-                        && let Ok(airdrop_response) = response.json::<AirdropResponse>().await
-                        && airdrop_response.data.claimable
-                        && !airdrop_response.data.claim_tokens.is_empty()
-                    {
-                        all_airdrops.push((airdrop_id, airdrop_response.data.claim_tokens));
-                    }
-                }
-
-                if all_airdrops.is_empty() {
-                    None
-                } else {
-                    Some(all_airdrops)
-                }
-            } else {
-                None
-            }
         }
     });
 
@@ -247,6 +75,44 @@ pub fn TotalPortfolioValue() -> impl IntoView {
             });
             total > BigDecimal::from(0)
         }
+    };
+
+    let should_show_swap_for_gas = move || {
+        if loading_tokens.get() {
+            return false;
+        }
+
+        let token_list = tokens.get();
+
+        let near_token = token_list
+            .iter()
+            .find(|t| t.token.account_id == Token::Near);
+
+        let near_balance = near_token
+            .map(|t| balance_to_decimal(t.balance, 24))
+            .unwrap_or_default();
+
+        if near_balance >= BigDecimal::from_str(MIN_NEAR_BALANCE_FOR_GAS).unwrap() {
+            return false;
+        }
+
+        token_list.iter().any(|token_data| {
+            if let Token::Nep141(account_id) = &token_data.token.account_id
+                && SWAP_FOR_GAS_WHITELIST.contains(&account_id.as_str())
+            {
+                let normalized_balance =
+                    balance_to_decimal(token_data.balance, token_data.token.metadata.decimals);
+                let usd_value = &token_data.token.price_usd_hardcoded * &normalized_balance;
+                return usd_value > BigDecimal::from_str(MIN_TOKEN_VALUE_USD).unwrap();
+            }
+            false
+        })
+    };
+
+    let open_swap_for_gas_modal = move |_| {
+        modal.set(Some(Box::new(move || {
+            view! { <SwapForGasModal /> }.into_any()
+        })));
     };
 
     let display_value = move || {
@@ -345,28 +211,17 @@ pub fn TotalPortfolioValue() -> impl IntoView {
                         </A>
                     </div>
                 </Show>
-
-                {move || {
-                    if let Some(Some(all_airdrops)) = airdrop_data.get() {
-                        all_airdrops
-                            .iter()
-                            .map(|(airdrop_id, claim_tokens)| {
-                                view! {
-                                    <div>
-                                        <AirdropButton
-                                            airdrop_id=*airdrop_id
-                                            tokens=claim_tokens.clone()
-                                            reload_trigger=set_airdrop_reload_trigger
-                                        />
-                                    </div>
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                            .into_any()
-                    } else {
-                        ().into_any()
-                    }
-                }}
+                <Show when=move || should_show_swap_for_gas()>
+                    <div>
+                        <button
+                            class="inline-flex items-center gap-2 py-1.5 px-3 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-300 hover:bg-blue-500/20 transition-colors cursor-pointer"
+                            on:click=open_swap_for_gas_modal
+                        >
+                            <Icon icon=icondata::LuArrowLeftRight width="16" height="16" />
+                            <span class="text-xs font-medium">"Swap For Gas"</span>
+                        </button>
+                    </div>
+                </Show>
             </div>
         </div>
     }

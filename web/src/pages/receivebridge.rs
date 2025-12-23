@@ -185,7 +185,7 @@ pub fn Bridge() -> impl IntoView {
                     None => {
                         view! {
                             <div class="flex flex-col items-center gap-6">
-                                <h1 class="text-2xl font-bold text-white mb-4">"Bridge"</h1>
+                                <h1 class="text-2xl font-bold text-white mb-4">"Bridge To NEAR"</h1>
 
                                 <div class="flex gap-2 w-full max-w-md">
                                     <button
@@ -758,7 +758,7 @@ fn TokenDepositForm(
                                 Err("".to_string())
                             } else {
                                 log::error!("Failed to parse quote: {error_msg}");
-                                Err(format!("Token temporarily not available to bridge"))
+                                Err("Token temporarily not available to bridge".to_string())
                             }
                         }
                     }
