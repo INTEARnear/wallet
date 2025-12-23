@@ -5,6 +5,7 @@ use crate::{
     contexts::{
         accounts_context::{AccountsContext, ENCRYPTION_MEMORY_COST_KB, PasswordAction},
         config_context::{ConfigContext, PasswordRememberDuration},
+        security_log_context::add_security_log,
     },
     pages::settings::ToggleSwitch,
     utils::{is_tauri, tauri_invoke_no_args},
@@ -239,6 +240,22 @@ pub fn SecuritySettings() -> impl IntoView {
             }
             set_clearing_cache(false);
         });
+    };
+
+    let dismiss_storage_warning = move || {
+        set_config.update(|c| c.storage_persistence_warning_dismissed = true);
+
+        if let Some(account) = accounts_context
+            .accounts
+            .get_untracked()
+            .selected_account_id
+        {
+            add_security_log(
+                "Storage persistence warning dismissed".to_string(),
+                account.clone(),
+                accounts_context,
+            );
+        }
     };
 
     Effect::new(move || {
@@ -651,6 +668,20 @@ pub fn SecuritySettings() -> impl IntoView {
                                 </div>
                             </div>
                         </div>
+
+                        <Show when=move || {
+                            storage_persisted.get() == Some(false)
+                                && !config.get().storage_persistence_warning_dismissed
+                        }>
+                            <div class="flex justify-center">
+                                <button
+                                    class="px-4 py-2 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm"
+                                    on:click=move |_| dismiss_storage_warning()
+                                >
+                                    "Don't show this warning again"
+                                </button>
+                            </div>
+                        </Show>
 
                         <Show when=move || {
                             persistence_denied.get() && storage_persisted.get() == Some(false)

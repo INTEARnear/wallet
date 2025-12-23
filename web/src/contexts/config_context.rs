@@ -160,6 +160,8 @@ pub struct WalletConfig {
     pub prevent_screenshots: bool,
     #[serde(default = "default_true")]
     pub short_amounts: bool,
+    #[serde(default)]
+    pub storage_persistence_warning_dismissed: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -227,6 +229,7 @@ impl Default for WalletConfig {
             biometric_enabled: true,
             prevent_screenshots: true,
             short_amounts: true,
+            storage_persistence_warning_dismissed: false,
         }
     }
 }

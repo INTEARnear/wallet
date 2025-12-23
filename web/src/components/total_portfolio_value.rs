@@ -19,12 +19,13 @@ pub fn TotalPortfolioValue() -> impl IntoView {
         loading_tokens,
         ..
     } = expect_context::<TokensContext>();
-    let ConfigContext { set_config, .. } = expect_context::<ConfigContext>();
+    let ConfigContext {
+        config, set_config, ..
+    } = expect_context::<ConfigContext>();
     let ModalContext { modal } = expect_context::<ModalContext>();
     let network = expect_context::<NetworkContext>().network;
     let (last_tap, set_last_tap) = signal(0u64);
 
-    // Check storage persistence
     let storage_persisted = LocalResource::new(|| async {
         if is_tauri() {
             return true;
@@ -208,6 +209,7 @@ pub fn TotalPortfolioValue() -> impl IntoView {
             <div class="mt-4 mx-auto space-y-2">
                 <Show when=move || {
                     has_non_zero_balance() && storage_persisted.get() == Some(false)
+                        && !config.get().storage_persistence_warning_dismissed
                 }>
                     <div>
                         <A
