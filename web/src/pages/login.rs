@@ -2,7 +2,7 @@ use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_router::hooks::{use_location, use_navigate};
 use near_min_api::types::{
-    AccessKey, AccessKeyPermission, Action, AddKeyAction, near_crypto::PublicKey,
+    AccessKey, AccessKeyPermission, Action, AddKeyAction, NearToken, near_crypto::PublicKey,
 };
 
 use crate::{
@@ -10,13 +10,17 @@ use crate::{
     contexts::{
         accounts_context::AccountsContext,
         security_log_context::add_security_log,
-        transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
+        tokens_context::{Token, TokensContext},
+        transaction_queue_context::{
+            EnqueuedTransaction, TransactionQueueContext, TransactionType,
+        },
     },
 };
 
 #[component]
 pub fn Login() -> impl IntoView {
     let accounts_context = expect_context::<AccountsContext>();
+    let tokens_context = expect_context::<TokensContext>();
     let TransactionQueueContext {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
@@ -40,7 +44,7 @@ pub fn Login() -> impl IntoView {
         <div class="flex flex-col items-center justify-center min-h-[calc(80vh-100px)] p-4">
             <div class="flex flex-col items-center gap-6 max-w-md w-full">
                 <h2 class="text-2xl font-bold text-white mb-2 wrap-anywhere">
-                    Add Full Access Key
+                    "Add Full Access Key"
                 </h2>
                 <div class="flex flex-col gap-4 w-full">
                     <div class="p-6 bg-neutral-800/50 backdrop-blur-sm rounded-xl border border-neutral-700/50 shadow-lg">
@@ -55,7 +59,7 @@ pub fn Login() -> impl IntoView {
                                 view! {
                                     <div class="flex items-center gap-3 pb-4 mb-4 border-b border-neutral-700/50">
                                         <div class="w-10 h-10 rounded-full bg-neutral-700/50 flex items-center justify-center">
-                                            <span class="text-neutral-300 text-lg">{"🔑"}</span>
+                                            <span class="text-neutral-300 text-lg">"🔑"</span>
                                         </div>
                                         <div>
                                             <p class="text-neutral-400 text-sm">Account</p>
@@ -133,12 +137,32 @@ pub fn Login() -> impl IntoView {
                                             },
                                         }),
                                     );
-                                    let (details_rx, transaction) = EnqueuedTransaction::create(
-                                        "Add Full Access Key".to_string(),
-                                        account_id.clone(),
-                                        account_id.clone(),
-                                        vec![action],
-                                    );
+                                    let near_balance = tokens_context
+                                        .tokens
+                                        .get()
+                                        .into_iter()
+                                        .find(|t| t.token.account_id == Token::Near)
+                                        .map(|t| t.balance)
+                                        .unwrap_or_default();
+                                    let threshold = NearToken::from_millinear(1).as_yoctonear();
+                                    let use_meta_transaction = near_balance < threshold;
+                                    let (details_rx, transaction) = if use_meta_transaction {
+                                        EnqueuedTransaction::create_with_type(
+                                            "Add Full Access Key".to_string(),
+                                            account_id.clone(),
+                                            TransactionType::MetaTransaction {
+                                                actions: vec![action],
+                                                receiver_id: account_id.clone(),
+                                            },
+                                        )
+                                    } else {
+                                        EnqueuedTransaction::create(
+                                            "Add Full Access Key".to_string(),
+                                            account_id.clone(),
+                                            account_id.clone(),
+                                            vec![action],
+                                        )
+                                    };
                                     add_transaction.update(|queue| queue.push(transaction));
                                     let navigate_clone = navigate_clone.clone();
                                     spawn_local(async move {

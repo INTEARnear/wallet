@@ -74,16 +74,16 @@ pub fn AutoImportSecretKey() -> impl IntoView {
                             <div class="bg-red-500/10 p-6 rounded-xl border border-red-500/20 w-full">
                                 <div class="flex items-center gap-2 text-red-400">
                                     <Icon icon=icondata::LuTriangleAlert width="20" height="20" />
-                                    <p class="text-white font-medium">Account Already Imported</p>
+                                    <p class="text-white font-medium">"Account Already Imported"</p>
                                 </div>
                                 <p class="text-gray-400 text-sm mt-2">
-                                    The account {account_id}is already in your wallet.
+                                    "The account "{account_id}" is already in your wallet."
                                 </p>
                                 <button
                                     class="mt-4 w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900/50 cursor-pointer"
                                     on:click=move |_| navigate("/", Default::default())
                                 >
-                                    Go Back
+                                    "Go Back"
                                 </button>
                             </div>
                         </div>
@@ -152,13 +152,13 @@ pub fn AutoImportSecretKey() -> impl IntoView {
                                                 class="absolute inset-0 transition-opacity duration-200 opacity-0 group-hover:opacity-100"
                                                 style="background: linear-gradient(90deg, #2563eb 0%, #7c3aed 100%)"
                                             ></div>
-                                            <span class="relative">Import</span>
+                                            <span class="relative">"Import"</span>
                                         </button>
                                         <button
                                             class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900/50 cursor-pointer"
                                             on:click=move |_| navigate_clone("/", Default::default())
                                         >
-                                            Cancel
+                                            "Cancel"
                                         </button>
                                     </div>
                                 </div>
