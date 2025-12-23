@@ -69,8 +69,7 @@ async fn fetch_trending_tokens(network: Network) -> Vec<TrendingToken> {
                 0.0
             };
 
-            // Calculate trending score: volume * sqrt(liquidity)
-            let trending_score = data.volume_usd_24h * data.liquidity_usd.sqrt();
+            let trending_score = data.volume_usd_24h.sqrt() * data.liquidity_usd.log2();
             let trending_score = match change_24h {
                 ..-50.0 => trending_score * 0.25,
                 ..-25.0 => trending_score * 0.5,
@@ -80,7 +79,7 @@ async fn fetch_trending_tokens(network: Network) -> Vec<TrendingToken> {
                 _ => trending_score * 1.5,
             };
             // No rugs / illiquid tokens
-            let trending_score = if data.liquidity_usd < 1000.0
+            let trending_score = if data.liquidity_usd < 3000.0
                 || matches!(data.reputation, TokenScore::Spam)
                 || data.volume_usd_24h < 1000.0
             {

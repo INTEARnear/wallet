@@ -32,9 +32,9 @@ pub fn WalletQuickActions() -> impl IntoView {
         {move || {
             let buttons = vec![
                 (true, "/receive", icondata::LuDownload, "Receive"),
-                (show_gifts(), "/gifts", icondata::LuGift, "Gift"),
                 (show_stake(), "/stake", icondata::LuBeef, "Stake"),
                 (show_nfts(), "/nfts", icondata::LuImage, "NFTs"),
+                (show_gifts(), "/gifts", icondata::LuGift, "Gift"),
             ]
                 .into_iter()
                 .filter(|(show, _, _, _)| *show)

@@ -2,12 +2,15 @@ use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::Icon;
 use leptos_router::{components::A, hooks::use_params_map};
+use near_min_api::types::AccountId;
 
 use crate::{
     components::tooltip::Tooltip,
     contexts::{
         network_context::{Network, NetworkContext},
-        tokens_context::{Token, TokenInfo, TokenScore, TokensContext},
+        tokens_context::{
+            Token, TokenBalanceSource, TokenData, TokenInfo, TokenScore, TokensContext,
+        },
     },
     utils::{
         balance_to_decimal, fetch_token_info, format_token_amount, format_usd_value,
@@ -16,7 +19,8 @@ use crate::{
 };
 
 #[component]
-fn TokenInfoView(token_info: TokenInfo) -> impl IntoView {
+fn TokenInfoView(token: impl Fn() -> TokenInfo) -> impl IntoView {
+    let token_info = token();
     let price_change = if token_info.price_usd_hardcoded == BigDecimal::from(1) {
         BigDecimal::from(0)
     } else if token_info.price_usd_raw_24h_ago > BigDecimal::from(0) {
@@ -356,9 +360,9 @@ pub fn TokenDetails() -> impl IntoView {
     let TokensContext {
         tokens,
         loading_tokens,
+        set_tokens,
         ..
     } = expect_context::<TokensContext>();
-    let (token_info, set_token_info) = signal::<Option<TokenInfo>>(None);
     let (loading_api, set_loading_api) = signal(false);
     let (api_error, set_api_error) = signal(false);
 
@@ -376,9 +380,17 @@ pub fn TokenDetails() -> impl IntoView {
             set_api_error(false);
             let network = expect_context::<NetworkContext>().network.get();
             spawn_local(async move {
-                if let Ok(token_id) = token_id.parse() {
-                    if let Some(info) = fetch_token_info(token_id, network).await {
-                        set_token_info(Some(info));
+                if let Ok(token_id) = token_id.parse::<AccountId>() {
+                    if let Some(info) = fetch_token_info(token_id.clone(), network).await {
+                        set_tokens.update(|tokens| {
+                            tokens
+                                .retain(|t| t.token.account_id != Token::Nep141(token_id.clone()));
+                            tokens.push(TokenData {
+                                balance: 0,
+                                token: info,
+                                source: TokenBalanceSource::Direct,
+                            });
+                        });
                     } else {
                         set_api_error(true);
                     }
@@ -391,6 +403,18 @@ pub fn TokenDetails() -> impl IntoView {
         }
     });
 
+    let token = Memo::new(move |_| {
+        tokens
+            .get()
+            .into_iter()
+            .find(|t| match &t.token.account_id {
+                Token::Near => token_id() == "near",
+                Token::Nep141(account_id) => *account_id == token_id(),
+                Token::Rhea(_) => false,
+            })
+    });
+    let token_exists = Memo::new(move |_| token().is_some());
+
     view! {
         <div class="flex flex-col gap-4 p-2 md:p-4">
             <A
@@ -402,18 +426,8 @@ pub fn TokenDetails() -> impl IntoView {
             </A>
 
             {move || {
-                let token = tokens
-                    .get()
-                    .into_iter()
-                    .find(|t| {
-                        match &t.token.account_id {
-                            Token::Near => token_id() == "near",
-                            Token::Nep141(account_id) => *account_id == token_id(),
-                            Token::Rhea(_) => false,
-                        }
-                    });
-                if let Some(token) = token {
-                    view! { <TokenInfoView token_info=token.token.clone() /> }.into_any()
+                if token_exists() {
+                    view! { <TokenInfoView token=move || token().unwrap().token /> }.into_any()
                 } else if loading_tokens() || loading_api() {
                     view! {
                         <div class="flex items-center justify-center h-32">
@@ -421,8 +435,6 @@ pub fn TokenDetails() -> impl IntoView {
                         </div>
                     }
                         .into_any()
-                } else if let Some(token_info) = token_info() {
-                    view! { <TokenInfoView token_info=token_info /> }.into_any()
                 } else {
                     view! {
                         <div class="flex flex-col items-center justify-center h-32 gap-4">
