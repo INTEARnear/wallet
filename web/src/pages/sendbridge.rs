@@ -10,6 +10,7 @@ use crate::{
     },
     contexts::{
         accounts_context::AccountsContext,
+        config_context::ConfigContext,
         rpc_context::RpcContext,
         tokens_context::{Token, TokensContext},
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
@@ -17,11 +18,11 @@ use crate::{
     data::bridge_networks::{BRIDGEABLE_TOKENS, ChainInfo, USDC_ON_NEAR, USDT_ON_NEAR},
     pages::settings::open_live_chat,
     utils::{
-        StorageBalance, balance_to_decimal, decimal_to_balance, format_token_amount,
+        StorageBalance, balance_to_decimal, decimal_to_balance, format_number, format_token_amount,
         format_token_amount_full_precision,
     },
 };
-use bigdecimal::{BigDecimal, FromPrimitive};
+use bigdecimal::BigDecimal;
 use chrono::Utc;
 use itertools::Itertools;
 use leptos::prelude::*;
@@ -63,6 +64,7 @@ pub fn SendBridge() -> impl IntoView {
     let RpcContext {
         client: rpc_client, ..
     } = expect_context::<RpcContext>();
+    let ConfigContext { config, .. } = expect_context::<ConfigContext>();
 
     let (active_tab, set_active_tab) = signal(Tab::Bridge);
 
@@ -826,25 +828,26 @@ pub fn SendBridge() -> impl IntoView {
                                                                                         let gas_cost_decimal = if token_data.token.account_id
                                                                                             == Token::Near
                                                                                         {
-                                                                                            BigDecimal::from_f64(0.0001).unwrap_or_default()
+                                                                                            "0.0001".parse().unwrap()
                                                                                         } else {
                                                                                             BigDecimal::from(0)
                                                                                         };
                                                                                         let final_amount_decimal = (&max_amount_decimal
                                                                                             - &gas_cost_decimal)
                                                                                             .max(BigDecimal::from(0));
-                                                                                        let mut max_amount_str = final_amount_decimal.to_string();
-                                                                                        if max_amount_str.contains('.') {
-                                                                                            max_amount_str = max_amount_str
-                                                                                                .trim_end_matches('0')
-                                                                                                .trim_end_matches('.')
-                                                                                                .to_string();
-                                                                                        }
+                                                                                        let max_amount_str = format_number(
+                                                                                            final_amount_decimal,
+                                                                                            config().short_amounts,
+                                                                                            false,
+                                                                                        )
+                                                                                        .trim_end_matches('0')
+                                                                                        .trim_end_matches('.')
+                                                                                        .to_string();
                                                                                         set_amount.set(max_amount_str);
                                                                                     }
                                                                                 }
                                                                             >
-                                                                                MAX
+                                                                                "MAX"
                                                                             </button>
                                                                         </div>
                                                                         <div class="mt-1 text-sm text-gray-400">

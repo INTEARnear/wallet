@@ -56,52 +56,7 @@ pub fn format_token_amount_no_hide(amount: Balance, decimals: u32, symbol: &str)
         false
     };
     let normalized_decimal = balance_to_decimal(amount, decimals);
-
-    if !short {
-        let mut amount_str = normalized_decimal.to_string();
-        if amount_str.contains('.') {
-            amount_str = amount_str
-                .trim_end_matches('0')
-                .trim_end_matches('.')
-                .to_string();
-        }
-        return format!("{amount_str} {symbol}");
-    }
-
-    for (divisor, suffix) in AMOUNT_SUFFIXES {
-        let divisor_decimal = BigDecimal::from(*divisor);
-        if normalized_decimal.abs() >= divisor_decimal {
-            let value_decimal = &normalized_decimal / &divisor_decimal;
-            return match &value_decimal {
-                x if x.is_integer() => {
-                    format!("{value_decimal:.0}{suffix} {symbol}")
-                }
-                _ => format!("{value_decimal:.2}{suffix} {symbol}"),
-            };
-        }
-    }
-
-    let formatted_balance = match &normalized_decimal {
-        x if x.is_integer() => format!("{normalized_decimal:.0}"),
-        x if x.abs() >= BigDecimal::from_str("0.1").unwrap() => format!("{normalized_decimal:.2}"),
-        x if x.abs() >= BigDecimal::from_str("0.01").unwrap() => format!("{normalized_decimal:.3}"),
-        x if x.abs() >= BigDecimal::from_str("0.001").unwrap() => {
-            format!("{normalized_decimal:.4}")
-        }
-        x if x.abs() >= BigDecimal::from_str("0.0001").unwrap() => {
-            format!("{normalized_decimal:.5}")
-        }
-        x if x.abs() >= BigDecimal::from_str("0.00001").unwrap() => {
-            format!("{normalized_decimal:.6}")
-        }
-        x if x.abs() >= BigDecimal::from_str("0.000001").unwrap() => {
-            format!("{normalized_decimal:.7}")
-        }
-        x if x.abs() >= BigDecimal::from_str("0.0000001").unwrap() => {
-            format!("{normalized_decimal:.8}")
-        }
-        _ => "0".to_string(),
-    };
+    let formatted_balance = format_number(normalized_decimal, short, true);
     format!("{formatted_balance} {symbol}")
 }
 
@@ -115,6 +70,56 @@ pub fn format_token_amount_full_precision(amount: Balance, decimals: u32, symbol
             .to_string();
     }
     format!("{amount} {symbol}")
+}
+
+pub fn format_number(number: BigDecimal, short: bool, suffixes: bool) -> String {
+    if !short {
+        let mut amount_str = number.to_string();
+        if amount_str.contains('.') {
+            amount_str = amount_str
+                .trim_end_matches('0')
+                .trim_end_matches('.')
+                .to_string();
+        }
+        return amount_str;
+    }
+
+    if suffixes {
+        for (divisor, suffix) in AMOUNT_SUFFIXES {
+            let divisor_decimal = BigDecimal::from(*divisor);
+            if number.abs() >= divisor_decimal {
+                let value_decimal = &number / &divisor_decimal;
+                return match &value_decimal {
+                    x if x.is_integer() => {
+                        format!("{value_decimal:.0}{suffix}")
+                    }
+                    _ => format!("{value_decimal:.2}{suffix}"),
+                };
+            }
+        }
+    }
+
+    match &number {
+        x if x.is_integer() => format!("{number:.0}"),
+        x if x.abs() >= BigDecimal::from_str("0.1").unwrap() => format!("{number:.2}"),
+        x if x.abs() >= BigDecimal::from_str("0.01").unwrap() => format!("{number:.3}"),
+        x if x.abs() >= BigDecimal::from_str("0.001").unwrap() => {
+            format!("{number:.4}")
+        }
+        x if x.abs() >= BigDecimal::from_str("0.0001").unwrap() => {
+            format!("{number:.5}")
+        }
+        x if x.abs() >= BigDecimal::from_str("0.00001").unwrap() => {
+            format!("{number:.6}")
+        }
+        x if x.abs() >= BigDecimal::from_str("0.000001").unwrap() => {
+            format!("{number:.7}")
+        }
+        x if x.abs() >= BigDecimal::from_str("0.0000001").unwrap() => {
+            format!("{number:.8}")
+        }
+        _ => "0".to_string(),
+    }
 }
 
 #[track_caller]

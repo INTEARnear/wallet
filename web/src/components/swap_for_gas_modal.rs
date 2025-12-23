@@ -206,6 +206,51 @@ pub fn SwapForGasModal() -> impl IntoView {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
 
+    let handle_unwrap_wnear = move |token_contract_id: AccountId| {
+        let selected_account = accounts.get_untracked().selected_account_id;
+        let token_data = tokens
+            .get_untracked()
+            .iter()
+            .find(|token_data| {
+                token_data.token.account_id == Token::Nep141(token_contract_id.clone())
+            })
+            .cloned()
+            .expect("Token not found");
+
+        if let Some(selected_account_id) = selected_account {
+            let (rx, transaction) = EnqueuedTransaction::create_with_type(
+                format!(
+                    "Unwrap {} wNEAR",
+                    balance_to_decimal(token_data.balance, token_data.token.metadata.decimals)
+                ),
+                selected_account_id.clone(),
+                TransactionType::MetaTransaction {
+                    actions: vec![Action::FunctionCall(Box::new(FunctionCallAction {
+                        method_name: "near_withdraw".to_string(),
+                        args: serde_json::to_vec(&serde_json::json!({
+                            "amount": NearToken::from_yoctonear(token_data.balance),
+                        }))
+                        .unwrap(),
+                        gas: NearGas::from_tgas(30).as_gas(),
+                        deposit: NearToken::from_yoctonear(1),
+                    }))],
+                    receiver_id: token_contract_id.clone(),
+                },
+            );
+            add_transaction.update(|queue| queue.push(transaction));
+            spawn_local(async move {
+                match rx.await {
+                    Ok(_) => {
+                        modal.set(None);
+                    }
+                    Err(e) => {
+                        log::error!("Failed to send unwrap transaction: {}", e);
+                    }
+                }
+            });
+        }
+    };
+
     let handle_swap = move |token_contract_id: AccountId| {
         let selected_account = accounts.get_untracked().selected_account_id;
         let symbol = tokens
@@ -280,7 +325,7 @@ pub fn SwapForGasModal() -> impl IntoView {
                                     .unwrap_or_else(|| BigDecimal::from_str("0").unwrap());
 
                                 let max_acceptable_usd =
-                                    &near_price_usd * &BigDecimal::from_str("0.03").unwrap() * 2;
+                                    &near_price_usd * &BigDecimal::from_str("0.3").unwrap() * 2;
 
                                 if token_usd_value > max_acceptable_usd {
                                     log::error!(
@@ -368,12 +413,16 @@ pub fn SwapForGasModal() -> impl IntoView {
         }
     };
 
-    let whitelisted_tokens = move || {
+    let available_whitelisted_tokens = move || {
         tokens
             .get()
             .into_iter()
             .filter(|token_data| {
                 if let Token::Nep141(account_id) = &token_data.token.account_id {
+                    if account_id.as_str() == "wrap.near" {
+                        return token_data.balance > 0;
+                    }
+
                     if !SWAP_FOR_GAS_WHITELIST.contains(&account_id.as_str()) {
                         return false;
                     }
@@ -412,7 +461,7 @@ pub fn SwapForGasModal() -> impl IntoView {
                 </p>
                 <div class="flex flex-col gap-3">
                     {move || {
-                        let tokens_list = whitelisted_tokens();
+                        let tokens_list = available_whitelisted_tokens();
                         if tokens_list.is_empty() {
                             view! {
                                 <div class="text-center text-gray-400 py-8">
@@ -436,12 +485,17 @@ pub fn SwapForGasModal() -> impl IntoView {
                                         Token::Nep141(account_id) => account_id.clone(),
                                         _ => return ().into_any(),
                                     };
+                                    let is_wrap_near = token_contract_id.as_str() == "wrap.near";
 
                                     view! {
                                         <button
                                             class="flex items-center justify-between p-4 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors cursor-pointer border border-neutral-700 hover:border-neutral-600"
                                             on:click=move |_| {
-                                                handle_swap(token_contract_id.clone());
+                                                if is_wrap_near {
+                                                    handle_unwrap_wnear(token_contract_id.clone());
+                                                } else {
+                                                    handle_swap(token_contract_id.clone());
+                                                }
                                             }
                                         >
                                             <div class="flex items-center gap-3">
@@ -490,7 +544,7 @@ pub fn SwapForGasModal() -> impl IntoView {
                                                     {move || format_usd_value(usd_value.clone())}
                                                 </span>
                                                 <span class="text-blue-400 text-sm font-medium">
-                                                    "Swap"
+                                                    {if is_wrap_near { "Unwrap" } else { "Swap" }}
                                                 </span>
                                             </div>
                                         </button>
@@ -504,7 +558,32 @@ pub fn SwapForGasModal() -> impl IntoView {
                 </div>
                 <div class="mt-6 pt-4 border-t border-neutral-700">
                     <p class="text-gray-400 text-sm text-center">
-                        "0.03 NEAR will be taken after the swap as a fee"
+                        {move || {
+                            let has_wrap_near = available_whitelisted_tokens()
+                                .iter()
+                                .any(|t| {
+                                    if let Token::Nep141(id) = &t.token.account_id {
+                                        id.as_str() == "wrap.near"
+                                    } else {
+                                        false
+                                    }
+                                });
+                            let has_other_tokens = available_whitelisted_tokens()
+                                .iter()
+                                .any(|t| {
+                                    if let Token::Nep141(id) = &t.token.account_id {
+                                        id.as_str() != "wrap.near"
+                                    } else {
+                                        false
+                                    }
+                                });
+                            match (has_wrap_near, has_other_tokens) {
+                                (true, true) => "wNEAR will be unwrapped to NEAR for free. 0.03 NEAR after-swap fee applies to other tokens.",
+                                (true, false) => "wNEAR will be unwrapped to NEAR for free.",
+                                (false, true) => "0.03 NEAR will be taken after the swap as a fee.",
+                                (false, false) => "",
+                            }
+                        }}
                     </p>
                 </div>
             </div>

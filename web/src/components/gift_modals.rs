@@ -110,17 +110,14 @@ fn near_icon() -> String {
 #[component]
 pub fn GiftTokenDisplay(token: GiftToken, class: &'static str) -> impl IntoView {
     match token {
-        GiftToken::Near(amount) => {
-            let formatted_amount = format_token_amount_no_hide(amount.as_yoctonear(), 24, "NEAR");
-            view! {
-                <span class=class>
-                    <img src=near_icon() class="w-5 h-5 rounded-full inline" />
-                    " "
-                    {formatted_amount}
-                </span>
-            }
-            .into_any()
+        GiftToken::Near(amount) => view! {
+            <span class=class>
+                <img src=near_icon() class="w-5 h-5 rounded-full inline" />
+                " "
+                {move || format_token_amount_no_hide(amount.as_yoctonear(), 24, "NEAR")}
+            </span>
         }
+        .into_any(),
         GiftToken::Nep141(token_id, amount) => {
             view! { <ModalFtDisplay token_id=token_id amount=amount attr_class=class /> }.into_any()
         }

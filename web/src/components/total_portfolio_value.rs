@@ -78,6 +78,10 @@ pub fn TotalPortfolioValue() -> impl IntoView {
     };
 
     let should_show_swap_for_gas = move || {
+        if !matches!(network.get(), Network::Mainnet) {
+            return false;
+        }
+
         if loading_tokens.get() {
             return false;
         }
@@ -97,13 +101,17 @@ pub fn TotalPortfolioValue() -> impl IntoView {
         }
 
         token_list.iter().any(|token_data| {
-            if let Token::Nep141(account_id) = &token_data.token.account_id
-                && SWAP_FOR_GAS_WHITELIST.contains(&account_id.as_str())
-            {
-                let normalized_balance =
-                    balance_to_decimal(token_data.balance, token_data.token.metadata.decimals);
-                let usd_value = &token_data.token.price_usd_hardcoded * &normalized_balance;
-                return usd_value > BigDecimal::from_str(MIN_TOKEN_VALUE_USD).unwrap();
+            if let Token::Nep141(account_id) = &token_data.token.account_id {
+                if account_id.as_str() == "wrap.near" {
+                    return token_data.balance > 0;
+                }
+
+                if SWAP_FOR_GAS_WHITELIST.contains(&account_id.as_str()) {
+                    let normalized_balance =
+                        balance_to_decimal(token_data.balance, token_data.token.metadata.decimals);
+                    let usd_value = &token_data.token.price_usd_hardcoded * &normalized_balance;
+                    return usd_value > BigDecimal::from_str(MIN_TOKEN_VALUE_USD).unwrap();
+                }
             }
             false
         })

@@ -35,10 +35,11 @@ const NANOSECONDS_IN_YEAR: u64 = 365 * 24 * 60 * 60 * 1_000_000_000;
 
 use crate::components::projected_revenue::{ProjectedRevenue, ProjectedRevenueMode};
 use crate::components::transaction_modals::{TransactionErrorModal, TransactionSuccessModal};
+use crate::contexts::config_context::ConfigContext;
 use crate::contexts::tokens_context::TokenInfo;
 use crate::utils::{
-    Resolution, StorageBalance, USDT_DECIMALS, fetch_token_info, format_usd_value, power_of_10,
-    proxify_url,
+    Resolution, StorageBalance, USDT_DECIMALS, fetch_token_info, format_number, format_usd_value,
+    power_of_10, proxify_url,
 };
 use crate::{
     contexts::{
@@ -1891,6 +1892,7 @@ pub fn StakeValidator() -> impl IntoView {
     let (amount_error, set_amount_error) = signal::<Option<String>>(None);
     let (has_typed_amount, set_has_typed_amount) = signal(false);
     let ModalContext { modal } = expect_context::<ModalContext>();
+    let ConfigContext { config, .. } = expect_context::<ConfigContext>();
 
     let validator_data = LocalResource::new(move || {
         let rpc_client = rpc_context.client.get();
@@ -2258,10 +2260,10 @@ pub fn StakeValidator() -> impl IntoView {
                                                         class="absolute right-2 top-1/2 -translate-y-1/2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm px-3 py-1 rounded-lg transition-colors duration-200 no-mobile-ripple"
                                                         on:click=move |_| {
                                                             let max_amount = balance_to_decimal(near_balance(), 24);
-                                                            let gas_cost = BigDecimal::from_str("0.01").unwrap();
+                                                            let gas_cost = "0.01".parse::<BigDecimal>().unwrap();
                                                             let final_amount = (max_amount - gas_cost)
                                                                 .max(BigDecimal::from(0));
-                                                            let final_amount_str = final_amount.to_string();
+                                                            let final_amount_str = format_number(final_amount, config().short_amounts, false);
                                                             set_amount.set(final_amount_str.clone());
                                                             check_amount(final_amount_str);
                                                         }

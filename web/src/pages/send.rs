@@ -4,6 +4,7 @@ use crate::{
         SendResult, SendSuccessModal,
     },
     contexts::{
+        config_context::ConfigContext,
         modal_context::ModalContext,
         network_context::NetworkContext,
         rpc_context::RpcContext,
@@ -14,8 +15,8 @@ use crate::{
     pages::stake::is_validator_supported,
     utils::{
         StorageBalance, balance_to_decimal, decimal_to_balance, format_account_id_no_hide,
-        format_token_amount, format_token_amount_full_precision, format_token_amount_no_hide,
-        format_usd_value_no_hide,
+        format_number, format_token_amount, format_token_amount_full_precision,
+        format_token_amount_no_hide, format_usd_value_no_hide,
     },
 };
 use bigdecimal::{BigDecimal, FromPrimitive};
@@ -350,6 +351,7 @@ pub fn SendToken() -> impl IntoView {
     } = expect_context::<TokensContext>();
     let RpcContext { client, .. } = expect_context::<RpcContext>();
     let NetworkContext { network, .. } = expect_context::<NetworkContext>();
+    let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     let (recipient, set_recipient) = signal("".to_string());
     let (amount, set_amount) = signal("".to_string());
     let (is_loading_recipient, set_is_loading_recipient) = signal(false);
@@ -759,7 +761,7 @@ pub fn SendToken() -> impl IntoView {
 
                             <div class="flex flex-col gap-4">
                                 <div class="flex flex-col gap-2">
-                                    <label class="text-gray-400">Recipient</label>
+                                    <label class="text-gray-400">"Recipient"</label>
                                     <input
                                         type="text"
                                         class="w-full focus:ring-2 bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 text-base"
@@ -873,7 +875,7 @@ pub fn SendToken() -> impl IntoView {
                                 </div>
 
                                 <div class="flex flex-col gap-2">
-                                    <label class="text-gray-400">Amount</label>
+                                    <label class="text-gray-400">"Amount"</label>
                                     <div class="relative">
                                         <input
                                             type="text"
@@ -907,25 +909,26 @@ pub fn SendToken() -> impl IntoView {
                                                 let gas_cost_decimal = if token.token.account_id
                                                     == Token::Near
                                                 {
-                                                    BigDecimal::from_f64(0.0001).unwrap_or_default()
+                                                    "0.0001".parse().unwrap()
                                                 } else {
                                                     BigDecimal::from(0)
                                                 };
                                                 let final_amount_decimal = (&max_amount_decimal
                                                     - &gas_cost_decimal)
                                                     .max(BigDecimal::from(0));
-                                                let mut max_amount_str = final_amount_decimal.to_string();
-                                                if max_amount_str.contains('.') {
-                                                    max_amount_str = max_amount_str
-                                                        .trim_end_matches('0')
-                                                        .trim_end_matches('.')
-                                                        .to_string();
-                                                }
+                                                let max_amount_str = format_number(
+                                                        final_amount_decimal,
+                                                        config().short_amounts,
+                                                        false,
+                                                    )
+                                                    .trim_end_matches('0')
+                                                    .trim_end_matches('.')
+                                                    .to_string();
                                                 set_amount.set(max_amount_str.clone());
                                                 check_amount(max_amount_str);
                                             }
                                         >
-                                            MAX
+                                            "MAX"
                                         </button>
                                     </div>
                                     {move || {

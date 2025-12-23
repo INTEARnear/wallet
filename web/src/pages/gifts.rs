@@ -27,6 +27,7 @@ use crate::{
     },
     contexts::{
         accounts_context::AccountsContext,
+        config_context::ConfigContext,
         modal_context::ModalContext,
         network_context::{Network, NetworkContext},
         nft_cache_context::{NftCacheContext, OwnedCollection},
@@ -37,7 +38,7 @@ use crate::{
     pages::nfts::fetch_nfts,
     utils::{
         Resolution, balance_to_decimal, decimal_to_balance, format_account_id_no_hide,
-        format_duration, format_token_amount, proxify_url,
+        format_duration, format_number, format_token_amount, proxify_url,
     },
 };
 
@@ -98,6 +99,7 @@ pub fn Gifts() -> impl IntoView {
     let RpcContext { client, .. } = expect_context::<RpcContext>();
     let TransactionQueueContext { .. } = expect_context::<TransactionQueueContext>();
     let NftCacheContext { cache } = expect_context::<NftCacheContext>();
+    let ConfigContext { config, .. } = expect_context::<ConfigContext>();
 
     let drops = LocalResource::new(move || {
         let rpc_client = client.get();
@@ -345,13 +347,10 @@ pub fn Gifts() -> impl IntoView {
         let final_amount_decimal =
             (&max_amount_decimal - &gas_cost_decimal).max(BigDecimal::from(0));
 
-        let mut max_amount_str = final_amount_decimal.to_string();
-        if max_amount_str.contains('.') {
-            max_amount_str = max_amount_str
-                .trim_end_matches('0')
-                .trim_end_matches('.')
-                .to_string();
-        }
+        let max_amount_str = format_number(final_amount_decimal, config().short_amounts, false)
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_string();
 
         let trimmed_max_amount = trim_to_three_decimals(max_amount_str);
         set_near_amount.set(trimmed_max_amount.clone());
@@ -396,13 +395,10 @@ pub fn Gifts() -> impl IntoView {
     let handle_token_max = move |token_data: TokenData| {
         let max_amount_decimal =
             balance_to_decimal(token_data.balance, token_data.token.metadata.decimals);
-        let mut max_amount_str = max_amount_decimal.to_string();
-        if max_amount_str.contains('.') {
-            max_amount_str = max_amount_str
-                .trim_end_matches('0')
-                .trim_end_matches('.')
-                .to_string();
-        }
+        let max_amount_str = format_number(max_amount_decimal, config().short_amounts, false)
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_string();
 
         let trimmed_max_amount = trim_to_three_decimals(max_amount_str);
 
