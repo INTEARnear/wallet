@@ -120,6 +120,31 @@ impl BackgroundGroup {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+pub enum LedgerMode {
+    #[default]
+    Disabled,
+    WebHID,
+    WebUSB,
+    WebBLE,
+}
+
+impl LedgerMode {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Disabled => "None",
+            Self::WebHID => "USB",
+            Self::WebUSB => "USB (fallback)",
+            Self::WebBLE => "Bluetooth",
+        }
+    }
+
+    pub fn all_variants() -> &'static [Self] {
+        // removed WevUSB for now, idk if needed, WebHID support is pretty good
+        &[Self::WebHID, Self::WebBLE]
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct WalletConfig {
     pub show_low_balance_tokens: bool,
@@ -162,6 +187,8 @@ pub struct WalletConfig {
     pub short_amounts: bool,
     #[serde(default)]
     pub storage_persistence_warning_dismissed: bool,
+    #[serde(default)]
+    pub ledger_mode: LedgerMode,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -230,6 +257,7 @@ impl Default for WalletConfig {
             prevent_screenshots: true,
             short_amounts: true,
             storage_persistence_warning_dismissed: false,
+            ledger_mode: LedgerMode::default(),
         }
     }
 }

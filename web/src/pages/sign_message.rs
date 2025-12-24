@@ -13,9 +13,11 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsCast;
 use web_sys::{Window, js_sys::Date};
 
+use crate::pages::settings::LedgerSelector;
 use crate::{
     contexts::{
         accounts_context::{AccountsContext, LedgerSigningState},
+        config_context::ConfigContext,
         connected_apps_context::ConnectedAppsContext,
         network_context::Network,
         security_log_context::add_security_log,
@@ -1283,6 +1285,7 @@ pub fn SignMessage() -> impl IntoView {
     let ConnectedAppsContext { apps, .. } = expect_context::<ConnectedAppsContext>();
     let accounts_context = expect_context::<AccountsContext>();
     let ledger_signing_state = accounts_context.ledger_signing_state;
+    let ConfigContext { config, .. } = expect_context::<ConfigContext>();
 
     let process_sign_message = move |data: SignMessageRequest, evt_origin: String| {
         set_origin(evt_origin);
@@ -1499,6 +1502,7 @@ pub fn SignMessage() -> impl IntoView {
                 account.secret_key.clone(),
                 &nep413_message,
                 accounts_context,
+                move || config.get_untracked().ledger_mode,
             )
             .await
             else {
@@ -1580,13 +1584,36 @@ pub fn SignMessage() -> impl IntoView {
                                     <MessageDisplay message=Signal::derive(deserialized_message) />
                                 </div>
 
-                                <Show when=move || {
-                                    !matches!(ledger_signing_state.get(), LedgerSigningState::Idle)
-                                }>
+                                <Show
+                                    when=move || {
+                                        !matches!(
+                                            ledger_signing_state.get(),
+                                            LedgerSigningState::Idle
+                                        )
+                                    }
+                                    fallback=move || {
+                                        view! {
+                                            <div class="flex flex-col gap-3 w-full mt-2">
+                                                <button
+                                                    class="w-full px-6 py-3.5 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition-all duration-200 shadow-lg shadow-blue-500/10 hover:shadow-blue-500/20 cursor-pointer"
+                                                    on:click=handle_verify
+                                                >
+                                                    "Confirm"
+                                                </button>
+                                                <button
+                                                    class="w-full px-6 py-3.5 bg-neutral-800 text-white font-medium rounded-xl hover:bg-neutral-700 transition-all duration-200 shadow-lg shadow-black/20 cursor-pointer"
+                                                    on:click=handle_cancel
+                                                >
+                                                    "Cancel"
+                                                </button>
+                                            </div>
+                                        }
+                                    }
+                                >
                                     {move || {
                                         match ledger_signing_state.get() {
-                                            LedgerSigningState::Idle => ().into_any(),
-                                            LedgerSigningState::WaitingForSignature { .. } => {
+                                            LedgerSigningState::Idle => unreachable!(),
+                                            LedgerSigningState::WaitingForSignature { id } => {
                                                 view! {
                                                     <div class="text-white text-center flex flex-col items-center gap-2 mt-2 border-t border-neutral-700 pt-2">
                                                         <Icon icon=icondata::LuUsb width="24" height="24" />
@@ -1594,6 +1621,17 @@ pub fn SignMessage() -> impl IntoView {
                                                         <p class="text-xs">
                                                             "Please confirm the signature on your Ledger device."
                                                         </p>
+                                                        <button
+                                                            class="px-3 py-1 text-xs bg-neutral-700 rounded-md hover:bg-neutral-600 transition-colors cursor-pointer"
+                                                            on:click=move |_| {
+                                                                ledger_signing_state
+                                                                    .set(LedgerSigningState::WaitingForSignature {
+                                                                        id,
+                                                                    });
+                                                            }
+                                                        >
+                                                            "Retry"
+                                                        </button>
                                                     </div>
                                                 }
                                                     .into_any()
@@ -1608,8 +1646,9 @@ pub fn SignMessage() -> impl IntoView {
                                                             attr:class="text-red-500"
                                                         />
                                                         <p class="text-sm font-bold">"Ledger Error"</p>
-                                                        <p class="text-xs max-w-xs break-words">{error.clone()}</p>
-                                                        <div class="flex gap-4 mt-2">
+                                                        <p class="text-xs max-w-xs break-words text-red-400">{error.clone()}</p>
+                                                        <LedgerSelector />
+                                                        <div class="flex gap-4">
                                                             <button
                                                                 class="px-3 py-1 text-xs bg-neutral-700 rounded-md hover:bg-neutral-600 transition-colors cursor-pointer"
                                                                 on:click=move |_| {
@@ -1637,21 +1676,6 @@ pub fn SignMessage() -> impl IntoView {
                                         }
                                     }}
                                 </Show>
-
-                            </div>
-                            <div class="flex flex-col gap-3 w-full mt-2">
-                                <button
-                                    class="w-full px-6 py-3.5 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition-all duration-200 shadow-lg shadow-blue-500/10 hover:shadow-blue-500/20 cursor-pointer"
-                                    on:click=handle_verify
-                                >
-                                    "Confirm"
-                                </button>
-                                <button
-                                    class="w-full px-6 py-3.5 bg-neutral-800 text-white font-medium rounded-xl hover:bg-neutral-700 transition-all duration-200 shadow-lg shadow-black/20 cursor-pointer"
-                                    on:click=handle_cancel
-                                >
-                                    "Cancel"
-                                </button>
                             </div>
                         </div>
                     }

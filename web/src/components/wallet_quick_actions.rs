@@ -31,7 +31,7 @@ pub fn WalletQuickActions() -> impl IntoView {
     view! {
         {move || {
             let buttons = vec![
-                (true, "/receive", icondata::LuDownload, "Receive"),
+                (true, "/receive", icondata::LuDownload, "Receive & Bridge"),
                 (show_stake(), "/stake", icondata::LuBeef, "Stake"),
                 (show_nfts(), "/nfts", icondata::LuImage, "NFTs"),
                 (show_gifts(), "/gifts", icondata::LuGift, "Gift"),
@@ -60,7 +60,7 @@ pub fn WalletQuickActions() -> impl IntoView {
                                     <div class="w-12 h-12 rounded-full bg-neutral-800 hover:bg-neutral-700 flex items-center justify-center transition-colors">
                                         <Icon icon=icon width="20" height="20" />
                                     </div>
-                                    <span class="text-sm text-white">{label}</span>
+                                    <span class="text-sm text-white w-20 text-center">{label}</span>
                                 </A>
                             }
                         })

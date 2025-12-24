@@ -26,11 +26,13 @@ use crate::contexts::account_selector_context::AccountSelectorContext;
 use crate::contexts::accounts_context::{
     Account, AccountsContext, SecretKeyHolder, format_ledger_error,
 };
+use crate::contexts::config_context::ConfigContext;
 use crate::contexts::network_context::Network;
 use crate::contexts::security_log_context::add_security_log;
 use crate::contexts::transaction_queue_context::{
     EnqueuedTransaction, TransactionQueueContext, TransactionType,
 };
+use crate::pages::settings::LedgerSelector;
 use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
 use bs58;
 use leptos_use::{use_event_listener, use_window};
@@ -101,6 +103,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
 
+    let config_context = expect_context::<ConfigContext>();
     let (ledger_connection_in_progress, set_ledger_connection_in_progress) = signal(false);
     let (ledger_connected, set_ledger_connected) = signal(false);
     let (ledger_input_hd_path_input, set_ledger_hd_path_input) =
@@ -487,8 +490,10 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
         if ledger_connection_in_progress.get_untracked() || ledger_connected.get_untracked() {
             return;
         }
+        set_error.set(None);
         set_ledger_connection_in_progress(true);
-        let request = JsWalletRequest::LedgerConnect;
+        let ledger_mode = config_context.config.get_untracked().ledger_mode;
+        let request = JsWalletRequest::LedgerConnect { mode: ledger_mode };
         match serde_wasm_bindgen::to_value(&request) {
             Ok(js_value) => {
                 let origin = window()
@@ -503,6 +508,34 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
             _ => {
                 log::error!("Failed to serialize Ledger connection request");
                 set_ledger_connection_in_progress(false);
+            }
+        }
+    };
+
+    let connect_ledger = move || {
+        set_error.set(None);
+        set_ledger_getting_public_key(true);
+        set_ledger_current_key_data.set(None);
+        let path = ledger_input_hd_path_input.get_untracked();
+        let ledger_mode = config_context.config.get_untracked().ledger_mode;
+        let request = JsWalletRequest::LedgerGetPublicKey {
+            path,
+            mode: ledger_mode,
+        };
+        match serde_wasm_bindgen::to_value(&request) {
+            Ok(js_value) => {
+                let origin = window()
+                    .location()
+                    .origin()
+                    .unwrap_or_else(|_| "*".to_string());
+                if window().post_message(&js_value, &origin).is_err() {
+                    log::error!("Failed to send Ledger public key request");
+                    set_ledger_getting_public_key(false);
+                }
+            }
+            _ => {
+                log::error!("Failed to serialize Ledger public key request");
+                set_ledger_getting_public_key(false);
             }
         }
     };
@@ -549,10 +582,10 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                             }
                                 .into_any()
                         }
-                    }} <div class="space-y-6">
-                        <div>
+                    }}
+                        <div class="mb-6">
                             <label class="block text-neutral-400 text-sm font-medium mb-2">
-                                Account Name
+                                "Account Name"
                             </label>
                             <div class="relative">
                                 <input
@@ -592,7 +625,6 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                             }
                                                 .into_any()
                                         } else {
-                                            log::info!("Select");
                                             view! {
                                                 <Select
                                                     options=Signal::derive(move || {
@@ -900,21 +932,24 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                 view! {
                                     <div class="space-y-6">
                                         <div class="text-center py-2">
+                                            <div class="mb-4">
+                                            <LedgerSelector on_change=Callback::new(move |_| {
+                                                connect_ledger();
+                                            }) />
+                                            </div>
+                                            <Show
+                                                when=move || error.read().is_some()
+                                                fallback=move || {
+                                                    view! {
+                                                        <p class="text-neutral-400 mb-4">
+                                                            "Connect your Ledger to continue"
+                                                        </p>
+                                                    }
+                                                }
+                                            >
+                                                <p class="text-red-400 mb-4">{error.get().unwrap()}</p>
+                                            </Show>
                                             <Show when=move || !ledger_connected()>
-                                                <div class="w-16 h-16 rounded-full bg-purple-500/20 flex items-center justify-center mx-auto mb-4">
-                                                    <Icon
-                                                        icon=icondata::LuWallet
-                                                        width="32"
-                                                        height="32"
-                                                        attr:class="text-purple-400"
-                                                    />
-                                                </div>
-                                                <h3 class="text-white text-lg font-medium mb-2">
-                                                    "Ledger"
-                                                </h3>
-                                                <p class="text-neutral-400 mb-4">
-                                                    "Connect your Ledger to continue"
-                                                </p>
                                                 <button
                                                     class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden cursor-pointer"
                                                     style=move || {
@@ -973,34 +1008,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                                         }
                                                                     }
                                                                     disabled=move || ledger_getting_public_key.get()
-                                                                    on:click=move |_| {
-                                                                        set_ledger_getting_public_key(true);
-                                                                        set_ledger_current_key_data.set(None);
-                                                                        let path = ledger_input_hd_path_input.get_untracked();
-                                                                        let request = JsWalletRequest::LedgerGetPublicKey {
-                                                                            path,
-                                                                        };
-                                                                        match serde_wasm_bindgen::to_value(
-                                                                            &request,
-                                                                        ) { Ok(js_value) => {
-                                                                            let origin = window()
-                                                                                .location()
-                                                                                .origin()
-                                                                                .unwrap_or_else(|_| "*".to_string());
-                                                                            if window()
-                                                                                .post_message(&js_value, &origin)
-                                                                                .is_err()
-                                                                            {
-                                                                                log::error!("Failed to send Ledger public key request");
-                                                                                set_ledger_getting_public_key(false);
-                                                                            }
-                                                                        } _ => {
-                                                                            log::error!(
-                                                                                "Failed to serialize Ledger public key request"
-                                                                            );
-                                                                            set_ledger_getting_public_key(false);
-                                                                        }}
-                                                                    }
+                                                                    on:click=move |_| connect_ledger()
                                                                 >
                                                                     <span class="relative flex items-center justify-center gap-2">
                                                                         {move || {
@@ -1017,7 +1025,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                                             if ledger_getting_public_key.get() {
                                                                                 "Confirm in your Ledger...".to_string()
                                                                             } else {
-                                                                                "Verify in Ledger".to_string()
+                                                                                "Connect Ledger".to_string()
                                                                             }
                                                                         }}
                                                                     </span>
@@ -1039,7 +1047,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                             }
                         }}
 
-                        <div class="flex gap-2">
+                        <div class="flex gap-2 mt-2">
                             <button
                                 class="flex-1 text-white rounded-xl px-4 py-3 transition-all cursor-pointer duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden"
                                 style=move || {
@@ -1106,12 +1114,12 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                 </span>
                             </button>
                         </div>
-                        <div class="relative">
+                        <div class="relative mt-6 mb-6">
                             <div class="absolute inset-0 flex items-center">
                                 <div class="w-full border-t border-neutral-800"></div>
                             </div>
                             <div class="relative flex justify-center text-sm">
-                                <span class="px-2 bg-neutral-950 text-neutral-400">or</span>
+                                <span class="px-2 bg-neutral-950 text-neutral-400">"or"</span>
                             </div>
                         </div>
                         <button
@@ -1129,7 +1137,6 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                 }}
                             </span>
                         </button>
-                    </div>
                 </div>
             </div>
         </div>

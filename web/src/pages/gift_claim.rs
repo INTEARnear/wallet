@@ -21,6 +21,7 @@ use crate::{
     },
     contexts::{
         accounts_context::{AccountsContext, SecretKeyHolder},
+        config_context::ConfigContext,
         network_context::{Network, NetworkContext},
         rpc_context::RpcContext,
         transaction_queue_context::{
@@ -56,6 +57,7 @@ pub fn GiftClaim() -> impl IntoView {
     let TransactionQueueContext {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
+    let ConfigContext { config, .. } = expect_context::<ConfigContext>();
 
     let (claim_state, set_claim_state) = signal(ClaimState::Idle);
 
@@ -170,6 +172,7 @@ pub fn GiftClaim() -> impl IntoView {
                     callback_url: None,
                 },
                 accounts,
+                move || config.get_untracked().ledger_mode,
             )
             .await
             .unwrap_or_else(|_| unreachable!());
@@ -192,7 +195,7 @@ pub fn GiftClaim() -> impl IntoView {
                 deposit: NearToken::from_yoctonear(0),
             }));
 
-            let (details_tx, transaction) = EnqueuedTransaction::create_with_type(
+            let (details_rx, transaction) = EnqueuedTransaction::create_with_type(
                 format!(
                     "Claim gift of {}",
                     format_gift_tokens_for_message(&GiftToken::from_drop(&drop), rpc_client).await
@@ -206,7 +209,7 @@ pub fn GiftClaim() -> impl IntoView {
 
             add_transaction.update(|queue| queue.push(transaction));
 
-            match details_tx.await {
+            match details_rx.await {
                 Ok(_) => {
                     let result = ClaimResult {
                         amount: drop.contents.near,

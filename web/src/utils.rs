@@ -1,5 +1,5 @@
 use base64::{Engine, prelude::BASE64_STANDARD};
-use bigdecimal::{BigDecimal, One, ToPrimitive, Zero, num_bigint::BigInt};
+use bigdecimal::{BigDecimal, One, RoundingMode, ToPrimitive, Zero, num_bigint::BigInt};
 use borsh::BorshSerialize;
 use cached::proc_macro::cached;
 use futures_util::lock::Mutex;
@@ -24,7 +24,7 @@ use web_sys::js_sys::{Promise, Reflect};
 
 use crate::contexts::{
     accounts_context::{AccountsContext, SecretKeyHolder, UserCancelledSigning},
-    config_context::ConfigContext,
+    config_context::{ConfigContext, LedgerMode},
     network_context::Network,
     rpc_context::RpcContext,
     tokens_context::{Token, TokenData, TokenInfo, TokenMetadata},
@@ -99,27 +99,26 @@ pub fn format_number(number: BigDecimal, short: bool, suffixes: bool) -> String 
         }
     }
 
-    match &number {
-        x if x.is_integer() => format!("{number:.0}"),
-        x if x.abs() >= BigDecimal::from_str("0.1").unwrap() => format!("{number:.2}"),
-        x if x.abs() >= BigDecimal::from_str("0.01").unwrap() => format!("{number:.3}"),
-        x if x.abs() >= BigDecimal::from_str("0.001").unwrap() => {
-            format!("{number:.4}")
-        }
-        x if x.abs() >= BigDecimal::from_str("0.0001").unwrap() => {
-            format!("{number:.5}")
-        }
-        x if x.abs() >= BigDecimal::from_str("0.00001").unwrap() => {
-            format!("{number:.6}")
-        }
-        x if x.abs() >= BigDecimal::from_str("0.000001").unwrap() => {
-            format!("{number:.7}")
-        }
-        x if x.abs() >= BigDecimal::from_str("0.0000001").unwrap() => {
-            format!("{number:.8}")
-        }
-        _ => "0".to_string(),
-    }
+    format!(
+        "{}",
+        number.with_scale_round(
+            match number.abs() {
+                x if x >= BigDecimal::from_str("0.1").unwrap() => 2,
+                x if x >= BigDecimal::from_str("0.01").unwrap() => 3,
+                x if x >= BigDecimal::from_str("0.001").unwrap() => 4,
+                x if x >= BigDecimal::from_str("0.0001").unwrap() => 5,
+                x if x >= BigDecimal::from_str("0.00001").unwrap() => 6,
+                x if x >= BigDecimal::from_str("0.000001").unwrap() => 7,
+                x if x >= BigDecimal::from_str("0.0000001").unwrap() => 8,
+                x if x >= BigDecimal::from_str("0.00000001").unwrap() => 9,
+                x if x >= BigDecimal::from_str("0.000000001").unwrap() => 10,
+                x if x >= BigDecimal::from_str("0.0000000001").unwrap() => 11,
+                x if x >= BigDecimal::from_str("0.00000000001").unwrap() => 12,
+                _ => 0,
+            },
+            RoundingMode::Down
+        )
+    )
 }
 
 #[track_caller]
@@ -965,18 +964,20 @@ pub async fn sign_nep413(
     secret_key: SecretKeyHolder,
     payload: &NEP413Payload,
     context: AccountsContext,
+    ledger_mode: impl Fn() -> LedgerMode,
 ) -> Result<Signature, UserCancelledSigning> {
     const NEP413_413_SIGN_MESSAGE_PREFIX: u32 = (1u32 << 31u32) + 413u32;
     let mut bytes = NEP413_413_SIGN_MESSAGE_PREFIX.to_le_bytes().to_vec();
     borsh::to_writer(&mut bytes, payload).unwrap();
     log::info!("Signing NEP-413 payload: {:?}", bytes);
-    secret_key.hash_and_sign(&bytes, context).await
+    secret_key.hash_and_sign(&bytes, context, ledger_mode).await
 }
 
 pub async fn sign_nep366(
     secret_key: SecretKeyHolder,
     payload: &DelegateAction,
     context: AccountsContext,
+    ledger_mode: impl Fn() -> LedgerMode,
 ) -> Result<Signature, UserCancelledSigning> {
     if payload.public_key != secret_key.public_key() {
         // This should never happen in correct implementations
@@ -986,7 +987,7 @@ pub async fn sign_nep366(
     let mut bytes = NEP366_366_SIGN_MESSAGE_PREFIX.to_le_bytes().to_vec();
     borsh::to_writer(&mut bytes, payload).unwrap();
     log::info!("Signing NEP-366 payload: {:?}", bytes);
-    secret_key.hash_and_sign(&bytes, context).await
+    secret_key.hash_and_sign(&bytes, context, ledger_mode).await
 }
 
 pub fn is_tauri() -> bool {

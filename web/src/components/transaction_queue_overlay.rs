@@ -2,6 +2,7 @@ use crate::contexts::accounts_context::{AccountsContext, LedgerSigningState};
 use crate::contexts::transaction_queue_context::{
     OverlayMode, TransactionQueueContext, TransactionStage,
 };
+use crate::pages::settings::LedgerSelector;
 use leptos::prelude::*;
 use leptos_icons::*;
 
@@ -199,7 +200,7 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                                                 {move || {
                                                     match ledger_signing_state.get() {
                                                         LedgerSigningState::Idle => ().into_any(),
-                                                        LedgerSigningState::WaitingForSignature { .. } => {
+                                                        LedgerSigningState::WaitingForSignature { id } => {
                                                             view! {
                                                                 <div class="text-white text-center flex flex-col items-center gap-2 mt-2 border-t border-neutral-700 pt-2">
                                                                     <Icon icon=icondata::LuUsb width="24" height="24" />
@@ -207,6 +208,17 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                                                                     <p class="text-xs">
                                                                         "Please confirm the transaction on your Ledger device."
                                                                     </p>
+                                                                    <button
+                                                                        class="px-3 py-1 text-xs bg-neutral-700 rounded-md hover:bg-neutral-600 transition-colors cursor-pointer"
+                                                                        on:click=move |_| {
+                                                                            ledger_signing_state
+                                                                                .set(LedgerSigningState::WaitingForSignature {
+                                                                                    id,
+                                                                                })
+                                                                        }
+                                                                    >
+                                                                        "Retry"
+                                                                    </button>
                                                                 </div>
                                                             }
                                                                 .into_any()
@@ -221,8 +233,9 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                                                                         attr:class="text-red-500"
                                                                     />
                                                                     <p class="text-sm font-bold">"Ledger Error"</p>
-                                                                    <p class="text-xs max-w-xs break-words">{error.clone()}</p>
-                                                                    <div class="flex gap-4 mt-2">
+                                                                    <p class="text-xs max-w-xs break-words text-red-400">{error.clone()}</p>
+                                                                    <LedgerSelector />
+                                                                    <div class="flex gap-4">
                                                                         <button
                                                                             class="px-3 py-1 text-xs bg-neutral-700 rounded-md hover:bg-neutral-600 transition-colors cursor-pointer"
                                                                             on:click=move |_| {

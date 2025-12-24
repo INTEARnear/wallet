@@ -28,6 +28,7 @@ use wasm_bindgen::{JsCast, closure::Closure};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::js_sys::Reflect;
 
+use crate::contexts::config_context::LedgerMode;
 use crate::contexts::security_log_context::reencrypt_security_logs;
 use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
 use crate::utils::{is_debug_enabled, is_tauri, tauri_invoke_no_args};
@@ -100,6 +101,21 @@ pub fn format_ledger_error(error: &serde_json::Value) -> String {
         serde_json::Value::String(s) if s == "InvalidStateError" => {
             "Please refresh the or reconnect the Ledger device.".to_string()
         }
+        serde_json::Value::String(s) if s == "LedgerDisabled" => {
+            "Please choose the connection mode.".to_string()
+        }
+        serde_json::Value::String(s) if s == "WebBLENotSupported" => {
+            "Bluetooth is not supported in this browser.".to_string()
+        }
+        serde_json::Value::String(s) if s == "WebUSBNotSupported" => {
+            "USB (fallback) is not supported in this browser.".to_string()
+        }
+        serde_json::Value::String(s) if s == "WebHIDNotSupported" => {
+            "USB is not supported in this browser.".to_string()
+        }
+        serde_json::Value::String(s) if s == "TransportRaceCondition" => {
+            "Please make sure your Ledger is currently not already signing another request. It should be saying 'Near app is ready'".to_string()
+        }
         _ => format!("Error: {}", error),
     }
 }
@@ -125,6 +141,7 @@ impl SecretKeyHolder {
         &self,
         message: &[u8],
         context: AccountsContext,
+        ledger_mode: impl Fn() -> LedgerMode,
     ) -> Result<Signature, UserCancelledSigning> {
         match self {
             SecretKeyHolder::SecretKey(secret_key) => {
@@ -135,18 +152,18 @@ impl SecretKeyHolder {
                 public_key: _,
             } => {
                 let id = OsRng.next_u32();
-                let request = JsWalletRequest::LedgerSign {
-                    path: path.clone(),
-                    message_to_sign: message.to_vec(),
-                    id,
-                };
-                let js_value = serde_wasm_bindgen::to_value(&request).unwrap();
-                let origin = window()
-                    .location()
-                    .origin()
-                    .unwrap_or_else(|_| "*".to_string());
-
                 'retry_loop: loop {
+                    let request = JsWalletRequest::LedgerSign {
+                        path: path.clone(),
+                        message_to_sign: message.to_vec(),
+                        id,
+                        mode: ledger_mode(),
+                    };
+                    let js_value = serde_wasm_bindgen::to_value(&request).unwrap();
+                    let origin = window()
+                        .location()
+                        .origin()
+                        .unwrap_or_else(|_| "*".to_string());
                     let _ = window().post_message(&js_value, &origin);
                     context
                         .ledger_signing_state

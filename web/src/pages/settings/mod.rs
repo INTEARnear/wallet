@@ -25,7 +25,7 @@ pub use developer::DeveloperSettings;
 pub use developer_create_token::DeveloperCreateToken;
 pub use developer_sandbox::DeveloperSandbox;
 use near_min_api::types::AccountId;
-pub use preferences::{PreferencesSettings, SLIPPAGE_PRESETS, ToggleSwitch};
+pub use preferences::{LedgerSelector, PreferencesSettings, SLIPPAGE_PRESETS, ToggleSwitch};
 pub use security::SecuritySettings;
 pub use security_log::SecurityLogPage;
 use web_sys::{ScrollBehavior, ScrollToOptions};

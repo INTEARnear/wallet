@@ -10,6 +10,7 @@ use crate::contexts::accounts_context::format_ledger_error;
 use crate::contexts::{
     account_selector_context::AccountSelectorContext,
     accounts_context::{AccountsContext, SecretKeyHolder},
+    config_context::{ConfigContext, LedgerMode},
     modal_context::ModalContext,
     network_context::{Network, NetworkContext},
     rpc_context::RpcContext,
@@ -216,15 +217,19 @@ pub enum JsWalletRequest {
     RequestSolanaWalletSignature {
         message_to_sign: String,
     },
-    LedgerConnect,
+    LedgerConnect {
+        mode: LedgerMode,
+    },
     LedgerGetPublicKey {
         path: String,
+        mode: LedgerMode,
     },
     #[serde(rename_all = "camelCase")]
     LedgerSign {
         path: String,
         message_to_sign: Vec<u8>,
         id: u32,
+        mode: LedgerMode,
     },
     ChatwootOpen {
         account_id: AccountId,
@@ -480,6 +485,7 @@ pub fn AccountSettings() -> impl IntoView {
     let (checking_keys, set_checking_keys) = signal(false);
     let (terminating_sessions, set_terminating_sessions) = signal(false);
     let ModalContext { modal } = expect_context::<ModalContext>();
+    let config_context = expect_context::<ConfigContext>();
 
     let on_path_change = move || {
         set_ledger_current_key_data.set(None);
@@ -502,7 +508,8 @@ pub fn AccountSettings() -> impl IntoView {
         }
         set_ledger_connection_in_progress(true);
         set_ledger_error.set(None);
-        let request = JsWalletRequest::LedgerConnect;
+        let ledger_mode = config_context.config.get_untracked().ledger_mode;
+        let request = JsWalletRequest::LedgerConnect { mode: ledger_mode };
         match serde_wasm_bindgen::to_value(&request) {
             Ok(js_value) => {
                 let origin = window()
@@ -1530,32 +1537,38 @@ pub fn AccountSettings() -> impl IntoView {
                                                 set_ledger_current_key_data.set(None);
                                                 set_ledger_error.set(None);
                                                 let path = ledger_input_hd_path_input.get_untracked();
+                                                let ledger_mode = config_context
+                                                    .config
+                                                    .get_untracked()
+                                                    .ledger_mode;
                                                 let request = JsWalletRequest::LedgerGetPublicKey {
                                                     path,
+                                                    mode: ledger_mode,
                                                 };
-                                                match serde_wasm_bindgen::to_value(
-                                                    &request,
-                                                ) { Ok(js_value) => {
-                                                    let origin = window()
-                                                        .location()
-                                                        .origin()
-                                                        .unwrap_or_else(|_| "*".to_string());
-                                                    if window().post_message(&js_value, &origin).is_err() {
+                                                match serde_wasm_bindgen::to_value(&request) {
+                                                    Ok(js_value) => {
+                                                        let origin = window()
+                                                            .location()
+                                                            .origin()
+                                                            .unwrap_or_else(|_| "*".to_string());
+                                                        if window().post_message(&js_value, &origin).is_err() {
+                                                            set_ledger_error
+                                                                .set(
+                                                                    Some("Failed to send Ledger public key request".to_string()),
+                                                                );
+                                                            set_ledger_getting_public_key(false);
+                                                        }
+                                                    }
+                                                    _ => {
                                                         set_ledger_error
                                                             .set(
-                                                                Some("Failed to send Ledger public key request".to_string()),
+                                                                Some(
+                                                                    "Failed to serialize Ledger public key request".to_string(),
+                                                                ),
                                                             );
                                                         set_ledger_getting_public_key(false);
                                                     }
-                                                } _ => {
-                                                    set_ledger_error
-                                                        .set(
-                                                            Some(
-                                                                "Failed to serialize Ledger public key request".to_string(),
-                                                            ),
-                                                        );
-                                                    set_ledger_getting_public_key(false);
-                                                }}
+                                                }
                                             }
                                             class="w-full flex items-center justify-center gap-2 p-4 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 transition-colors font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                             disabled=move || ledger_getting_public_key.get()
@@ -2054,21 +2067,22 @@ pub fn AccountSettings() -> impl IntoView {
                                                                     let request = JsWalletRequest::RequestEthereumWalletSignature {
                                                                         message_to_sign: message,
                                                                     };
-                                                                    match serde_wasm_bindgen::to_value(
-                                                                        &request,
-                                                                    ) { Ok(js_value) => {
-                                                                        let origin = window()
-                                                                            .location()
-                                                                            .origin()
-                                                                            .unwrap_or_else(|_| "*".to_string());
-                                                                        if window().post_message(&js_value, &origin).is_err() {
-                                                                            log::error!("Failed to send signature request");
+                                                                    match serde_wasm_bindgen::to_value(&request) {
+                                                                        Ok(js_value) => {
+                                                                            let origin = window()
+                                                                                .location()
+                                                                                .origin()
+                                                                                .unwrap_or_else(|_| "*".to_string());
+                                                                            if window().post_message(&js_value, &origin).is_err() {
+                                                                                log::error!("Failed to send signature request");
+                                                                                set_recovery_change_in_progress(false);
+                                                                            }
+                                                                        }
+                                                                        _ => {
+                                                                            log::error!("Failed to serialize signature request");
                                                                             set_recovery_change_in_progress(false);
                                                                         }
-                                                                    } _ => {
-                                                                        log::error!("Failed to serialize signature request");
-                                                                        set_recovery_change_in_progress(false);
-                                                                    }}
+                                                                    }
                                                                 }
                                                             }
                                                         }
@@ -2260,21 +2274,22 @@ pub fn AccountSettings() -> impl IntoView {
                                                                     let request = JsWalletRequest::RequestSolanaWalletSignature {
                                                                         message_to_sign: message,
                                                                     };
-                                                                    match serde_wasm_bindgen::to_value(
-                                                                        &request,
-                                                                    ) { Ok(js_value) => {
-                                                                        let origin = window()
-                                                                            .location()
-                                                                            .origin()
-                                                                            .unwrap_or_else(|_| "*".to_string());
-                                                                        if window().post_message(&js_value, &origin).is_err() {
-                                                                            log::error!("Failed to send Solana signature request");
+                                                                    match serde_wasm_bindgen::to_value(&request) {
+                                                                        Ok(js_value) => {
+                                                                            let origin = window()
+                                                                                .location()
+                                                                                .origin()
+                                                                                .unwrap_or_else(|_| "*".to_string());
+                                                                            if window().post_message(&js_value, &origin).is_err() {
+                                                                                log::error!("Failed to send Solana signature request");
+                                                                                set_recovery_change_in_progress(false);
+                                                                            }
+                                                                        }
+                                                                        _ => {
+                                                                            log::error!("Failed to serialize Solana signature request");
                                                                             set_recovery_change_in_progress(false);
                                                                         }
-                                                                    } _ => {
-                                                                        log::error!("Failed to serialize Solana signature request");
-                                                                        set_recovery_change_in_progress(false);
-                                                                    }}
+                                                                    }
                                                                 }
                                                             }
                                                         }

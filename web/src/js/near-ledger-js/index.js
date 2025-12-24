@@ -24,8 +24,9 @@ const SIGN_MESSAGE = 7;
 const SIGN_META_TRANSACTION = 8;
 
 const DEFAULT_PATH = "44'/397'/0'/0'/1'";
-export async function createClient(transport) {
+export async function createClient(transport, mode) {
     return {
+        mode,
         transport,
         async getVersion() {
             const response = await this.transport.send(0x80, 6, 0, 0);

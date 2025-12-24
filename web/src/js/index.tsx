@@ -94,16 +94,20 @@ document.addEventListener('touchend', handleTouchEnd, { passive: true });
 
 // Ledger bindings
 
-function getLedgerClient() {
-    return (globalThis as any).ledgerClient;
+function getLedgerClient(mode: string) {
+    const ledgerClient = (globalThis as any).ledgerClient;
+    if (!ledgerClient || ledgerClient.mode !== mode) {
+        return null;
+    }
+    return ledgerClient;
 }
 
 function setLedgerClient(ledgerClient: any) {
     (globalThis as any).ledgerClient = ledgerClient;
 }
 
-async function connectLedger() {
-    const transport = await getSupportedLedgerTransport()
+async function connectLedger(mode: string) {
+    const transport = await getSupportedLedgerTransport(mode)
         .catch(error => {
             console.error('Error getting supported ledger transport: ', JSON.stringify(error))
             throw error.name;
@@ -112,7 +116,7 @@ async function connectLedger() {
         return;
     }
     (transport as any).setScrambleKey?.("NEAR")
-    const ledgerClient = await createLedgerClient(transport)
+    const ledgerClient = await createLedgerClient(transport, mode)
         .catch(error => {
             console.error('Error connecting to Ledger device: ', JSON.stringify(error))
             throw error.statusCode ?? error.name;
@@ -134,7 +138,8 @@ window.addEventListener('message', async (event) => {
     } catch {
     }
     if (data.type === 'ledger-connect') {
-        const localLedgerClient = await connectLedger()
+        const mode = data.mode;
+        const localLedgerClient = await connectLedger(mode)
             .catch(error => {
                 window.postMessage({ type: 'ledger-connect-error', error }, window.location.origin);
                 return null;
@@ -146,9 +151,10 @@ window.addEventListener('message', async (event) => {
         setLedgerClient(localLedgerClient);
         window.postMessage({ type: 'ledger-connected' }, window.location.origin)
     } else if (data.type === 'ledger-get-public-key') {
-        let localLedgerClient = getLedgerClient();
+        const mode = data.mode;
+        let localLedgerClient = getLedgerClient(mode);
         if (!localLedgerClient) {
-            localLedgerClient = await connectLedger()
+            localLedgerClient = await connectLedger(mode)
                 .catch(error => {
                     window.postMessage({ type: 'ledger-get-public-key-error', error: error }, window.location.origin);
                     return null;
@@ -177,9 +183,10 @@ window.addEventListener('message', async (event) => {
             key: [...key],
         }, window.location.origin)
     } else if (data.type === 'ledger-sign') {
-        let localLedgerClient = getLedgerClient();
+        const mode = data.mode;
+        let localLedgerClient = getLedgerClient(mode);
         if (!localLedgerClient) {
-            localLedgerClient = await connectLedger()
+            localLedgerClient = await connectLedger(mode)
                 .catch(error => {
                     window.postMessage({ type: 'ledger-sign-error', error: error }, window.location.origin);
                     return null;

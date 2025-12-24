@@ -86,15 +86,55 @@ async function createSupportedTransport() {
 }
 
 export const setDebugLogging = (value) => ENABLE_DEBUG_LOGGING = value;
-export async function getSupportedTransport() {
-    const [errors, transport] = await createSupportedTransport();
 
-    if (errors && !transport) {
-        console.error('Failed to initialize ledger transport', { errors });
-        throw errors[errors.length - 1];
+export async function getSupportedTransport(mode) {
+    console.log('Using Ledger mode', mode);
+    if (mode === 'Disabled') {
+        const err = new Error('Please choose a Ledger connection method.');
+        err.name = 'LedgerDisabled';
+        throw err;
     }
 
-    if (transport) { debugLog('Ledger transport created!', transport); }
+    debugLog(`Attempting to create specific transport: ${mode}`);
 
-    return transport;
+    let transport = null;
+    try {
+        if (mode === 'WebHID') {
+            const isSupported = await isWebHidSupported();
+            if (!isSupported) {
+                const err = new Error('WebHID is not supported in this browser.');
+                err.name = 'WebHIDNotSupported';
+                throw err;
+            }
+            transport = await LedgerTransportWebHid.create();
+        } else if (mode === 'WebUSB') {
+            const isSupported = await isWebUsbSupported();
+            if (!isSupported) {
+                const err = new Error('WebUSB is not supported in this browser.');
+                err.name = 'WebUSBNotSupported';
+                throw err;
+            }
+            transport = await LedgerTransportWebUsb.create();
+        } else if (mode === 'WebBLE') {
+            const isSupported = await isWebBleSupported();
+            if (!isSupported) {
+                const err = new Error('WebBLE is not supported in this browser.');
+                err.name = 'WebBLENotSupported';
+                throw err;
+            }
+            transport = await LedgerTransportWebBle.create();
+        } else {
+            const err = new Error(`Unknown transport mode: ${mode}`);
+            err.name = 'UnknownTransportMode';
+            throw err;
+        }
+
+        if (transport) {
+            debugLog(`Successfully created ${mode} transport!`, transport);
+            return transport;
+        }
+    } catch (err) {
+        console.error(`Failed to create ${mode} transport:`, err);
+        throw err;
+    }
 }

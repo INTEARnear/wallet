@@ -22,6 +22,7 @@ use std::collections::VecDeque;
 use std::time::Duration;
 
 use crate::contexts::accounts_context::Account;
+use crate::contexts::config_context::{ConfigContext, LedgerMode};
 use crate::contexts::network_context::Network;
 use crate::utils::{NEP413Payload, sign_nep366, sign_nep413};
 
@@ -172,6 +173,7 @@ impl TransactionType {
         signer: Account,
         rpc_client: &'a RpcClient,
         accounts_context: AccountsContext,
+        ledger_mode: impl Fn() -> LedgerMode,
     ) -> Result<TransactionResult<'a>, String> {
         match self {
             TransactionType::NearTransaction {
@@ -215,7 +217,7 @@ impl TransactionType {
                 let bytes = borsh::to_vec(&tx).expect("Failed to serialize");
                 let Ok(signature) = signer
                     .secret_key
-                    .hash_and_sign(&bytes, accounts_context)
+                    .hash_and_sign(&bytes, accounts_context, ledger_mode)
                     .await
                 else {
                     return Err("User cancelled signing".to_string());
@@ -247,6 +249,7 @@ impl TransactionType {
                         callback_url: None,
                     },
                     accounts_context,
+                    ledger_mode,
                 )
                 .await
                 else {
@@ -343,8 +346,13 @@ impl TransactionType {
                     max_block_height: block_height + 100,
                     public_key: signer.secret_key.public_key(),
                 };
-                let Ok(signature) =
-                    sign_nep366(signer.secret_key, &delegate_action, accounts_context).await
+                let Ok(signature) = sign_nep366(
+                    signer.secret_key,
+                    &delegate_action,
+                    accounts_context,
+                    ledger_mode,
+                )
+                .await
                 else {
                     return Err("User cancelled signing".to_string());
                 };
@@ -655,6 +663,7 @@ pub fn provide_transaction_queue_context() {
     let (current_index, set_current_index) = signal(0);
     let rpc_client = expect_context::<RpcContext>();
     let accounts_context = expect_context::<AccountsContext>();
+    let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     let signing_tx_id = RwSignal::new(None);
 
     // Worker effect that processes the queue
@@ -702,7 +711,9 @@ pub fn provide_transaction_queue_context() {
                         signing_tx_id.set(Some(transaction.id));
                         let pending_tx = match transaction
                             .transaction_type
-                            .execute(account, &rpc_client, accounts_context)
+                            .execute(account, &rpc_client, accounts_context, move || {
+                                config.get_untracked().ledger_mode
+                            })
                             .await
                         {
                             Ok(tx) => tx,

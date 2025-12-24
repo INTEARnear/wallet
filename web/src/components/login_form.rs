@@ -19,8 +19,10 @@ use crate::contexts::account_selector_context::AccountSelectorContext;
 use crate::contexts::accounts_context::{
     Account, AccountsContext, SecretKeyHolder, format_ledger_error,
 };
+use crate::contexts::config_context::ConfigContext;
 use crate::contexts::network_context::Network;
 use crate::contexts::security_log_context::add_security_log;
+use crate::pages::settings::LedgerSelector;
 use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -104,6 +106,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
         signal::<Option<solana_pubkey::Pubkey>>(None);
     let (generated_mnemonic, set_generated_mnemonic) = signal::<Option<bip39::Mnemonic>>(None);
     let (import_in_progress, set_import_in_progress) = signal(false);
+    let config_context = expect_context::<ConfigContext>();
     let (ledger_connection_in_progress, set_ledger_connection_in_progress) = signal(false);
     let (ledger_connected, set_ledger_connected) = signal(false);
     let (ledger_input_hd_path_input, set_ledger_hd_path_input) =
@@ -820,10 +823,12 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
         if ledger_connection_in_progress.get_untracked() {
             return;
         }
+        set_error.set(None);
 
         set_ledger_connection_in_progress(true);
 
-        let request = JsWalletRequest::LedgerConnect;
+        let ledger_mode = config_context.config.get_untracked().ledger_mode;
+        let request = JsWalletRequest::LedgerConnect { mode: ledger_mode };
 
         match serde_wasm_bindgen::to_value(&request) {
             Ok(js_value) => {
@@ -865,7 +870,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
             }} <div class="flex items-center justify-center min-h-[calc(100%-40px)]">
                 <div class="bg-neutral-950 p-8 rounded-xl w-full max-w-md">
                     <h2 class="text-white text-2xl font-semibold mb-6">
-                        Log in with Existing Account
+                        "Log in with Existing Account"
                     </h2>
 
                     // Always show login method selection buttons
@@ -1294,18 +1299,19 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                         {
                                                                             let network = network.clone();
                                                                             move || {
-                                                                            if network == Network::Testnet {
-                                                                                view! {
-                                                                                    <p class="text-yellow-500 text-sm mt-1 font-medium">
-                                                                                        "This is a "<b>"testnet"</b>
-                                                                                        account. Tokens sent to this account are not real and hold no value
-                                                                                    </p>
+                                                                                if network == Network::Testnet {
+                                                                                    view! {
+                                                                                        <p class="text-yellow-500 text-sm mt-1 font-medium">
+                                                                                            "This is a "<b>"testnet"</b>
+                                                                                            account. Tokens sent to this account are not real and hold no value
+                                                                                        </p>
+                                                                                    }
+                                                                                        .into_any()
+                                                                                } else {
+                                                                                    ().into_any()
                                                                                 }
-                                                                                    .into_any()
-                                                                            } else {
-                                                                                ().into_any()
                                                                             }
-                                                                        }}
+                                                                        }
                                                                     </button>
                                                                 }
                                                             })
@@ -1469,15 +1475,16 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                         style={
                                                                             let network = network.clone();
                                                                             move || {
-                                                                            if selected_accounts
-                                                                                .get()
-                                                                                .contains(&(account_id.clone(), network.clone()))
-                                                                            {
-                                                                                "background-color: rgb(38 38 38); border-color: rgb(59 130 246);"
-                                                                            } else {
-                                                                                "background-color: rgb(23 23 23 / 0.5);"
+                                                                                if selected_accounts
+                                                                                    .get()
+                                                                                    .contains(&(account_id.clone(), network.clone()))
+                                                                                {
+                                                                                    "background-color: rgb(38 38 38); border-color: rgb(59 130 246);"
+                                                                                } else {
+                                                                                    "background-color: rgb(23 23 23 / 0.5);"
+                                                                                }
                                                                             }
-                                                                        }}
+                                                                        }
                                                                         on:click=move |_| {
                                                                             set_selected_accounts
                                                                                 .set(vec![(account_id2.clone(), network.clone())]);
@@ -1492,18 +1499,19 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                         {
                                                                             let network = network.clone();
                                                                             move || {
-                                                                            if network == Network::Testnet {
-                                                                                view! {
-                                                                                    <p class="text-yellow-500 text-sm mt-1 font-medium">
-                                                                                        "This is a " <b>"testnet"</b>
-                                                                                        " account. Tokens sent to this account are not real and hold no value"
-                                                                                    </p>
+                                                                                if network == Network::Testnet {
+                                                                                    view! {
+                                                                                        <p class="text-yellow-500 text-sm mt-1 font-medium">
+                                                                                            "This is a " <b>"testnet"</b>
+                                                                                            " account. Tokens sent to this account are not real and hold no value"
+                                                                                        </p>
+                                                                                    }
+                                                                                        .into_any()
+                                                                                } else {
+                                                                                    ().into_any()
                                                                                 }
-                                                                                    .into_any()
-                                                                            } else {
-                                                                                ().into_any()
                                                                             }
-                                                                        }}
+                                                                        }
                                                                     </button>
                                                                 }
                                                             })
@@ -1546,23 +1554,24 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                                 let request = JsWalletRequest::RequestEthereumWalletSignature {
                                                                                     message_to_sign: message,
                                                                                 };
-                                                                                match serde_wasm_bindgen::to_value(
-                                                                                    &request,
-                                                                                ) { Ok(js_value) => {
-                                                                                    let origin = window()
-                                                                                        .location()
-                                                                                        .origin()
-                                                                                        .unwrap_or_else(|_| "*".to_string());
-                                                                                    if window().post_message(&js_value, &origin).is_err() {
-                                                                                        log::error!("Failed to send signature request");
+                                                                                match serde_wasm_bindgen::to_value(&request) {
+                                                                                    Ok(js_value) => {
+                                                                                        let origin = window()
+                                                                                            .location()
+                                                                                            .origin()
+                                                                                            .unwrap_or_else(|_| "*".to_string());
+                                                                                        if window().post_message(&js_value, &origin).is_err() {
+                                                                                            log::error!("Failed to send signature request");
+                                                                                            set_error
+                                                                                                .set(Some("Failed to request signature".to_string()));
+                                                                                        }
+                                                                                    }
+                                                                                    _ => {
+                                                                                        log::error!("Failed to serialize signature request");
                                                                                         set_error
                                                                                             .set(Some("Failed to request signature".to_string()));
                                                                                     }
-                                                                                } _ => {
-                                                                                    log::error!("Failed to serialize signature request");
-                                                                                    set_error
-                                                                                        .set(Some("Failed to request signature".to_string()));
-                                                                                }}
+                                                                                }
                                                                             } else {
                                                                                 set_error
                                                                                     .set(
@@ -1708,15 +1717,16 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                         style={
                                                                             let network = network.clone();
                                                                             move || {
-                                                                            if selected_accounts
-                                                                                .get()
-                                                                                .contains(&(account_id.clone(), network.clone()))
-                                                                            {
-                                                                                "background-color: rgb(38 38 38); border-color: rgb(59 130 246);"
-                                                                            } else {
-                                                                                "background-color: rgb(23 23 23 / 0.5);"
+                                                                                if selected_accounts
+                                                                                    .get()
+                                                                                    .contains(&(account_id.clone(), network.clone()))
+                                                                                {
+                                                                                    "background-color: rgb(38 38 38); border-color: rgb(59 130 246);"
+                                                                                } else {
+                                                                                    "background-color: rgb(23 23 23 / 0.5);"
+                                                                                }
                                                                             }
-                                                                        }}
+                                                                        }
                                                                         on:click=move |_| {
                                                                             set_selected_accounts
                                                                                 .set(vec![(account_id2.clone(), network.clone())]);
@@ -1731,18 +1741,19 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                         {
                                                                             let network = network.clone();
                                                                             move || {
-                                                                            if network == Network::Testnet {
-                                                                                view! {
-                                                                                    <p class="text-yellow-500 text-sm mt-1 font-medium">
-                                                                                        "This is a " <b>"testnet"</b>
-                                                                                        " account. Tokens sent to this account are not real and hold no value"
-                                                                                    </p>
+                                                                                if network == Network::Testnet {
+                                                                                    view! {
+                                                                                        <p class="text-yellow-500 text-sm mt-1 font-medium">
+                                                                                            "This is a " <b>"testnet"</b>
+                                                                                            " account. Tokens sent to this account are not real and hold no value"
+                                                                                        </p>
+                                                                                    }
+                                                                                        .into_any()
+                                                                                } else {
+                                                                                    ().into_any()
                                                                                 }
-                                                                                    .into_any()
-                                                                            } else {
-                                                                                ().into_any()
                                                                             }
-                                                                        }}
+                                                                        }
                                                                     </button>
                                                                 }
                                                             })
@@ -1785,23 +1796,24 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                                 let request = JsWalletRequest::RequestSolanaWalletSignature {
                                                                                     message_to_sign: message,
                                                                                 };
-                                                                                match serde_wasm_bindgen::to_value(
-                                                                                    &request,
-                                                                                ) { Ok(js_value) => {
-                                                                                    let origin = window()
-                                                                                        .location()
-                                                                                        .origin()
-                                                                                        .unwrap_or_else(|_| "*".to_string());
-                                                                                    if window().post_message(&js_value, &origin).is_err() {
-                                                                                        log::error!("Failed to send signature request");
+                                                                                match serde_wasm_bindgen::to_value(&request) {
+                                                                                    Ok(js_value) => {
+                                                                                        let origin = window()
+                                                                                            .location()
+                                                                                            .origin()
+                                                                                            .unwrap_or_else(|_| "*".to_string());
+                                                                                        if window().post_message(&js_value, &origin).is_err() {
+                                                                                            log::error!("Failed to send signature request");
+                                                                                            set_error
+                                                                                                .set(Some("Failed to request signature".to_string()));
+                                                                                        }
+                                                                                    }
+                                                                                    _ => {
+                                                                                        log::error!("Failed to serialize signature request");
                                                                                         set_error
                                                                                             .set(Some("Failed to request signature".to_string()));
                                                                                     }
-                                                                                } _ => {
-                                                                                    log::error!("Failed to serialize signature request");
-                                                                                    set_error
-                                                                                        .set(Some("Failed to request signature".to_string()));
-                                                                                }}
+                                                                                }
                                                                             } else {
                                                                                 set_error
                                                                                     .set(
@@ -1852,24 +1864,13 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                         }
                         LoginMethod::Ledger => {
                             view! {
-                                <div class="space-y-6">
+                                <div class="space-y-2">
                                     <div class="text-center py-2">
-                                        <Show when=move || !ledger_connected()>
-                                            <div class="w-16 h-16 rounded-full bg-purple-500/20 flex items-center justify-center mx-auto mb-4">
-                                                <Icon
-                                                    icon=icondata::LuWallet
-                                                    width="32"
-                                                    height="32"
-                                                    attr:class="text-purple-400"
-                                                />
-                                            </div>
-                                            <h3 class="text-white text-lg font-medium mb-2">
-                                                "Ledger"
-                                            </h3>
-                                            <p class="text-neutral-400 mb-4">
-                                                "Connect your Ledger to continue"
-                                            </p>
-                                        </Show>
+                                        <div class="mb-4">
+                                            <LedgerSelector on_change=Callback::new(move |_| {
+                                                request_ledger_connection();
+                                            }) />
+                                        </div>
 
                                         {move || {
                                             if ledger_connected.get() {
@@ -1895,31 +1896,38 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                             }
                                                             disabled=move || ledger_getting_public_key.get()
                                                             on:click=move |_| {
+                                                                set_error.set(None);
                                                                 set_ledger_getting_public_key(true);
                                                                 set_available_accounts.set(vec![]);
                                                                 set_selected_accounts.set(vec![]);
                                                                 set_ledger_current_key_data.set(None);
                                                                 let path = ledger_input_hd_path_input.get_untracked();
+                                                                let ledger_mode = config_context
+                                                                    .config
+                                                                    .get_untracked()
+                                                                    .ledger_mode;
                                                                 let request = JsWalletRequest::LedgerGetPublicKey {
                                                                     path,
+                                                                    mode: ledger_mode,
                                                                 };
-                                                                match serde_wasm_bindgen::to_value(
-                                                                    &request,
-                                                                ) { Ok(js_value) => {
-                                                                    let origin = window()
-                                                                        .location()
-                                                                        .origin()
-                                                                        .unwrap_or_else(|_| "*".to_string());
-                                                                    if window().post_message(&js_value, &origin).is_err() {
-                                                                        log::error!("Failed to send Ledger public key request");
+                                                                match serde_wasm_bindgen::to_value(&request) {
+                                                                    Ok(js_value) => {
+                                                                        let origin = window()
+                                                                            .location()
+                                                                            .origin()
+                                                                            .unwrap_or_else(|_| "*".to_string());
+                                                                        if window().post_message(&js_value, &origin).is_err() {
+                                                                            log::error!("Failed to send Ledger public key request");
+                                                                            set_ledger_getting_public_key(false);
+                                                                        }
+                                                                    }
+                                                                    _ => {
+                                                                        log::error!(
+                                                                            "Failed to serialize Ledger public key request"
+                                                                        );
                                                                         set_ledger_getting_public_key(false);
                                                                     }
-                                                                } _ => {
-                                                                    log::error!(
-                                                                        "Failed to serialize Ledger public key request"
-                                                                    );
-                                                                    set_ledger_getting_public_key(false);
-                                                                }}
+                                                                }
                                                             }
                                                         >
                                                             <span class="relative flex items-center justify-center gap-2">
@@ -1954,7 +1962,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                     {move || {
                                         if let Some(err) = error.get() {
                                             view! {
-                                                <p class="text-red-500 text-sm mt-2 font-medium">{err}</p>
+                                                <p class="text-red-400 text-sm font-medium">{err}</p>
                                             }
                                                 .into_any()
                                         } else {
@@ -1982,35 +1990,38 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                         style={
                                                                             let network = network.clone();
                                                                             move || {
-                                                                            if selected_accounts
-                                                                                .get()
-                                                                                .contains(&(account_id.clone(), network.clone()))
-                                                                            {
-                                                                                "background-color: rgb(38 38 38); border-color: rgb(59 130 246);"
-                                                                            } else {
-                                                                                "background-color: rgb(23 23 23 / 0.5);"
+                                                                                if selected_accounts
+                                                                                    .get()
+                                                                                    .contains(&(account_id.clone(), network.clone()))
+                                                                                {
+                                                                                    "background-color: rgb(38 38 38); border-color: rgb(59 130 246);"
+                                                                                } else {
+                                                                                    "background-color: rgb(23 23 23 / 0.5);"
+                                                                                }
                                                                             }
-                                                                        }}
+                                                                        }
                                                                         on:click={
                                                                             let network = network.clone();
                                                                             move |_| {
-                                                                            if selected_accounts
-                                                                                .get()
-                                                                                .contains(&(account_id2.clone(), network.clone()))
-                                                                            {
-                                                                                set_selected_accounts
-                                                                                    .update(|accounts| {
-                                                                                        accounts
-                                                                                            .retain(|pair| pair != &(account_id2.clone(), network.clone()));
-                                                                                    });
-                                                                            } else {
-                                                                                set_selected_accounts
-                                                                                    .update(|accounts| {
-                                                                                        accounts.push((account_id2.clone(), network.clone()));
-                                                                                    });
+                                                                                if selected_accounts
+                                                                                    .get()
+                                                                                    .contains(&(account_id2.clone(), network.clone()))
+                                                                                {
+                                                                                    set_selected_accounts
+                                                                                        .update(|accounts| {
+                                                                                            accounts
+                                                                                                .retain(|pair| {
+                                                                                                    pair != &(account_id2.clone(), network.clone())
+                                                                                                });
+                                                                                        });
+                                                                                } else {
+                                                                                    set_selected_accounts
+                                                                                        .update(|accounts| {
+                                                                                            accounts.push((account_id2.clone(), network.clone()));
+                                                                                        });
+                                                                                }
                                                                             }
                                                                         }
-                                                                    }
                                                                     >
                                                                         <div class="text-white font-medium transition-colors duration-200">
                                                                             {account_id_str}
@@ -2021,25 +2032,26 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                         {
                                                                             let network = network.clone();
                                                                             move || {
-                                                                            if network == Network::Testnet {
-                                                                                view! {
-                                                                                    <p class="text-yellow-500 text-sm mt-1 font-medium">
-                                                                                        "This is a " <b>"testnet"</b>
-                                                                                        " account. Tokens sent to this account are not real and hold no value"
-                                                                                    </p>
+                                                                                if network == Network::Testnet {
+                                                                                    view! {
+                                                                                        <p class="text-yellow-500 text-sm mt-1 font-medium">
+                                                                                            "This is a " <b>"testnet"</b>
+                                                                                            " account. Tokens sent to this account are not real and hold no value"
+                                                                                        </p>
+                                                                                    }
+                                                                                        .into_any()
+                                                                                } else {
+                                                                                    ().into_any()
                                                                                 }
-                                                                                    .into_any()
-                                                                            } else {
-                                                                                ().into_any()
                                                                             }
-                                                                        }}
+                                                                        }
                                                                     </button>
                                                                 }
                                                             })
                                                             .collect::<Vec<_>>()}
                                                     </div>
 
-                                                    <div class="flex gap-2">
+                                                    <div class="flex gap-2 mt-4">
                                                         <button
                                                             class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden"
                                                             style=move || {

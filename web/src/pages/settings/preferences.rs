@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use crate::contexts::config_context::{BackgroundGroup, ConfigContext, HiddenNft};
+use crate::contexts::config_context::{BackgroundGroup, ConfigContext, HiddenNft, LedgerMode};
 use crate::pages::swap::Slippage;
 use crate::utils::{is_android, is_tauri};
 use bigdecimal::{BigDecimal, FromPrimitive};
@@ -61,6 +61,61 @@ pub fn ToggleSwitch(
                     }
                 />
             </button>
+        </div>
+    }
+}
+
+#[component]
+pub fn LedgerSelector(#[prop(optional, into)] on_change: Option<Callback<()>>) -> impl IntoView {
+    let config_context = expect_context::<ConfigContext>();
+    let current_mode = Memo::new(move |_| config_context.config.get().ledger_mode);
+
+    view! {
+        <div class="bg-neutral-800 rounded-xl p-4 space-y-4">
+            <div class="text-sm text-gray-400 mb-3">
+                "Current: "
+                <span class="text-white font-medium">
+                    {move || current_mode.get().display_name()}
+                </span>
+            </div>
+
+            <div class="space-y-2">
+                {LedgerMode::all_variants()
+                    .iter()
+                    .copied()
+                    .map(|mode| {
+                        let is_selected = move || current_mode.get() == mode;
+                        view! {
+                            <button
+                                class="w-full flex items-center justify-between p-3 rounded-lg text-sm transition-colors cursor-pointer"
+                                style=move || {
+                                    if is_selected() {
+                                        "background-color: rgb(59 130 246); color: white;"
+                                    } else {
+                                        "background-color: rgb(64 64 64); color: rgb(209 213 219);"
+                                    }
+                                }
+                                on:click=move |_| {
+                                    config_context
+                                        .set_config
+                                        .update(|config| {
+                                            config.ledger_mode = mode;
+                                        });
+                                    if let Some(callback) = on_change {
+                                        callback.run(());
+                                    }
+                                }
+                            >
+                                <span>{mode.display_name()}</span>
+                            </button>
+                        }
+                    })
+                    .collect_view()}
+            </div>
+
+            <div class="text-sm text-gray-400">
+                "Select the connection method for your Ledger hardware wallet"
+            </div>
         </div>
     }
 }
@@ -211,8 +266,12 @@ pub fn PreferencesSettings() -> impl IntoView {
                 </Show>
             </div>
 
+            // Ledger hardware wallet settings
+            <div class="text-lg font-medium text-gray-300 mt-6">"Ledger Hardware Wallet"</div>
+            <LedgerSelector />
+
             // Slippage settings section
-            <div class="mt-6">
+            <div class="mt-2">
                 <div class="text-lg font-medium text-gray-300 mb-4">"Slippage Tolerance"</div>
                 <div class="bg-neutral-800 rounded-xl p-4 space-y-4">
                     <div class="text-sm text-gray-400 mb-3">

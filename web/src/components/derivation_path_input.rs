@@ -53,9 +53,7 @@ pub fn DerivationPathInput(
     view! {
         <div class="space-y-4 w-full">
             <div class="space-y-4">
-                <label class="block text-neutral-400 text-sm font-medium">
-                    "Derivation Path Parameters"
-                </label>
+                <div class="block text-neutral-400 text-sm font-medium">"Derivation Path"</div>
                 <div class="flex items-center gap-0 text-base text-neutral-400 select-none justify-center">
                     <span>"m/44'/397'/"</span>
                     <input
@@ -69,9 +67,10 @@ pub fn DerivationPathInput(
                         prop:value=move || ledger_account_number.get().to_string()
                         on:focus=move |ev| {
                             if let Some(target) = ev.target()
-                                && let Ok(input) = target.dyn_into::<web_sys::HtmlInputElement>() {
-                                    input.select();
-                                }
+                                && let Ok(input) = target.dyn_into::<web_sys::HtmlInputElement>()
+                            {
+                                input.select();
+                            }
                         }
                         on:paste=handle_paste
                         on:input=move |ev| {
@@ -101,9 +100,10 @@ pub fn DerivationPathInput(
                         prop:value=move || ledger_change_number.get().to_string()
                         on:focus=move |ev| {
                             if let Some(target) = ev.target()
-                                && let Ok(input) = target.dyn_into::<web_sys::HtmlInputElement>() {
-                                    input.select();
-                                }
+                                && let Ok(input) = target.dyn_into::<web_sys::HtmlInputElement>()
+                            {
+                                input.select();
+                            }
                         }
                         on:paste=handle_paste
                         on:input=move |ev| {
@@ -125,9 +125,10 @@ pub fn DerivationPathInput(
                         prop:value=move || ledger_address_number.get().to_string()
                         on:focus=move |ev| {
                             if let Some(target) = ev.target()
-                                && let Ok(input) = target.dyn_into::<web_sys::HtmlInputElement>() {
-                                    input.select();
-                                }
+                                && let Ok(input) = target.dyn_into::<web_sys::HtmlInputElement>()
+                            {
+                                input.select();
+                            }
                         }
                         on:paste=handle_paste
                         on:input=move |ev| {
