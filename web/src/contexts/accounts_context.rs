@@ -131,6 +131,9 @@ pub fn format_ledger_error(error: &serde_json::Value) -> String {
         serde_json::Value::String(s) if s == "TransportRaceCondition" => {
             "Please make sure your Ledger is currently not already signing another request. It should be saying 'Near app is ready'".to_string()
         }
+        serde_json::Value::String(s) if s == "NotSupportedError" => {
+            "Something went wrong. Please try again, or refresh the page.".to_string()
+        }
         _ => format!("Error: {}", error),
     }
 }
