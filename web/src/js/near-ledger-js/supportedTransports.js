@@ -18,7 +18,7 @@ class LedgerTransportWebBleAndroidFix extends LedgerTransportWebBle {
             let delayed = false;
             characteristic.writeValue = async (data) => {
               if (!delayed) {
-                await new Promise((resolve) => setTimeout(resolve, 250));
+                await new Promise((resolve) => setTimeout(resolve, 500));
                 delayed = true;
               }
               return writeValueOrig.call(characteristic, data);

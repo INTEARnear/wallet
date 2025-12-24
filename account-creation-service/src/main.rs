@@ -712,7 +712,7 @@ async fn swap_for_gas(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_millis() as u64;
-    let expiry_millis = current_time_millis + 15_000;
+    let expiry_millis = current_time_millis + 90_000;
     let inverse_route = get_routes(SwapRequest {
         token_in: TokenId::Near,
         token_out: TokenId::Nep141(payload.token_contract_id.clone()),
