@@ -124,7 +124,6 @@ impl BackgroundGroup {
 pub enum LedgerMode {
     #[default]
     Disabled,
-    WebHID,
     WebUSB,
     WebBLE,
 }
@@ -133,15 +132,13 @@ impl LedgerMode {
     pub fn display_name(&self) -> &'static str {
         match self {
             Self::Disabled => "None",
-            Self::WebHID => "USB",
-            Self::WebUSB => "USB (fallback)",
+            Self::WebUSB => "USB",
             Self::WebBLE => "Bluetooth",
         }
     }
 
     pub fn all_variants() -> &'static [Self] {
-        // removed WevUSB for now, idk if needed, WebHID support is pretty good
-        &[Self::WebHID, Self::WebBLE]
+        &[Self::WebUSB, Self::WebBLE]
     }
 }
 

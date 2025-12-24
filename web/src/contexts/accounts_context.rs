@@ -107,11 +107,26 @@ pub fn format_ledger_error(error: &serde_json::Value) -> String {
         serde_json::Value::String(s) if s == "WebBLENotSupported" => {
             "Bluetooth is not supported in this browser.".to_string()
         }
-        serde_json::Value::String(s) if s == "WebUSBNotSupported" => {
-            "USB (fallback) is not supported in this browser.".to_string()
+        serde_json::Value::String(s) if s == "WebBLENotSupportedIOS" => {
+            "Bluetooth Ledger connection is not supported on iOS devices. Please wait for our iOS app to be released in February 2026. Hint: You can always connect or disconnect Ledger from your account later, without having to create a new account.".to_string()
         }
-        serde_json::Value::String(s) if s == "WebHIDNotSupported" => {
+        serde_json::Value::String(s) if s == "WebBLENotSupportedFirefox" => {
+            "Bluetooth Ledger connection is not supported in Firefox. Please switch to a Chrome-based browser to use Bluetooth with your Ledger, or wait for our app to be released in February 2026. Hint: You can always connect or disconnect Ledger from your account later, without having to create a new account.".to_string()
+        }
+        serde_json::Value::String(s) if s == "WebBLENotSupportedSafari" => {
+            "Bluetooth Ledger connection is not supported in Safari. Please switch to a Chrome-based browser to use Bluetooth with your Ledger, or wait for our app to be released in February 2026. Hint: You can always connect or disconnect Ledger from your account later, without having to create a new account.".to_string()
+        }
+        serde_json::Value::String(s) if s == "WebUSBNotSupported" => {
             "USB is not supported in this browser.".to_string()
+        }
+        serde_json::Value::String(s) if s == "WebUSBNotSupportedIOS" => {
+            "USB Ledger connection is not supported on iOS devices. Please wait for our iOS app to be released in February 2026. Hint: You can always connect or disconnect Ledger from your account later, without having to create a new account.".to_string()
+        }
+        serde_json::Value::String(s) if s == "WebUSBNotSupportedFirefox" => {
+            "USB Ledger connection is not supported in Firefox. Please switch to a Chrome-based browser to use USB with your Ledger, or wait for our app to be released in February 2026. Hint: You can always connect or disconnect Ledger from your account later, without having to create a new account.".to_string()
+        }
+        serde_json::Value::String(s) if s == "WebUSBNotSupportedSafari" => {
+            "USB Ledger connection is not supported in Safari. Please switch to a Chrome-based browser to use USB with your Ledger, or wait for our app to be released in February 2026. Hint: You can always connect or disconnect Ledger from your account later, without having to create a new account.".to_string()
         }
         serde_json::Value::String(s) if s == "TransportRaceCondition" => {
             "Please make sure your Ledger is currently not already signing another request. It should be saying 'Near app is ready'".to_string()

@@ -1865,7 +1865,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                         LoginMethod::Ledger => {
                             view! {
                                 <div class="space-y-2">
-                                    <div class="text-center py-2">
+                                    <div class="text-center">
                                         <div class="mb-4">
                                             <LedgerSelector on_change=Callback::new(move |_| {
                                                 request_ledger_connection();

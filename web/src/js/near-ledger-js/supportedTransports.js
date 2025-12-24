@@ -7,6 +7,20 @@ const debugLog = (...args) => {
     ENABLE_DEBUG_LOGGING && console.log(...args)
 };
 
+function isIOS() {
+    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+    return /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream;
+}
+
+function isFirefox() {
+    return navigator.userAgent.toLowerCase().indexOf('firefox') > -1;
+}
+
+function isSafari() {
+    const userAgent = navigator.userAgent.toLowerCase();
+    return userAgent.includes('safari') && !userAgent.includes('chrome') && !userAgent.includes('chromium');
+}
+
 async function isWebHidSupported() {
     try {
         const isSupported = await LedgerTransportWebHid.isSupported();
@@ -110,16 +124,40 @@ export async function getSupportedTransport(mode) {
         } else if (mode === 'WebUSB') {
             const isSupported = await isWebUsbSupported();
             if (!isSupported) {
-                const err = new Error('WebUSB is not supported in this browser.');
-                err.name = 'WebUSBNotSupported';
+                let err;
+                if (isIOS()) {
+                    err = new Error('WebUSB is not supported on iOS devices.');
+                    err.name = 'WebUSBNotSupportedIOS';
+                } else if (isFirefox()) {
+                    err = new Error('WebUSB is not supported in Firefox.');
+                    err.name = 'WebUSBNotSupportedFirefox';
+                } else if (isSafari()) {
+                    err = new Error('WebUSB is not supported in Safari.');
+                    err.name = 'WebUSBNotSupportedSafari';
+                } else {
+                    err = new Error('WebUSB is not supported in this browser.');
+                    err.name = 'WebUSBNotSupported';
+                }
                 throw err;
             }
             transport = await LedgerTransportWebUsb.create();
         } else if (mode === 'WebBLE') {
             const isSupported = await isWebBleSupported();
             if (!isSupported) {
-                const err = new Error('WebBLE is not supported in this browser.');
-                err.name = 'WebBLENotSupported';
+                let err;
+                if (isIOS()) {
+                    err = new Error('WebBLE is not supported on iOS devices.');
+                    err.name = 'WebBLENotSupportedIOS';
+                } else if (isFirefox()) {
+                    err = new Error('WebBLE is not supported in Firefox.');
+                    err.name = 'WebBLENotSupportedFirefox';
+                } else if (isSafari()) {
+                    err = new Error('WebBLE is not supported in Safari.');
+                    err.name = 'WebBLENotSupportedSafari';
+                } else {
+                    err = new Error('WebBLE is not supported in this browser.');
+                    err.name = 'WebBLENotSupported';
+                }
                 throw err;
             }
             transport = await LedgerTransportWebBle.create();

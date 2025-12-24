@@ -209,7 +209,7 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                                                                         "Please confirm the transaction on your Ledger device."
                                                                     </p>
                                                                     <button
-                                                                        class="px-3 py-1 text-xs bg-neutral-700 rounded-md hover:bg-neutral-600 transition-colors cursor-pointer"
+                                                                        class="p-2 text-sm bg-neutral-700 rounded-md hover:bg-neutral-600 transition-colors cursor-pointer grow w-full"
                                                                         on:click=move |_| {
                                                                             ledger_signing_state
                                                                                 .set(LedgerSigningState::WaitingForSignature {
@@ -233,11 +233,18 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                                                                         attr:class="text-red-500"
                                                                     />
                                                                     <p class="text-sm font-bold">"Ledger Error"</p>
-                                                                    <p class="text-xs max-w-xs break-words text-red-400">{error.clone()}</p>
-                                                                    <LedgerSelector />
-                                                                    <div class="flex gap-4">
+                                                                    <p class="text-xs max-w-xs break-words text-red-400">
+                                                                        {error.clone()}
+                                                                    </p>
+                                                                    <LedgerSelector on_change=Callback::new(move |_| {
+                                                                        ledger_signing_state
+                                                                            .set(LedgerSigningState::WaitingForSignature {
+                                                                                id,
+                                                                            });
+                                                                    }) />
+                                                                    <div class="flex gap-2 w-full justify-center">
                                                                         <button
-                                                                            class="px-3 py-1 text-xs bg-neutral-700 rounded-md hover:bg-neutral-600 transition-colors cursor-pointer"
+                                                                            class="p-2 text-sm bg-neutral-700 rounded-md hover:bg-neutral-600 transition-colors cursor-pointer grow w-full"
                                                                             on:click=move |_| {
                                                                                 ledger_signing_state
                                                                                     .set(LedgerSigningState::WaitingForSignature {
@@ -248,7 +255,7 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                                                                             "Retry"
                                                                         </button>
                                                                         <button
-                                                                            class="px-3 py-1 text-xs bg-red-800 rounded-md hover:bg-red-700 transition-colors cursor-pointer"
+                                                                            class="p-2 text-sm bg-red-800 rounded-md hover:bg-red-700 transition-colors cursor-pointer grow w-full"
                                                                             on:click=move |_| {
                                                                                 ledger_signing_state.set(LedgerSigningState::Idle)
                                                                             }
