@@ -3,7 +3,7 @@ import { default as LedgerTransportWebHid } from '@ledgerhq/hw-transport-webhid'
 import { default as LedgerTransportWebBle } from '@ledgerhq/hw-transport-web-ble';
 
 // TODO: remove after fixing https://github.com/LedgerHQ/ledgerjs/issues/352#issuecomment-615917351
-class LedgerTransportWebBleAndroidFix extends LedgerTransportWebBleTransportWebBle {
+class LedgerTransportWebBleAndroidFix extends LedgerTransportWebBle {
     static async open(device, ...args) {
       if (!navigator.userAgent.includes('Mobi')) return super.open(device, ...args);
       const getPrimaryServicesOrig = device.gatt?.getPrimaryServices;
