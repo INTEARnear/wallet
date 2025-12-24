@@ -2,6 +2,36 @@ import { default as LedgerTransportWebUsb } from '@ledgerhq/hw-transport-webusb'
 import { default as LedgerTransportWebHid } from '@ledgerhq/hw-transport-webhid';
 import { default as LedgerTransportWebBle } from '@ledgerhq/hw-transport-web-ble';
 
+// TODO: remove after fixing https://github.com/LedgerHQ/ledgerjs/issues/352#issuecomment-615917351
+class LedgerTransportWebBleAndroidFix extends LedgerTransportWebBleTransportWebBle {
+    static async open(device, ...args) {
+      if (!navigator.userAgent.includes('Mobi')) return super.open(device, ...args);
+      const getPrimaryServicesOrig = device.gatt?.getPrimaryServices;
+      if (getPrimaryServicesOrig == null) return super.open(device, ...args);
+      device.gatt.getPrimaryServices = async () => {
+        const [service] = await getPrimaryServicesOrig.call(device.gatt);
+        const getCharacteristicOrig = service.getCharacteristic;
+        service.getCharacteristic = async (id) => {
+          const characteristic = await getCharacteristicOrig.call(service, id);
+          if (id === '13d63400-2c97-0004-0002-4c6564676572') {
+            const writeValueOrig = characteristic.writeValue;
+            let delayed = false;
+            characteristic.writeValue = async (data) => {
+              if (!delayed) {
+                await new Promise((resolve) => setTimeout(resolve, 250));
+                delayed = true;
+              }
+              return writeValueOrig.call(characteristic, data);
+            };
+          }
+          return characteristic;
+        };
+        return [service];
+      };
+      return super.open(device, ...args);
+    }
+  }
+
 let ENABLE_DEBUG_LOGGING = false;
 const debugLog = (...args) => {
     ENABLE_DEBUG_LOGGING && console.log(...args)
@@ -41,62 +71,11 @@ async function isWebUsbSupported() {
 
 async function isWebBleSupported() {
     try {
-        const isSupported = await LedgerTransportWebBle.isSupported();
+        const isSupported = await LedgerTransportWebBleAndroidFix.isSupported();
         return isSupported;
     } catch (e) {
         return false;
     }
-}
-
-async function createSupportedTransport() {
-    const [
-        supportWebHid,
-        supportWebUsb,
-        supportWebBle,
-    ] = await Promise.all([
-        isWebHidSupported(),
-        isWebUsbSupported(),
-        isWebBleSupported(),
-    ]);
-
-    debugLog("Transports supported:", { supportWebHid, supportWebUsb, supportWebBle });
-
-    if (!supportWebHid && !supportWebUsb && !supportWebBle) {
-        const err = new Error('No transports appear to be supported.');
-        err.name = 'NoTransportSupported';
-        throw err;
-    }
-
-    // Sometimes transports return true for `isSupported()`, but are proven broken when attempting to `create()` them.
-    // We will try each transport we think is supported in the current environment, in order of this array
-    const supportedTransports = [
-        ...(supportWebHid ? [{ name: 'WebHID', createTransport: () => LedgerTransportWebHid.create() }] : []),
-        ...(supportWebBle ? [{ name: 'WebBLE', createTransport: () => LedgerTransportWebBle.create() }] : []),
-        ...(supportWebUsb ? [{ name: 'WebUSB', createTransport: () => LedgerTransportWebUsb.create() }] : []),
-    ]
-
-    let transport = null;
-    let errors = [];
-
-    for (let i = 0; i < supportedTransports.length && !transport; i += 1) {
-        const { name, createTransport } = supportedTransports[i];
-        debugLog(`Creating ${name} transport`)
-        try {
-            transport = await createTransport();
-            if (transport) {
-                break;
-            }
-        } catch (err) {
-            if (err.name === 'InvalidStateError') {
-                throw err;
-            }
-
-            console.warn(`Failed to create ${name} transport.`, err);
-            errors.push({ name: err.name, message: err.message });
-        }
-    }
-
-    return [errors, transport];
 }
 
 export const setDebugLogging = (value) => ENABLE_DEBUG_LOGGING = value;
@@ -160,7 +139,7 @@ export async function getSupportedTransport(mode) {
                 }
                 throw err;
             }
-            transport = await LedgerTransportWebBle.create();
+            transport = await LedgerTransportWebBleAndroidFix.create();
         } else {
             const err = new Error(`Unknown transport mode: ${mode}`);
             err.name = 'UnknownTransportMode';
