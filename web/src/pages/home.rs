@@ -1,8 +1,8 @@
 use leptos::prelude::*;
 
 use crate::components::{
-    token_balance_list::TokenBalanceList, total_portfolio_value::TotalPortfolioValue,
-    quick_actions::WalletQuickActions,
+    quick_actions::WalletQuickActions, token_balance_list::TokenBalanceList,
+    total_portfolio_value::TotalPortfolioValue,
 };
 
 #[component]

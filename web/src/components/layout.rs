@@ -9,6 +9,10 @@ use std::time::Duration;
 use web_sys::TouchEvent;
 
 use crate::{
+    components::header::WalletHeader,
+    contexts::network_context::{Network, NetworkContext},
+};
+use crate::{
     components::password_unlock::PasswordUnlockOverlay,
     contexts::{
         account_selector_context::AccountSelectorContext, config_context::BackgroundGroup,
@@ -18,10 +22,6 @@ use crate::{
 use crate::{
     components::transaction_queue_overlay::TransactionQueueOverlay,
     contexts::accounts_context::AccountsContext, contexts::config_context::ConfigContext,
-};
-use crate::{
-    components::header::WalletHeader,
-    contexts::network_context::{Network, NetworkContext},
 };
 
 /// Height of the bottom navbar with buttons
