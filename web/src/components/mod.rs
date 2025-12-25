@@ -26,5 +26,5 @@ pub mod tooltip;
 pub mod total_portfolio_value;
 pub mod transaction_modals;
 pub mod transaction_queue_overlay;
-pub mod wallet_header;
-pub mod wallet_quick_actions;
+pub mod header;
+pub mod quick_actions;

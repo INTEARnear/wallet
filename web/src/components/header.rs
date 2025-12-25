@@ -35,6 +35,13 @@ pub fn WalletHeader() -> impl IntoView {
         }
     });
 
+    // Close search when navigating away from the page
+    Effect::new(move |_| {
+        location.pathname.track();
+        set_query("".to_string());
+        set_is_search_expanded(false);
+    });
+
     let copy_to_clipboard = move |_| {
         if let Some(account_id) = selected_account() {
             let clipboard: Clipboard = window().navigator().clipboard();

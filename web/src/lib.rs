@@ -12,7 +12,6 @@ use contexts::config_context::provide_config_context;
 use contexts::connected_apps_context::provide_connected_apps_context;
 use contexts::network_context::provide_network_context;
 use contexts::nft_cache_context::provide_nft_cache_context;
-use contexts::search_context::provide_search_context;
 use contexts::tokens_context::provide_token_context;
 use contexts::transaction_queue_context::provide_transaction_queue_context;
 use leptos::prelude::*;
@@ -142,7 +141,6 @@ pub fn App() -> impl IntoView {
     provide_token_context(); // depends on rpc for fetching near balance
     provide_nft_cache_context(); // depends on accounts for resetting the cache when account changes
     provide_account_selector_context(); // depends on accounts
-    provide_search_context();
     provide_connected_apps_context();
     provide_transaction_queue_context(); // depends on accounts
 

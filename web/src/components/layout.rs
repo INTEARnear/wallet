@@ -12,7 +12,7 @@ use crate::{
     components::password_unlock::PasswordUnlockOverlay,
     contexts::{
         account_selector_context::AccountSelectorContext, config_context::BackgroundGroup,
-        modal_context::ModalContext,
+        modal_context::ModalContext, search_context::provide_search_context,
     },
 };
 use crate::{
@@ -20,7 +20,7 @@ use crate::{
     contexts::accounts_context::AccountsContext, contexts::config_context::ConfigContext,
 };
 use crate::{
-    components::wallet_header::WalletHeader,
+    components::header::WalletHeader,
     contexts::network_context::{Network, NetworkContext},
 };
 
@@ -31,7 +31,7 @@ const SWIPE_X_THRESHOLD_PX: f64 = 60.0;
 /// Distance from left edge to trigger account selector - scales with viewport width up to a maximum
 fn left_edge_threshold() -> f64 {
     let viewport_width = window().inner_width().unwrap().as_f64().unwrap();
-    (viewport_width * 0.25).min(120.0)
+    (viewport_width * 0.15).min(100.0)
 }
 
 fn get_random_background(background_group: BackgroundGroup, width: f64) -> String {
@@ -57,6 +57,8 @@ struct NavItem {
 
 #[component]
 pub fn Layout(children: ChildrenFn) -> impl IntoView {
+    provide_search_context();
+
     let location = use_location();
     let (slide_direction, set_slide_direction) = signal("");
     let (prev_path, set_prev_path) = signal("".to_string());
