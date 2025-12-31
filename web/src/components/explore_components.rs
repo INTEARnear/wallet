@@ -324,7 +324,7 @@ pub fn LearnSection() -> impl IntoView {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RecommendationType {
-    Ref,
+    Rhea,
     Stables,
     Staking,
     Shitzu,
@@ -441,9 +441,9 @@ pub fn ForYouSection() -> impl IntoView {
 
         if !near_tokens.is_empty() {
             recs.push((
-                "Stake NEAR with our validator for 9% APY",
+                "Stake NEAR with our validator for 4-5% APY",
                 "",
-                "Earn staking rewards on your NEAR + bonus in $pTEAR",
+                "Earn staking rewards on your NEAR, with unstaking delay of 1 day",
                 near_tokens,
                 RecommendationType::Staking,
             ));
@@ -454,7 +454,7 @@ pub fn ForYouSection() -> impl IntoView {
             .iter()
             .filter_map(|token| {
                 if token.token.account_id
-                    == Token::Nep141("token.v2.ref-finance.near".parse().unwrap())
+                    == Token::Nep141("token.rhealab.near".parse().unwrap())
                 {
                     let normalized_balance =
                         balance_to_decimal(token.balance, token.token.metadata.decimals);
@@ -475,11 +475,11 @@ pub fn ForYouSection() -> impl IntoView {
 
         if !ref_tokens.is_empty() {
             recs.push((
-                "Stake $REF for 6.01% APY",
-                "https://dex.rhea.finance/xref",
+                "Stake $RHEA for 2-3% APY",
+                "https://app.rhea.finance/stake",
                 "No unstaking delay, revenue comes from Rhea fees",
                 ref_tokens,
-                RecommendationType::Ref,
+                RecommendationType::Rhea,
             ));
         }
 
@@ -488,7 +488,7 @@ pub fn ForYouSection() -> impl IntoView {
 
     view! {
         <div class="mb-8">
-            <h2 class="text-white text-xl font-semibold mb-4">Opportunities For You</h2>
+            <h2 class="text-white text-xl font-semibold mb-4">"Opportunities For You"</h2>
             {move || {
                 if loading_tokens.get() {
                     view! {
@@ -515,7 +515,7 @@ pub fn ForYouSection() -> impl IntoView {
                                     .into_iter()
                                     .map(|(title, url, description, tokens, card_type)| {
                                         let (background_style, border_color, badge) = match card_type {
-                                            RecommendationType::Ref => {
+                                            RecommendationType::Rhea => {
                                                 (
                                                     "background-color: rgba(10, 41, 22, 0.9)",
                                                     "rgb(34, 197, 94)",
@@ -597,15 +597,9 @@ pub fn ForYouSection() -> impl IntoView {
                                                                 .collect::<Vec<_>>()}
                                                         </div>
                                                         <div>
-                                                            <div class="flex items-center gap-2">
-                                                                <h3 class="text-white text-lg font-medium">{title}</h3>
-                                                                <div class="hover-capable-only group relative">
-                                                                    <Tooltip text="Airdrop points for an upcoming $TEAR token by wallet developers" />
-                                                                </div>
-                                                            </div>
                                                             <p class="text-white/60 mt-2">{description}</p>
                                                             <A
-                                                                href="/stake"
+                                                                href="/stake/intear.pool.near/stake"
                                                                 attr:class="inline-flex items-center gap-1 text-white text-sm px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 cursor-pointer transition-colors mt-4"
                                                             >
                                                                 "Stake"
