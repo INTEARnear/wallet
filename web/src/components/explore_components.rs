@@ -6,7 +6,6 @@ use rand::seq::SliceRandom;
 use std::collections::HashMap;
 
 use crate::{
-    components::tooltip::Tooltip,
     contexts::{
         network_context::{Network, NetworkContext},
         tokens_context::{Token, TokenInfo, TokenScore, TokensContext},
@@ -453,9 +452,7 @@ pub fn ForYouSection() -> impl IntoView {
         let ref_tokens = tokens_data
             .iter()
             .filter_map(|token| {
-                if token.token.account_id
-                    == Token::Nep141("token.rhealab.near".parse().unwrap())
-                {
+                if token.token.account_id == Token::Nep141("token.rhealab.near".parse().unwrap()) {
                     let normalized_balance =
                         balance_to_decimal(token.balance, token.token.metadata.decimals);
                     let usd_value = &normalized_balance * &token.token.price_usd;

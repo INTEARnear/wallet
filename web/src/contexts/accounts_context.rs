@@ -102,7 +102,7 @@ pub fn format_ledger_error(error: &serde_json::Value) -> String {
             "Please refresh the or reconnect the Ledger device.".to_string()
         }
         serde_json::Value::String(s) if s == "LedgerDisabled" => {
-            "Please choose the connection mode.".to_string()
+            "Please choose the Ledger device.".to_string()
         }
         serde_json::Value::String(s) if s == "WebBLENotSupported" => {
             "Bluetooth is not supported in this browser.".to_string()

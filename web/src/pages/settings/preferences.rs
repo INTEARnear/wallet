@@ -1,12 +1,15 @@
 use std::str::FromStr;
+use std::time::Duration;
 
 use crate::contexts::config_context::{BackgroundGroup, ConfigContext, HiddenNft, LedgerMode};
 use crate::pages::swap::Slippage;
-use crate::utils::{is_android, is_tauri};
+use crate::utils::{is_android, is_tauri, tauri_invoke_no_args};
 use bigdecimal::{BigDecimal, FromPrimitive};
+use itertools::Itertools;
 use leptos::prelude::*;
 use leptos_icons::*;
 use leptos_use::use_window_size;
+use wasm_bindgen_futures::JsFuture;
 
 pub const SLIPPAGE_PRESETS: [f64; 4] = [0.5, 1.0, 2.0, 5.0];
 
@@ -70,52 +73,101 @@ pub fn LedgerSelector(#[prop(optional, into)] on_change: Option<Callback<()>>) -
     let config_context = expect_context::<ConfigContext>();
     let current_mode = Memo::new(move |_| config_context.config.get().ledger_mode);
 
+    let ledger_variants = LocalResource::new(LedgerMode::all_variants);
+    let _ = set_interval(move || ledger_variants.refetch(), Duration::from_secs(1));
+    let ledger_variants = Memo::new(move |_| {
+        ledger_variants
+            .get()
+            .unwrap_or_default()
+            .into_iter()
+            .sorted()
+            .collect::<Vec<_>>()
+    });
+
+    let has_ble_permissions = LocalResource::new(|| async move {
+        if is_tauri() && is_android() {
+            let promise = tauri_invoke_no_args("has_ble_permissions");
+            let future = JsFuture::from(promise);
+            let result = future.await.unwrap();
+            let result: bool = serde_wasm_bindgen::from_value(result).unwrap();
+            return result;
+        }
+        true
+    });
+    let _ = set_interval(
+        move || has_ble_permissions.refetch(),
+        Duration::from_secs(1),
+    );
+    let has_ble_permissions = Memo::new(move |_| has_ble_permissions.get().unwrap_or(true));
+
     view! {
         <div class="bg-neutral-800 rounded-xl p-4 space-y-4">
             <div class="text-sm text-gray-400 mb-3">
                 "Current: "
                 <span class="text-white font-medium">
-                    {move || current_mode.get().display_name()}
+                    {move || current_mode.get().display_name().to_string()}
                 </span>
+                <Show when=move || {
+                    !ledger_variants.read().iter().any(|mode| *mode == current_mode.get())
+                }>
+                    <span class="text-red-400 text-xs font-medium">" (not connected)"</span>
+                </Show>
             </div>
 
-            <div class="space-y-2">
-                {LedgerMode::all_variants()
-                    .iter()
-                    .copied()
-                    .map(|mode| {
-                        let is_selected = move || current_mode.get() == mode;
-                        view! {
-                            <button
-                                class="w-full flex items-center justify-between p-3 rounded-lg text-sm transition-colors cursor-pointer"
-                                style=move || {
-                                    if is_selected() {
-                                        "background-color: rgb(59 130 246); color: white;"
-                                    } else {
-                                        "background-color: rgb(64 64 64); color: rgb(209 213 219);"
-                                    }
+            <Suspense fallback=move || {
+                view! { <div class="text-sm text-gray-400">"Loading..."</div> }
+            }>
+                <div class="space-y-2">
+                    {move || {
+                        ledger_variants
+                            .get()
+                            .into_iter()
+                            .map(|mode| {
+                                let mode_clone = mode.clone();
+                                let mode_clone2 = mode.clone();
+                                view! {
+                                    <button
+                                        class="w-full flex items-center justify-between p-3 rounded-lg text-sm transition-colors cursor-pointer"
+                                        style=move || {
+                                            if current_mode.get() == mode_clone {
+                                                "background-color: rgb(59 130 246); color: white;"
+                                            } else {
+                                                "background-color: rgb(64 64 64); color: rgb(209 213 219);"
+                                            }
+                                        }
+                                        on:click=move |_| {
+                                            config_context
+                                                .set_config
+                                                .update(|config| {
+                                                    config.ledger_mode = mode_clone2.clone();
+                                                });
+                                            if let Some(callback) = on_change {
+                                                callback.run(());
+                                            }
+                                        }
+                                    >
+                                        <span>{mode.display_name().to_string()}</span>
+                                    </button>
                                 }
-                                on:click=move |_| {
-                                    config_context
-                                        .set_config
-                                        .update(|config| {
-                                            config.ledger_mode = mode;
-                                        });
-                                    if let Some(callback) = on_change {
-                                        callback.run(());
-                                    }
-                                }
-                            >
-                                <span>{mode.display_name()}</span>
-                            </button>
+                            })
+                            .collect_view()
+                    }}
+                </div>
+
+                <div class="text-sm text-gray-400">
+                    "Select the connection method for your Ledger hardware wallet"
+                </div>
+                <Show when=move || !has_ble_permissions.get()>
+                    <button
+                        class="w-full p-3 rounded-lg text-sm font-medium transition-colors cursor-pointer bg-blue-500 hover:bg-blue-600 text-white"
+                        on:click=move |_| {
+                            let _promise_detached = tauri_invoke_no_args("request_ble_permissions");
                         }
-                    })
-                    .collect_view()}
-            </div>
-
-            <div class="text-sm text-gray-400">
-                "Select the connection method for your Ledger hardware wallet"
-            </div>
+                    >
+                        "Enable Bluetooth"
+                    </button>
+                </Show>
+            </Suspense>
         </div>
     }
 }
@@ -147,7 +199,7 @@ pub fn PreferencesSettings() -> impl IntoView {
             <div class="text-xl font-semibold">Preferences</div>
 
             <div class="space-y-1">
-                <Show when=is_tauri>
+                <Show when=move || is_tauri() && !is_android()>
                     <ToggleSwitch
                         label="Hide to system tray instead of closing"
                         value=hide_to_tray

@@ -63,6 +63,7 @@ use crate::pages::sign_message::SignMessage;
 use crate::pages::stake::{Stake, StakeValidator, UnstakeValidator};
 use crate::pages::swap::Swap;
 use crate::pages::token::TokenDetails;
+use crate::utils::is_tauri;
 
 // macro_rules! bad_waterfall_lazy_route {
 //     ($name:ident) => {
@@ -126,10 +127,12 @@ pub fn App() -> impl IntoView {
 
         web_sys::console::log_2(&message_js, &style_js);
     }) as Box<dyn Fn()>);
-    let _ = window().set_interval_with_callback_and_timeout_and_arguments_0(
-        warning_closure.as_ref().unchecked_ref(),
-        5000,
-    );
+    if !is_tauri() {
+        let _ = window().set_interval_with_callback_and_timeout_and_arguments_0(
+            warning_closure.as_ref().unchecked_ref(),
+            5000,
+        );
+    }
     // Don't drop the closure
     warning_closure.forget();
 

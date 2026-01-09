@@ -997,7 +997,13 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                                 set_ledger_address_number=set_ledger_address_number
                                                                 on_change=on_path_change.into()
                                                             />
-                                                            <Show when=move || ledger_current_key_data.get().is_none()>
+                                                            <Show when=move || ledger_current_key_data.get().is_none() fallback=move || {
+                                                                view! {
+                                                                    <p class="text-green-400 mb-4">
+                                                                        "Connected"
+                                                                    </p>
+                                                                }
+                                                            }>
                                                                 <button
                                                                     class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden cursor-pointer"
                                                                     style=move || {

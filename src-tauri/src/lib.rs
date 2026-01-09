@@ -184,6 +184,232 @@ struct AppState {
     biometric_authenticated: Mutex<bool>,
 }
 
+#[cfg(desktop)]
+mod ledger {
+    use std::time::Duration;
+
+    use ledger_lib::{
+        Exchange, Filters, LedgerInfo, LedgerProvider, Transport,
+        info::{ConnInfo, Model},
+    };
+
+    fn device_name(device: &LedgerInfo) -> String {
+        format!(
+            "Ledger {} ({})",
+            match device.model {
+                Model::NanoS => "Nano S",
+                Model::NanoSPlus => "Nano S Plus",
+                Model::NanoX => "Nano X",
+                Model::Stax => "Stax",
+                Model::Unknown(_) => "Unknown",
+            },
+            match &device.conn {
+                ConnInfo::Usb(usb) => format!("USB {usb} {}", usb.path.clone().unwrap_or_default()),
+                ConnInfo::Tcp(tcp) => format!("Speculos at {tcp}"),
+                ConnInfo::Ble(ble) => format!("Bluetooth {ble}"),
+            }
+        )
+    }
+
+    #[tauri::command]
+    pub async fn get_ledger_devices() -> Result<String, String> {
+        let mut provider = LedgerProvider::init().await;
+        let devices = provider
+            .list(Filters::Any)
+            .await
+            .map_err(|e| format!("Failed to get ledger devices: {}", e))?;
+        let devices: Vec<_> = devices
+            .into_iter()
+            .map(|device| device_name(&device))
+            .collect();
+        log::info!("Ledger devices: {devices:?}");
+        Ok(serde_json::to_string(&devices).unwrap())
+    }
+
+    #[tauri::command]
+    pub async fn send_ledger_command(
+        ledger_device_name: String,
+        command: Vec<u8>,
+    ) -> Result<Vec<u8>, String> {
+        log::info!("Sending ledger command to device: {ledger_device_name}");
+        let mut provider = LedgerProvider::init().await;
+        let devices = provider
+            .list(Filters::Any)
+            .await
+            .map_err(|e| format!("Failed to get ledger devices: {}", e))?;
+        let device = devices
+            .into_iter()
+            .find(|device| ledger_device_name == device_name(&device));
+        let Some(device) = device else {
+            return Err(format!("Ledger device {ledger_device_name} not found"));
+        };
+        log::info!("Connected to device: {device:?}");
+        let mut handle = provider
+            .connect(device)
+            .await
+            .map_err(|e| format!("Failed to connect to ledger device: {}", e))?;
+        log::info!("Exchanging command with device");
+        let response = handle
+            .exchange(&command, Duration::from_secs(60 * 10))
+            .await
+            .map_err(|e| format!("Failed to send command: {}", e))?;
+        log::info!("Response: {response:?}");
+        Ok(response)
+    }
+}
+
+#[cfg(target_os = "android")]
+mod ledger {
+    use super::{AppHandle, Manager};
+    use std::sync::mpsc;
+    use std::time::{Instant, Duration};
+
+    #[tauri::command]
+    pub async fn get_ledger_devices(handle: AppHandle) -> Result<String, String> {
+        let (tx, rx) = mpsc::channel();
+        let window = handle
+            .get_webview_window("main")
+            .ok_or("Main window not found")?;
+
+        let _ = window.with_webview(move |webview| {
+            webview.jni_handle().exec(move |env, activity, _webview| {
+                let result_jvalue = env
+                    .call_method(&activity, "listLedgerDevices", "()Ljava/lang/String;", &[])
+                    .unwrap();
+
+                let result_string_obj = result_jvalue.l().unwrap();
+
+                let jstring = jni::objects::JString::from(result_string_obj);
+                let string = env.get_string(&jstring).unwrap();
+
+                let json_str = string.to_string_lossy().to_string();
+
+                tx.send(json_str).unwrap();
+            });
+        });
+
+        let json_str = rx
+            .recv()
+            .map_err(|e| format!("Failed to receive result: {}", e))?;
+
+        Ok(json_str)
+    }
+
+    #[tauri::command]
+    pub async fn send_ledger_command(
+        handle: AppHandle,
+        ledger_device_name: String,
+        command: Vec<u8>,
+    ) -> Result<Vec<u8>, String> {
+        let window = handle
+            .get_webview_window("main")
+            .ok_or("Main window not found")?;
+
+        let command_json = serde_json::to_string(&command)
+            .map_err(|e| format!("Failed to serialize command to JSON: {}", e))?;
+
+        let request_started = Instant::now();
+
+        loop {
+            let (tx, rx) = mpsc::channel::<JniResult>();
+            enum JniResult {
+                RetryLater,
+                Result(Vec<u8>),
+                Timeout,
+            }
+            let ledger_device_name = ledger_device_name.clone();
+            let command_json = command_json.clone();
+            let _ = window.with_webview(move |webview| {
+                webview.jni_handle().exec(move |env, activity, _webview| {
+                    let device_name_jstring = env.new_string(&ledger_device_name).unwrap();
+                    let apdu_json_jstring = env.new_string(&command_json).unwrap();
+                    let result_jvalue = env
+                        .call_method(
+                            &activity,
+                            "exchangeApdu",
+                            "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
+                            &[
+                                jni::objects::JValue::Object(&device_name_jstring.into()),
+                                jni::objects::JValue::Object(&apdu_json_jstring.into()),
+                            ],
+                        )
+                        .unwrap();
+
+                    let result_string_obj = result_jvalue.l().unwrap();
+
+                    let jstring = jni::objects::JString::from(result_string_obj);
+                    let string = env.get_string(&jstring).unwrap();
+
+                    let json_str = string.to_string_lossy();
+
+                    if json_str.is_empty() {
+                        if request_started.elapsed().as_secs() > 10 * 60 {
+                            tx.send(JniResult::Timeout).unwrap();
+                        } else {
+                            tx.send(JniResult::RetryLater).unwrap();
+                        }
+                        return;
+                    }
+
+                    let json_array: Vec<u8> = serde_json::from_str(&json_str).unwrap();
+
+                    tx.send(JniResult::Result(json_array)).unwrap();
+                });
+            });
+            return match rx
+                .recv()
+                .map_err(|e| format!("Failed to receive result: {}", e))?
+            {
+                JniResult::Result(result) => Ok(result),
+                JniResult::RetryLater => {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    continue;
+                }
+                JniResult::Timeout => Err("Ledger request timed out".to_string()),
+            }
+        }
+    }
+
+    #[tauri::command]
+    pub async fn has_ble_permissions(handle: AppHandle) -> Result<bool, String> {
+        let (tx, rx) = mpsc::channel();
+        let window = handle
+            .get_webview_window("main")
+            .ok_or("Main window not found")?;
+
+        let _ = window.with_webview(move |webview| {
+            webview.jni_handle().exec(move |env, activity, _webview| {
+                let result_jvalue = env
+                    .call_method(&activity, "hasBlePermissions", "()Z", &[])
+                    .unwrap();
+
+                let result: bool = result_jvalue.z().unwrap();
+
+                tx.send(result).unwrap()
+            });
+        });
+
+        rx.recv()
+            .map_err(|e| format!("Failed to receive result: {}", e))
+    }
+
+    #[tauri::command]
+    pub async fn request_ble_permissions(handle: AppHandle) -> Result<(), String> {
+        let window = handle
+            .get_webview_window("main")
+            .ok_or("Main window not found")?;
+
+        let _ = window.with_webview(move |webview| {
+            webview.jni_handle().exec(move |env, activity, _webview| {
+                env.call_method(&activity, "requestBlePermissions", "()V", &[])
+                    .unwrap();
+            })
+        });
+
+        Ok(())
+    }
+}
+
 #[tauri::command]
 fn update_config(
     new_config: WalletConfig,
@@ -272,6 +498,12 @@ pub fn run() {
                 update_config,
                 get_os_encryption_key,
                 close_temporary_window,
+                ledger::get_ledger_devices,
+                ledger::send_ledger_command,
+                #[cfg(target_os = "android")]
+                ledger::has_ble_permissions,
+                #[cfg(target_os = "android")]
+                ledger::request_ble_permissions,
             ])
             .setup(|app| {
                 if cfg!(debug_assertions) {

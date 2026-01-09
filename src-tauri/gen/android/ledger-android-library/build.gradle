@@ -1,0 +1,67 @@
+// buildscript {
+//   repositories {
+//     google()
+//     jcenter()
+//   }
+
+//   dependencies {
+//     classpath 'com.android.tools.build:gradle:3.3.2'
+//   }
+// }
+
+// allprojects {
+//   repositories {
+//     google()
+//     mavenCentral()
+//   }
+// }
+
+// apply plugin: 'com.android.library'
+
+// android {
+//   compileSdkVersion 28
+
+//   defaultConfig {
+//     minSdkVersion 19
+//     targetSdkVersion 28
+//     versionCode 1
+//     versionName "1.0"
+//   }
+// }
+
+// tasks.withType(Javadoc).all {
+//     failOnError false
+//     source = android.sourceSets.main.java.sourceFiles
+//     classpath += project.files(android.getBootClasspath().join(File.pathSeparator))
+//     classpath += configurations.compile
+// }
+
+plugins {
+  id 'com.android.library'
+}
+
+android {
+  namespace = "com.ledger.lib"
+  compileSdk = 36
+
+  defaultConfig {
+    minSdk = 24
+    targetSdk = 36
+    versionCode = 1
+    versionName = "1.0"
+  }
+
+  buildTypes {
+    debug {
+      minifyEnabled = false
+    }
+    release {
+      minifyEnabled = false
+    }
+  }
+}
+
+repositories {
+  google()
+  mavenCentral()
+}

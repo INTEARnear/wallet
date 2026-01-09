@@ -5,10 +5,11 @@ use std::{
     collections::{HashMap, HashSet},
     hash::{Hash, Hasher},
 };
+use wasm_bindgen_futures::JsFuture;
 
 use crate::{
     pages::swap::Slippage,
-    utils::{is_tauri, tauri_invoke},
+    utils::{is_tauri, tauri_invoke, tauri_invoke_no_args},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
@@ -120,26 +121,50 @@ impl BackgroundGroup {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, Ord, PartialOrd, Eq)]
 pub enum LedgerMode {
     #[default]
     Disabled,
     WebUSB,
     WebBLE,
+    TauriDevice(String),
 }
 
 impl LedgerMode {
-    pub fn display_name(&self) -> &'static str {
-        match self {
+    pub fn display_name(&self) -> &str {
+        match &self {
             Self::Disabled => "None",
             Self::WebUSB => "USB",
             Self::WebBLE => "Bluetooth",
+            Self::TauriDevice(device_name) => device_name.as_str(),
         }
     }
 
-    pub fn all_variants() -> &'static [Self] {
-        &[Self::WebUSB, Self::WebBLE]
+    pub async fn all_variants() -> Vec<Self> {
+        if is_tauri() {
+            get_tauri_ledger_devices()
+                .await
+                .unwrap()
+                .into_iter()
+                .map(Self::TauriDevice)
+                .collect()
+        } else {
+            vec![Self::WebUSB, Self::WebBLE]
+        }
     }
+}
+
+async fn get_tauri_ledger_devices() -> Result<Vec<String>, String> {
+    let promise = tauri_invoke_no_args("get_ledger_devices");
+    let future = JsFuture::from(promise);
+    let devices = future
+        .await
+        .map_err(|e| format!("Failed to get ledger devices: {e:?}"))?;
+    let devices: String = serde_wasm_bindgen::from_value(devices)
+        .map_err(|e| format!("Failed to deserialize ledger devices: {}", e))?;
+    let devices: Vec<String> = serde_json::from_str(&devices)
+        .map_err(|e| format!("Failed to deserialize ledger devices: {}", e))?;
+    Ok(devices)
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]

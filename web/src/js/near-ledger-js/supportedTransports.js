@@ -1,36 +1,56 @@
 import { default as LedgerTransportWebUsb } from '@ledgerhq/hw-transport-webusb';
 import { default as LedgerTransportWebHid } from '@ledgerhq/hw-transport-webhid';
 import { default as LedgerTransportWebBle } from '@ledgerhq/hw-transport-web-ble';
+import { default as LedgerTransport } from '@ledgerhq/hw-transport';
 
 // TODO: remove after fixing https://github.com/LedgerHQ/ledgerjs/issues/352#issuecomment-615917351
 class LedgerTransportWebBleAndroidFix extends LedgerTransportWebBle {
     static async open(device, ...args) {
-      if (!navigator.userAgent.includes('Mobi')) return super.open(device, ...args);
-      const getPrimaryServicesOrig = device.gatt?.getPrimaryServices;
-      if (getPrimaryServicesOrig == null) return super.open(device, ...args);
-      device.gatt.getPrimaryServices = async () => {
-        const [service] = await getPrimaryServicesOrig.call(device.gatt);
-        const getCharacteristicOrig = service.getCharacteristic;
-        service.getCharacteristic = async (id) => {
-          const characteristic = await getCharacteristicOrig.call(service, id);
-          if (id === '13d63400-2c97-0004-0002-4c6564676572') {
-            const writeValueOrig = characteristic.writeValue;
-            let delayed = false;
-            characteristic.writeValue = async (data) => {
-              if (!delayed) {
-                await new Promise((resolve) => setTimeout(resolve, 500));
-                delayed = true;
-              }
-              return writeValueOrig.call(characteristic, data);
+        if (!navigator.userAgent.includes('Mobi')) return super.open(device, ...args);
+        const getPrimaryServicesOrig = device.gatt?.getPrimaryServices;
+        if (getPrimaryServicesOrig == null) return super.open(device, ...args);
+        device.gatt.getPrimaryServices = async () => {
+            const [service] = await getPrimaryServicesOrig.call(device.gatt);
+            const getCharacteristicOrig = service.getCharacteristic;
+            service.getCharacteristic = async (id) => {
+                const characteristic = await getCharacteristicOrig.call(service, id);
+                if (id === '13d63400-2c97-0004-0002-4c6564676572') {
+                    const writeValueOrig = characteristic.writeValue;
+                    let delayed = false;
+                    characteristic.writeValue = async (data) => {
+                        if (!delayed) {
+                            await new Promise((resolve) => setTimeout(resolve, 500));
+                            delayed = true;
+                        }
+                        return writeValueOrig.call(characteristic, data);
+                    };
+                }
+                return characteristic;
             };
-          }
-          return characteristic;
+            return [service];
         };
-        return [service];
-      };
-      return super.open(device, ...args);
+        return super.open(device, ...args);
     }
-  }
+}
+
+class LedgerTransportTauri extends LedgerTransport {
+    constructor(deviceName) {
+        super();
+        this.deviceName = deviceName;
+    }
+
+    static async open(deviceName) {
+        return new LedgerTransportTauri(deviceName);
+    }
+
+    async exchange(apdu) {
+        const response = await window.__TAURI__.core.invoke('send_ledger_command', {
+            ledgerDeviceName: this.deviceName,
+            command: Array.from(apdu),
+        });
+        return Buffer.from(response);
+    }
+}
 
 let ENABLE_DEBUG_LOGGING = false;
 const debugLog = (...args) => {
@@ -81,7 +101,7 @@ async function isWebBleSupported() {
 export const setDebugLogging = (value) => ENABLE_DEBUG_LOGGING = value;
 
 export async function getSupportedTransport(mode) {
-    console.log('Using Ledger mode', mode);
+    console.log('Using Ledger mode', JSON.stringify(mode));
     if (mode === 'Disabled') {
         const err = new Error('Please choose a Ledger connection method.');
         err.name = 'LedgerDisabled';
@@ -140,8 +160,10 @@ export async function getSupportedTransport(mode) {
                 throw err;
             }
             transport = await LedgerTransportWebBleAndroidFix.create();
+        } else if (mode instanceof Object && mode.TauriDevice) {
+            transport = await LedgerTransportTauri.open(mode.TauriDevice);
         } else {
-            const err = new Error(`Unknown transport mode: ${mode}`);
+            const err = new Error("Unknown transport mode: " + JSON.stringify(mode));
             err.name = 'UnknownTransportMode';
             throw err;
         }
