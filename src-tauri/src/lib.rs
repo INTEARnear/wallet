@@ -3,6 +3,9 @@ use keyring_core::Entry;
 use rand::{RngCore, rngs::OsRng};
 use serde::Deserialize;
 use std::sync::Mutex;
+use std::time::Duration;
+#[cfg(mobile)]
+use std::time::Instant;
 #[cfg(mobile)]
 use tauri::Emitter;
 use tauri::{AppHandle, Manager, Url, WebviewWindow, Wry};
@@ -40,6 +43,11 @@ fn get_os_encryption_key(
     match ensure_biometric_authentication(&handle, &state) {
         Ok(()) => (),
         Err(e) => {
+            if let Some(window) = handle.get_webview_window(WINDOW_MAIN) {
+                if let Err(e) = window.emit("hide", ()) {
+                    log::warn!("Failed to emit hide event: {:?}", e);
+                }
+            }
             log::error!("Failed to ensure biometric authentication: {}", e);
             return Err(format!("Failed to ensure biometric authentication: {}", e));
         }
@@ -121,6 +129,16 @@ fn ensure_biometric_authentication(
         return Ok(());
     }
 
+    // Check if declined recently
+    const DECLINED_AT_THRESHOLD: Duration = Duration::from_secs(1);
+    if let Ok(declined_at) = state.biometric_declined_at.lock() {
+        if let Some(declined_at) = *declined_at {
+            if declined_at.elapsed() < DECLINED_AT_THRESHOLD {
+                return Ok(());
+            }
+        }
+    }
+
     // Check if already authenticated in this session
     let is_authenticated = {
         if let Ok(auth_guard) = state.biometric_authenticated.lock() {
@@ -154,7 +172,10 @@ fn ensure_biometric_authentication(
             "Authenticate to access your wallet".to_string(),
             auth_options,
         )
-        .map_err(|e| format!("Biometric authentication failed: {}", e))?;
+        .map_err(|e| {
+            *state.biometric_declined_at.lock().unwrap() = Some(Instant::now());
+            format!("Biometric authentication failed: {}", e)
+        })?;
 
     if let Ok(mut auth_guard) = state.biometric_authenticated.lock() {
         *auth_guard = true;
@@ -182,12 +203,13 @@ struct AppState {
     config: Mutex<WalletConfig>,
     #[cfg(mobile)]
     biometric_authenticated: Mutex<bool>,
+    #[cfg(mobile)]
+    biometric_declined_at: Mutex<Option<Instant>>,
 }
 
 #[cfg(desktop)]
 mod ledger {
-    use std::time::Duration;
-
+    use super::Duration;
     use ledger_lib::{
         Exchange, Filters, LedgerInfo, LedgerProvider, Transport,
         info::{ConnInfo, Model},
@@ -260,9 +282,8 @@ mod ledger {
 
 #[cfg(target_os = "android")]
 mod ledger {
-    use super::{AppHandle, Manager};
+    use super::{AppHandle, Duration, Instant, Manager};
     use std::sync::mpsc;
-    use std::time::{Duration, Instant};
 
     #[tauri::command]
     pub async fn get_ledger_devices(handle: AppHandle) -> Result<String, String> {
@@ -414,7 +435,7 @@ mod ledger {
 fn update_config(
     new_config: WalletConfig,
     state: tauri::State<AppState>,
-    #[allow(unused)] handle: AppHandle,
+    #[cfg_attr(not(mobile), allow(unused))] handle: AppHandle,
 ) -> Result<(), String> {
     if let Ok(mut config_guard) = state.config.lock() {
         #[cfg(all(desktop, not(debug_assertions)))]
@@ -451,7 +472,13 @@ fn update_config(
         drop(config_guard);
 
         #[cfg(mobile)]
-        let _ = ensure_biometric_authentication(&handle, &state);
+        if ensure_biometric_authentication(&handle, &state).is_err() {
+            if let Some(window) = handle.get_webview_window(WINDOW_MAIN) {
+                if let Err(e) = window.emit("hide", ()) {
+                    log::warn!("Failed to emit hide event: {:?}", e);
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -493,6 +520,8 @@ pub fn run() {
                 }),
                 #[cfg(mobile)]
                 biometric_authenticated: Mutex::new(false),
+                #[cfg(mobile)]
+                biometric_declined_at: Mutex::new(None),
             })
             .invoke_handler(tauri::generate_handler![
                 update_config,
@@ -620,10 +649,20 @@ pub fn run() {
                                 log::info!("App resumed");
                                 let app_handle_clone = app_handle.clone();
                                 let _ = app_handle.run_on_main_thread(move || {
-                                    let _ = ensure_biometric_authentication(
+                                    if ensure_biometric_authentication(
                                         &app_handle_clone,
                                         &app_handle_clone.state::<AppState>(),
-                                    );
+                                    )
+                                    .is_err()
+                                    {
+                                        if let Some(window) =
+                                            app_handle_clone.get_webview_window(WINDOW_MAIN)
+                                        {
+                                            if let Err(e) = window.emit("hide", ()) {
+                                                log::warn!("Failed to emit hide event: {:?}", e);
+                                            }
+                                        }
+                                    }
                                 });
                             }
                             Ok(())
