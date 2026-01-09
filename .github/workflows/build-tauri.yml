@@ -69,7 +69,7 @@ jobs:
       - name: Install Tauri system dependencies (macOS only)
         if: matrix.platform == 'macos'
         run: |
-          brew install pango jpeg librsvg libusb
+          brew install pango jpeg librsvg
 
       - name: Setup Android SDK
         if: matrix.platform == 'android'
