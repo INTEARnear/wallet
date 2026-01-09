@@ -92,9 +92,7 @@ jobs:
         id: cache
         with:
           path: ~/.cargo/bin
-          key: ${{ runner.os }}-cargo-tauri-bin-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-tauri-bin-
+          key: ${{ runner.os }}-cargo-bin-v1
 
       - name: Install build tools
         if: steps.cache.outputs.cache-hit != 'true'

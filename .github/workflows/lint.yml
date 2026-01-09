@@ -39,9 +39,7 @@ jobs:
         id: cache
         with:
           path: ~/.cargo/bin
-          key: ${{ runner.os }}-cargo-lint-bin-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-lint-bin-
+          key: ${{ runner.os }}-cargo-bin-v1
 
       - name: Install build tools
         if: steps.cache.outputs.cache-hit != 'true'
