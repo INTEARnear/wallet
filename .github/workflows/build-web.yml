@@ -35,11 +35,13 @@ jobs:
         id: cache
         with:
           path: ~/.cargo/bin
-          key: ${{ runner.os }}-cargo-bin-v2
+          key: ${{ runner.os }}-cargo-web-bin-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-web-bin-
 
       - name: Install build tools
         if: steps.cache.outputs.cache-hit != 'true'
-        run: cargo install patch-crate cargo-leptos --debug --locked
+        run: cargo install patch-crate cargo-leptos --debug --locked --force
 
       - name: Install npm dependencies
         run: npm install
