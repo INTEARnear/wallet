@@ -239,7 +239,7 @@ mod ledger {
             .map_err(|e| format!("Failed to get ledger devices: {}", e))?;
         let device = devices
             .into_iter()
-            .find(|device| ledger_device_name == device_name(&device));
+            .find(|device| ledger_device_name == device_name(device));
         let Some(device) = device else {
             return Err(format!("Ledger device {ledger_device_name} not found"));
         };

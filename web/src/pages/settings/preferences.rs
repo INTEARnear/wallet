@@ -74,7 +74,7 @@ pub fn LedgerSelector(#[prop(optional, into)] on_change: Option<Callback<()>>) -
     let current_mode = Memo::new(move |_| config_context.config.get().ledger_mode);
 
     let ledger_variants = LocalResource::new(LedgerMode::all_variants);
-    let _ = set_interval(move || ledger_variants.refetch(), Duration::from_secs(1));
+    set_interval(move || ledger_variants.refetch(), Duration::from_secs(1));
     let ledger_variants = Memo::new(move |_| {
         ledger_variants
             .get()
@@ -94,7 +94,7 @@ pub fn LedgerSelector(#[prop(optional, into)] on_change: Option<Callback<()>>) -
         }
         true
     });
-    let _ = set_interval(
+    set_interval(
         move || has_ble_permissions.refetch(),
         Duration::from_secs(1),
     );
