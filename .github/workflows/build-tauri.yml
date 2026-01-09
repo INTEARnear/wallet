@@ -26,7 +26,6 @@ jobs:
             platform: macos
             bundle_paths: |
               target/release/bundle/dmg/Intear Wallet_0.1.0_aarch64.dmg
-              target/release/bundle/macos/Intear Wallet.app
           - os: ubuntu-latest
             platform: android
             bundle_paths: |

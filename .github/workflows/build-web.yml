@@ -89,6 +89,15 @@ jobs:
               Content-Type = "application/wasm"
           EOL
 
+      - name: Create zip archive
+        run: zip -r intear-wallet-web.zip dist
+
+      - name: Upload web artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: intear-wallet-web
+          path: intear-wallet-web.zip
+
       - name: Deploy to staging branch
         uses: peaceiris/actions-gh-pages@v3
         with:
