@@ -32,6 +32,7 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
+            libusb-1.0-0-dev \
             pkg-config build-essential
 
       - name: Cache cargo-installed binaries
@@ -39,7 +40,7 @@ jobs:
         id: cache
         with:
           path: ~/.cargo/bin
-          key: ${{ runner.os }}-cargo-bin-v1
+          key: ${{ runner.os }}-cargo-bin-v2
 
       - name: Install build tools
         if: steps.cache.outputs.cache-hit != 'true'
