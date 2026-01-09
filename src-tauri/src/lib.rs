@@ -262,7 +262,7 @@ mod ledger {
 mod ledger {
     use super::{AppHandle, Manager};
     use std::sync::mpsc;
-    use std::time::{Instant, Duration};
+    use std::time::{Duration, Instant};
 
     #[tauri::command]
     pub async fn get_ledger_devices(handle: AppHandle) -> Result<String, String> {
@@ -366,7 +366,7 @@ mod ledger {
                     continue;
                 }
                 JniResult::Timeout => Err("Ledger request timed out".to_string()),
-            }
+            };
         }
     }
 
@@ -609,33 +609,6 @@ pub fn run() {
                             log::warn!("Failed to emit hide event: {:?}", e);
                         }
                     }
-
-                    let app_handle = app.handle().clone();
-                    let _ = app_handle.clone().app_events().set_pause_handler(
-                        tauri::ipc::Channel::new(move |_| {
-                            log::info!("App paused");
-                            let app_handle_clone = app_handle.clone();
-                            if let Some(window) = app_handle_clone.get_webview_window(WINDOW_MAIN) {
-                                if let Err(e) = window.emit("hide", ()) {
-                                    log::warn!("Failed to emit hide event: {:?}", e);
-                                }
-                            }
-                            if let Ok(mut auth_guard) = app_handle
-                                .state::<AppState>()
-                                .biometric_authenticated
-                                .try_lock()
-                            {
-                                if *auth_guard {
-                                    *auth_guard = false;
-                                    log::info!(
-                                        "Biometric authentication cache cleared (focus changed)"
-                                    );
-                                    drop(auth_guard);
-                                }
-                            }
-                            Ok(())
-                        }),
-                    );
 
                     let app_handle = app.handle().clone();
                     let is_first_resume = std::sync::atomic::AtomicBool::new(true);
