@@ -41,7 +41,7 @@ jobs:
 
       - name: Install build tools
         if: steps.cache.outputs.cache-hit != 'true'
-        run: cargo install patch-crate cargo-leptos --debug --locked --force
+        run: cargo install patch-crate cargo-leptos --debug --locked
 
       - name: Install npm dependencies
         run: npm install

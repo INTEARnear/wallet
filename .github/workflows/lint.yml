@@ -45,7 +45,7 @@ jobs:
 
       - name: Install build tools
         if: steps.cache.outputs.cache-hit != 'true'
-        run: cargo install patch-crate --debug --locked --force
+        run: cargo install patch-crate --debug --locked
 
       - name: Apply patches
         run: cargo patch-crate
