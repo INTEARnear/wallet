@@ -62,13 +62,14 @@ jobs:
             gir1.2-javascriptcoregtk-4.1=2.44.0-2 \
             gir1.2-webkit2-4.1=2.44.0-2 \
             librsvg2-dev \
+            libusb-1.0-0-dev \
             patchelf \
             build-essential
 
       - name: Install Tauri system dependencies (macOS only)
         if: matrix.platform == 'macos'
         run: |
-          brew install pango jpeg librsvg
+          brew install pango jpeg librsvg libusb
 
       - name: Setup Android SDK
         if: matrix.platform == 'android'
