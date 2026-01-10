@@ -9,12 +9,55 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Create artifacts directory
+          mkdir -p artifacts
+          
+          # Download latest artifacts from build-web workflow
+          echo "Downloading web artifacts..."
+          gh run download \
+            --repo ${{ github.repository }} \
+            --name intear-wallet-web \
+            --dir artifacts/ \
+            $(gh run list \
+              --repo ${{ github.repository }} \
+              --workflow build-web.yml \
+              --status success \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId')
+          
+          # Download latest artifacts from build-tauri workflow for each platform
+          echo "Downloading native app artifacts..."
+          TAURI_RUN_ID=$(gh run list \
+            --repo ${{ github.repository }} \
+            --workflow build-tauri.yml \
+            --status success \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId')
+          
+          if [ -n "$TAURI_RUN_ID" ]; then
+            for platform in linux windows macos android; do
+              echo "Downloading artifacts for $platform..."
+              gh run download \
+                --repo ${{ github.repository }} \
+                --name intear-wallet-app-$platform \
+                --dir artifacts/ \
+                $TAURI_RUN_ID || echo "No artifacts found for $platform"
+            done
+          else
+            echo "No successful Tauri workflow runs found"
+          fi
+          
+          echo "Downloaded artifacts:"
+          ls -R artifacts/
 
       - name: Create or update nightly release
         uses: softprops/action-gh-release@v2
