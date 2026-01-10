@@ -50,13 +50,7 @@ pub struct SendTransactionsRequest {
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ReceiveMessage {
-    SignAndSendTransactions {
-        data: SendTransactionsRequest,
-    },
-    #[serde(rename_all = "camelCase")]
-    TauriWalletSession {
-        session_id: String,
-    },
+    SignAndSendTransactions { data: SendTransactionsRequest },
 }
 
 #[derive(Serialize, Debug)]
@@ -489,9 +483,6 @@ pub fn SendTransactions() -> impl IntoView {
                                     ReceiveMessage::SignAndSendTransactions { data } => {
                                         process_sign_and_send(data, "".to_string());
                                     }
-                                    other => {
-                                        log::error!("Bridge: Unexpected message: {other:?}");
-                                    }
                                 }
                             } else {
                                 log::warn!("Bridge: No message field in response");
@@ -562,9 +553,6 @@ pub fn SendTransactions() -> impl IntoView {
                 match message {
                     ReceiveMessage::SignAndSendTransactions { data } => {
                         process_sign_and_send(data, event.origin());
-                    }
-                    ReceiveMessage::TauriWalletSession { session_id } => {
-                        retrieve_bridge_session(session_id);
                     }
                 }
             }

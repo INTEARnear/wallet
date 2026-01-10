@@ -48,13 +48,7 @@ pub struct WalletSelectorAccount {
 #[serde(tag = "type", rename_all = "camelCase")]
 #[allow(clippy::large_enum_variant)]
 pub enum ReceiveMessage {
-    SignIn {
-        data: SignInRequest,
-    },
-    #[serde(rename_all = "camelCase")]
-    TauriWalletSession {
-        session_id: String,
-    },
+    SignIn { data: SignInRequest },
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -276,9 +270,6 @@ pub fn Connect() -> impl IntoView {
                                         };
                                         process_sign_in(data, origin);
                                     }
-                                    other => {
-                                        log::error!("Bridge: Unexpected message: {other:?}");
-                                    }
                                 }
                             } else {
                                 log::warn!("Bridge: No message field in response");
@@ -389,9 +380,6 @@ pub fn Connect() -> impl IntoView {
                 match message {
                     ReceiveMessage::SignIn { data } => {
                         process_sign_in(data, event.origin());
-                    }
-                    ReceiveMessage::TauriWalletSession { session_id } => {
-                        retrieve_bridge_session(session_id);
                     }
                 }
             }

@@ -17,9 +17,6 @@ use tauri::{
 use tauri_plugin_deep_link::DeepLinkExt;
 
 const WINDOW_MAIN: &str = "main";
-const WINDOW_CONNECT: &str = "connect";
-const WINDOW_SIGN_MESSAGE: &str = "sign-message";
-const WINDOW_SEND_TRANSACTIONS: &str = "send-transactions";
 
 const SERVICE_NAME: &str = "intearwallet";
 const ENTRY_NAME: &str = "accounts";
@@ -27,11 +24,15 @@ const ENTRY_NAME: &str = "accounts";
 #[tauri::command]
 fn close_temporary_window(window: WebviewWindow) {
     if window.label() == WINDOW_MAIN {
-        log::error!("Cannot close the main window using close_temporary_window");
+        let _ = window.navigate("http://tauri.localhost/".parse().unwrap());
         return;
     }
     #[cfg(desktop)]
     window.close().expect("Failed to close a temporary window");
+    #[cfg(mobile)]
+    {
+        // TODO: back to browser
+    }
 }
 
 #[tauri::command]
@@ -550,7 +551,7 @@ pub fn run() {
                 }
 
                 app.handle().plugin(tauri_plugin_deep_link::init())?;
-                #[cfg(desktop)]
+                #[cfg(any(target_os = "windows", target_os = "linux"))]
                 app.deep_link().register_all()?;
 
                 let handle = app.handle().clone();
@@ -561,14 +562,6 @@ pub fn run() {
                         }
                     }
                 });
-
-                if let Ok(Some(url)) = app.deep_link().get_current() {
-                    for url in url {
-                        if let Err(err) = process_deep_link(app.handle(), &url) {
-                            log::warn!("Failed to process deep link: {err:?}");
-                        }
-                    }
-                }
 
                 #[cfg(all(desktop, not(debug_assertions)))]
                 {
@@ -641,10 +634,19 @@ pub fn run() {
 
                     let app_handle = app.handle().clone();
                     let is_first_resume = std::sync::atomic::AtomicBool::new(true);
+                    let deep_link_current = app.deep_link().get_current();
                     let _ = app_handle.clone().app_events().set_resume_handler(
                         tauri::ipc::Channel::new(move |_| {
                             if is_first_resume.swap(false, std::sync::atomic::Ordering::Relaxed) {
                                 log::info!("App resumed for the first time");
+
+                                if let Ok(Some(url)) = deep_link_current.as_ref() {
+                                    for url in url {
+                                        if let Err(err) = process_deep_link(&app_handle, &url) {
+                                            log::warn!("Failed to process deep link: {err:?}");
+                                        }
+                                    }
+                                }
                             } else {
                                 log::info!("App resumed");
                                 let app_handle_clone = app_handle.clone();
@@ -668,6 +670,15 @@ pub fn run() {
                             Ok(())
                         }),
                     );
+                }
+
+                #[cfg(desktop)]
+                if let Ok(Some(url)) = app.deep_link().get_current() {
+                    for url in url {
+                        if let Err(err) = process_deep_link(app.handle(), &url) {
+                            log::warn!("Failed to process deep link: {err:?}");
+                        }
+                    }
                 }
 
                 Ok(())
@@ -709,41 +720,20 @@ fn process_deep_link(app: &AppHandle<Wry>, url: &Url) -> Result<(), anyhow::Erro
                 .find(|(key, _)| key == "session_id")
                 .map(|(_, value)| value.to_string());
 
-            let window = tauri::WebviewWindowBuilder::new(
-                app,
-                WINDOW_CONNECT,
-                tauri::WebviewUrl::App("connect".into()),
-            );
+            let Some(session_id) = session_id else {
+                return Err(anyhow::anyhow!("No session_id found in deep link"));
+            };
+
+            let window = app.get_webview_window(WINDOW_MAIN).unwrap();
 
             #[cfg(desktop)]
-            let window = window
-                .minimizable(false)
-                .inner_size(400.0, 700.0)
-                .title("Connect Wallet");
+            let _ = window.set_focus();
 
-            let window = window.build()?;
-
-            if let Some(session_id) = session_id {
-                let js_code = format!(
-                    r#"
-                        window.addEventListener('message', (event) => {{
-                            console.log('event', event);
-                            if (event.data.type === 'ready') {{
-                                window.postMessage({{
-                                    type: 'tauriWalletSession',
-                                    sessionId: '{session_id}'
-                                }}, '*');
-                            }}
-                        }});
-                    "#
-                );
-
-                if let Err(e) = window.eval(&js_code) {
-                    log::warn!("Failed to send session_id to frontend: {:?}", e);
-                } else {
-                    log::info!("Forwarded session_id {} to connect window", session_id);
-                }
-            }
+            let _ = window.navigate(
+                format!("http://tauri.localhost/connect?session_id={session_id}")
+                    .parse()
+                    .unwrap(),
+            );
 
             Ok(())
         }
@@ -753,50 +743,20 @@ fn process_deep_link(app: &AppHandle<Wry>, url: &Url) -> Result<(), anyhow::Erro
                 .find(|(key, _)| key == "session_id")
                 .map(|(_, value)| value.to_string());
 
-            let window = tauri::WebviewWindowBuilder::new(
-                app,
-                WINDOW_SIGN_MESSAGE,
-                tauri::WebviewUrl::App("sign-message".into()),
-            );
+            let Some(session_id) = session_id else {
+                return Err(anyhow::anyhow!("No session_id found in deep link"));
+            };
+
+            let window = app.get_webview_window(WINDOW_MAIN).unwrap();
 
             #[cfg(desktop)]
-            let window = window
-                .minimizable(false)
-                .inner_size(400.0, 700.0)
-                .parent(&app.get_webview_window(WINDOW_MAIN).unwrap())
-                .unwrap()
-                .title("Sign Message")
-                .always_on_top(true)
-                .zoom_hotkeys_enabled(true);
+            let _ = window.set_focus();
 
-            #[cfg(target_os = "macos")]
-            let window = window
-                .tabbing_identifier("intearwallet")
-                .theme(Some(tauri::Theme::Dark));
-
-            let window = window.build()?;
-
-            if let Some(session_id) = session_id {
-                let js_code = format!(
-                    r#"
-                        window.addEventListener('message', (event) => {{
-                            console.log('event', event);
-                            if (event.data.type === 'ready') {{
-                                window.postMessage({{
-                                    type: 'tauriWalletSession',
-                                    sessionId: '{session_id}'
-                                }}, '*');
-                            }}
-                        }});
-                    "#
-                );
-
-                if let Err(e) = window.eval(&js_code) {
-                    log::warn!("Failed to send session_id to frontend: {:?}", e);
-                } else {
-                    log::info!("Forwarded session_id {} to sign-message window", session_id);
-                }
-            }
+            let _ = window.navigate(
+                format!("http://tauri.localhost/sign-message?session_id={session_id}")
+                    .parse()
+                    .unwrap(),
+            );
 
             Ok(())
         }
@@ -806,44 +766,20 @@ fn process_deep_link(app: &AppHandle<Wry>, url: &Url) -> Result<(), anyhow::Erro
                 .find(|(key, _)| key == "session_id")
                 .map(|(_, value)| value.to_string());
 
-            let window = tauri::WebviewWindowBuilder::new(
-                app,
-                WINDOW_SEND_TRANSACTIONS,
-                tauri::WebviewUrl::App("send-transactions".into()),
-            );
+            let Some(session_id) = session_id else {
+                return Err(anyhow::anyhow!("No session_id found in deep link"));
+            };
+
+            let window = app.get_webview_window(WINDOW_MAIN).unwrap();
 
             #[cfg(desktop)]
-            let window = window
-                .minimizable(false)
-                .inner_size(400.0, 700.0)
-                .title("Send Transactions");
+            let _ = window.set_focus();
 
-            let window = window.build()?;
-
-            if let Some(session_id) = session_id {
-                let js_code = format!(
-                    r#"
-                        window.addEventListener('message', (event) => {{
-                            console.log('event', event);
-                            if (event.data.type === 'ready') {{
-                                window.postMessage({{
-                                    type: 'tauriWalletSession',
-                                    sessionId: '{session_id}'
-                                }}, '*');
-                            }}
-                        }});
-                    "#
-                );
-
-                if let Err(e) = window.eval(&js_code) {
-                    log::warn!("Failed to send session_id to frontend: {:?}", e);
-                } else {
-                    log::info!(
-                        "Forwarded session_id {} to send-transactions window",
-                        session_id
-                    );
-                }
-            }
+            let _ = window.navigate(
+                format!("http://tauri.localhost/send-transactions?session_id={session_id}")
+                    .parse()
+                    .unwrap(),
+            );
 
             Ok(())
         }

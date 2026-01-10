@@ -54,13 +54,7 @@ struct SignMessageRequest {
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "camelCase")]
 enum ReceiveMessage {
-    SignMessage {
-        data: SignMessageRequest,
-    },
-    #[serde(rename_all = "camelCase")]
-    TauriWalletSession {
-        session_id: String,
-    },
+    SignMessage { data: SignMessageRequest },
 }
 
 #[derive(Serialize, Debug)]
@@ -1318,9 +1312,6 @@ pub fn SignMessage() -> impl IntoView {
                                     ReceiveMessage::SignMessage { data } => {
                                         process_sign_message(data, "".to_string());
                                     }
-                                    other => {
-                                        log::error!("Bridge: Unexpected message: {other:?}");
-                                    }
                                 }
                             } else {
                                 log::warn!("Bridge: No message field in response");
@@ -1391,9 +1382,6 @@ pub fn SignMessage() -> impl IntoView {
                 match message {
                     ReceiveMessage::SignMessage { data } => {
                         process_sign_message(data, event.origin());
-                    }
-                    ReceiveMessage::TauriWalletSession { session_id } => {
-                        retrieve_bridge_session(session_id);
                     }
                 }
             }

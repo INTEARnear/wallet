@@ -52,8 +52,18 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["intear"]
-      }
+        "schemes": [
+          "intear"
+        ]
+      },
+      "mobile": [
+        {
+          "scheme": [
+            "intear"
+          ],
+          "appLink": false
+        }
+      ]
     }
   }
 }
