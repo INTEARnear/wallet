@@ -23,12 +23,7 @@ const ENTRY_NAME: &str = "accounts";
 
 #[tauri::command]
 fn close_temporary_window(window: WebviewWindow) {
-    if window.label() == WINDOW_MAIN {
-        let _ = window.navigate("http://tauri.localhost/".parse().unwrap());
-        return;
-    }
-    #[cfg(desktop)]
-    window.close().expect("Failed to close a temporary window");
+    let _ = window.navigate("http://tauri.localhost/".parse().unwrap());
     #[cfg(mobile)]
     {
         // TODO: back to browser

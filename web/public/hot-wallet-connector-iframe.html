@@ -37,7 +37,7 @@
         }
 
         .modal-container {
-            background: #1e293b;
+            background: #0a0a0a;
             border-radius: 24px;
             padding: 32px;
             max-width: 480px;
@@ -75,14 +75,14 @@
 
         .cards-container {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            grid-template-columns: repeat(2, 1fr);
             gap: 16px;
             margin-bottom: 24px;
         }
 
         .card {
-            background: #334155;
-            border: 1px solid rgba(59, 130, 246, 0.2);
+            background: #1a1a1a;
+            border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 16px;
             padding: 24px 16px;
             text-align: center;
@@ -103,7 +103,7 @@
 
         .card:hover {
             transform: translateY(-4px);
-            border-color: rgba(59, 130, 246, 0.4);
+            border-color: rgba(255, 255, 255, 0.3);
             box-shadow:
                 0 20px 25px -5px rgba(0, 0, 0, 0.3),
                 0 10px 10px -5px rgba(0, 0, 0, 0.2);
@@ -114,7 +114,7 @@
         .card-icon {
             width: 48px;
             height: 48px;
-            background: #3b82f6;
+            background: #2a2a2a;
             border-radius: 12px;
             display: flex;
             align-items: center;
@@ -173,7 +173,7 @@
             }
 
             .cards-container {
-                grid-template-columns: 1fr;
+                grid-template-columns: repeat(2, 1fr);
                 gap: 20px;
                 margin-bottom: 32px;
             }
@@ -193,6 +193,10 @@
             .card-title {
                 font-size: 16px;
             }
+
+            #app-card>.card-icon {
+                font-size: 16px !important;
+            }
         }
 
 
@@ -207,7 +211,7 @@
 
         /* Focus states for accessibility */
         .card:focus {
-            outline: 2px solid #3b82f6;
+            outline: 2px solid #ffffff;
             outline-offset: 2px;
         }
 
@@ -240,7 +244,7 @@
                 font-size: 14px;
                 padding: 8px 12px;
                 z-index: 100001;
-                background: rgba(30, 41, 59, 0.95);
+                background: rgba(10, 10, 10, 0.95);
                 backdrop-filter: blur(10px);
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 12px;
@@ -303,8 +307,8 @@
         .waiting-spinner {
             width: 48px;
             height: 48px;
-            border: 4px solid #334155;
-            border-top: 4px solid #3b82f6;
+            border: 4px solid #2a2a2a;
+            border-top: 4px solid #ffffff;
             border-radius: 50%;
             animation: spin 1s linear infinite;
             margin: 0 auto 24px;
@@ -334,9 +338,9 @@
         }
 
         .retry-btn {
-            background: #3b82f6;
+            background: #2a2a2a;
             color: white;
-            border: none;
+            border: 1px solid rgba(255, 255, 255, 0.2);
             padding: 12px 24px;
             border-radius: 12px;
             font-size: 16px;
@@ -346,11 +350,39 @@
         }
 
         .retry-btn:hover {
-            background: #2563eb;
+            background: #3a3a3a;
             transform: translateY(-1px);
         }
 
         .retry-btn:active {
+            transform: translateY(0);
+        }
+
+        .waiting-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+
+        .cancel-btn {
+            background: transparent;
+            color: #94a3b8;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .cancel-btn:hover {
+            background: #1a1a1a;
+            color: #ffffff;
+            transform: translateY(-1px);
+        }
+
+        .cancel-btn:active {
             transform: translateY(0);
         }
     </style>
@@ -407,14 +439,14 @@
                     <div class="card-title">Web</div>
                 </div>
 
+                <div id="app-card" class="card" onclick="connectTauriApp()">
+                    <div class="card-icon">📱💻</div>
+                    <div class="card-title">App</div>
+                </div>
+
                 <div class="card" onclick="connectWebWallet('https://staging.wallet.intear.tech')">
                     <div class="card-icon">🧪</div>
                     <div class="card-title">Web (Beta)</div>
-                </div>
-
-                <div id="desktop-card" class="card" onclick="connectTauriApp()">
-                    <div class="card-icon">💻</div>
-                    <div class="card-title">Desktop</div>
                 </div>
 
                 <div class="card" onclick="connectWebWallet('http://intearwallet.localhost:3000')">
@@ -555,7 +587,7 @@
                 hideWaitingScreen();
 
                 // Show error to user
-                alert("Failed to connect to desktop wallet. Please try again.");
+                alert("Failed to connect to app. Please try again.");
 
                 cleanupWebSocket();
             }
@@ -734,6 +766,12 @@
             }
         }
 
+        function cancelTauriConnection() {
+            console.log("Cancelling tauri connection");
+            cleanupWebSocket();
+            hideWaitingScreen();
+        }
+
         function cleanupWebSocket() {
             if (currentWebSocket) {
                 currentWebSocket.close();
@@ -845,9 +883,12 @@
 
             <div class="waiting-screen" id="waiting-screen">
                 <div class="waiting-spinner"></div>
-                <div class="waiting-title">Connecting to Desktop Wallet</div>
-                <div class="waiting-subtitle">Please complete the connection in your desktop app</div>
-                <button class="retry-btn" onclick="retryTauriConnection()">Retry</button>
+                <div class="waiting-title">Connecting to App</div>
+                <div class="waiting-subtitle">Please complete the connection in your app</div>
+                <div class="waiting-buttons">
+                    <button class="retry-btn" onclick="retryTauriConnection()">Retry</button>
+                    <button class="cancel-btn" onclick="cancelTauriConnection()">Cancel</button>
+                </div>
             </div>
 
             <button class="self-hosting-btn" onclick="openSelfHostingPrompt()" id="self-hosting-btn">Self

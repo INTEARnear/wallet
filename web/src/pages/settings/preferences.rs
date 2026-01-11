@@ -85,7 +85,7 @@ pub fn LedgerSelector(#[prop(optional, into)] on_change: Option<Callback<()>>) -
     });
 
     let has_ble_permissions = LocalResource::new(|| async move {
-        if is_tauri() && is_android() {
+        if is_android() {
             let promise = tauri_invoke_no_args("has_ble_permissions");
             let future = JsFuture::from(promise);
             let result = future.await.unwrap();
