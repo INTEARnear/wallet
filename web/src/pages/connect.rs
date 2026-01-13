@@ -80,7 +80,8 @@ enum Version {
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectMessage {
-    origin: String,
+    #[serde(default)]
+    origin: Option<String>,
     #[serde(default)]
     message_to_sign: Option<String>,
 }
@@ -338,8 +339,8 @@ pub fn Connect() -> impl IntoView {
 
                 // No origin check in V2+
                 if matches!(request_data.version, Version::V1)
-                    && message.origin != origin_for_post_message()
-                    && message.origin != "*"
+                    && *message.origin.as_ref().expect("No origin sent in V1") != origin_for_post_message()
+                    && *message.origin.as_ref().expect("No origin sent in V1") != "*"
                 {
                     return false;
                 }

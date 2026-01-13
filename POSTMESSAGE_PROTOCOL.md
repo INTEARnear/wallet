@@ -44,10 +44,10 @@ The same JSON payloads are also used when Intear Wallet runs in a desktop / mobi
     "methodNames": ["storage_deposit", "ft_transfer"], // optional, for the function call key
     "networkId": "mainnet" | "testnet" | string, // (can be any string for a custom localnet)
     "nonce": 0, // must be a recent timestamp in milliseconds since unix epoch
-    "message": "{\"origin\":\"https://dapp.com\",\"messageToSign\":\"{\\\"message\\\":\\\"Hello\\\",\\\"nonce\\\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\\\"recipient\\\":\\\"app.near\\\",\\\"callback_url\\\":null,\\\"state\\\":\\\"optional string\\\"}\"}", // origin is no longer used in V2+ but currently needs to be present. messageToSign is an optional stringified NEP-413 message to sign during connection, same structure as in sign-message request
+    "message": "{\"messageToSign\":\"{\\\"message\\\":\\\"Hello\\\",\\\"nonce\\\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\\\"recipient\\\":\\\"app.near\\\",\\\"callback_url\\\":null,\\\"state\\\":\\\"optional string\\\"}\"}", // messageToSign is an optional stringified NEP-413 message to sign during connection, same structure as in sign-message request
     "signature": "ed25519:...", // of sha256("${nonce}|${message}")
-    "version": "V1" | "V2", // defaults to V1 if doesn't exist
-    "actualOrigin": "https://dapp.com" // required in V2. If you use wallet-connector-iframe.html, the iframe injects this value. This is the value displayed to the user
+    "version": "V2", // only the V2 version is documented here, please refer to git history of this file to see previous documentation
+    "actualOrigin": "https://dapp.com" // If you use wallet-connector-iframe.html, the iframe injects this value. This is the value displayed to the user
   }
 }
 ```
