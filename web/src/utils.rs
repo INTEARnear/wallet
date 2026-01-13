@@ -732,7 +732,7 @@ pub struct StorageBalance {
 pub struct WalletSelectorTransaction {
     pub signer_id: AccountId,
     pub receiver_id: AccountId,
-    pub actions: Vec<WalletSelectorAction>,
+    pub actions: Vec<SendTransactionsAction>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -746,6 +746,22 @@ pub enum WalletSelectorContractIdentifier {
 pub enum WalletSelectorDeployMode {
     CodeHash,
     AccountId,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum SendTransactionsAction {
+    Native(NearAction),
+    WalletSelector(WalletSelectorAction),
+}
+
+impl From<SendTransactionsAction> for NearAction {
+    fn from(action: SendTransactionsAction) -> Self {
+        match action {
+            SendTransactionsAction::Native(action) => action,
+            SendTransactionsAction::WalletSelector(action) => action.into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]

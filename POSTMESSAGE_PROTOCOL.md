@@ -141,7 +141,7 @@ The popup needs to be closed by the dApp after receiving `signed` or `error` mes
     "publicKey": "ed25519:...", // app's public key, used for signature verification
     "nonce": 0, // must be a recent timestamp in milliseconds since unix epoch
     "signature": "ed25519:...", // of sha256("${nonce}|${transactions}")
-    "transactions": "[ ... ]" // stringified JSON array of transaction objects as in https://github.com/near/wallet-selector/blob/30703fdfccb7138eead12a0a65c6b0dba89429d7/packages/core/src/lib/wallet/transactions.types.ts#L1-L78
+    "transactions": "[ ... ]" // stringified JSON array of transaction objects as in https://github.com/near/wallet-selector/blob/30703fdfccb7138eead12a0a65c6b0dba89429d7/packages/core/src/lib/wallet/transactions.types.ts#L1-L78. For actions, it also accepts the real action syntax that is used in RPC communication, indexing, and Rust codebases, except for Delegate action which is unsupported
   }
 }
 ```
@@ -175,10 +175,6 @@ The popup needs to be closed by the dApp after receiving `sent` or `error` messa
 
 ---
 
-# Example Implementations
+# Example Implementation
 
-1. [Wallet Selector](https://github.com/near/wallet-selector/tree/30703fdfccb7138eead12a0a65c6b0dba89429d7/packages/intear-wallet) adapter for Intear Wallet. Official, maintained by Intear.
-
-2. [fastintear](https://github.com/elliotBraem/fastintear), unofficial.
-
-3. [hot-connector](./web/src/js/near-selector.js) adapter for Intear Wallet. Official, maintained by Intear
+The official minimal library for low-level interactions: https://github.com/INTEARnear/intearwallet-connect

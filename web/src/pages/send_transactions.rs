@@ -1,3 +1,4 @@
+use base64::{Engine, prelude::BASE64_STANDARD};
 use futures_channel::oneshot;
 use icondata::*;
 use leptos::{prelude::*, task::spawn_local};
@@ -6,7 +7,11 @@ use leptos_router::hooks::use_location;
 use near_min_api::{
     ExperimentalTxDetails,
     types::{
-        AccountId, CryptoHash, FinalExecutionOutcomeViewEnum, NearGas, NearToken,
+        AccessKeyPermission, AccountId, Action, AddKeyAction, CryptoHash, DeleteAccountAction,
+        DeleteKeyAction, DeployContractAction, DeployGlobalContractAction,
+        FinalExecutionOutcomeViewEnum, FunctionCallAction, FunctionCallPermission,
+        GlobalContractDeployMode, GlobalContractIdentifier, NearGas, NearToken, StakeAction,
+        TransferAction, UseGlobalContractAction,
         near_crypto::{PublicKey, Signature},
     },
 };
@@ -31,9 +36,8 @@ use crate::{
     },
     pages::connect::submit_tauri_response,
     utils::{
-        WalletSelectorAccessKeyPermission, WalletSelectorAction, WalletSelectorContractIdentifier,
-        WalletSelectorDeployMode, WalletSelectorTransaction, format_token_amount_no_hide,
-        is_debug_enabled,
+        SendTransactionsAction, WalletSelectorAction, WalletSelectorTransaction,
+        format_token_amount_no_hide, is_debug_enabled,
     },
 };
 
@@ -69,12 +73,16 @@ pub enum SendMessage {
 fn TransactionAction(
     tx_idx: usize,
     action_idx: usize,
-    action: WalletSelectorAction,
+    action: SendTransactionsAction,
     expanded_actions: ReadSignal<HashSet<(usize, usize)>>,
     set_expanded_actions: WriteSignal<HashSet<(usize, usize)>>,
     receiver_id: AccountId,
 ) -> impl IntoView {
-    let is_expandable = matches!(action, WalletSelectorAction::FunctionCall { .. });
+    let is_expandable = matches!(
+        action,
+        SendTransactionsAction::Native(Action::FunctionCall(_))
+            | SendTransactionsAction::WalletSelector(WalletSelectorAction::FunctionCall { .. })
+    );
     let is_expanded = move || expanded_actions.get().contains(&(tx_idx, action_idx));
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let (json_copied, set_json_copied) = signal(false);
@@ -98,11 +106,19 @@ fn TransactionAction(
 
     let copy_cli_command = move |contract_id: &AccountId,
                                  method_name: &str,
-                                 args: &serde_json::Value,
+                                 args: &[u8],
                                  gas: NearGas,
                                  deposit: NearToken,
                                  signer: Account| {
-        let minified_args = serde_json::to_string(args).unwrap_or_default();
+        let (args_type, args_value) =
+            if let Ok(value) = serde_json::from_slice::<serde_json::Value>(args) {
+                (
+                    "json-args".to_string(),
+                    serde_json::to_string(&value).unwrap(),
+                )
+            } else {
+                ("base64-args".to_string(), BASE64_STANDARD.encode(args))
+            };
 
         fn exact_gas_display(gas: u64) -> String {
             const ONE_TERA_GAS: u64 = 10u64.pow(12);
@@ -122,8 +138,8 @@ fn TransactionAction(
             "as-transaction".to_string(),
             contract_id.to_string(),
             method_name.to_string(),
-            "json-args".to_string(),
-            minified_args,
+            args_type,
+            args_value,
             "prepaid-gas".to_string(),
             format!("{}", exact_gas_display(gas.as_gas())),
             "attached-deposit".to_string(),
@@ -147,53 +163,48 @@ fn TransactionAction(
         set_timeout(move || set_cli_copied(false), Duration::from_millis(2000));
     };
 
-    let format_action = move |action: &WalletSelectorAction| -> String {
-        match action {
-            WalletSelectorAction::CreateAccount => "Create Account".into(),
-            WalletSelectorAction::DeployContract { code } => {
-                format!("Deploy Contract ({:?})", CryptoHash::hash_bytes(code))
+    let format_action = move |action: &SendTransactionsAction| -> String {
+        match Action::from(action.clone()) {
+            Action::CreateAccount(_) => "Create Account".into(),
+            Action::DeployContract(DeployContractAction { code }) => {
+                format!("Deploy Contract ({:?})", CryptoHash::hash_bytes(&code))
             }
-            WalletSelectorAction::FunctionCall {
+            Action::FunctionCall(box FunctionCallAction {
                 method_name,
                 gas,
                 deposit,
                 ..
-            } => {
-                let deposit_str = if *deposit == 0 {
+            }) => {
+                let deposit_str = if deposit.is_zero() {
                     String::new()
                 } else {
-                    format!(" and deposit {}", NearToken::from_yoctonear(*deposit))
+                    format!(" and deposit {deposit}")
                 };
-                format!(
-                    "Call '{method_name}' with {gas}{deposit_str}",
-                    gas = NearGas::from_gas(*gas)
-                )
+                format!("Call '{method_name}' with {gas}{deposit_str}")
             }
-            WalletSelectorAction::Transfer { deposit } => {
-                format!("Transfer {}", NearToken::from_yoctonear(*deposit))
+            Action::Transfer(TransferAction { deposit }) => {
+                format!("Transfer {deposit}")
             }
-            WalletSelectorAction::Stake { stake, public_key } => {
-                format!(
-                    "Stake {} with key {public_key}",
-                    NearToken::from_yoctonear(*stake)
-                )
+            Action::Stake(box StakeAction { stake, public_key }) => {
+                format!("Stake {stake} with key {public_key}")
             }
-            WalletSelectorAction::AddKey {
+            Action::AddKey(box AddKeyAction {
                 public_key,
                 access_key,
-            } => match &access_key.permission {
-                WalletSelectorAccessKeyPermission::FullAccess => {
+            }) => match &access_key.permission {
+                AccessKeyPermission::FullAccess => {
                     format!("Add Full Access Key {public_key}")
                 }
-                WalletSelectorAccessKeyPermission::FunctionCall {
+                AccessKeyPermission::FunctionCall(FunctionCallPermission {
                     receiver_id,
                     allowance,
                     method_names,
-                } => {
-                    let methods = method_names
-                        .as_ref()
-                        .map(|m| m.join(", "))
-                        .unwrap_or_else(|| "any".into());
+                }) => {
+                    let methods = if method_names.is_empty() {
+                        "any".to_string()
+                    } else {
+                        method_names.join(", ")
+                    };
                     let allowance_str = allowance
                         .map(|a| format!(" and allowance {a}"))
                         .unwrap_or_default();
@@ -202,33 +213,33 @@ fn TransactionAction(
                     )
                 }
             },
-            WalletSelectorAction::DeleteKey { public_key } => {
+            Action::DeleteKey(box DeleteKeyAction { public_key }) => {
                 format!("Delete Key {public_key}")
             }
-            WalletSelectorAction::DeleteAccount { beneficiary_id } => {
+            Action::DeleteAccount(DeleteAccountAction { beneficiary_id }) => {
                 format!("Delete Account (funds go to {beneficiary_id})")
             }
-            WalletSelectorAction::UseGlobalContract {
+            Action::UseGlobalContract(box UseGlobalContractAction {
                 contract_identifier,
-            } => {
+            }) => {
                 format!(
                     "Deploy Global Contract on this account from {}",
                     match contract_identifier {
-                        WalletSelectorContractIdentifier::AccountId(account_id) =>
+                        GlobalContractIdentifier::AccountId(account_id) =>
                             format!("account {account_id}"),
-                        WalletSelectorContractIdentifier::CodeHash(code_hash) =>
+                        GlobalContractIdentifier::CodeHash(code_hash) =>
                             format!("code hash {code_hash}"),
                     }
                 )
             }
-            WalletSelectorAction::DeployGlobalContract { code, deploy_mode } => {
+            Action::DeployGlobalContract(DeployGlobalContractAction { code, deploy_mode }) => {
                 const GLOBAL_CONTRACT_DEPLOY_MULTIPLIER: usize = 10;
                 format!(
                     "Deploy Global Contract {} and bind to {} for {}",
-                    CryptoHash::hash_bytes(code),
+                    CryptoHash::hash_bytes(&code),
                     match deploy_mode {
-                        WalletSelectorDeployMode::CodeHash => "the code hash",
-                        WalletSelectorDeployMode::AccountId => "this account",
+                        GlobalContractDeployMode::CodeHash => "the code hash",
+                        GlobalContractDeployMode::AccountId => "this account",
                     },
                     format_token_amount_no_hide(
                         "0.00001 NEAR"
@@ -242,6 +253,7 @@ fn TransactionAction(
                     )
                 )
             }
+            Action::Delegate(_) => panic!("Delegate actions are not supported"),
         }
     };
 
@@ -270,36 +282,58 @@ fn TransactionAction(
             </div>
             {move || {
                 if is_expanded() {
-                    if let WalletSelectorAction::FunctionCall { method_name, args, gas, deposit } = &action {
+                    if let Action::FunctionCall(
+                        box FunctionCallAction { method_name, args, gas, deposit, .. },
+                    ) = action.clone().into()
+                    {
                         let args_clone = args.clone();
                         let args_clone2 = args.clone();
                         let method_name_clone = method_name.clone();
-                        let gas_clone = *gas;
-                        let deposit_clone = *deposit;
                         let receiver_id_clone = receiver_id.clone();
+                        let args_json = serde_json::from_slice::<serde_json::Value>(&args_clone)
+                            .ok();
+                        let args_json_clone = args_json.clone();
                         view! {
                             <div class="flex flex-col gap-2">
                                 <pre class="text-xs font-mono bg-neutral-800 text-neutral-300 rounded-lg p-3 whitespace-pre-wrap">
-                                    {serde_json::to_string_pretty(&args_clone2).unwrap()}
+                                    {if let Some(args_json) = args_json {
+                                        serde_json::to_string_pretty(&args_json).unwrap()
+                                    } else {
+                                        format!(
+                                            "binary: {}",
+                                            args_clone2
+                                                .iter()
+                                                .map(|byte| format!("{byte:02x}"))
+                                                .collect::<Vec<String>>()
+                                                .join(""),
+                                        )
+                                    }}
                                 </pre>
                                 <div class="flex gap-2">
-                                    <button
-                                        class="text-xs text-blue-400 hover:text-blue-300 transition-colors px-3 py-1.5 bg-neutral-800 rounded flex items-center gap-2 relative"
-                                        on:click=move |_| copy_args_json(&args_clone2)
-                                    >
-                                        <Icon icon=LuClipboard width="14" height="14" />
-                                        {move || {
-                                            if json_copied.get() { "Copied!" } else { "Copy JSON" }
-                                        }}
-                                    </button>
+                                    {if let Some(args_json) = args_json_clone {
+                                        view! {
+                                            <button
+                                                class="text-xs text-blue-400 hover:text-blue-300 transition-colors px-3 py-1.5 bg-neutral-800 rounded flex items-center gap-2 relative"
+                                                on:click=move |_| copy_args_json(&args_json)
+                                            >
+                                                <Icon icon=LuClipboard width="14" height="14" />
+                                                {move || {
+                                                    if json_copied.get() { "Copied!" } else { "Copy JSON" }
+                                                }}
+                                            </button>
+                                        }
+                                            .into_any()
+                                    } else {
+                                        ().into_any()
+                                    }}
                                     <button
                                         class="text-xs text-blue-400 hover:text-blue-300 transition-colors px-3 py-1.5 bg-neutral-800 rounded flex items-center gap-2 relative"
                                         on:click=move |_| copy_cli_command(
                                             &receiver_id_clone,
                                             &method_name_clone,
                                             &args_clone,
-                                            NearGas::from_gas(gas_clone),
-                                            NearToken::from_yoctonear(deposit_clone),
+                                            NearGas::from_gas(gas),
+                                            deposit,
                                             accounts
                                                 .get()
                                                 .accounts
@@ -729,7 +763,13 @@ pub fn SendTransactions() -> impl IntoView {
             .map(|txs| {
                 txs.iter().any(|tx| {
                     tx.actions.iter().any(|action| {
-                        if let WalletSelectorAction::FunctionCall { gas, .. } = action {
+                        if let SendTransactionsAction::WalletSelector(
+                            WalletSelectorAction::FunctionCall { gas, .. },
+                        )
+                        | SendTransactionsAction::Native(Action::FunctionCall(
+                            box FunctionCallAction { gas, .. },
+                        )) = action
+                        {
                             *gas >= NearGas::from_tgas(300).as_gas()
                         } else {
                             false

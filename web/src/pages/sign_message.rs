@@ -790,7 +790,7 @@ fn IntentItem(intent: intents::Intent, index: usize) -> impl IntoView {
             <Icon icon=icon width="16" height="16" attr:class=color />
             <div class="flex-1 min-w-0 space-y-3">
                 <div>
-                    <p class="text-white text-sm font-medium">{title}</p>
+                    <p class="text-white text-sm font-medium break-all">{title}</p>
                     {if !details.is_empty() {
                         view! { <p class="text-neutral-400 text-xs mt-1 break-words">{details}</p> }
                             .into_any()

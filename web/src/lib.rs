@@ -2,7 +2,8 @@
     closure_track_caller,
     stmt_expr_attributes,
     mpmc_channel,
-    iter_intersperse
+    iter_intersperse,
+    box_patterns
 )]
 #![deny(clippy::float_arithmetic)]
 
