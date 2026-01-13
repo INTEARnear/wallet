@@ -23,7 +23,11 @@ const ENTRY_NAME: &str = "accounts";
 
 #[tauri::command]
 fn close_temporary_window(window: WebviewWindow) {
-    let _ = window.navigate("http://tauri.localhost/".parse().unwrap());
+    let mut url = window.url().unwrap();
+    url.set_path("/");
+    let _ = window.navigate(url);
+    #[cfg(desktop)]
+    let _ = window.minimize();
     #[cfg(mobile)]
     {
         // TODO: back to browser
@@ -722,13 +726,16 @@ fn process_deep_link(app: &AppHandle<Wry>, url: &Url) -> Result<(), anyhow::Erro
             let window = app.get_webview_window(WINDOW_MAIN).unwrap();
 
             #[cfg(desktop)]
-            let _ = window.set_focus();
+            {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
 
-            let _ = window.navigate(
-                format!("http://tauri.localhost/connect?session_id={session_id}")
-                    .parse()
-                    .unwrap(),
-            );
+            let mut url = window.url().unwrap();
+            url.set_path("/connect");
+            url.set_query(Some(&format!("session_id={session_id}")));
+            let _ = window.navigate(url);
 
             Ok(())
         }
@@ -745,13 +752,16 @@ fn process_deep_link(app: &AppHandle<Wry>, url: &Url) -> Result<(), anyhow::Erro
             let window = app.get_webview_window(WINDOW_MAIN).unwrap();
 
             #[cfg(desktop)]
-            let _ = window.set_focus();
+            {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
 
-            let _ = window.navigate(
-                format!("http://tauri.localhost/sign-message?session_id={session_id}")
-                    .parse()
-                    .unwrap(),
-            );
+            let mut url = window.url().unwrap();
+            url.set_path("/sign-message");
+            url.set_query(Some(&format!("session_id={session_id}")));
+            let _ = window.navigate(url);
 
             Ok(())
         }
@@ -768,13 +778,16 @@ fn process_deep_link(app: &AppHandle<Wry>, url: &Url) -> Result<(), anyhow::Erro
             let window = app.get_webview_window(WINDOW_MAIN).unwrap();
 
             #[cfg(desktop)]
-            let _ = window.set_focus();
+            {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
 
-            let _ = window.navigate(
-                format!("http://tauri.localhost/send-transactions?session_id={session_id}")
-                    .parse()
-                    .unwrap(),
-            );
+            let mut url = window.url().unwrap();
+            url.set_path("/send-transactions");
+            url.set_query(Some(&format!("session_id={session_id}")));
+            let _ = window.navigate(url);
 
             Ok(())
         }
