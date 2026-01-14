@@ -1165,7 +1165,7 @@ pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
                                     view! {
                                         <div class="flex items-center gap-2 text-neutral-400">
                                             <Icon icon=icondata::LuInfo width="16" height="16" />
-                                            <span class="text-sm">"No intents specified"</span>
+                                            <span class="text-sm">"Nothing will be done"</span>
                                         </div>
                                     }
                                         .into_any()
