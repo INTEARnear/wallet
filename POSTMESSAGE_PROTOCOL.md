@@ -44,9 +44,9 @@ The same JSON payloads are also used when Intear Wallet runs in a desktop / mobi
     "methodNames": ["storage_deposit", "ft_transfer"], // optional, for the function call key
     "networkId": "mainnet" | "testnet" | string, // (can be any string for a custom localnet)
     "nonce": 0, // must be a recent timestamp in milliseconds since unix epoch
-    "message": "{\"messageToSign\":\"{\\\"message\\\":\\\"Hello\\\",\\\"nonce\\\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\\\"recipient\\\":\\\"app.near\\\",\\\"callback_url\\\":null,\\\"state\\\":\\\"optional string\\\"}\"}", // messageToSign is an optional stringified NEP-413 message to sign during connection, same structure as in sign-message request
+    "message": "{\"messageToSign\":\"{\\\"message\\\":\\\"Hello\\\",\\\"nonce\\\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\\\"recipient\\\":\\\"app.near\\\",\\\"callback_url\\\":null,\\\"state\\\":\\\"optional string\\\"}\"}", // messageToSign is an optional stringified NEP-413 message to sign during connection, same structure as in sign-message request. If you don't need it, it should be "{}"
     "signature": "ed25519:...", // of sha256("${nonce}|${message}")
-    "version": "V2", // only the V2 version is documented here, please refer to git history of this file to see previous documentation
+    "version": "V3", // only the V3 version is documented here, please refer to git history of this file to see previous documentation
     "actualOrigin": "https://dapp.com" // If you use wallet-connector-iframe.html, the iframe injects this value. This is the value displayed to the user
   }
 }
@@ -58,12 +58,7 @@ Success:
 ```jsonc
 {
   "type": "connected",
-  "accounts": [
-    {
-      "accountId": "connected-user-account.near",
-      "publicKey": "ed25519:..." // user's on-chain full access key
-    }
-  ],
+  "accountId": "connected-user-account.near",
   "functionCallKeyAdded": true | false, // false if not requested or if the user unchecked the checkbox to add a public key
   "logoutKey": "ed25519:...", // public key owned by the wallet that can be used to verify "logged out by user in the wallet" response from logout bridge
   "useBridge": true | false, // `true` when running a native app that requires intear:// + websocket flow
@@ -113,7 +108,7 @@ Success:
   "signature": {
     "accountId": "connected-user-account.near",
     "publicKey": "ed25519:...", // on-chain user's full access key
-    "signature": "ed25519:...", // signature of the NEP-413 payload. Note that it's keytype-prefixed base58, so if you need to get the NEP-413 standard signature (base64), you need to remove the keytype prefix (remove "ed25519:" or "secp256k1:"), decode the rest using base58, and encode with base64
+    "signature": "", // base64 signature of the NEP-413 payload
     "state": "optional string, same as in the request. Not really necessary to use this for popup-based or websocket-based communication, so better to set this as null in the request"
   }
 }
@@ -169,9 +164,13 @@ Failure:
 
 The popup needs to be closed by the dApp after receiving `sent` or `error` message.
 
-> Behavior
+> Multi-transaction Behavior
 > 
 > The transactions are sent sequentially, one after confirmation of the previous one. If one of them fails, the previous transactions are not reverted (as NEAR doesn't have this functionality), but the next transactions are not sent and the wallet exits early with a `error` message
+
+> Error Behavior
+>
+> If a transaction was not accepted by the RPC node, it shows an error to the user, with an ability to retry. If the transaction was executed but encountered a smart contract panic, the failing outcome is passed as a successful response, and it's the app's responsibility to find and handle errors in the outcomes
 
 ---
 

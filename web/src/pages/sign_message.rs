@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsCast;
 use web_sys::{Window, js_sys::Date};
 
-use crate::pages::settings::LedgerSelector;
+use crate::{contexts::connected_apps_context::ConnectorVersion, pages::settings::LedgerSelector};
 use crate::{
     contexts::{
         accounts_context::{AccountsContext, LedgerSigningState},
@@ -77,11 +77,30 @@ pub struct MessageToSign {
 }
 
 #[derive(Serialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum SignedMessage {
+    V2AndBelow(SignedMessageV1),
+    V3(SignedMessageV2),
+}
+
+#[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct SignedMessage {
+pub struct SignedMessageV1 {
     pub account_id: AccountId,
     pub public_key: PublicKey,
     pub signature: Signature,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+#[serde_with::serde_as]
+pub struct SignedMessageV2 {
+    pub account_id: AccountId,
+    pub public_key: PublicKey,
+    #[serde_as(as = "Base64")]
+    pub signature: Vec<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub state: Option<String>,
 }
@@ -1499,11 +1518,24 @@ pub fn SignMessage() -> impl IntoView {
             };
 
             let message = SendMessage::Signed {
-                signature: SignedMessage {
-                    account_id: account.account_id.clone(),
-                    public_key: account.secret_key.public_key(),
-                    signature,
-                    state: deserialized_message.state,
+                signature: match connected_app().unwrap().connector_version {
+                    ConnectorVersion::V1 | ConnectorVersion::V2 => {
+                        SignedMessage::V2AndBelow(SignedMessageV1 {
+                            account_id: account.account_id.clone(),
+                            public_key: account.secret_key.public_key(),
+                            signature,
+                            state: deserialized_message.state,
+                        })
+                    }
+                    ConnectorVersion::V3 => SignedMessage::V3(SignedMessageV2 {
+                        account_id: account.account_id.clone(),
+                        public_key: account.secret_key.public_key(),
+                        signature: match signature {
+                            Signature::ED25519(signature) => signature.to_bytes().to_vec(),
+                            Signature::SECP256K1(signature) => <[u8; 65]>::from(signature).to_vec(),
+                        },
+                        state: deserialized_message.state,
+                    }),
                 },
             };
             post_to_opener(message, true);
@@ -1564,7 +1596,7 @@ pub fn SignMessage() -> impl IntoView {
                                                         format!("🔒 {}", app.origin)
                                                     }
                                                 } else {
-                                                    "⚠️ Unknown".to_string()
+                                                    "⚠️ Unknown, not connected".to_string()
                                                 }}
                                             </p>
                                         </div>
@@ -1585,6 +1617,7 @@ pub fn SignMessage() -> impl IntoView {
                                                 <button
                                                     class="w-full px-6 py-3.5 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition-all duration-200 shadow-lg shadow-blue-500/10 hover:shadow-blue-500/20 cursor-pointer"
                                                     on:click=handle_verify
+                                                    disabled=move || connected_app().is_none()
                                                 >
                                                     "Confirm"
                                                 </button>

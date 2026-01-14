@@ -14,13 +14,6 @@ use serde::{Deserialize, Deserializer, Serialize};
 use wasm_bindgen::JsCast;
 use web_sys::{Window, js_sys::Date};
 
-use crate::contexts::{
-    accounts_context::{AccountsContext, LedgerSigningState, SecretKeyHolder},
-    connected_apps_context::{ConnectedApp, ConnectedAppsContext},
-    network_context::Network,
-    security_log_context::add_security_log,
-    transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
-};
 use crate::utils::{NEP413Payload, format_account_id, is_debug_enabled, sign_nep413};
 use crate::{
     contexts::account_selector_context::AccountSelectorContext,
@@ -33,6 +26,16 @@ use crate::{
 use crate::{
     contexts::config_context::{ConfigContext, WalletConfig},
     utils::is_tauri,
+};
+use crate::{
+    contexts::{
+        accounts_context::{AccountsContext, LedgerSigningState, SecretKeyHolder},
+        connected_apps_context::{ConnectedApp, ConnectedAppsContext, ConnectorVersion},
+        network_context::Network,
+        security_log_context::add_security_log,
+        transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
+    },
+    pages::sign_message::{SignedMessageV1, SignedMessageV2},
 };
 
 const GAS_ALLOWANCE: NearToken = NearToken::from_millinear(1000); // 1 NEAR
@@ -65,16 +68,9 @@ pub struct SignInRequest {
     message: String,
     // Below: added in V2
     #[serde(default)]
-    version: Version,
+    version: ConnectorVersion,
     #[serde(default)]
     actual_origin: Option<String>,
-}
-
-#[derive(Deserialize, Debug, Clone, Default)]
-enum Version {
-    #[default]
-    V1,
-    V2,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -130,7 +126,8 @@ pub enum SendMessage {
     Ready,
     #[serde(rename_all = "camelCase")]
     Connected {
-        accounts: Vec<WalletSelectorAccount>,
+        #[serde(flatten)]
+        accounts: ResponseAccounts,
         function_call_key_added: bool,
         logout_key: PublicKey,
         use_bridge: bool,
@@ -140,6 +137,16 @@ pub enum SendMessage {
     Error {
         message: String,
     },
+}
+
+#[derive(Serialize, Debug)]
+#[serde(untagged)]
+pub enum ResponseAccounts {
+    V2AndBelow {
+        accounts: Vec<WalletSelectorAccount>,
+    },
+    #[serde(rename_all = "camelCase")]
+    V3 { account_id: AccountId },
 }
 
 #[derive(Serialize, Debug)]
@@ -216,7 +223,7 @@ pub fn Connect() -> impl IntoView {
     let (tauri_session_id, set_tauri_session_id) = signal::<Option<String>>(None);
 
     let process_sign_in = move |data: SignInRequest, evt_origin: String| {
-        if matches!(data.version, Version::V1) {
+        if matches!(data.version, ConnectorVersion::V1) {
             // In V1 the event origin is the dapp. In V2+ it's an iframe which can't
             // possibly navigate to a different location under normal circumstances,
             // so we can use "*"
@@ -264,7 +271,8 @@ pub fn Connect() -> impl IntoView {
                                 set_tauri_session_id(Some(session_id.clone()));
                                 match message {
                                     ReceiveMessage::SignIn { data } => {
-                                        let origin = if matches!(data.version, Version::V1) {
+                                        let origin = if matches!(data.version, ConnectorVersion::V1)
+                                        {
                                             "".to_string()
                                         } else {
                                             data.actual_origin.clone().unwrap_or_default()
@@ -338,8 +346,9 @@ pub fn Connect() -> impl IntoView {
                 };
 
                 // No origin check in V2+
-                if matches!(request_data.version, Version::V1)
-                    && *message.origin.as_ref().expect("No origin sent in V1") != origin_for_post_message()
+                if matches!(request_data.version, ConnectorVersion::V1)
+                    && *message.origin.as_ref().expect("No origin sent in V1")
+                        != origin_for_post_message()
                     && *message.origin.as_ref().expect("No origin sent in V1") != "*"
                 {
                     return false;
@@ -486,11 +495,26 @@ pub fn Connect() -> impl IntoView {
                     )
                     .await
                     {
-                        Ok(signature) => Some(SignedMessage {
-                            account_id: selected_account.clone(),
-                            public_key: selected_account_secret_key.public_key(),
-                            signature,
-                            state: message_to_sign.state.clone(),
+                        Ok(signature) => Some(match request_data.version {
+                            ConnectorVersion::V1 | ConnectorVersion::V2 => {
+                                SignedMessage::V2AndBelow(SignedMessageV1 {
+                                    account_id: selected_account.clone(),
+                                    public_key: selected_account_secret_key.public_key(),
+                                    signature,
+                                    state: message_to_sign.state.clone(),
+                                })
+                            }
+                            ConnectorVersion::V3 => SignedMessage::V3(SignedMessageV2 {
+                                account_id: selected_account.clone(),
+                                public_key: selected_account_secret_key.public_key(),
+                                signature: match signature {
+                                    Signature::ED25519(signature) => signature.to_bytes().to_vec(),
+                                    Signature::SECP256K1(signature) => {
+                                        <[u8; 65]>::from(signature).to_vec()
+                                    }
+                                },
+                                state: message_to_sign.state.clone(),
+                            }),
                         }),
                         Err(_) => {
                             let message = SendMessage::Error {
@@ -584,6 +608,7 @@ pub fn Connect() -> impl IntoView {
                         autoconfirm_all: false,
                         logged_out_at: None,
                         logout_key: logout_key.clone(),
+                        connector_version: request_data.version,
                     };
                     add_security_log(
                         format!("Connected to {app:?} on /connect"),
@@ -622,12 +647,20 @@ pub fn Connect() -> impl IntoView {
                         Ok(details) => {
                             log::info!("Transaction details: {details:?}");
                             if details.is_ok_and(|d| d.final_execution_outcome.is_some()) {
-                                let accounts = vec![WalletSelectorAccount {
-                                    account_id: selected_account,
-                                    public_key: user_public_key,
-                                }];
                                 let message = SendMessage::Connected {
-                                    accounts,
+                                    accounts: match request_data.version {
+                                        ConnectorVersion::V1 | ConnectorVersion::V2 => {
+                                            ResponseAccounts::V2AndBelow {
+                                                accounts: vec![WalletSelectorAccount {
+                                                    account_id: selected_account,
+                                                    public_key: user_public_key,
+                                                }],
+                                            }
+                                        }
+                                        ConnectorVersion::V3 => ResponseAccounts::V3 {
+                                            account_id: selected_account,
+                                        },
+                                    },
                                     function_call_key_added: true,
                                     logout_key: logout_key.public_key(),
                                     use_bridge: tauri_session_id.get_untracked().is_some(),
@@ -650,12 +683,20 @@ pub fn Connect() -> impl IntoView {
                         }
                     }
                 } else {
-                    let accounts = vec![WalletSelectorAccount {
-                        account_id: selected_account,
-                        public_key: user_public_key,
-                    }];
                     let message = SendMessage::Connected {
-                        accounts,
+                        accounts: match request_data.version {
+                            ConnectorVersion::V1 | ConnectorVersion::V2 => {
+                                ResponseAccounts::V2AndBelow {
+                                    accounts: vec![WalletSelectorAccount {
+                                        account_id: selected_account,
+                                        public_key: user_public_key,
+                                    }],
+                                }
+                            }
+                            ConnectorVersion::V3 => ResponseAccounts::V3 {
+                                account_id: selected_account,
+                            },
+                        },
                         function_call_key_added: false,
                         logout_key: logout_key.public_key(),
                         use_bridge: tauri_session_id.get_untracked().is_some(),

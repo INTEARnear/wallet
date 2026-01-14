@@ -13,6 +13,14 @@ use crate::contexts::transaction_queue_context::TransactionType;
 
 use super::transaction_queue_context::EnqueuedTransaction;
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, PartialEq)]
+pub enum ConnectorVersion {
+    #[default]
+    V1,
+    V2,
+    V3,
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct ConnectedApp {
     /// The user's account that the app is connected to
@@ -45,6 +53,9 @@ pub struct ConnectedApp {
     /// with this key. It's only used to log the user out of dapp UIs, so
     /// it's safe to leave unencrypted in localStorage.
     pub logout_key: SecretKey,
+    /// The version of the connector that was used to connect to this app
+    #[serde(default)]
+    pub connector_version: ConnectorVersion,
 }
 
 impl ConnectedApp {
