@@ -848,7 +848,7 @@ impl From<WalletSelectorAction> for NearAction {
             } => NearAction::FunctionCall(Box::new(FunctionCallAction {
                 method_name,
                 args: serde_json::to_vec(&args).unwrap_or_default(),
-                gas: Gas::from_teragas(gas),
+                gas: Gas::from_gas(gas),
                 deposit: NearToken::from_yoctonear(deposit),
             })),
             WalletSelectorAction::Transfer { deposit } => NearAction::Transfer(TransferAction {
