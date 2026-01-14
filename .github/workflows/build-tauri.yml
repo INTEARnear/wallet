@@ -19,14 +19,14 @@ jobs:
               target/release/bundle/deb/Intear Wallet_0.1.0_amd64.deb
               target/release/bundle/rpm/Intear Wallet-0.1.0-1.x86_64.rpm
               target/release/bundle/appimage/Intear Wallet_0.1.0_amd64.AppImage
-          - os: ubuntu-24.04-arm64
+          - os: ubuntu-24.04-arm
             platform: linux
             arch: aarch64
             bundle_paths: |
               target/release/bundle/deb/Intear Wallet_0.1.0_arm64.deb
               target/release/bundle/rpm/Intear Wallet-0.1.0-1.aarch64.rpm
               target/release/bundle/appimage/Intear Wallet_0.1.0_aarch64.AppImage
-          - os: windows-11
+          - os: windows-latest
             platform: windows
             arch: x86_64
             bundle_paths: |
@@ -146,7 +146,7 @@ jobs:
         if: matrix.platform != 'android' && matrix.platform != 'ios'
         run: cargo tauri build
 
-      - name: Set up signing
+      - name: Sign for Android
         if: matrix.platform == 'android'
         run: |
           cd src-tauri/gen/android
@@ -156,8 +156,7 @@ jobs:
           echo "storeFile=$RUNNER_TEMP/keystore.jks" >> keystore.properties
 
       - name: Build Tauri app
-        if: matrix.platform == 'android'
-        run: cargo tauri android build
+        uses: tauri-apps/tauri-action@v0
 
       - name: Upload Tauri artifacts
         uses: actions/upload-artifact@v4
