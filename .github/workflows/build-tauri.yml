@@ -60,7 +60,7 @@ jobs:
       - name: Create .env file
         run: cp .env.prod .env
 
-      - name: Setup mold (Linux and Android only)
+      - name: Setup mold (Linux and Android)
         if: matrix.platform == 'linux' || matrix.platform == 'android'
         uses: rui314/setup-mold@v1
 
@@ -70,7 +70,7 @@ jobs:
           toolchain: nightly-2025-12-01
           components: rust-src, cargo, rust-std, rustc
 
-      - name: Install Tauri system dependencies (Linux only)
+      - name: Install Tauri system dependencies (Linux)
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
@@ -86,7 +86,13 @@ jobs:
             libusb-1.0-0-dev \
             patchelf \
             build-essential \
-            xdg-utils \
+            xdg-utils
+
+      - name: Install Tauri system dependencies (Android)
+        if: matrix.platform == 'android'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
             libglib2.0-dev
 
       - name: Install secp256k1 on Windows ARM
@@ -94,7 +100,7 @@ jobs:
         run: |
           C:\vcpkg\vcpkg.exe install secp256k1:arm64-windows
 
-      - name: Install Tauri system dependencies (macOS only)
+      - name: Install Tauri system dependencies (macOS)
         if: matrix.platform == 'macos'
         run: |
           brew install pango jpeg librsvg
