@@ -85,7 +85,14 @@ jobs:
             librsvg2-dev \
             libusb-1.0-0-dev \
             patchelf \
-            build-essential
+            build-essential \
+            xdg-utils \
+            libglib2.0-dev
+
+      - name: Install secp256k1 on Windows ARM
+        if: matrix.platform == 'windows' && matrix.arch == 'aarch64'
+        run: |
+          C:\vcpkg\vcpkg.exe install secp256k1:arm64-windows
 
       - name: Install Tauri system dependencies (macOS only)
         if: matrix.platform == 'macos'
@@ -142,11 +149,7 @@ jobs:
       - name: Apply patches
         run: cargo patch-crate
 
-      - name: Build Tauri app
-        if: matrix.platform != 'android' && matrix.platform != 'ios'
-        run: cargo tauri build
-
-      - name: Sign for Android
+      - name: Set up signing for Android
         if: matrix.platform == 'android'
         run: |
           cd src-tauri/gen/android
