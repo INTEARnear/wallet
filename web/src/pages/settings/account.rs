@@ -17,6 +17,7 @@ use crate::contexts::{
     security_log_context::add_security_log,
     transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
 };
+use crate::utils::serialize_to_js_value;
 use bip39::Mnemonic;
 use chrono::NaiveDate;
 use leptos::{prelude::*, task::spawn_local};
@@ -510,7 +511,7 @@ pub fn AccountSettings() -> impl IntoView {
         set_ledger_error.set(None);
         let ledger_mode = config_context.config.get_untracked().ledger_mode;
         let request = JsWalletRequest::LedgerConnect { mode: ledger_mode };
-        match serde_wasm_bindgen::to_value(&request) {
+        match serialize_to_js_value(&request) {
             Ok(js_value) => {
                 let origin = window()
                     .location()
@@ -1545,7 +1546,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                     path,
                                                     mode: ledger_mode,
                                                 };
-                                                match serde_wasm_bindgen::to_value(&request) {
+                                                match serialize_to_js_value(&request) {
                                                     Ok(js_value) => {
                                                         let origin = window()
                                                             .location()
@@ -2067,7 +2068,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                     let request = JsWalletRequest::RequestEthereumWalletSignature {
                                                                         message_to_sign: message,
                                                                     };
-                                                                    match serde_wasm_bindgen::to_value(&request) {
+                                                                    match serialize_to_js_value(&request) {
                                                                         Ok(js_value) => {
                                                                             let origin = window()
                                                                                 .location()
@@ -2274,7 +2275,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                     let request = JsWalletRequest::RequestSolanaWalletSignature {
                                                                         message_to_sign: message,
                                                                     };
-                                                                    match serde_wasm_bindgen::to_value(&request) {
+                                                                    match serialize_to_js_value(&request) {
                                                                         Ok(js_value) => {
                                                                             let origin = window()
                                                                                 .location()

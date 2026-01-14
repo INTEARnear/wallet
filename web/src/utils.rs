@@ -17,7 +17,7 @@ use near_min_api::{
     },
     utils::dec_format,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{fmt::Display, ops::Deref, str::FromStr, sync::Arc, time::Duration};
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use web_sys::js_sys::{Promise, Reflect};
@@ -1058,4 +1058,10 @@ pub async fn generate_qr_code(data: &str, include_logo: bool) -> Result<String, 
     } else {
         Err(result)
     }
+}
+
+pub fn serialize_to_js_value<T: Serialize>(
+    value: &T,
+) -> Result<JsValue, serde_wasm_bindgen::Error> {
+    value.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
 }

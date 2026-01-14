@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::Utc;
 use ed25519_dalek::SECRET_KEY_LENGTH;
 use leptos::{prelude::*, task::spawn_local};
@@ -14,7 +15,9 @@ use serde::{Deserialize, Deserializer, Serialize};
 use wasm_bindgen::JsCast;
 use web_sys::{Window, js_sys::Date};
 
-use crate::utils::{NEP413Payload, format_account_id, is_debug_enabled, sign_nep413};
+use crate::utils::{
+    NEP413Payload, format_account_id, is_debug_enabled, serialize_to_js_value, sign_nep413,
+};
 use crate::{
     contexts::account_selector_context::AccountSelectorContext,
     pages::{
@@ -209,7 +212,7 @@ pub async fn submit_tauri_response(
 pub fn Connect() -> impl IntoView {
     let (loading, set_loading) = signal(true);
     let (request_data, set_request_data) = signal::<Option<SignInRequest>>(None);
-    let (origin_for_post_message, set_origin) = signal::<String>("*".to_string());
+    let (origin_for_post_message, set_origin_for_post_message) = signal::<String>("*".to_string());
     let (actual_origin, set_actual_origin) = signal::<Option<String>>(None);
     let (add_function_call_key, set_add_function_call_key) = signal(false);
     let AccountSelectorContext { set_expanded, .. } = expect_context::<AccountSelectorContext>();
@@ -227,7 +230,7 @@ pub fn Connect() -> impl IntoView {
             // In V1 the event origin is the dapp. In V2+ it's an iframe which can't
             // possibly navigate to a different location under normal circumstances,
             // so we can use "*"
-            set_origin(evt_origin.clone());
+            set_origin_for_post_message(evt_origin.clone());
             set_actual_origin(Some(evt_origin.clone()));
         } else {
             set_actual_origin(Some(
@@ -393,19 +396,25 @@ pub fn Connect() -> impl IntoView {
                     }
                 }
             }
-            _ => {
+            Err(err) => {
                 if is_debug_enabled() {
-                    log::info!("Failed to parse message as ReceiveMessage");
+                    log::info!("Failed to parse message as ReceiveMessage: {err:?}");
                 }
             }
         }
     });
 
     let post_to_opener = move |message: SendMessage, close_window: bool| {
+        if is_debug_enabled() {
+            log::info!(
+                "Posting message to opener: {:?}",
+                serialize_to_js_value(&message)
+            );
+        }
         if let Some(session_id) = tauri_session_id.get_untracked() {
             spawn_local(submit_tauri_response(session_id, message, close_window));
         } else {
-            let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
+            let js_value = serialize_to_js_value(&message).unwrap();
             opener()
                 .post_message(&js_value, &origin_for_post_message.read_untracked())
                 .expect("Failed to send message");
@@ -507,10 +516,12 @@ pub fn Connect() -> impl IntoView {
                             ConnectorVersion::V3 => SignedMessage::V3(SignedMessageV2 {
                                 account_id: selected_account.clone(),
                                 public_key: selected_account_secret_key.public_key(),
-                                signature: match signature {
-                                    Signature::ED25519(signature) => signature.to_bytes().to_vec(),
+                                signature_base64: match signature {
+                                    Signature::ED25519(signature) => {
+                                        BASE64_STANDARD.encode(signature.to_bytes())
+                                    }
                                     Signature::SECP256K1(signature) => {
-                                        <[u8; 65]>::from(signature).to_vec()
+                                        BASE64_STANDARD.encode(<[u8; 65]>::from(signature))
                                     }
                                 },
                                 state: message_to_sign.state.clone(),

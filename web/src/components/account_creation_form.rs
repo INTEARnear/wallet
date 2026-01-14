@@ -34,6 +34,7 @@ use crate::contexts::transaction_queue_context::{
 };
 use crate::pages::settings::LedgerSelector;
 use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
+use crate::utils::serialize_to_js_value;
 use bs58;
 use leptos_use::{use_event_listener, use_window};
 use serde_wasm_bindgen;
@@ -494,7 +495,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
         set_ledger_connection_in_progress(true);
         let ledger_mode = config_context.config.get_untracked().ledger_mode;
         let request = JsWalletRequest::LedgerConnect { mode: ledger_mode };
-        match serde_wasm_bindgen::to_value(&request) {
+        match serialize_to_js_value(&request) {
             Ok(js_value) => {
                 let origin = window()
                     .location()
@@ -522,7 +523,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
             path,
             mode: ledger_mode,
         };
-        match serde_wasm_bindgen::to_value(&request) {
+        match serialize_to_js_value(&request) {
             Ok(js_value) => {
                 let origin = window()
                     .location()
@@ -582,567 +583,556 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                             }
                                 .into_any()
                         }
-                    }}
-                        <div class="mb-6">
-                            <label class="block text-neutral-400 text-sm font-medium mb-2">
-                                "Account Name"
-                            </label>
-                            <div class="relative">
-                                <input
-                                    node_ref=input_ref
-                                    type="text"
-                                    class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 text-base"
-                                    style=move || {
-                                        if is_valid.get().is_some() {
-                                            "border: 2px solid rgb(34 197 94)"
-                                        } else {
-                                            "border: 2px solid rgb(55 65 81)"
+                    }} <div class="mb-6">
+                        <label class="block text-neutral-400 text-sm font-medium mb-2">
+                            "Account Name"
+                        </label>
+                        <div class="relative">
+                            <input
+                                node_ref=input_ref
+                                type="text"
+                                class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 text-base"
+                                style=move || {
+                                    if is_valid.get().is_some() {
+                                        "border: 2px solid rgb(34 197 94)"
+                                    } else {
+                                        "border: 2px solid rgb(55 65 81)"
+                                    }
+                                }
+                                prop:value=account_name
+                                on:input=move |ev| {
+                                    let value = event_target_value(&ev)
+                                        .to_lowercase()
+                                        .chars()
+                                        .filter(|c| {
+                                            c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_'
+                                                || *c == '-'
+                                        })
+                                        .collect::<String>();
+                                    set_account_name.set(value.clone());
+                                    check_account(value);
+                                }
+                                on:keydown=handle_keydown
+                                disabled=move || is_creating.get()
+                            />
+                            <div class="absolute top-1/2 right-2 -translate-y-1/2 max-w-40 z-10">
+                                {move || {
+                                    if is_on_gift_page() {
+                                        view! {
+                                            <div class="text-right min-w-25 px-3 py-2 text-gray-400 text-sm">
+                                                ".near"
+                                            </div>
                                         }
-                                    }
-                                    prop:value=account_name
-                                    on:input=move |ev| {
-                                        let value = event_target_value(&ev)
-                                            .to_lowercase()
-                                            .chars()
-                                            .filter(|c| {
-                                                c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_'
-                                                    || *c == '-'
-                                            })
-                                            .collect::<String>();
-                                        set_account_name.set(value.clone());
-                                        check_account(value);
-                                    }
-                                    on:keydown=handle_keydown
-                                    disabled=move || is_creating.get()
-                                />
-                                <div class="absolute top-1/2 right-2 -translate-y-1/2 max-w-40 z-10">
-                                    {move || {
-                                        if is_on_gift_page() {
-                                            view! {
-                                                <div class="text-right min-w-25 px-3 py-2 text-gray-400 text-sm">
-                                                    ".near"
-                                                </div>
-                                            }
-                                                .into_any()
-                                        } else {
-                                            view! {
-                                                <Select
-                                                    options=Signal::derive(move || {
-                                                        log::info!("options");
-                                                        let mut options = vec![
-                                                            SelectOption::new(
-                                                                "near".to_string(),
-                                                                move || ".near".into_any(),
-                                                            ),
-                                                            SelectOption::new(
-                                                                "testnet".to_string(),
-                                                                move || ".testnet".into_any(),
-                                                            ),
-                                                        ];
-                                                        for account in accounts_context
-                                                            .accounts
-                                                            .get_untracked()
-                                                            .accounts
-                                                            .iter()
-                                                        {
-                                                            let id = account.account_id.to_string();
-                                                            let network = match account.network {
+                                            .into_any()
+                                    } else {
+                                        view! {
+                                            <Select
+                                                options=Signal::derive(move || {
+                                                    log::info!("options");
+                                                    let mut options = vec![
+                                                        SelectOption::new(
+                                                            "near".to_string(),
+                                                            move || ".near".into_any(),
+                                                        ),
+                                                        SelectOption::new(
+                                                            "testnet".to_string(),
+                                                            move || ".testnet".into_any(),
+                                                        ),
+                                                    ];
+                                                    for account in accounts_context
+                                                        .accounts
+                                                        .get_untracked()
+                                                        .accounts
+                                                        .iter()
+                                                    {
+                                                        let id = account.account_id.to_string();
+                                                        let network = match account.network {
+                                                            Network::Mainnet => "mainnet",
+                                                            Network::Testnet => "testnet",
+                                                            Network::Localnet { .. } => continue,
+                                                        };
+                                                        options
+                                                            .push(
+                                                                SelectOption::new(
+                                                                    format!("{network}:{id}"),
+                                                                    move || format!(".{id}").into_any(),
+                                                                ),
+                                                            );
+                                                    }
+                                                    options
+                                                })
+                                                on_change=Callback::new(move |value: String| {
+                                                    let parent_val = match value.as_str() {
+                                                        "near" => AccountCreateParent::Mainnet,
+                                                        "testnet" => AccountCreateParent::Testnet,
+                                                        other => {
+                                                            if let Some((network, id)) = other.split_once(':') {
+                                                                AccountCreateParent::SubAccount(
+                                                                    match network {
+                                                                        "mainnet" => Network::Mainnet,
+                                                                        "testnet" => Network::Testnet,
+                                                                        _ => unreachable!(),
+                                                                    },
+                                                                    id.parse().unwrap(),
+                                                                )
+                                                            } else {
+                                                                unreachable!()
+                                                            }
+                                                        }
+                                                    };
+                                                    set_modal_state
+                                                        .update(|state| {
+                                                            if let ModalState::Creating { parent, .. } = state {
+                                                                *parent = parent_val;
+                                                            } else {
+                                                                unreachable!()
+                                                            }
+                                                        });
+                                                    check_account(account_name.get_untracked());
+                                                })
+                                                // Select can be re-rendered, so supply current "initial" value
+                                                initial_value=match parent_untracked() {
+                                                    AccountCreateParent::Mainnet => "near".to_string(),
+                                                    AccountCreateParent::Testnet => "testnet".to_string(),
+                                                    AccountCreateParent::SubAccount(network, id) => {
+                                                        format!(
+                                                            "{network}:{id}",
+                                                            network = match network {
                                                                 Network::Mainnet => "mainnet",
                                                                 Network::Testnet => "testnet",
-                                                                Network::Localnet { .. } => continue,
-                                                            };
-                                                            options
-                                                                .push(
-                                                                    SelectOption::new(
-                                                                        format!("{network}:{id}"),
-                                                                        move || format!(".{id}").into_any(),
-                                                                    ),
-                                                                );
-                                                        }
-                                                        options
-                                                    })
-                                                    on_change=Callback::new(move |value: String| {
-                                                        let parent_val = match value.as_str() {
-                                                            "near" => AccountCreateParent::Mainnet,
-                                                            "testnet" => AccountCreateParent::Testnet,
-                                                            other => {
-                                                                if let Some((network, id)) = other.split_once(':') {
-                                                                    AccountCreateParent::SubAccount(
-                                                                        match network {
-                                                                            "mainnet" => Network::Mainnet,
-                                                                            "testnet" => Network::Testnet,
-                                                                            _ => unreachable!(),
-                                                                        },
-                                                                        id.parse().unwrap(),
-                                                                    )
-                                                                } else {
-                                                                    unreachable!()
-                                                                }
-                                                            }
-                                                        };
-                                                        set_modal_state
-                                                            .update(|state| {
-                                                                if let ModalState::Creating { parent, .. } = state {
-                                                                    *parent = parent_val;
-                                                                } else {
-                                                                    unreachable!()
-                                                                }
-                                                            });
-                                                        check_account(account_name.get_untracked());
-                                                    })
-                                                    // Select can be re-rendered, so supply current "initial" value
-                                                    initial_value=match parent_untracked() {
-                                                        AccountCreateParent::Mainnet => "near".to_string(),
-                                                        AccountCreateParent::Testnet => "testnet".to_string(),
-                                                        AccountCreateParent::SubAccount(network, id) => {
-                                                            format!(
-                                                                "{network}:{id}",
-                                                                network = match network {
-                                                                    Network::Mainnet => "mainnet",
-                                                                    Network::Testnet => "testnet",
-                                                                    Network::Localnet { .. } => unreachable!(),
-                                                                },
-                                                            )
-                                                        }
+                                                                Network::Localnet { .. } => unreachable!(),
+                                                            },
+                                                        )
                                                     }
-                                                    width="220px"
-                                                    class="text-right min-w-25"
-                                                />
-                                            }
-                                                .into_any()
-                                        }
-                                    }}
-                                </div>
-                            </div>
-                            {move || {
-                                if let Some(err) = error.get() {
-                                    view! {
-                                        <p class="text-red-500 text-sm mt-2 font-medium">{err}</p>
-                                    }
-                                        .into_any()
-                                } else if is_loading.get() {
-                                    view! {
-                                        <p class="text-neutral-400 text-sm mt-2 font-medium">
-                                            "Checking availability..."
-                                        </p>
-                                    }
-                                        .into_any()
-                                } else if is_valid.get().is_some() {
-                                    view! {
-                                        <p class="text-green-500 text-sm mt-2 font-medium">
-                                            "Name is available!"
-                                        </p>
-                                    }
-                                        .into_any()
-                                } else {
-                                    view! {
-                                        <p class="text-neutral-400 text-sm mt-2 font-medium">
-                                            "Enter your account name"
-                                        </p>
-                                    }
-                                        .into_any()
-                                }
-                            }}
-                            {move || {
-                                let is_testnet = if let Ok(
-                                    AccountCreationDetails { network, .. },
-                                ) = parent().into_details(&accounts_context)
-                                {
-                                    network == Network::Testnet
-                                } else {
-                                    false
-                                };
-                                if is_testnet {
-                                    view! {
-                                        <p class="text-yellow-500 text-sm mt-2 font-medium">
-                                            "This is a " <b>"testnet"</b>
-                                            " account. Tokens sent to this account are not real and hold no value"
-                                        </p>
-                                    }
-                                        .into_any()
-                                } else {
-                                    ().into_any()
-                                }
-                            }}
-                        </div>
-
-                        // Recovery method selector
-                        <div>
-                            <div class="flex gap-2 mb-4">
-                                <button
-                                    class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
-                                    style=move || {
-                                        if recovery_method()
-                                            == AccountCreateRecoveryMethod::RecoveryPhrase
-                                        {
-                                            "border-color: rgb(96 165 250); background-color: rgb(59 130 246 / 0.1);"
-                                        } else {
-                                            "border-color: rgb(55 65 81); background-color: transparent;"
-                                        }
-                                    }
-                                    on:click=move |_| {
-                                        set_modal_state
-                                            .update(|state| {
-                                                if let ModalState::Creating { recovery_method, .. } = state {
-                                                    *recovery_method = AccountCreateRecoveryMethod::RecoveryPhrase;
-                                                } else {
-                                                    unreachable!()
                                                 }
-                                            });
-                                        set_error.set(None);
-                                    }
-                                >
-                                    <div class="flex flex-col items-center gap-2">
-                                        <div class="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center">
-                                            <Icon
-                                                icon=icondata::LuKey
-                                                width="16"
-                                                height="16"
-                                                attr:class="text-blue-400"
+                                                width="220px"
+                                                class="text-right min-w-25"
                                             />
-                                        </div>
-                                        <div class="text-white text-sm font-medium">
-                                            "Recovery Phrase"
-                                        </div>
-                                    </div>
-                                </button>
-
-                                // <button
-                                // class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
-                                // style=move || {
-                                // if recovery_method()
-                                // == AccountCreateRecoveryMethod::EthereumWallet
-                                // {
-                                // "border-color: rgb(129 140 248); background-color: rgb(99 102 241 / 0.1);"
-                                // } else {
-                                // "border-color: rgb(55 65 81); background-color: transparent;"
-                                // }
-                                // }
-                                // on:click=move |_| {
-                                // set_modal_state
-                                // .update(|state| {
-                                // if let ModalState::Creating { recovery_method, .. } = state {
-                                // *recovery_method = AccountCreateRecoveryMethod::EthereumWallet;
-                                // } else {
-                                // unreachable!()
-                                // }
-                                // });
-                                // set_error.set(None);
-                                // window()
-                                // .alert_with_message(
-                                // "Come back in a few days for Ethereum support",
-                                // )
-                                // .unwrap();
-                                // }
-                                // >
-                                // <div class="flex flex-col items-center gap-2">
-                                // <div class="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center">
-                                // <Icon
-                                // icon=icondata::SiEthereum
-                                // width="16"
-                                // height="16"
-                                // attr:class="text-indigo-400"
-                                // />
-                                // </div>
-                                // <div class="text-white text-sm font-medium">Ethereum</div>
-                                // </div>
-                                // </button>
-
-                                // <button
-                                // class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
-                                // style=move || {
-                                // if recovery_method()
-                                // == AccountCreateRecoveryMethod::SolanaWallet
-                                // {
-                                // "border-color: rgb(196 181 253); background-color: rgb(147 51 234 / 0.1);"
-                                // } else {
-                                // "border-color: rgb(55 65 81); background-color: transparent;"
-                                // }
-                                // }
-                                // on:click=move |_| {
-                                // set_modal_state
-                                // .update(|state| {
-                                // if let ModalState::Creating { recovery_method, .. } = state {
-                                // *recovery_method = AccountCreateRecoveryMethod::SolanaWallet;
-                                // } else {
-                                // unreachable!()
-                                // }
-                                // });
-                                // set_error.set(None);
-                                // window()
-                                // .alert_with_message(
-                                // "Come back in a few days for Solana support",
-                                // )
-                                // .unwrap();
-                                // }
-                                // >
-                                // <div class="flex flex-col items-center gap-2">
-                                // <div class="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
-                                // <Icon
-                                // icon=icondata::SiSolana
-                                // width="16"
-                                // height="16"
-                                // attr:class="text-purple-400"
-                                // />
-                                // </div>
-                                // <div class="text-white text-sm font-medium">Solana</div>
-                                // </div>
-                                // </button>
-
-                                <button
-                                    class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
-                                    style=move || {
-                                        if recovery_method() == AccountCreateRecoveryMethod::Ledger
-                                        {
-                                            "border-color: rgb(196 181 253); background-color: rgb(147 51 234 / 0.1);"
-                                        } else {
-                                            "border-color: rgb(55 65 81); background-color: transparent;"
                                         }
+                                            .into_any()
                                     }
-                                    on:click=move |_| {
-                                        set_modal_state
-                                            .update(|state| {
-                                                if let ModalState::Creating { recovery_method, .. } = state {
-                                                    *recovery_method = AccountCreateRecoveryMethod::Ledger;
-                                                } else {
-                                                    unreachable!()
-                                                }
-                                            });
-                                        set_error.set(None);
-                                        request_ledger_connection();
-                                    }
-                                >
-                                    <div class="flex flex-col items-center gap-2">
-                                        <div class="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
-                                            <Icon
-                                                icon=icondata::LuWallet
-                                                width="16"
-                                                height="16"
-                                                attr:class="text-purple-400"
-                                            />
-                                        </div>
-                                        <div class="text-white text-sm font-medium">"Ledger"</div>
-                                    </div>
-                                </button>
+                                }}
                             </div>
                         </div>
-
                         {move || {
-                            if recovery_method() == AccountCreateRecoveryMethod::Ledger {
+                            if let Some(err) = error.get() {
+                                view! { <p class="text-red-500 text-sm mt-2 font-medium">{err}</p> }
+                                    .into_any()
+                            } else if is_loading.get() {
                                 view! {
-                                    <div class="space-y-6">
-                                        <div class="text-center py-2">
-                                            <div class="mb-4">
-                                            <LedgerSelector on_change=Callback::new(move |_| {
-                                                connect_ledger();
-                                            }) />
-                                            </div>
-                                            <Show
-                                                when=move || error.read().is_some()
-                                                fallback=move || {
-                                                    view! {
-                                                        <p class="text-neutral-400 mb-4">
-                                                            "Connect your Ledger to continue"
-                                                        </p>
-                                                    }
-                                                }
-                                            >
-                                                <p class="text-red-400 mb-4">{error.get().unwrap()}</p>
-                                            </Show>
-                                            <Show when=move || !ledger_connected()>
-                                                <button
-                                                    class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden cursor-pointer"
-                                                    style=move || {
-                                                        if ledger_connection_in_progress.get() {
-                                                            "background: rgb(55 65 81); cursor: not-allowed;"
-                                                        } else {
-                                                            "background: linear-gradient(90deg, #8b5cf6 0%, #a855f7 100%);"
-                                                        }
-                                                    }
-                                                    disabled=move || ledger_connection_in_progress.get()
-                                                    on:click=move |_| request_ledger_connection()
-                                                >
-                                                    <span class="relative flex items-center justify-center gap-2">
-                                                        {move || {
-                                                            if ledger_connection_in_progress.get() {
-                                                                view! {
-                                                                    <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                                                }
-                                                                    .into_any()
-                                                            } else {
-                                                                ().into_any()
-                                                            }
-                                                        }}
-                                                        {move || {
-                                                            if ledger_connection_in_progress.get() {
-                                                                "Connecting...".to_string()
-                                                            } else {
-                                                                "Connect Ledger".to_string()
-                                                            }
-                                                        }}
-                                                    </span>
-                                                </button>
-                                            </Show>
-
-                                            {move || {
-                                                if ledger_connected.get() {
-                                                    view! {
-                                                        <div class="space-y-4 w-full">
-                                                            <DerivationPathInput
-                                                                ledger_account_number=ledger_account_number
-                                                                set_ledger_account_number=set_ledger_account_number
-                                                                ledger_change_number=ledger_change_number
-                                                                set_ledger_change_number=set_ledger_change_number
-                                                                ledger_address_number=ledger_address_number
-                                                                set_ledger_address_number=set_ledger_address_number
-                                                                on_change=on_path_change.into()
-                                                            />
-                                                            <Show when=move || ledger_current_key_data.get().is_none() fallback=move || {
-                                                                view! {
-                                                                    <p class="text-green-400 mb-4">
-                                                                        "Connected"
-                                                                    </p>
-                                                                }
-                                                            }>
-                                                                <button
-                                                                    class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden cursor-pointer"
-                                                                    style=move || {
-                                                                        if ledger_getting_public_key.get() {
-                                                                            "background: rgb(55 65 81); cursor: not-allowed;"
-                                                                        } else {
-                                                                            "background: linear-gradient(90deg, #8b5cf6 0%, #a855f7 100%);"
-                                                                        }
-                                                                    }
-                                                                    disabled=move || ledger_getting_public_key.get()
-                                                                    on:click=move |_| connect_ledger()
-                                                                >
-                                                                    <span class="relative flex items-center justify-center gap-2">
-                                                                        {move || {
-                                                                            if ledger_getting_public_key.get() {
-                                                                                view! {
-                                                                                    <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                                                                }
-                                                                                    .into_any()
-                                                                            } else {
-                                                                                ().into_any()
-                                                                            }
-                                                                        }}
-                                                                        {move || {
-                                                                            if ledger_getting_public_key.get() {
-                                                                                "Confirm in your Ledger...".to_string()
-                                                                            } else {
-                                                                                "Connect Ledger".to_string()
-                                                                            }
-                                                                        }}
-                                                                    </span>
-                                                                </button>
-                                                            </Show>
-                                                        </div>
-                                                    }
-                                                        .into_any()
-                                                } else {
-                                                    ().into_any()
-                                                }
-                                            }}
-                                        </div>
-                                    </div>
+                                    <p class="text-neutral-400 text-sm mt-2 font-medium">
+                                        "Checking availability..."
+                                    </p>
+                                }
+                                    .into_any()
+                            } else if is_valid.get().is_some() {
+                                view! {
+                                    <p class="text-green-500 text-sm mt-2 font-medium">
+                                        "Name is available!"
+                                    </p>
+                                }
+                                    .into_any()
+                            } else {
+                                view! {
+                                    <p class="text-neutral-400 text-sm mt-2 font-medium">
+                                        "Enter your account name"
+                                    </p>
+                                }
+                                    .into_any()
+                            }
+                        }}
+                        {move || {
+                            let is_testnet = if let Ok(AccountCreationDetails { network, .. }) = parent()
+                                .into_details(&accounts_context)
+                            {
+                                network == Network::Testnet
+                            } else {
+                                false
+                            };
+                            if is_testnet {
+                                view! {
+                                    <p class="text-yellow-500 text-sm mt-2 font-medium">
+                                        "This is a " <b>"testnet"</b>
+                                        " account. Tokens sent to this account are not real and hold no value"
+                                    </p>
                                 }
                                     .into_any()
                             } else {
                                 ().into_any()
                             }
                         }}
-
-                        <div class="flex gap-2 mt-2">
+                    </div>
+                    // Recovery method selector
+                    <div>
+                        <div class="flex gap-2 mb-4">
                             <button
-                                class="flex-1 text-white rounded-xl px-4 py-3 transition-all cursor-pointer duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden"
+                                class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
                                 style=move || {
-                                    if is_valid.get().is_some()
+                                    if recovery_method()
+                                        == AccountCreateRecoveryMethod::RecoveryPhrase
+                                    {
+                                        "border-color: rgb(96 165 250); background-color: rgb(59 130 246 / 0.1);"
+                                    } else {
+                                        "border-color: rgb(55 65 81); background-color: transparent;"
+                                    }
+                                }
+                                on:click=move |_| {
+                                    set_modal_state
+                                        .update(|state| {
+                                            if let ModalState::Creating { recovery_method, .. } = state {
+                                                *recovery_method = AccountCreateRecoveryMethod::RecoveryPhrase;
+                                            } else {
+                                                unreachable!()
+                                            }
+                                        });
+                                    set_error.set(None);
+                                }
+                            >
+                                <div class="flex flex-col items-center gap-2">
+                                    <div class="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center">
+                                        <Icon
+                                            icon=icondata::LuKey
+                                            width="16"
+                                            height="16"
+                                            attr:class="text-blue-400"
+                                        />
+                                    </div>
+                                    <div class="text-white text-sm font-medium">
+                                        "Recovery Phrase"
+                                    </div>
+                                </div>
+                            </button>
+
+                            // <button
+                            // class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
+                            // style=move || {
+                            // if recovery_method()
+                            // == AccountCreateRecoveryMethod::EthereumWallet
+                            // {
+                            // "border-color: rgb(129 140 248); background-color: rgb(99 102 241 / 0.1);"
+                            // } else {
+                            // "border-color: rgb(55 65 81); background-color: transparent;"
+                            // }
+                            // }
+                            // on:click=move |_| {
+                            // set_modal_state
+                            // .update(|state| {
+                            // if let ModalState::Creating { recovery_method, .. } = state {
+                            // *recovery_method = AccountCreateRecoveryMethod::EthereumWallet;
+                            // } else {
+                            // unreachable!()
+                            // }
+                            // });
+                            // set_error.set(None);
+                            // window()
+                            // .alert_with_message(
+                            // "Come back in a few days for Ethereum support",
+                            // )
+                            // .unwrap();
+                            // }
+                            // >
+                            // <div class="flex flex-col items-center gap-2">
+                            // <div class="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center">
+                            // <Icon
+                            // icon=icondata::SiEthereum
+                            // width="16"
+                            // height="16"
+                            // attr:class="text-indigo-400"
+                            // />
+                            // </div>
+                            // <div class="text-white text-sm font-medium">Ethereum</div>
+                            // </div>
+                            // </button>
+
+                            // <button
+                            // class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
+                            // style=move || {
+                            // if recovery_method()
+                            // == AccountCreateRecoveryMethod::SolanaWallet
+                            // {
+                            // "border-color: rgb(196 181 253); background-color: rgb(147 51 234 / 0.1);"
+                            // } else {
+                            // "border-color: rgb(55 65 81); background-color: transparent;"
+                            // }
+                            // }
+                            // on:click=move |_| {
+                            // set_modal_state
+                            // .update(|state| {
+                            // if let ModalState::Creating { recovery_method, .. } = state {
+                            // *recovery_method = AccountCreateRecoveryMethod::SolanaWallet;
+                            // } else {
+                            // unreachable!()
+                            // }
+                            // });
+                            // set_error.set(None);
+                            // window()
+                            // .alert_with_message(
+                            // "Come back in a few days for Solana support",
+                            // )
+                            // .unwrap();
+                            // }
+                            // >
+                            // <div class="flex flex-col items-center gap-2">
+                            // <div class="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                            // <Icon
+                            // icon=icondata::SiSolana
+                            // width="16"
+                            // height="16"
+                            // attr:class="text-purple-400"
+                            // />
+                            // </div>
+                            // <div class="text-white text-sm font-medium">Solana</div>
+                            // </div>
+                            // </button>
+
+                            <button
+                                class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
+                                style=move || {
+                                    if recovery_method() == AccountCreateRecoveryMethod::Ledger {
+                                        "border-color: rgb(196 181 253); background-color: rgb(147 51 234 / 0.1);"
+                                    } else {
+                                        "border-color: rgb(55 65 81); background-color: transparent;"
+                                    }
+                                }
+                                on:click=move |_| {
+                                    set_modal_state
+                                        .update(|state| {
+                                            if let ModalState::Creating { recovery_method, .. } = state {
+                                                *recovery_method = AccountCreateRecoveryMethod::Ledger;
+                                            } else {
+                                                unreachable!()
+                                            }
+                                        });
+                                    set_error.set(None);
+                                    request_ledger_connection();
+                                }
+                            >
+                                <div class="flex flex-col items-center gap-2">
+                                    <div class="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                                        <Icon
+                                            icon=icondata::LuWallet
+                                            width="16"
+                                            height="16"
+                                            attr:class="text-purple-400"
+                                        />
+                                    </div>
+                                    <div class="text-white text-sm font-medium">"Ledger"</div>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                    {move || {
+                        if recovery_method() == AccountCreateRecoveryMethod::Ledger {
+                            view! {
+                                <div class="space-y-6">
+                                    <div class="text-center py-2">
+                                        <div class="mb-4">
+                                            <LedgerSelector on_change=Callback::new(move |_| {
+                                                connect_ledger();
+                                            }) />
+                                        </div>
+                                        <Show
+                                            when=move || error.read().is_some()
+                                            fallback=move || {
+                                                view! {
+                                                    <p class="text-neutral-400 mb-4">
+                                                        "Connect your Ledger to continue"
+                                                    </p>
+                                                }
+                                            }
+                                        >
+                                            <p class="text-red-400 mb-4">{error.get().unwrap()}</p>
+                                        </Show>
+                                        <Show when=move || !ledger_connected()>
+                                            <button
+                                                class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden cursor-pointer"
+                                                style=move || {
+                                                    if ledger_connection_in_progress.get() {
+                                                        "background: rgb(55 65 81); cursor: not-allowed;"
+                                                    } else {
+                                                        "background: linear-gradient(90deg, #8b5cf6 0%, #a855f7 100%);"
+                                                    }
+                                                }
+                                                disabled=move || ledger_connection_in_progress.get()
+                                                on:click=move |_| request_ledger_connection()
+                                            >
+                                                <span class="relative flex items-center justify-center gap-2">
+                                                    {move || {
+                                                        if ledger_connection_in_progress.get() {
+                                                            view! {
+                                                                <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                            }
+                                                                .into_any()
+                                                        } else {
+                                                            ().into_any()
+                                                        }
+                                                    }}
+                                                    {move || {
+                                                        if ledger_connection_in_progress.get() {
+                                                            "Connecting...".to_string()
+                                                        } else {
+                                                            "Connect Ledger".to_string()
+                                                        }
+                                                    }}
+                                                </span>
+                                            </button>
+                                        </Show>
+
+                                        {move || {
+                                            if ledger_connected.get() {
+                                                view! {
+                                                    <div class="space-y-4 w-full">
+                                                        <DerivationPathInput
+                                                            ledger_account_number=ledger_account_number
+                                                            set_ledger_account_number=set_ledger_account_number
+                                                            ledger_change_number=ledger_change_number
+                                                            set_ledger_change_number=set_ledger_change_number
+                                                            ledger_address_number=ledger_address_number
+                                                            set_ledger_address_number=set_ledger_address_number
+                                                            on_change=on_path_change.into()
+                                                        />
+                                                        <Show
+                                                            when=move || ledger_current_key_data.get().is_none()
+                                                            fallback=move || {
+                                                                view! { <p class="text-green-400 mb-4">"Connected"</p> }
+                                                            }
+                                                        >
+                                                            <button
+                                                                class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden cursor-pointer"
+                                                                style=move || {
+                                                                    if ledger_getting_public_key.get() {
+                                                                        "background: rgb(55 65 81); cursor: not-allowed;"
+                                                                    } else {
+                                                                        "background: linear-gradient(90deg, #8b5cf6 0%, #a855f7 100%);"
+                                                                    }
+                                                                }
+                                                                disabled=move || ledger_getting_public_key.get()
+                                                                on:click=move |_| connect_ledger()
+                                                            >
+                                                                <span class="relative flex items-center justify-center gap-2">
+                                                                    {move || {
+                                                                        if ledger_getting_public_key.get() {
+                                                                            view! {
+                                                                                <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                                            }
+                                                                                .into_any()
+                                                                        } else {
+                                                                            ().into_any()
+                                                                        }
+                                                                    }}
+                                                                    {move || {
+                                                                        if ledger_getting_public_key.get() {
+                                                                            "Confirm in your Ledger...".to_string()
+                                                                        } else {
+                                                                            "Connect Ledger".to_string()
+                                                                        }
+                                                                    }}
+                                                                </span>
+                                                            </button>
+                                                        </Show>
+                                                    </div>
+                                                }
+                                                    .into_any()
+                                            } else {
+                                                ().into_any()
+                                            }
+                                        }}
+                                    </div>
+                                </div>
+                            }
+                                .into_any()
+                        } else {
+                            ().into_any()
+                        }
+                    }}
+                    <div class="flex gap-2 mt-2">
+                        <button
+                            class="flex-1 text-white rounded-xl px-4 py-3 transition-all cursor-pointer duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden"
+                            style=move || {
+                                if is_valid.get().is_some()
+                                    && ((recovery_method()
+                                        == AccountCreateRecoveryMethod::RecoveryPhrase)
+                                        || (recovery_method() == AccountCreateRecoveryMethod::Ledger
+                                            && ledger_current_key_data.get().is_some()))
+                                {
+                                    "background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%);"
+                                } else {
+                                    "background: rgb(55 65 81); cursor: not-allowed;"
+                                }
+                            }
+                            disabled=move || {
+                                is_valid.get().is_none() || is_creating.get() || is_loading.get()
+                                    || match recovery_method() {
+                                        AccountCreateRecoveryMethod::RecoveryPhrase => false,
+                                        AccountCreateRecoveryMethod::Ledger => {
+                                            ledger_current_key_data.get().is_none()
+                                        }
+                                        _ => true,
+                                    }
+                            }
+                            on:click=move |_| do_create_account()
+                            on:mouseenter=move |_| set_is_hovered.set(true)
+                            on:mouseleave=move |_| set_is_hovered.set(false)
+                        >
+                            <div
+                                class="absolute inset-0 transition-opacity duration-200"
+                                style=move || {
+                                    if is_valid.get().is_some() && !is_loading.get()
+                                        && is_hovered.get()
                                         && ((recovery_method()
                                             == AccountCreateRecoveryMethod::RecoveryPhrase)
                                             || (recovery_method() == AccountCreateRecoveryMethod::Ledger
                                                 && ledger_current_key_data.get().is_some()))
                                     {
-                                        "background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%);"
+                                        "background: linear-gradient(90deg, #2563eb 0%, #7c3aed 100%); opacity: 1"
                                     } else {
-                                        "background: rgb(55 65 81); cursor: not-allowed;"
+                                        "background: linear-gradient(90deg, #2563eb 0%, #7c3aed 100%); opacity: 0"
                                     }
                                 }
-                                disabled=move || {
-                                    is_valid.get().is_none() || is_creating.get()
-                                        || is_loading.get()
-                                        || match recovery_method() {
-                                            AccountCreateRecoveryMethod::RecoveryPhrase => false,
-                                            AccountCreateRecoveryMethod::Ledger => {
-                                                ledger_current_key_data.get().is_none()
-                                            }
-                                            _ => true,
+                            ></div>
+                            <span class="relative flex items-center justify-center gap-2">
+                                {move || {
+                                    if is_creating.get() || is_loading.get() {
+                                        view! {
+                                            <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                         }
-                                }
-                                on:click=move |_| do_create_account()
-                                on:mouseenter=move |_| set_is_hovered.set(true)
-                                on:mouseleave=move |_| set_is_hovered.set(false)
-                            >
-                                <div
-                                    class="absolute inset-0 transition-opacity duration-200"
-                                    style=move || {
-                                        if is_valid.get().is_some() && !is_loading.get()
-                                            && is_hovered.get()
-                                            && ((recovery_method()
-                                                == AccountCreateRecoveryMethod::RecoveryPhrase)
-                                                || (recovery_method() == AccountCreateRecoveryMethod::Ledger
-                                                    && ledger_current_key_data.get().is_some()))
-                                        {
-                                            "background: linear-gradient(90deg, #2563eb 0%, #7c3aed 100%); opacity: 1"
-                                        } else {
-                                            "background: linear-gradient(90deg, #2563eb 0%, #7c3aed 100%); opacity: 0"
-                                        }
+                                            .into_any()
+                                    } else {
+                                        ().into_any()
                                     }
-                                ></div>
-                                <span class="relative flex items-center justify-center gap-2">
-                                    {move || {
-                                        if is_creating.get() || is_loading.get() {
-                                            view! {
-                                                <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                            }
-                                                .into_any()
-                                        } else {
-                                            ().into_any()
-                                        }
-                                    }}
-                                    {move || {
-                                        if is_on_gift_page() {
-                                            "Create Account & Claim Gift"
-                                        } else {
-                                            "Create Account"
-                                        }
-                                    }}
-                                </span>
-                            </button>
-                        </div>
-                        <div class="relative mt-6 mb-6">
-                            <div class="absolute inset-0 flex items-center">
-                                <div class="w-full border-t border-neutral-800"></div>
-                            </div>
-                            <div class="relative flex justify-center text-sm">
-                                <span class="px-2 bg-neutral-950 text-neutral-400">"or"</span>
-                            </div>
-                        </div>
-                        <button
-                            class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden border border-neutral-800 hover:border-neutral-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                            on:click=move |_| set_modal_state.set(ModalState::LoggingIn)
-                            disabled=move || is_creating.get()
-                        >
-                            <span class="relative">
+                                }}
                                 {move || {
                                     if is_on_gift_page() {
-                                        "Log in & Claim Gift"
+                                        "Create Account & Claim Gift"
                                     } else {
-                                        "Log in with Existing Account"
+                                        "Create Account"
                                     }
                                 }}
                             </span>
                         </button>
+                    </div> <div class="relative mt-6 mb-6">
+                        <div class="absolute inset-0 flex items-center">
+                            <div class="w-full border-t border-neutral-800"></div>
+                        </div>
+                        <div class="relative flex justify-center text-sm">
+                            <span class="px-2 bg-neutral-950 text-neutral-400">"or"</span>
+                        </div>
+                    </div>
+                    <button
+                        class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden border border-neutral-800 hover:border-neutral-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        on:click=move |_| set_modal_state.set(ModalState::LoggingIn)
+                        disabled=move || is_creating.get()
+                    >
+                        <span class="relative">
+                            {move || {
+                                if is_on_gift_page() {
+                                    "Log in & Claim Gift"
+                                } else {
+                                    "Log in with Existing Account"
+                                }
+                            }}
+                        </span>
+                    </button>
                 </div>
             </div>
         </div>

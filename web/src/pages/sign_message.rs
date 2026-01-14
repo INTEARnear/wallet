@@ -22,7 +22,9 @@ use crate::{
         network_context::Network,
         security_log_context::add_security_log,
     },
-    utils::{NEP413Payload, fetch_token_info, format_token_amount, sign_nep413},
+    utils::{
+        NEP413Payload, fetch_token_info, format_token_amount, serialize_to_js_value, sign_nep413,
+    },
 };
 use crate::{pages::connect::submit_tauri_response, utils::is_debug_enabled};
 use leptos_icons::*;
@@ -95,12 +97,11 @@ pub struct SignedMessageV1 {
 
 #[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-#[serde_with::serde_as]
 pub struct SignedMessageV2 {
     pub account_id: AccountId,
     pub public_key: PublicKey,
-    #[serde_as(as = "Base64")]
-    pub signature: Vec<u8>,
+    #[serde(rename = "signature")]
+    pub signature_base64: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub state: Option<String>,
 }
@@ -1377,7 +1378,7 @@ pub fn SignMessage() -> impl IntoView {
         if let Some(session_id) = tauri_session_id.get_untracked() {
             spawn_local(submit_tauri_response(session_id, message, close_window));
         } else {
-            let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
+            let js_value = serialize_to_js_value(&message).unwrap();
             opener()
                 .post_message(&js_value, &origin.read_untracked())
                 .expect("Failed to send message");
@@ -1404,9 +1405,9 @@ pub fn SignMessage() -> impl IntoView {
                     }
                 }
             }
-            _ => {
+            Err(err) => {
                 if is_debug_enabled() {
-                    log::info!("Failed to parse message as ReceiveMessage");
+                    log::info!("Failed to parse message as ReceiveMessage: {err:?}");
                 }
             }
         }
@@ -1414,7 +1415,7 @@ pub fn SignMessage() -> impl IntoView {
 
     Effect::new(move || {
         let ready_message = SendMessage::Ready;
-        let js_value = serde_wasm_bindgen::to_value(&ready_message).unwrap();
+        let js_value = serialize_to_js_value(&ready_message).unwrap();
         opener()
             .post_message(&js_value, "*")
             .expect("Failed to send message");
@@ -1530,9 +1531,13 @@ pub fn SignMessage() -> impl IntoView {
                     ConnectorVersion::V3 => SignedMessage::V3(SignedMessageV2 {
                         account_id: account.account_id.clone(),
                         public_key: account.secret_key.public_key(),
-                        signature: match signature {
-                            Signature::ED25519(signature) => signature.to_bytes().to_vec(),
-                            Signature::SECP256K1(signature) => <[u8; 65]>::from(signature).to_vec(),
+                        signature_base64: match signature {
+                            Signature::ED25519(signature) => {
+                                BASE64_STANDARD.encode(signature.to_bytes())
+                            }
+                            Signature::SECP256K1(signature) => {
+                                BASE64_STANDARD.encode(<[u8; 65]>::from(signature))
+                            }
                         },
                         state: deserialized_message.state,
                     }),

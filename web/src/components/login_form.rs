@@ -8,7 +8,6 @@ use near_min_api::QueryFinality;
 use near_min_api::types::Finality;
 use near_min_api::types::{AccountId, near_crypto::SecretKey};
 use serde::{Deserialize, Serialize};
-use serde_wasm_bindgen;
 
 use crate::components::account_selector::{
     AccountCreateParent, AccountCreateRecoveryMethod, LoginMethod, ModalState, seed_phrase_to_key,
@@ -24,6 +23,7 @@ use crate::contexts::network_context::Network;
 use crate::contexts::security_log_context::add_security_log;
 use crate::pages::settings::LedgerSelector;
 use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
+use crate::utils::serialize_to_js_value;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct RecoverAccountResponse {
@@ -775,7 +775,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
         set_ethereum_connection_in_progress(true);
         let request = JsWalletRequest::RequestEthereumWalletConnection;
 
-        match serde_wasm_bindgen::to_value(&request) {
+        match serialize_to_js_value(&request) {
             Ok(js_value) => {
                 let origin = window()
                     .location()
@@ -801,7 +801,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
         set_solana_connection_in_progress(true);
         let request = JsWalletRequest::RequestSolanaWalletConnection;
 
-        match serde_wasm_bindgen::to_value(&request) {
+        match serialize_to_js_value(&request) {
             Ok(js_value) => {
                 let origin = window()
                     .location()
@@ -830,7 +830,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
         let ledger_mode = config_context.config.get_untracked().ledger_mode;
         let request = JsWalletRequest::LedgerConnect { mode: ledger_mode };
 
-        match serde_wasm_bindgen::to_value(&request) {
+        match serialize_to_js_value(&request) {
             Ok(js_value) => {
                 let origin = window()
                     .location()
@@ -1554,7 +1554,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                                 let request = JsWalletRequest::RequestEthereumWalletSignature {
                                                                                     message_to_sign: message,
                                                                                 };
-                                                                                match serde_wasm_bindgen::to_value(&request) {
+                                                                                match serialize_to_js_value(&request) {
                                                                                     Ok(js_value) => {
                                                                                         let origin = window()
                                                                                             .location()
@@ -1796,7 +1796,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                                 let request = JsWalletRequest::RequestSolanaWalletSignature {
                                                                                     message_to_sign: message,
                                                                                 };
-                                                                                match serde_wasm_bindgen::to_value(&request) {
+                                                                                match serialize_to_js_value(&request) {
                                                                                     Ok(js_value) => {
                                                                                         let origin = window()
                                                                                             .location()
@@ -1910,7 +1910,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                     path,
                                                                     mode: ledger_mode,
                                                                 };
-                                                                match serde_wasm_bindgen::to_value(&request) {
+                                                                match serialize_to_js_value(&request) {
                                                                     Ok(js_value) => {
                                                                         let origin = window()
                                                                             .location()

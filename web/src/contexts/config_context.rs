@@ -9,7 +9,7 @@ use wasm_bindgen_futures::JsFuture;
 
 use crate::{
     pages::swap::Slippage,
-    utils::{is_tauri, tauri_invoke, tauri_invoke_no_args},
+    utils::{is_tauri, serialize_to_js_value, tauri_invoke, tauri_invoke_no_args},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
@@ -313,7 +313,7 @@ fn save_config(config: &WalletConfig) {
 }
 
 fn emit_config_change_event(config: &WalletConfig) {
-    if let Ok(js_value) = serde_wasm_bindgen::to_value(config) {
+    if let Ok(js_value) = serialize_to_js_value(config) {
         let wrapped_js_value = web_sys::js_sys::Object::new();
         let _ = web_sys::js_sys::Reflect::set(&wrapped_js_value, &"newConfig".into(), &js_value);
         let _ = tauri_invoke("update_config", &wrapped_js_value);

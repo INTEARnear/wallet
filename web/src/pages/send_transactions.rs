@@ -37,7 +37,7 @@ use crate::{
     pages::connect::submit_tauri_response,
     utils::{
         SendTransactionsAction, WalletSelectorAction, WalletSelectorTransaction,
-        format_token_amount_no_hide, is_debug_enabled,
+        format_token_amount_no_hide, is_debug_enabled, serialize_to_js_value,
     },
 };
 
@@ -563,7 +563,7 @@ pub fn SendTransactions() -> impl IntoView {
         if let Some(session_id) = tauri_session_id.get_untracked() {
             spawn_local(submit_tauri_response(session_id, message, close_window));
         } else {
-            let js_value = serde_wasm_bindgen::to_value(&message).unwrap();
+            let js_value = serialize_to_js_value(&message).unwrap();
             opener()
                 .post_message(&js_value, &origin.read_untracked())
                 .expect("Failed to send message");
@@ -590,9 +590,9 @@ pub fn SendTransactions() -> impl IntoView {
                     }
                 }
             }
-            _ => {
+            Err(err) => {
                 if is_debug_enabled() {
-                    log::info!("Failed to parse message as ReceiveMessage");
+                    log::info!("Failed to parse message as ReceiveMessage: {err:?}");
                 }
             }
         }
@@ -600,7 +600,7 @@ pub fn SendTransactions() -> impl IntoView {
 
     Effect::new(move || {
         let ready_message = SendMessage::Ready;
-        let js_value = serde_wasm_bindgen::to_value(&ready_message).unwrap();
+        let js_value = serialize_to_js_value(&ready_message).unwrap();
         opener()
             .post_message(&js_value, "*")
             .expect("Failed to send message");

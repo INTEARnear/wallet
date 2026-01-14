@@ -1,3 +1,4 @@
+use crate::utils::serialize_to_js_value;
 use crate::{
     components::bridge_history::DepositAddress, contexts::accounts_context::AccountsContext,
 };
@@ -40,10 +41,7 @@ pub fn open_live_chat(
     };
 
     if let Ok(location_origin) = window().location().origin() {
-        let _ = window().post_message(
-            &serde_wasm_bindgen::to_value(&message).unwrap(),
-            &location_origin,
-        );
+        let _ = window().post_message(&serialize_to_js_value(&message).unwrap(), &location_origin);
     }
 }
 

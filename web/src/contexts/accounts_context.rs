@@ -31,7 +31,7 @@ use web_sys::js_sys::Reflect;
 use crate::contexts::config_context::LedgerMode;
 use crate::contexts::security_log_context::reencrypt_security_logs;
 use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
-use crate::utils::{is_debug_enabled, is_tauri, tauri_invoke_no_args};
+use crate::utils::{is_debug_enabled, is_tauri, serialize_to_js_value, tauri_invoke_no_args};
 
 use super::{
     config_context::ConfigContext, network_context::Network, security_log_context::add_security_log,
@@ -177,7 +177,7 @@ impl SecretKeyHolder {
                         id,
                         mode: ledger_mode(),
                     };
-                    let js_value = serde_wasm_bindgen::to_value(&request).unwrap();
+                    let js_value = serialize_to_js_value(&request).unwrap();
                     let origin = window()
                         .location()
                         .origin()
