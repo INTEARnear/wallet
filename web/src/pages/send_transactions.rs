@@ -175,6 +175,7 @@ fn TransactionAction(
                 deposit,
                 ..
             }) => {
+                let gas = NearGas::from_gas(gas);
                 let deposit_str = if deposit.is_zero() {
                     String::new()
                 } else {
