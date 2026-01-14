@@ -192,7 +192,7 @@ where
                                                     FunctionCallAction {
                                                         method_name: "launch_new_token".to_string(),
                                                         args: serde_json::to_vec(&args).unwrap(),
-                                                        gas: NearGas::from_tgas(300).as_gas(),
+                                                        gas: NearGas::from_tgas(300).into(),
                                                         deposit: total_deposit,
                                                     },
                                                 ));

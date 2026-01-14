@@ -231,7 +231,7 @@ pub fn SwapForGasModal() -> impl IntoView {
                             "amount": NearToken::from_yoctonear(token_data.balance),
                         }))
                         .unwrap(),
-                        gas: NearGas::from_tgas(30).as_gas(),
+                        gas: NearGas::from_tgas(30).into(),
                         deposit: NearToken::from_yoctonear(1),
                     }))],
                     receiver_id: token_contract_id.clone(),
@@ -385,7 +385,7 @@ pub fn SwapForGasModal() -> impl IntoView {
                                                 }).unwrap()),
                                             }])).unwrap(),
                                         })).unwrap(),
-                                        gas: NearGas::from_tgas(300).as_gas(),
+                                        gas: NearGas::from_tgas(300).into(),
                                         deposit: NearToken::from_yoctonear(1),
                                     }))],
                                     receiver_id: token_contract_id.clone(),
@@ -578,7 +578,9 @@ pub fn SwapForGasModal() -> impl IntoView {
                                     }
                                 });
                             match (has_wrap_near, has_other_tokens) {
-                                (true, true) => "wNEAR will be unwrapped to NEAR for free. 0.03 NEAR after-swap fee applies to other tokens.",
+                                (true, true) => {
+                                    "wNEAR will be unwrapped to NEAR for free. 0.03 NEAR after-swap fee applies to other tokens."
+                                }
                                 (true, false) => "wNEAR will be unwrapped to NEAR for free.",
                                 (false, true) => "0.03 NEAR will be taken after the swap as a fee.",
                                 (false, false) => "",

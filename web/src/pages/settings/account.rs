@@ -765,7 +765,7 @@ pub fn AccountSettings() -> impl IntoView {
                                 message: signature_json,
                             })
                             .unwrap(),
-                            gas: NearGas::from_tgas(30).as_gas(),
+                            gas: NearGas::from_tgas(30).into(),
                             deposit: NearToken::from_yoctonear(0),
                         }));
 
@@ -847,7 +847,7 @@ pub fn AccountSettings() -> impl IntoView {
                                 message: signature_json,
                             })
                             .unwrap(),
-                            gas: NearGas::from_tgas(30).as_gas(),
+                            gas: NearGas::from_tgas(30).into(),
                             deposit: NearToken::from_yoctonear(0),
                         }));
 
@@ -1017,7 +1017,7 @@ pub fn AccountSettings() -> impl IntoView {
                                             })
                                             .to_string()
                                             .into_bytes(),
-                                            gas: NearGas::from_tgas(10).as_gas(),
+                                            gas: NearGas::from_tgas(10).into(),
                                             deposit: NearToken::from_yoctonear(1),
                                         }))
                                     })
@@ -1850,7 +1850,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                             Box::new(FunctionCallAction {
                                                                                 method_name: "before_upgrade".to_string(),
                                                                                 args: serde_json::to_vec(&serde_json::json!({})).unwrap(),
-                                                                                gas: NearGas::from_tgas(5).as_gas(),
+                                                                                gas: NearGas::from_tgas(5).into(),
                                                                                 deposit: NearToken::from_yoctonear(0),
                                                                             }),
                                                                         );
@@ -1865,7 +1865,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                             Box::new(FunctionCallAction {
                                                                                 method_name: "after_upgrade".to_string(),
                                                                                 args: serde_json::to_vec(&serde_json::json!({})).unwrap(),
-                                                                                gas: NearGas::from_tgas(30).as_gas(),
+                                                                                gas: NearGas::from_tgas(30).into(),
                                                                                 deposit: NearToken::from_yoctonear(0),
                                                                             }),
                                                                         );
@@ -2010,7 +2010,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                                             },
                                                                                         )
                                                                                         .unwrap(),
-                                                                                    gas: NearGas::from_tgas(30).as_gas(),
+                                                                                    gas: NearGas::from_tgas(30).into(),
                                                                                     deposit: NearToken::from_yoctonear(0),
                                                                                 }),
                                                                             );
@@ -2217,7 +2217,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                                             },
                                                                                         )
                                                                                         .unwrap(),
-                                                                                    gas: NearGas::from_tgas(30).as_gas(),
+                                                                                    gas: NearGas::from_tgas(30).into(),
                                                                                     deposit: NearToken::from_yoctonear(0),
                                                                                 }),
                                                                             );

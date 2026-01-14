@@ -312,7 +312,7 @@ where
                                         }
                                     }))
                                     .unwrap(),
-                                    gas: NearGas::from_tgas(300).as_gas(),
+                                    gas: NearGas::from_tgas(300).into(),
                                     deposit: NearToken::from_yoctonear(0),
                                 }))];
                             let (rx, transaction) = EnqueuedTransaction::create(
@@ -334,11 +334,11 @@ where
                                                 modal_context.modal.set(Some(Box::new(
                                                     move || {
                                                         view! {
-                                                        <WithoutLaunchpadSuccessModal
-                                                            token_symbol=token_symbol_clone.clone()
-                                                            contract_id=contract_id.clone()
-                                                        />
-                                                    }.into_any()
+                                                            <WithoutLaunchpadSuccessModal
+                                                                token_symbol=token_symbol_clone.clone()
+                                                                contract_id=contract_id.clone()
+                                                            />
+                                                        }.into_any()
                                                     },
                                                 )));
                                                 return;
@@ -393,7 +393,7 @@ where
                     }
                 }))
                 .unwrap(),
-                gas: NearGas::from_tgas(300).as_gas(),
+                gas: NearGas::from_tgas(300).into(),
                 deposit: NearToken::from_yoctonear(0),
             })));
 

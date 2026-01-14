@@ -240,7 +240,7 @@ fn RheaBalanceModal(rhea_tokens: Vec<TokenData>) -> impl IntoView {
                                                                             )
                                                                                 .to_string()
                                                                                 .into_bytes(),
-                                                                            gas: NearGas::from_tgas(5).as_gas(),
+                                                                            gas: NearGas::from_tgas(5).into(),
                                                                             deposit: "0.00125 NEAR".parse().unwrap(),
                                                                         }),
                                                                     ),
@@ -264,7 +264,7 @@ fn RheaBalanceModal(rhea_tokens: Vec<TokenData>) -> impl IntoView {
                                                                         )
                                                                             .to_string()
                                                                             .into_bytes(),
-                                                                        gas: NearGas::from_tgas(50).as_gas(),
+                                                                        gas: NearGas::from_tgas(50).into(),
                                                                         deposit: NearToken::from_yoctonear(1),
                                                                     }),
                                                                 ),

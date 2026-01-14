@@ -191,7 +191,7 @@ pub fn GiftClaim() -> impl IntoView {
                     "nonce": now_millis.to_string()
                 }))
                 .unwrap(),
-                gas: NearGas::from_tgas(300).as_gas(),
+                gas: NearGas::from_tgas(300).into(),
                 deposit: NearToken::from_yoctonear(0),
             }));
 

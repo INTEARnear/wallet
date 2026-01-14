@@ -488,7 +488,7 @@ fn ValidatorCard(
                                                                                                                 ),
                                                                                                             )
                                                                                                             .unwrap(),
-                                                                                                        gas: NearGas::from_tgas(5).as_gas(),
+                                                                                                        gas: NearGas::from_tgas(5).into(),
                                                                                                         deposit: "0.00125 NEAR".parse().unwrap(),
                                                                                                     }),
                                                                                                 ),
@@ -515,7 +515,7 @@ fn ValidatorCard(
                                                                                                             &serde_json::json!({"token_id": token_id}),
                                                                                                         )
                                                                                                         .unwrap(),
-                                                                                                    gas: NearGas::from_tgas(150).as_gas(),
+                                                                                                    gas: NearGas::from_tgas(150).into(),
                                                                                                     deposit: NearToken::from_yoctonear(1),
                                                                                                 }),
                                                                                             ),
@@ -730,7 +730,7 @@ fn ValidatorCard(
                                                             Box::new(FunctionCallAction {
                                                                 method_name: "withdraw_all".to_string(),
                                                                 args: serde_json::to_vec(&serde_json::json!({})).unwrap(),
-                                                                gas: NearGas::from_tgas(150).as_gas(),
+                                                                gas: NearGas::from_tgas(150).into(),
                                                                 deposit: NearToken::from_yoctonear(0),
                                                             }),
                                                         ),
@@ -2090,7 +2090,7 @@ pub fn StakeValidator() -> impl IntoView {
             let actions = vec![Action::FunctionCall(Box::new(FunctionCallAction {
                 method_name: "deposit_and_stake".to_string(),
                 args: serde_json::to_vec(&serde_json::json!({})).unwrap(),
-                gas: NearGas::from_tgas(50).as_gas(),
+                gas: NearGas::from_tgas(50).into(),
                 deposit: amount,
             }))];
 
@@ -2263,7 +2263,11 @@ pub fn StakeValidator() -> impl IntoView {
                                                             let gas_cost = "0.01".parse::<BigDecimal>().unwrap();
                                                             let final_amount = (max_amount - gas_cost)
                                                                 .max(BigDecimal::from(0));
-                                                            let final_amount_str = format_number(final_amount, config().short_amounts, false);
+                                                            let final_amount_str = format_number(
+                                                                final_amount,
+                                                                config().short_amounts,
+                                                                false,
+                                                            );
                                                             set_amount.set(final_amount_str.clone());
                                                             check_amount(final_amount_str);
                                                         }
@@ -2529,7 +2533,7 @@ pub fn UnstakeValidator() -> impl IntoView {
         let actions = vec![Action::FunctionCall(Box::new(FunctionCallAction {
             method_name: "unstake".to_string(),
             args: serde_json::to_vec(&serde_json::json!({ "amount": amount })).unwrap(),
-            gas: NearGas::from_tgas(50).as_gas(),
+            gas: NearGas::from_tgas(50).into(),
             deposit: NearToken::from_yoctonear(0),
         }))];
 

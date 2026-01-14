@@ -829,15 +829,15 @@ pub fn GiftSuccessModal(result: GiftResult) -> impl IntoView {
                             class="w-full mt-3 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-200 cursor-pointer text-sm"
                             on:click=move |_| {
                                 let link = result.gift_link.clone();
-                                    let navigator = window().navigator();
-                                    let clipboard = navigator.clipboard();
-                                    let _ = clipboard.write_text(&link);
-                                    set_is_copied.set(true);
-                                    set_timeout(
-                                        move || set_is_copied.set(false),
-                                        Duration::from_secs(2),
-                                    );
-                                }
+                                let navigator = window().navigator();
+                                let clipboard = navigator.clipboard();
+                                let _ = clipboard.write_text(&link);
+                                set_is_copied.set(true);
+                                set_timeout(
+                                    move || set_is_copied.set(false),
+                                    Duration::from_secs(2),
+                                );
+                            }
                         >
                             {move || {
                                 if is_copied.get() {
@@ -986,7 +986,7 @@ fn create_gift(
                 "public_key": public_key
             }))
             .unwrap(),
-            gas: NearGas::from_tgas(30).as_gas(),
+            gas: NearGas::from_tgas(30).into(),
             deposit: NearToken::from_yoctonear(gift_data.near_amount),
         }));
         transactions.push(EnqueuedTransaction::create(
@@ -1056,7 +1056,7 @@ fn create_gift(
                         "registration_only": true,
                     }))
                     .unwrap(),
-                    gas: NearGas::from_tgas(5).as_gas(),
+                    gas: NearGas::from_tgas(5).into(),
                     deposit: "0.00125 NEAR".parse().unwrap(),
                 }));
                 actions.push(storage_action);
@@ -1070,7 +1070,7 @@ fn create_gift(
                     "msg": serde_json::json!({"public_key": public_key}).to_string()
                 }))
                 .unwrap(),
-                gas: NearGas::from_tgas(100).as_gas(),
+                gas: NearGas::from_tgas(100).into(),
                 deposit: NearToken::from_yoctonear(1),
             }));
             actions.push(token_action);
@@ -1145,7 +1145,7 @@ fn create_gift(
                         "registration_only": true,
                     }))
                     .unwrap(),
-                    gas: NearGas::from_tgas(5).as_gas(),
+                    gas: NearGas::from_tgas(5).into(),
                     deposit: "0.01 NEAR".parse().unwrap(),
                 }));
                 actions.push(storage_action);
@@ -1159,7 +1159,7 @@ fn create_gift(
                     "msg": serde_json::json!({"public_key": public_key}).to_string()
                 }))
                 .unwrap(),
-                gas: NearGas::from_tgas(100).as_gas(),
+                gas: NearGas::from_tgas(100).into(),
                 deposit: NearToken::from_yoctonear(1),
             }));
             actions.push(nft_action);
@@ -1454,7 +1454,7 @@ fn execute_cancel_drop(
                 "public_key": confirmation.public_key
             }))
             .unwrap(),
-            gas: NearGas::from_tgas(300).as_gas(),
+            gas: NearGas::from_tgas(300).into(),
             deposit: NearToken::from_yoctonear(0),
         }));
 

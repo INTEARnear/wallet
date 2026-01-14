@@ -486,7 +486,7 @@ pub fn SendBridge() -> impl IntoView {
                                     "registration_only": true,
                                 }))
                                 .unwrap(),
-                                gas: NearGas::from_tgas(5).as_gas(),
+                                gas: NearGas::from_tgas(5).into(),
                                 deposit: "0.00125 NEAR".parse().unwrap(),
                             })));
                         }
@@ -498,7 +498,7 @@ pub fn SendBridge() -> impl IntoView {
                                 "amount": quote.amount_in.to_string(),
                             }))
                             .unwrap(),
-                            gas: NearGas::from_tgas(10).as_gas(),
+                            gas: NearGas::from_tgas(10).into(),
                             deposit: NearToken::from_yoctonear(1),
                         })));
 
@@ -836,13 +836,13 @@ pub fn SendBridge() -> impl IntoView {
                                                                                             - &gas_cost_decimal)
                                                                                             .max(BigDecimal::from(0));
                                                                                         let max_amount_str = format_number(
-                                                                                            final_amount_decimal,
-                                                                                            config().short_amounts,
-                                                                                            false,
-                                                                                        )
-                                                                                        .trim_end_matches('0')
-                                                                                        .trim_end_matches('.')
-                                                                                        .to_string();
+                                                                                                final_amount_decimal,
+                                                                                                config().short_amounts,
+                                                                                                false,
+                                                                                            )
+                                                                                            .trim_end_matches('0')
+                                                                                            .trim_end_matches('.')
+                                                                                            .to_string();
                                                                                         set_amount.set(max_amount_str);
                                                                                     }
                                                                                 }

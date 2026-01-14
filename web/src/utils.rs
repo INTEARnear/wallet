@@ -10,7 +10,7 @@ use near_min_api::{
         AccessKey as NearAccessKey, AccessKeyPermission, AccountId, AccountIdRef,
         Action as NearAction, AddKeyAction, Balance, CreateAccountAction, CryptoHash,
         DelegateAction, DeleteAccountAction, DeleteKeyAction, DeployContractAction,
-        DeployGlobalContractAction, FunctionCallAction, FunctionCallPermission,
+        DeployGlobalContractAction, FunctionCallAction, FunctionCallPermission, Gas,
         GlobalContractDeployMode, GlobalContractIdentifier, NearToken, StakeAction, TransferAction,
         UseGlobalContractAction,
         near_crypto::{PublicKey, Signature},
@@ -848,7 +848,7 @@ impl From<WalletSelectorAction> for NearAction {
             } => NearAction::FunctionCall(Box::new(FunctionCallAction {
                 method_name,
                 args: serde_json::to_vec(&args).unwrap_or_default(),
-                gas,
+                gas: Gas::from_teragas(gas),
                 deposit: NearToken::from_yoctonear(deposit),
             })),
             WalletSelectorAction::Transfer { deposit } => NearAction::Transfer(TransferAction {

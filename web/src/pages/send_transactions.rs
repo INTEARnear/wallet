@@ -175,7 +175,6 @@ fn TransactionAction(
                 deposit,
                 ..
             }) => {
-                let gas = NearGas::from_gas(gas);
                 let deposit_str = if deposit.is_zero() {
                     String::new()
                 } else {
@@ -333,7 +332,7 @@ fn TransactionAction(
                                             &receiver_id_clone,
                                             &method_name_clone,
                                             &args_clone,
-                                            NearGas::from_gas(gas),
+                                            gas.0,
                                             deposit,
                                             accounts
                                                 .get()
@@ -766,12 +765,14 @@ pub fn SendTransactions() -> impl IntoView {
                     tx.actions.iter().any(|action| {
                         if let SendTransactionsAction::WalletSelector(
                             WalletSelectorAction::FunctionCall { gas, .. },
-                        )
-                        | SendTransactionsAction::Native(Action::FunctionCall(
+                        ) = action
+                        {
+                            *gas >= NearGas::from_tgas(300).as_gas()
+                        } else if let SendTransactionsAction::Native(Action::FunctionCall(
                             box FunctionCallAction { gas, .. },
                         )) = action
                         {
-                            *gas >= NearGas::from_tgas(300).as_gas()
+                            gas.0 >= NearGas::from_tgas(300)
                         } else {
                             false
                         }

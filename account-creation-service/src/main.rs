@@ -319,7 +319,7 @@ async fn create_account(
         }))
         .unwrap(),
         deposit: actual_deposit,
-        gas: NearGas::from_tgas(30).as_gas(),
+        gas: NearGas::from_tgas(30).into(),
     }));
 
     let tx = Transaction::V0(TransactionV0 {
@@ -487,7 +487,7 @@ async fn recover_account(
         }))
         .unwrap(),
         deposit: NearToken::from_yoctonear(0),
-        gas: NearGas::from_tgas(30).as_gas(),
+        gas: NearGas::from_tgas(30).into(),
     }));
 
     let tx = Transaction::V0(TransactionV0 {
@@ -1352,7 +1352,7 @@ async fn check_otc_balances(state: &AppState, intear_dex: &AccountId) {
                 "attached_assets": {},
             }))
             .unwrap(),
-            gas: NearGas::from_tgas(300).as_gas(),
+            gas: NearGas::from_tgas(300).into(),
             deposit: NearToken::from_yoctonear(1),
         }));
 

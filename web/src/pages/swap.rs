@@ -1774,7 +1774,7 @@ async fn execute_route(
                     "amount": difference.to_string(),
                 }))
                 .unwrap(),
-                gas: NearGas::from_tgas(5).as_gas(),
+                gas: NearGas::from_tgas(5).into(),
                 deposit: NearToken::from_yoctonear(1),
             }))],
         );
