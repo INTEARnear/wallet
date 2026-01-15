@@ -154,7 +154,7 @@ jobs:
           echo "storeFile=$RUNNER_TEMP/keystore.jks" >> keystore.properties
 
       - name: Build Tauri app
-        if: maxtrix.platform != 'macos'
+        if: matrix.platform != 'macos'
         uses: tauri-apps/tauri-action@v0
       
       - name: Set up signing for macOS
