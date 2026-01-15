@@ -158,6 +158,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
       
       - name: Set up signing for macOS
+        if: matrix.platform == 'macos'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
