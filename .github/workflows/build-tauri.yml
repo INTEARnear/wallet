@@ -54,6 +54,34 @@ jobs:
       - name: Create .env file
         run: cp .env.prod .env
 
+      - name: Set up signing for Android
+        if: matrix.platform == 'android'
+        run: |
+          cd src-tauri/gen/android
+          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" > keystore.properties
+          echo "password=${{ secrets.ANDROID_KEY_PASSWORD }}" >> keystore.properties
+          base64 -d <<< "${{ secrets.ANDROID_KEY_BASE64 }}" > $RUNNER_TEMP/keystore.jks
+          echo "storeFile=$RUNNER_TEMP/keystore.jks" >> keystore.properties
+      
+      - name: Set up signing for macOS
+        if: matrix.platform == 'macos'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+        run: |
+          base64 --decode <<< "$APPLE_CERTIFICATE" | openssl pkcs12 -info -noout -passin env:APPLE_CERTIFICATE_PASSWORD
+          printf "%s" "$APPLE_API_KEY_BASE64" | base64 --decode > $RUNNER_TEMP/AuthKey.p8
+          printf "%s" "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          security find-identity -v -p codesigning build.keychain
+
       - name: Setup mold (Linux and Android)
         if: matrix.platform == 'linux' || matrix.platform == 'android'
         uses: rui314/setup-mold@v1
@@ -144,36 +172,9 @@ jobs:
       - name: Apply patches
         run: cargo patch-crate
 
-      - name: Set up signing for Android
-        if: matrix.platform == 'android'
-        run: |
-          cd src-tauri/gen/android
-          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" > keystore.properties
-          echo "password=${{ secrets.ANDROID_KEY_PASSWORD }}" >> keystore.properties
-          base64 -d <<< "${{ secrets.ANDROID_KEY_BASE64 }}" > $RUNNER_TEMP/keystore.jks
-          echo "storeFile=$RUNNER_TEMP/keystore.jks" >> keystore.properties
-
       - name: Build Tauri app
         if: matrix.platform != 'macos'
         uses: tauri-apps/tauri-action@v0
-      
-      - name: Set up signing for macOS
-        if: matrix.platform == 'macos'
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
-        run: |
-          echo $APPLE_API_KEY_BASE64 | base64 --decode > $RUNNER_TEMP/AuthKey.p8
-          echo $APPLE_CERTIFICATE | base64 --decode > certificate.p12
-          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
-          security set-keychain-settings -t 3600 -u build.keychain
-          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
-          security find-identity -v -p codesigning build.keychain
 
       - name: Build macOS app
         if: matrix.platform == 'macos'
