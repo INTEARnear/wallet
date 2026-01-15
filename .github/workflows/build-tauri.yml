@@ -32,16 +32,12 @@ jobs:
             bundle_paths: |
               target/release/bundle/msi/Intear Wallet_0.1.0_x64_en-US.msi
               target/release/bundle/nsis/Intear Wallet_0.1.0_x64-setup.exe
-          - os: macos-15-intel
-            platform: macos
-            arch: x86_64
-            bundle_paths: |
-              target/release/bundle/dmg/Intear Wallet_0.1.0_x64.dmg
           - os: macos-15
             platform: macos
-            arch: aarch64
+            arch: aarch64-and-x86_64
             bundle_paths: |
               target/release/bundle/dmg/Intear Wallet_0.1.0_aarch64.dmg
+              target/release/bundle/dmg/Intear Wallet_0.1.0_x64.dmg
           - os: ubuntu-24.04
             platform: android
             bundle_paths: |
@@ -117,6 +113,7 @@ jobs:
         if: matrix.platform == 'macos'
         run: |
           brew install pango jpeg librsvg
+          rustup target add x86_64-apple-darwin
 
       - name: Setup Android SDK
         if: matrix.platform == 'android'
@@ -188,6 +185,17 @@ jobs:
           # APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           # APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           # APPLE_API_KEY_PATH: ~/AuthKey.p8
+
+      - name: Build macOS app (x86)
+        if: matrix.platform == 'macos'
+        uses: tauri-apps/tauri-action@v0
+        with:
+          tauriScript: cargo tauri
+          args: "--target x86_64-apple-darwin"
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ env.CERT_ID }}
 
       - name: Upload Tauri artifacts
         uses: actions/upload-artifact@v4
