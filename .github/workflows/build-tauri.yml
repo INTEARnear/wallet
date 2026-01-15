@@ -32,12 +32,6 @@ jobs:
             bundle_paths: |
               target/release/bundle/msi/Intear Wallet_0.1.0_x64_en-US.msi
               target/release/bundle/nsis/Intear Wallet_0.1.0_x64-setup.exe
-          - os: windows-11-arm
-            platform: windows
-            arch: aarch64
-            bundle_paths: |
-              target/release/bundle/msi/Intear Wallet_0.1.0_arm64_en-US.msi
-              target/release/bundle/nsis/Intear Wallet_0.1.0_arm64-setup.exe
           - os: macos-15-intel
             platform: macos
             arch: x86_64
@@ -94,11 +88,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libglib2.0-dev
-
-      - name: Install secp256k1 on Windows ARM
-        if: matrix.platform == 'windows' && matrix.arch == 'aarch64'
-        run: |
-          C:\vcpkg\vcpkg.exe install secp256k1:arm64-windows
 
       - name: Install Tauri system dependencies (macOS)
         if: matrix.platform == 'macos'
@@ -165,7 +154,36 @@ jobs:
           echo "storeFile=$RUNNER_TEMP/keystore.jks" >> keystore.properties
 
       - name: Build Tauri app
+        if: maxtrix.platform != 'macos'
         uses: tauri-apps/tauri-action@v0
+      
+      - name: Set up signing for macOS
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+        run: |
+          echo $APPLE_API_KEY_BASE64 | base64 --decode > $RUNNER_TEMP/AuthKey.p8
+          echo $APPLE_CERTIFICATE | base64 --decode > certificate.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          security find-identity -v -p codesigning build.keychain
+
+      - name: Build macOS app
+        if: matrix.platform == 'macos'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ env.CERT_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ env.RUNNER_TEMP }}/AuthKey.p8
 
       - name: Upload Tauri artifacts
         uses: actions/upload-artifact@v4
