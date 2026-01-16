@@ -14,10 +14,10 @@ use dotenvy::dotenv;
 use near_min_api::{
     QueryFinality, RpcClient,
     types::{
-        AccountId, Action, BlockHeight, BlockReference, CreateAccountAction, CryptoHash,
-        FinalExecutionStatus, Finality, FunctionCallAction, NearGas, NearToken,
-        SignedDelegateAction, SignedTransaction, Transaction, TransactionV0, TxExecutionStatus,
-        U64, U128,
+        AccessKey, AccountId, Action, AddKeyAction, BlockHeight, BlockReference,
+        CreateAccountAction, CryptoHash, FinalExecutionStatus, Finality, FunctionCallAction,
+        NearGas, NearToken, SignedDelegateAction, SignedTransaction, Transaction, TransactionV0,
+        TxExecutionStatus, U64, U128,
         near_crypto::{PublicKey, SecretKey},
     },
 };
@@ -85,12 +85,6 @@ struct RelaySignedDelegateActionResponse {
     transaction_hash: Option<CryptoHash>,
 }
 
-#[derive(Clone, Copy)]
-enum Network {
-    Mainnet,
-    Testnet,
-}
-
 #[derive(Clone)]
 struct AppState {
     rpc_client: Arc<RpcClient>,
@@ -98,9 +92,10 @@ struct AppState {
     key_queues: Arc<HashMap<PublicKey, Arc<Mutex<()>>>>,
     relayer_keys: Vec<SecretKey>,
     desired_finality: TxExecutionStatus,
-    network: Network,
+    factory: Option<AccountId>,
     create_account_deposit_amount: NearToken,
     intear_dex: Option<AccountId>,
+    slimedrop: Option<AccountId>,
 }
 
 #[tokio::main]
@@ -150,39 +145,32 @@ async fn main() {
             .collect::<HashMap<_, _>>(),
     );
 
-    let network = match env::var("NETWORK") {
-        Ok(network) => match network.as_str() {
-            "mainnet" => Network::Mainnet,
-            "testnet" => Network::Testnet,
-            _ => panic!(
-                "Invalid NETWORK environment variable. Should be either 'mainnet' or 'testnet'"
-            ),
-        },
-        Err(_) => {
-            panic!("Invalid NETWORK environment variable. Should be either 'mainnet' or 'testnet'")
-        }
-    };
-
     let rpc_client = Arc::new(RpcClient::new(
         env::var("RPC_URLS")
             .map(|urls| urls.split(',').map(String::from).collect::<Vec<_>>())
-            .unwrap_or_else(|_| match network {
-                Network::Mainnet => vec![
-                    "https://rpc.intea.rs".to_string(),
-                    "https://rpc.near.org".to_string(),
-                    "https://rpc.shitzuapes.xyz".to_string(),
-                    "https://archival-rpc.mainnet.near.org".to_string(),
-                ],
-                Network::Testnet => vec!["https://rpc.testnet.near.org".to_string()],
-            }),
+            .expect("RPC_URLS must be set"),
     ));
+
+    let factory = env::var("FACTORY")
+        .ok()
+        .and_then(|s| s.parse::<AccountId>().ok());
+
+    let slimedrop = env::var("SLIMEDROP")
+        .ok()
+        .and_then(|s| s.parse::<AccountId>().ok());
+
+    if let Some(ref slimedrop) = slimedrop {
+        tracing::info!("Slimedrop enabled: {slimedrop}");
+    } else {
+        tracing::warn!("SLIMEDROP not set");
+    }
 
     let intear_dex = env::var("INTEAR_DEX")
         .ok()
         .and_then(|s| s.parse::<AccountId>().ok());
 
     if let Some(ref dex) = intear_dex {
-        tracing::info!("Intear DEX enabled: {}", dex);
+        tracing::info!("Intear DEX enabled: {dex}");
     } else {
         tracing::warn!("INTEAR_DEX not set: swap-for-gas is disabled");
     }
@@ -203,9 +191,10 @@ async fn main() {
                 _ => TxExecutionStatus::Final,
             })
             .unwrap_or(TxExecutionStatus::Final),
-        network,
+        factory,
         create_account_deposit_amount,
         intear_dex,
+        slimedrop,
     };
 
     let app = Router::new()
@@ -311,24 +300,42 @@ async fn create_account(
             )
         })?;
 
-    let create_account_action = Action::FunctionCall(Box::new(FunctionCallAction {
-        method_name: "create_account".to_string(),
-        args: serde_json::to_vec(&serde_json::json!({
-            "new_account_id": payload.account_id.clone(),
-            "new_public_key": payload.public_key.clone(),
-        }))
-        .unwrap(),
-        deposit: actual_deposit,
-        gas: NearGas::from_tgas(30).into(),
-    }));
+    let create_account_actions = if state.factory.is_none() {
+        vec![
+            Action::CreateAccount(CreateAccountAction {}),
+            Action::AddKey(Box::new(AddKeyAction {
+                public_key: payload.public_key.clone(),
+                access_key: AccessKey::full_access(),
+            })),
+        ]
+    } else {
+        vec![Action::FunctionCall(Box::new(FunctionCallAction {
+            method_name: "create_account".to_string(),
+            args: serde_json::to_vec(&serde_json::json!({
+                "new_account_id": payload.account_id.clone(),
+                "new_public_key": payload.public_key.clone(),
+            }))
+            .unwrap(),
+            deposit: actual_deposit,
+            gas: NearGas::from_tgas(30).into(),
+        }))]
+    };
 
     let tx = Transaction::V0(TransactionV0 {
         signer_id: state.relayer_id.clone(),
         public_key: relayer_key.public_key(),
         nonce: access_key.nonce + 1,
-        receiver_id: match state.network {
-            Network::Mainnet => "near".parse().unwrap(),
-            Network::Testnet => "testnet".parse().unwrap(),
+        receiver_id: match state.factory {
+            Some(factory) => factory,
+            None => {
+                if !payload.account_id.is_sub_account_of(&state.relayer_id) {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        "Account ID is not a subaccount of relayer ID".to_string(),
+                    ));
+                }
+                payload.account_id.clone()
+            }
         },
         block_hash: state
             .rpc_client
@@ -342,7 +349,7 @@ async fn create_account(
                     "Failed to fetch block hash".to_string(),
                 )
             })?,
-        actions: vec![create_account_action],
+        actions: create_account_actions,
     });
 
     let signature = relayer_key.sign(tx.get_hash_and_size().0.as_ref());
@@ -807,9 +814,10 @@ async fn validate_signed_delegate_action(
             .clone()
             .into()
         {
-            const SLIMEDROP_CONTRACT_MAINNET: &str = "slimedrop.intear.near";
             f.method_name == "claim"
-                && signed_delegate_action.delegate_action.receiver_id == SLIMEDROP_CONTRACT_MAINNET
+                && state.slimedrop.is_some_and(|contract| {
+                    contract == signed_delegate_action.delegate_action.receiver_id
+                })
         } else {
             tracing::error!("Actions is not a FunctionCall action");
             false
