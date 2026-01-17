@@ -71,6 +71,7 @@ pub enum AccountCreateParent {
     Mainnet,
     Testnet,
     SubAccount(Network, AccountId),
+    CustomRelayer(String, AccountId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -754,6 +755,20 @@ pub fn AccountSelector() -> impl IntoView {
         }
     });
 
+    #[derive(Clone, PartialEq)]
+    enum ModalStateType {
+        LoggingIn,
+        Creating,
+        AccountList,
+        LoggedOut(Vec<AccountId>),
+    }
+    let modal_state_type = Memo::new(move |_| match modal_state.get() {
+        ModalState::LoggingIn => ModalStateType::LoggingIn,
+        ModalState::Creating { .. } => ModalStateType::Creating,
+        ModalState::AccountList => ModalStateType::AccountList,
+        ModalState::LoggedOut(accounts) => ModalStateType::LoggedOut(accounts),
+    });
+
     view! {
         <div
             class="absolute inset-0 z-50 transition-opacity duration-150"
@@ -765,8 +780,8 @@ pub fn AccountSelector() -> impl IntoView {
                 }
             }
         >
-            {move || match modal_state.get() {
-                ModalState::LoggingIn => {
+            {move || match modal_state_type.get() {
+                ModalStateType::LoggingIn => {
                     view! {
                         <LoginForm show_back_button=!accounts_context
                             .accounts
@@ -776,7 +791,7 @@ pub fn AccountSelector() -> impl IntoView {
                     }
                         .into_any()
                 }
-                ModalState::Creating { .. } => {
+                ModalStateType::Creating => {
                     view! {
                         <AccountCreationForm show_back_button=!accounts_context
                             .accounts
@@ -786,7 +801,7 @@ pub fn AccountSelector() -> impl IntoView {
                     }
                         .into_any()
                 }
-                ModalState::AccountList => {
+                ModalStateType::AccountList => {
                     view! {
                         <div>
                             <div
@@ -947,7 +962,7 @@ pub fn AccountSelector() -> impl IntoView {
                     }
                         .into_any()
                 }
-                ModalState::LoggedOut(accounts) => {
+                ModalStateType::LoggedOut(accounts) => {
                     view! {
                         <div>
                             <div

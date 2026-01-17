@@ -258,17 +258,11 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
 
                             spawn_local(async move {
                                 let client = reqwest::Client::new();
-                                let account_creation_service_addr = match network {
-                                    Network::Mainnet => {
-                                        dotenvy_macro::dotenv!(
-                                            "MAINNET_ACCOUNT_CREATION_SERVICE_ADDR"
-                                        )
-                                    }
-                                    Network::Testnet => {
-                                        dotenvy_macro::dotenv!(
-                                            "TESTNET_ACCOUNT_CREATION_SERVICE_ADDR"
-                                        )
-                                    }
+                                let account_creation_service_addr =
+                                    dotenvy_macro::dotenv!("SHARED_ACCOUNT_CREATION_SERVICE_ADDR");
+                                let relayer_id = match network {
+                                    Network::Mainnet => "mainnet",
+                                    Network::Testnet => "testnet",
                                     Network::Localnet { .. } => return,
                                 };
 
@@ -280,6 +274,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
 
                                 match client
                                     .post(format!("{account_creation_service_addr}/recover"))
+                                    .header("x-relayer-id", relayer_id)
                                     .json(&payload)
                                     .send()
                                     .await
@@ -482,17 +477,11 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
 
                             spawn_local(async move {
                                 let client = reqwest::Client::new();
-                                let account_creation_service_addr = match network {
-                                    Network::Mainnet => {
-                                        dotenvy_macro::dotenv!(
-                                            "MAINNET_ACCOUNT_CREATION_SERVICE_ADDR"
-                                        )
-                                    }
-                                    Network::Testnet => {
-                                        dotenvy_macro::dotenv!(
-                                            "TESTNET_ACCOUNT_CREATION_SERVICE_ADDR"
-                                        )
-                                    }
+                                let account_creation_service_addr =
+                                    dotenvy_macro::dotenv!("SHARED_ACCOUNT_CREATION_SERVICE_ADDR");
+                                let relayer_id = match network {
+                                    Network::Mainnet => "mainnet",
+                                    Network::Testnet => "testnet",
                                     Network::Localnet { .. } => return,
                                 };
 
@@ -504,6 +493,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
 
                                 match client
                                     .post(format!("{account_creation_service_addr}/recover"))
+                                    .header("x-relayer-id", relayer_id)
                                     .json(&payload)
                                     .send()
                                     .await

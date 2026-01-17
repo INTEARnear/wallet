@@ -264,13 +264,11 @@ pub fn SwapForGasModal() -> impl IntoView {
         if let Some(selected_account_id) = selected_account {
             spawn_local(async move {
                 let client = reqwest::Client::new();
-                let account_creation_service_addr = match network.get_untracked() {
-                    Network::Mainnet => {
-                        dotenvy_macro::dotenv!("MAINNET_ACCOUNT_CREATION_SERVICE_ADDR")
-                    }
-                    Network::Testnet => {
-                        dotenvy_macro::dotenv!("TESTNET_ACCOUNT_CREATION_SERVICE_ADDR")
-                    }
+                let account_creation_service_addr =
+                    dotenvy_macro::dotenv!("SHARED_ACCOUNT_CREATION_SERVICE_ADDR");
+                let relayer_id = match network.get_untracked() {
+                    Network::Mainnet => "mainnet",
+                    Network::Testnet => "testnet",
                     Network::Localnet { .. } => {
                         log::error!("Swap for gas not supported on localnet");
                         return;
@@ -284,6 +282,7 @@ pub fn SwapForGasModal() -> impl IntoView {
 
                 match client
                     .post(format!("{account_creation_service_addr}/swap-for-gas"))
+                    .header("x-relayer-id", relayer_id)
                     .json(&payload)
                     .send()
                     .await

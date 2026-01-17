@@ -363,10 +363,10 @@ impl TransactionType {
 
                 let account_creation_service_addr = match signer.network {
                     Network::Mainnet => {
-                        dotenvy_macro::dotenv!("MAINNET_ACCOUNT_CREATION_SERVICE_ADDR")
+                        dotenvy_macro::dotenv!("SHARED_ACCOUNT_CREATION_SERVICE_ADDR")
                     }
                     Network::Testnet => {
-                        dotenvy_macro::dotenv!("TESTNET_ACCOUNT_CREATION_SERVICE_ADDR")
+                        dotenvy_macro::dotenv!("SHARED_ACCOUNT_CREATION_SERVICE_ADDR")
                     }
                     Network::Localnet { .. } => {
                         return Err(
@@ -374,10 +374,16 @@ impl TransactionType {
                         );
                     }
                 };
+                let relayer_id = match signer.network {
+                    Network::Mainnet => "mainnet",
+                    Network::Testnet => "testnet",
+                    Network::Localnet { .. } => unreachable!(),
+                };
                 let Ok(response) = reqwest::Client::new()
                     .post(format!(
                         "{account_creation_service_addr}/relay-signed-delegate-action"
                     ))
+                    .header("x-relayer-id", relayer_id)
                     .json(&serde_json::json!({
                         "signed_delegate_action": signed,
                     }))

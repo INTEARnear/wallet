@@ -10,3 +10,4 @@
 /dist
 /web/public/near-selector.js
 /web/public/near-selector.js.map
+/account-creation-service/relayers.json

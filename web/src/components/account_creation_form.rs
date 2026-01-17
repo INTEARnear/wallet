@@ -39,6 +39,11 @@ use bs58;
 use leptos_use::{use_event_listener, use_window};
 use serde_wasm_bindgen;
 
+#[derive(Debug, Clone, serde::Deserialize)]
+struct GetRootResponse {
+    root_account_id: AccountId,
+}
+
 struct AccountCreationDetails {
     subaccount_of: AccountId,
     account_to_sign_with: Option<Account>,
@@ -61,6 +66,13 @@ impl AccountCreateParent {
                 account_to_sign_with: None,
                 network: Network::Testnet,
             }),
+            AccountCreateParent::CustomRelayer(_relayer_id, root_account_id) => {
+                Ok(AccountCreationDetails {
+                    subaccount_of: root_account_id,
+                    account_to_sign_with: None,
+                    network: Network::Mainnet,
+                })
+            }
             AccountCreateParent::SubAccount(network, subaccount_of) => {
                 if let Some(account) =
                     accounts_context
@@ -119,6 +131,47 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
 
     let location = use_location();
     let is_on_gift_page = Memo::new(move |_| location.pathname.get().starts_with("/gifts/"));
+
+    let custom_relayer_id = Memo::new(move |_| location.query.get().get("start"));
+
+    let custom_root_account = LocalResource::new(move || async move {
+        let Some(relayer_id) = custom_relayer_id.get() else {
+            return None;
+        };
+
+        let client = reqwest::Client::new();
+        let account_creation_service_addr =
+            dotenvy_macro::dotenv!("SHARED_ACCOUNT_CREATION_SERVICE_ADDR");
+
+        match client
+            .get(format!("{account_creation_service_addr}/get-root"))
+            .header("x-relayer-id", relayer_id.clone())
+            .send()
+            .await
+        {
+            Ok(resp) => match resp.json::<GetRootResponse>().await {
+                Ok(data) => {
+                    set_modal_state.update(|state| {
+                        if let ModalState::Creating { parent, .. } = state {
+                            *parent = AccountCreateParent::CustomRelayer(
+                                relayer_id.clone(),
+                                data.root_account_id.clone(),
+                            );
+                        }
+                    });
+                    Some((relayer_id.clone(), data.root_account_id))
+                }
+                Err(e) => {
+                    log::error!("Failed to parse root account response: {e}");
+                    None
+                }
+            },
+            Err(e) => {
+                log::error!("Failed to fetch root account: {e}");
+                None
+            }
+        }
+    });
 
     let on_path_change = move || {
         set_ledger_current_key_data.set(None);
@@ -248,7 +301,6 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
         spawn_local(async move {
             set_is_creating.set(true);
             set_error.set(None);
-            let network_clone = network.clone();
 
             let creation_future: Pin<Box<dyn Future<Output = Result<(), String>>>> = if let Some(
                 account_to_sign_with,
@@ -304,21 +356,24 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                     "account_id": account_id.to_string(),
                     "public_key": secret_key.public_key().to_string(),
                 });
+                let parent = parent_untracked();
                 Box::pin(async move {
                     let client = reqwest::Client::new();
-                    let account_creation_service_addr = match network_clone {
-                        Network::Mainnet => {
-                            dotenvy_macro::dotenv!("MAINNET_ACCOUNT_CREATION_SERVICE_ADDR")
-                                .to_string()
-                        }
-                        Network::Testnet => {
-                            dotenvy_macro::dotenv!("TESTNET_ACCOUNT_CREATION_SERVICE_ADDR")
-                                .to_string()
-                        }
-                        Network::Localnet { .. } => unreachable!(),
+                    let account_creation_service_addr =
+                        dotenvy_macro::dotenv!("SHARED_ACCOUNT_CREATION_SERVICE_ADDR");
+                    let relayer_id = match parent {
+                        AccountCreateParent::CustomRelayer(relayer_id, _) => relayer_id,
+                        AccountCreateParent::Mainnet => "mainnet".to_string(),
+                        AccountCreateParent::Testnet => "testnet".to_string(),
+                        AccountCreateParent::SubAccount(network, _) => match network {
+                            Network::Mainnet => "mainnet".to_string(),
+                            Network::Testnet => "testnet".to_string(),
+                            Network::Localnet { .. } => unreachable!(),
+                        },
                     };
                     let response = client
                         .post(format!("{account_creation_service_addr}/create"))
+                        .header("x-relayer-id", relayer_id)
                         .json(&payload)
                         .send()
                         .await;
@@ -624,21 +679,46 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                             </div>
                                         }
                                             .into_any()
+                                    } else if custom_root_account.read().is_none() {
+                                        view! {
+                                            <div class="flex items-center justify-center px-3 py-2">
+                                                <div class="w-4 h-4 border-2 border-gray-400 border-t-white rounded-full animate-spin" />
+                                            </div>
+                                        }
+                                            .into_any()
                                     } else {
+                                        log::info!(
+                                            "Custom root account: {:?}", *custom_root_account.read()
+                                        );
                                         view! {
                                             <Select
                                                 options=Signal::derive(move || {
-                                                    log::info!("options");
-                                                    let mut options = vec![
-                                                        SelectOption::new(
-                                                            "near".to_string(),
-                                                            move || ".near".into_any(),
-                                                        ),
-                                                        SelectOption::new(
-                                                            "testnet".to_string(),
-                                                            move || ".testnet".into_any(),
-                                                        ),
-                                                    ];
+                                                    let mut options = vec![];
+                                                    if let Some(Some((relayer_id, root_account_id))) = custom_root_account
+                                                        .get()
+                                                    {
+                                                        options
+                                                            .push(
+                                                                SelectOption::new(
+                                                                    format!("relayer:{relayer_id}"),
+                                                                    move || format!(".{root_account_id}").into_any(),
+                                                                ),
+                                                            );
+                                                    }
+                                                    options
+                                                        .push(
+                                                            SelectOption::new(
+                                                                "near".to_string(),
+                                                                move || ".near".into_any(),
+                                                            ),
+                                                        );
+                                                    options
+                                                        .push(
+                                                            SelectOption::new(
+                                                                "testnet".to_string(),
+                                                                move || ".testnet".into_any(),
+                                                            ),
+                                                        );
                                                     for account in accounts_context
                                                         .accounts
                                                         .get_untracked()
@@ -662,21 +742,46 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                     options
                                                 })
                                                 on_change=Callback::new(move |value: String| {
-                                                    let parent_val = match value.as_str() {
-                                                        "near" => AccountCreateParent::Mainnet,
-                                                        "testnet" => AccountCreateParent::Testnet,
-                                                        other => {
-                                                            if let Some((network, id)) = other.split_once(':') {
-                                                                AccountCreateParent::SubAccount(
-                                                                    match network {
-                                                                        "mainnet" => Network::Mainnet,
-                                                                        "testnet" => Network::Testnet,
-                                                                        _ => unreachable!(),
-                                                                    },
-                                                                    id.parse().unwrap(),
+                                                    let parent_val = if let Some(relayer_id) = value
+                                                        .strip_prefix("relayer:")
+                                                    {
+                                                        if let Some(Some((provided_relayer_id, root_account_id))) = custom_root_account
+                                                            .get()
+                                                        {
+                                                            if relayer_id == provided_relayer_id {
+                                                                AccountCreateParent::CustomRelayer(
+                                                                    provided_relayer_id,
+                                                                    root_account_id,
                                                                 )
                                                             } else {
-                                                                unreachable!()
+                                                                log::error!(
+                                                                    "Custom relayer selected but relayer ID mismatch"
+                                                                );
+                                                                return;
+                                                            }
+                                                        } else {
+                                                            log::error!(
+                                                                "Custom relayer selected but no data available"
+                                                            );
+                                                            return;
+                                                        }
+                                                    } else {
+                                                        match value.as_str() {
+                                                            "near" => AccountCreateParent::Mainnet,
+                                                            "testnet" => AccountCreateParent::Testnet,
+                                                            other => {
+                                                                if let Some((network, id)) = other.split_once(':') {
+                                                                    AccountCreateParent::SubAccount(
+                                                                        match network {
+                                                                            "mainnet" => Network::Mainnet,
+                                                                            "testnet" => Network::Testnet,
+                                                                            _ => unreachable!(),
+                                                                        },
+                                                                        id.parse().unwrap(),
+                                                                    )
+                                                                } else {
+                                                                    unreachable!()
+                                                                }
                                                             }
                                                         }
                                                     };
@@ -694,6 +799,9 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                 initial_value=match parent_untracked() {
                                                     AccountCreateParent::Mainnet => "near".to_string(),
                                                     AccountCreateParent::Testnet => "testnet".to_string(),
+                                                    AccountCreateParent::CustomRelayer(relayer_id, _) => {
+                                                        format!("relayer:{relayer_id}")
+                                                    }
                                                     AccountCreateParent::SubAccount(network, id) => {
                                                         format!(
                                                             "{network}:{id}",
@@ -761,9 +869,8 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                 ().into_any()
                             }
                         }}
-                    </div>
                     // Recovery method selector
-                    <div>
+                    </div> <div>
                         <div class="flex gap-2 mb-4">
                             <button
                                 class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
@@ -1044,8 +1151,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                         } else {
                             ().into_any()
                         }
-                    }}
-                    <div class="flex gap-2 mt-2">
+                    }} <div class="flex gap-2 mt-2">
                         <button
                             class="flex-1 text-white rounded-xl px-4 py-3 transition-all cursor-pointer duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden"
                             style=move || {

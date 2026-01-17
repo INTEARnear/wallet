@@ -4,9 +4,9 @@ use alloy_primitives::Signature;
 use axum::{
     Router,
     extract::{Json, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
-    routing::post,
+    routing::{get, post},
 };
 use base64::{Engine, prelude::BASE64_STANDARD};
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -39,6 +39,31 @@ use tower_http::cors::CorsLayer;
 use tracing_subscriber::EnvFilter;
 
 use crate::router::{Amount, DexId, Slippage, SwapRequest, TokenId, get_routes};
+
+#[derive(Debug, Deserialize, Clone)]
+struct RelayerConfig {
+    relayer_id: AccountId,
+    relayer_private_keys: Vec<SecretKey>,
+    rpc_urls: Vec<String>,
+    #[serde(default)]
+    finality: TxExecutionStatus,
+    factory: Option<AccountId>,
+    create_account_deposit: Option<String>,
+    intear_dex: Option<AccountId>,
+    slimedrop: Option<AccountId>,
+}
+
+struct RelayerState {
+    rpc_client: Arc<RpcClient>,
+    relayer_id: AccountId,
+    key_queues: Arc<HashMap<PublicKey, Arc<Mutex<()>>>>,
+    relayer_keys: Vec<SecretKey>,
+    desired_finality: TxExecutionStatus,
+    factory: Option<AccountId>,
+    create_account_deposit_amount: NearToken,
+    intear_dex: Option<AccountId>,
+    slimedrop: Option<AccountId>,
+}
 
 #[derive(Debug, Deserialize)]
 struct CreateAccountRequest {
@@ -74,6 +99,11 @@ struct RecoverAccountResponse {
     transaction_hash: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct GetRootResponse {
+    root_account_id: AccountId,
+}
+
 #[derive(Debug, Deserialize)]
 struct RelaySignedDelegateActionRequest {
     signed_delegate_action: SignedDelegateAction,
@@ -87,15 +117,7 @@ struct RelaySignedDelegateActionResponse {
 
 #[derive(Clone)]
 struct AppState {
-    rpc_client: Arc<RpcClient>,
-    relayer_id: AccountId,
-    key_queues: Arc<HashMap<PublicKey, Arc<Mutex<()>>>>,
-    relayer_keys: Vec<SecretKey>,
-    desired_finality: TxExecutionStatus,
-    factory: Option<AccountId>,
-    create_account_deposit_amount: NearToken,
-    intear_dex: Option<AccountId>,
-    slimedrop: Option<AccountId>,
+    relayers: Arc<HashMap<String, RelayerState>>,
 }
 
 #[tokio::main]
@@ -112,89 +134,81 @@ async fn main() {
 
     tracing::info!("Starting account creation service...");
 
-    let create_account_deposit_amount = env::var("CREATE_ACCOUNT_DEPOSIT")
-        .map(|s| {
-            s.parse::<NearToken>()
-                .expect("Invalid CREATE_ACCOUNT_DEPOSIT format")
-        })
-        .unwrap_or(NearToken::from_yoctonear(0));
+    let config_content =
+        std::fs::read_to_string("relayers.json").expect("Failed to read relayers config file");
 
-    let relayer_id = env::var("RELAYER_ID")
-        .expect("RELAYER_ID must be set")
-        .parse::<AccountId>()
-        .expect("Invalid RELAYER_ID format");
-    let relayer_private_keys = env::var("RELAYER_PRIVATE_KEYS")
-        .expect("RELAYER_PRIVATE_KEYS must be set")
-        .split(',')
-        .map(|key| {
-            key.trim()
-                .parse::<SecretKey>()
-                .expect("Invalid private key format")
-        })
-        .collect::<Vec<_>>();
+    let relayers_config: HashMap<String, RelayerConfig> =
+        serde_json::from_str(&config_content).expect("Failed to parse relayers config JSON");
 
-    if relayer_private_keys.is_empty() {
-        panic!("At least one private key must be provided in RELAYER_PRIVATE_KEYS");
-    }
+    tracing::info!("Loaded {} relayers from config", relayers_config.len());
 
-    // Create a queue for each key
-    let key_queues = Arc::new(
-        relayer_private_keys
-            .iter()
-            .map(|key| (key.public_key(), Arc::new(Mutex::new(()))))
-            .collect::<HashMap<_, _>>(),
-    );
+    let mut relayers = HashMap::new();
 
-    let rpc_client = Arc::new(RpcClient::new(
-        env::var("RPC_URLS")
-            .map(|urls| urls.split(',').map(String::from).collect::<Vec<_>>())
-            .expect("RPC_URLS must be set"),
-    ));
+    for (relayer_id, config) in relayers_config {
+        tracing::info!("Initializing relayer: {}", relayer_id);
 
-    let factory = env::var("FACTORY")
-        .ok()
-        .and_then(|s| s.parse::<AccountId>().ok());
+        if config.relayer_private_keys.is_empty() {
+            panic!(
+                "At least one private key must be provided for relayer {}",
+                relayer_id
+            );
+        }
 
-    let slimedrop = env::var("SLIMEDROP")
-        .ok()
-        .and_then(|s| s.parse::<AccountId>().ok());
+        let key_queues = Arc::new(
+            config
+                .relayer_private_keys
+                .iter()
+                .map(|key| (key.public_key(), Arc::new(Mutex::new(()))))
+                .collect::<HashMap<_, _>>(),
+        );
 
-    if let Some(ref slimedrop) = slimedrop {
-        tracing::info!("Slimedrop enabled: {slimedrop}");
-    } else {
-        tracing::warn!("SLIMEDROP not set");
-    }
+        let rpc_client = Arc::new(RpcClient::new(config.rpc_urls.clone()));
 
-    let intear_dex = env::var("INTEAR_DEX")
-        .ok()
-        .and_then(|s| s.parse::<AccountId>().ok());
+        let create_account_deposit_amount = config
+            .create_account_deposit
+            .map(|deposit| {
+                deposit.parse::<NearToken>().unwrap_or_else(|_| panic!("Invalid CREATE_ACCOUNT_DEPOSIT format for relayer {}",
+                    relayer_id))
+            })
+            .unwrap_or_default();
 
-    if let Some(ref dex) = intear_dex {
-        tracing::info!("Intear DEX enabled: {dex}");
-    } else {
-        tracing::warn!("INTEAR_DEX not set: swap-for-gas is disabled");
+        if let Some(ref slimedrop) = config.slimedrop {
+            tracing::info!("Relayer {} - Slimedrop enabled: {}", relayer_id, slimedrop);
+        }
+
+        if let Some(ref dex) = config.intear_dex {
+            tracing::info!("Relayer {} - Intear DEX enabled: {}", relayer_id, dex);
+        }
+
+        let relayer_state = RelayerState {
+            rpc_client,
+            relayer_id: config.relayer_id.clone(),
+            key_queues,
+            relayer_keys: config.relayer_private_keys,
+            desired_finality: config.finality,
+            factory: config.factory.clone(),
+            create_account_deposit_amount,
+            intear_dex: config.intear_dex.clone(),
+            slimedrop: config.slimedrop.clone(),
+        };
+
+        if let Some(intear_dex) = config.intear_dex.clone() {
+            let balance_check_state = relayer_state.clone();
+            let relayer_id_check = relayer_id.clone();
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_secs(60));
+                loop {
+                    interval.tick().await;
+                    check_otc_balances(&balance_check_state, &intear_dex, &relayer_id_check).await;
+                }
+            });
+        }
+
+        relayers.insert(relayer_id, relayer_state);
     }
 
     let state = AppState {
-        rpc_client,
-        relayer_id,
-        key_queues,
-        relayer_keys: relayer_private_keys,
-        desired_finality: env::var("FINALITY")
-            .map(|s| match s.as_str() {
-                "NONE" => TxExecutionStatus::None,
-                "INCLUDED" => TxExecutionStatus::Included,
-                "EXECUTED_OPTIMISTIC" => TxExecutionStatus::ExecutedOptimistic,
-                "INCLUDED_FINAL" => TxExecutionStatus::IncludedFinal,
-                "EXECUTED" => TxExecutionStatus::Executed,
-                "FINAL" => TxExecutionStatus::Final,
-                _ => TxExecutionStatus::Final,
-            })
-            .unwrap_or(TxExecutionStatus::Final),
-        factory,
-        create_account_deposit_amount,
-        intear_dex,
-        slimedrop,
+        relayers: Arc::new(relayers),
     };
 
     let app = Router::new()
@@ -205,19 +219,9 @@ async fn main() {
             post(relay_signed_delegate_action),
         )
         .route("/swap-for-gas", post(swap_for_gas))
+        .route("/get-root", get(get_root))
         .layer(CorsLayer::permissive())
         .with_state(state.clone());
-
-    if let Some(intear_dex) = state.intear_dex.clone() {
-        let balance_check_state = state.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(60));
-            loop {
-                interval.tick().await;
-                check_otc_balances(&balance_check_state, &intear_dex).await;
-            }
-        });
-    }
 
     let addr = env::var("ACCOUNT_CREATION_SERVICE_BIND")
         .map(|s| {
@@ -234,11 +238,63 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
+impl Clone for RelayerState {
+    fn clone(&self) -> Self {
+        Self {
+            rpc_client: self.rpc_client.clone(),
+            relayer_id: self.relayer_id.clone(),
+            key_queues: self.key_queues.clone(),
+            relayer_keys: self.relayer_keys.clone(),
+            desired_finality: self.desired_finality.clone(),
+            factory: self.factory.clone(),
+            create_account_deposit_amount: self.create_account_deposit_amount,
+            intear_dex: self.intear_dex.clone(),
+            slimedrop: self.slimedrop.clone(),
+        }
+    }
+}
+
+fn get_relayer_state(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<RelayerState, (StatusCode, String)> {
+    let relayer_id = headers
+        .get("x-relayer-id")
+        .and_then(|h| h.to_str().ok())
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                "Missing x-relayer-id header".to_string(),
+            )
+        })?;
+
+    state.relayers.get(relayer_id).cloned().ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("Relayer not found: {}", relayer_id),
+        )
+    })
+}
+
+async fn get_root(
+    State(app_state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let state = get_relayer_state(&app_state, &headers)?;
+
+    let root_account_id = state.factory.as_ref().unwrap_or(&state.relayer_id).clone();
+
+    Ok(Json(GetRootResponse { root_account_id }))
+}
+
 #[axum::debug_handler]
 async fn create_account(
-    State(state): State<AppState>,
+    State(app_state): State<AppState>,
+    headers: HeaderMap,
     Json(payload): Json<CreateAccountRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let state = get_relayer_state(&app_state, &headers)?;
+
     tracing::info!(
         "Received account creation request for {}",
         payload.account_id
@@ -419,9 +475,12 @@ async fn create_account(
 
 #[axum::debug_handler]
 async fn recover_account(
-    State(state): State<AppState>,
+    State(app_state): State<AppState>,
+    headers: HeaderMap,
     Json(payload): Json<RecoverAccountRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let state = get_relayer_state(&app_state, &headers)?;
+
     let (account_id, signature_data, message) = match payload {
         RecoverAccountRequest::EthereumSignature {
             account_id,
@@ -586,9 +645,12 @@ async fn recover_account(
 
 #[axum::debug_handler]
 async fn relay_signed_delegate_action(
-    State(state): State<AppState>,
+    State(app_state): State<AppState>,
+    headers: HeaderMap,
     Json(payload): Json<RelaySignedDelegateActionRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let state = get_relayer_state(&app_state, &headers)?;
+
     validate_signed_delegate_action(state.clone(), &payload.signed_delegate_action).await?;
 
     let signed_delegate_action = payload.signed_delegate_action;
@@ -689,9 +751,12 @@ const SWAP_FOR_GAS_WHITELIST: &[&str] = &[
 
 #[axum::debug_handler]
 async fn swap_for_gas(
-    State(state): State<AppState>,
+    State(app_state): State<AppState>,
+    headers: HeaderMap,
     Json(payload): Json<SwapForGasRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let state = get_relayer_state(&app_state, &headers)?;
+
     if state.intear_dex.is_none() {
         return Err((
             StatusCode::NOT_FOUND,
@@ -775,7 +840,7 @@ async fn swap_for_gas(
 }
 
 async fn validate_signed_delegate_action(
-    state: AppState,
+    state: RelayerState,
     signed_delegate_action: &SignedDelegateAction,
 ) -> Result<(), (StatusCode, String)> {
     if !signed_delegate_action.verify() {
@@ -1273,8 +1338,11 @@ struct WithdrawRequest {
     to_inner_balance: bool,
 }
 
-async fn check_otc_balances(state: &AppState, intear_dex: &AccountId) {
-    tracing::info!("Checking OTC balances for whitelisted tokens...");
+async fn check_otc_balances(state: &RelayerState, intear_dex: &AccountId, relayer_id: &str) {
+    tracing::info!(
+        "[{}] Checking OTC balances for whitelisted tokens...",
+        relayer_id
+    );
 
     let mut assets_to_withdraw = Vec::new();
 
@@ -1295,7 +1363,12 @@ async fn check_otc_balances(state: &AppState, intear_dex: &AccountId) {
         {
             Ok(balance) => {
                 let balance_u128: u128 = balance.into();
-                tracing::info!("OTC Balance for {}: {}", token_contract_id, balance_u128);
+                tracing::info!(
+                    "[{}] OTC Balance for {}: {}",
+                    relayer_id,
+                    token_contract_id,
+                    balance_u128
+                );
 
                 if balance_u128 > 0 {
                     assets_to_withdraw.push(WithdrawRequest {
@@ -1307,13 +1380,22 @@ async fn check_otc_balances(state: &AppState, intear_dex: &AccountId) {
                 }
             }
             Err(e) => {
-                tracing::error!("Failed to get OTC balance for {}: {}", token_contract_id, e);
+                tracing::error!(
+                    "[{}] Failed to get OTC balance for {}: {}",
+                    relayer_id,
+                    token_contract_id,
+                    e
+                );
             }
         }
     }
 
     if !assets_to_withdraw.is_empty() {
-        tracing::info!("Withdrawing {} assets from OTC", assets_to_withdraw.len());
+        tracing::info!(
+            "[{}] Withdrawing {} assets from OTC",
+            relayer_id,
+            assets_to_withdraw.len()
+        );
 
         let relayer_key = state
             .relayer_keys
@@ -1331,7 +1413,11 @@ async fn check_otc_balances(state: &AppState, intear_dex: &AccountId) {
         {
             Ok(key) => key,
             Err(e) => {
-                tracing::error!("Failed to get access key for withdrawal: {}", e);
+                tracing::error!(
+                    "[{}] Failed to get access key for withdrawal: {}",
+                    relayer_id,
+                    e
+                );
                 return;
             }
         };
@@ -1344,7 +1430,11 @@ async fn check_otc_balances(state: &AppState, intear_dex: &AccountId) {
         {
             Ok(hash) => hash,
             Err(e) => {
-                tracing::error!("Failed to fetch block hash for withdrawal: {}", e);
+                tracing::error!(
+                    "[{}] Failed to fetch block hash for withdrawal: {}",
+                    relayer_id,
+                    e
+                );
                 return;
             }
         };
@@ -1379,10 +1469,14 @@ async fn check_otc_balances(state: &AppState, intear_dex: &AccountId) {
 
         match state.rpc_client.send_tx(signed_tx).await {
             Ok(_) => {
-                tracing::info!("Withdrawal transaction sent: {}", tx_hash);
+                tracing::info!("[{}] Withdrawal transaction sent: {}", relayer_id, tx_hash);
             }
             Err(e) => {
-                tracing::error!("Failed to send withdrawal transaction: {}", e);
+                tracing::error!(
+                    "[{}] Failed to send withdrawal transaction: {}",
+                    relayer_id,
+                    e
+                );
             }
         }
     }
