@@ -181,10 +181,9 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ env.CERT_ID }}
-          # Skip notarization for non-releases
-          # APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          # APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          # APPLE_API_KEY_PATH: ~/AuthKey.p8
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ~/AuthKey.p8
 
       - name: Build macOS app (x86)
         if: matrix.platform == 'macos'
