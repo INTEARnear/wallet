@@ -600,8 +600,7 @@ pub fn Connect() -> impl IntoView {
                         account_id: selected_account.clone(),
                         public_key: request_data.public_key.clone(),
                         requested_contract_id: match request_data.contract_id.as_deref() {
-                            None => None,
-                            Some("") => None,
+                            None | Some("") => None,
                             Some(contract_id) => {
                                 if let Ok(account_id) = contract_id.parse::<AccountId>() {
                                     if add_function_call_key {
@@ -619,7 +618,7 @@ pub fn Connect() -> impl IntoView {
                             .method_names
                             .clone()
                             .unwrap_or_default(),
-                        requested_gas_allowance: if request_data.contract_id.is_some() {
+                        requested_gas_allowance: if request_data.contract_id.as_ref().is_some_and(|v| !v.is_empty()) {
                             GAS_ALLOWANCE
                         } else {
                             NearToken::from_yoctonear(0)
@@ -645,7 +644,7 @@ pub fn Connect() -> impl IntoView {
                 });
 
                 // Continue with function call key addition if needed
-                if add_function_call_key && let Some(contract_id) = request_data.contract_id {
+                if add_function_call_key && let Some(contract_id) = request_data.contract_id && !contract_id.is_empty() {
                     let method_names = request_data.method_names.clone().unwrap_or_default();
 
                     let action = Action::AddKey(Box::new(AddKeyAction {
