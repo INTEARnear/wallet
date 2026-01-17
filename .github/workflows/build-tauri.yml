@@ -37,7 +37,7 @@ jobs:
             arch: aarch64-and-x86_64
             bundle_paths: |
               target/release/bundle/dmg/Intear Wallet_0.1.0_aarch64.dmg
-              target/release/bundle/dmg/Intear Wallet_0.1.0_x64.dmg
+              target/x86_64-apple-darwin/release/bundle/dmg/Intear Wallet_0.1.0_x64.dmg
           - os: ubuntu-24.04
             platform: android
             bundle_paths: |
@@ -168,7 +168,7 @@ jobs:
 
       - name: Build Tauri app
         if: matrix.platform != 'macos'
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@a5e8d02eebede9840d3c77437e8624c8f2836732
         with:
           tauriScript: cargo tauri
           mobile: ${{ matrix.platform == 'android' && 'android' || '' }}
