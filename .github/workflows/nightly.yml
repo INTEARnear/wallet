@@ -44,13 +44,18 @@ jobs:
             --jq '.[0].databaseId')
           
           if [ -n "$TAURI_RUN_ID" ]; then
-            for platform in linux windows macos android; do
-              echo "Downloading artifacts for $platform..."
+            for artifact in \
+              intear-wallet-app-linux-x86_64 \
+              intear-wallet-app-linux-aarch64 \
+              intear-wallet-app-windows-x86_64 \
+              intear-wallet-app-macos-aarch64-and-x86_64 \
+              intear-wallet-app-android-universal; do
+              echo "Downloading $artifact..."
               gh run download \
                 --repo ${{ github.repository }} \
-                --name intear-wallet-app-$platform \
+                --name $artifact \
                 --dir artifacts/ \
-                $TAURI_RUN_ID || echo "No artifacts found for $platform"
+                $TAURI_RUN_ID || echo "No artifact found: $artifact"
             done
           else
             echo "No successful Tauri workflow runs found"
