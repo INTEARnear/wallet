@@ -112,8 +112,9 @@ jobs:
       - name: Install Tauri system dependencies (macOS)
         if: matrix.platform == 'macos'
         run: |
-          brew install pango jpeg librsvg
+          brew install pango jpeg librsvg llvm
           rustup target add x86_64-apple-darwin
+          echo "CC_wasm32_unknown_unknown=$(brew --prefix llvm)/bin/clang" >> $GITHUB_ENV
 
       - name: Setup Android SDK
         if: matrix.platform == 'android'
