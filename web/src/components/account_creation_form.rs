@@ -132,12 +132,11 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
     let location = use_location();
     let is_on_gift_page = Memo::new(move |_| location.pathname.get().starts_with("/gifts/"));
 
-    let custom_relayer_id = Memo::new(move |_| location.query.get().get("start"));
+    let custom_relayer_id =
+        Memo::new(move |_| location.hash.get().strip_prefix('#').map(|h| h.to_string()));
 
     let custom_root_account = LocalResource::new(move || async move {
-        let Some(relayer_id) = custom_relayer_id.get() else {
-            return None;
-        };
+        let relayer_id = custom_relayer_id.get()?;
 
         let client = reqwest::Client::new();
         let account_creation_service_addr =

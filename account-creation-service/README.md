@@ -20,6 +20,8 @@ Copy `relayers.example.json` to `relayers.json` and configure your relayers. Eac
 - `create_account_deposit`: Optional amount to deposit when creating accounts (e.g., `"0.05 NEAR"`)
 - `intear_dex`: Optional Intear DEX contract for swap-for-gas functionality
 - `slimedrop`: Optional Slimedrop contract for gift claims
+- `enabled`: Whether the relayer is enabled
+- `max_accounts_created_per_day`: Optional limit on the number of accounts that can be created in a 24-hour rolling window
 
 ### Request Headers
 
@@ -36,6 +38,7 @@ If the header is missing or references a non-existent relayer, the request will 
 
 - `RELAYERS_CONFIG_PATH`: Path to the relayers configuration file (default: `relayers.json`)
 - `ACCOUNT_CREATION_SERVICE_BIND`: Address to bind the server (default: `127.0.0.1:3002`)
+- `REMOTE_CONFIGURATION_AUTH_TOKEN`: Authentication token required for configuration management endpoints. Must be set to use the configuration API.
 
 ## Running Locally
 
@@ -45,8 +48,9 @@ If the header is missing or references a non-existent relayer, the request will 
 
 ## API Endpoints
 
-All endpoints require the `x-relayer-id` header.
+All public endpoints require the `x-relayer-id` header.
 
+- `GET /get-root` - Get the root account ID for the relayer
 - `POST /create` - Create a new account
 - `POST /recover` - Recover an account using Ethereum/Solana signature
 - `POST /relay-signed-delegate-action` - Relay a signed delegate action

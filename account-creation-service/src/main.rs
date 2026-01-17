@@ -3,7 +3,7 @@ mod router;
 use alloy_primitives::Signature;
 use axum::{
     Router,
-    extract::{Json, State},
+    extract::{Json, Path, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{get, post},
@@ -34,13 +34,272 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime},
 };
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::EnvFilter;
 
 use crate::router::{Amount, DexId, Slippage, SwapRequest, TokenId, get_routes};
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize)]
+struct ConfigurationReadResponse {
+    relayer_id: AccountId,
+    relayer_private_keys: Vec<SecretKey>,
+    rpc_urls: Vec<String>,
+    finality: TxExecutionStatus,
+    factory: Option<AccountId>,
+    create_account_deposit: NearToken,
+    intear_dex: Option<AccountId>,
+    slimedrop: Option<AccountId>,
+    enabled: bool,
+    max_accounts_created_per_day: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ConfigurationWriteRequest {
+    relayer_id: AccountId,
+    relayer_private_keys: Vec<SecretKey>,
+    rpc_urls: Vec<String>,
+    max_accounts_created_per_day: Option<u32>,
+}
+
+#[derive(Debug, Serialize)]
+struct ConfigurationWriteResponse {
+    success: bool,
+    message: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SetEnabledRequest {
+    enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChangeIdRequest {
+    new_id: String,
+}
+
+fn check_auth_token(headers: &HeaderMap) -> Result<(), (StatusCode, String)> {
+    let expected_token = env::var("REMOTE_CONFIGURATION_AUTH_TOKEN").map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "REMOTE_CONFIGURATION_AUTH_TOKEN not configured".to_string(),
+        )
+    })?;
+
+    let auth_header = headers
+        .get("Authorization")
+        .and_then(|h| h.to_str().ok())
+        .ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                "Missing Authorization header".to_string(),
+            )
+        })?;
+
+    if auth_header != expected_token {
+        return Err((StatusCode::UNAUTHORIZED, "Invalid token".to_string()));
+    }
+
+    Ok(())
+}
+
+async fn configuration_read(
+    State(app_state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    check_auth_token(&headers)?;
+
+    let configs = app_state.configs.read().await;
+    let config = configs
+        .get(&id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Relayer not found: {}", id)))?;
+
+    Ok(Json(ConfigurationReadResponse {
+        relayer_id: config.relayer_id.clone(),
+        relayer_private_keys: config.relayer_private_keys.clone(),
+        rpc_urls: config.rpc_urls.clone(),
+        finality: config.finality.clone(),
+        factory: config.factory.clone(),
+        create_account_deposit: config.create_account_deposit,
+        intear_dex: config.intear_dex.clone(),
+        slimedrop: config.slimedrop.clone(),
+        enabled: config.enabled,
+        max_accounts_created_per_day: config.max_accounts_created_per_day,
+    }))
+}
+
+async fn configuration_create(
+    State(app_state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(payload): Json<ConfigurationWriteRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    check_auth_token(&headers)?;
+
+    let mut configs = app_state.configs.write().await;
+
+    if configs.contains_key(&id) {
+        return Err((
+            StatusCode::CONFLICT,
+            format!("Relayer already exists: {}", id),
+        ));
+    }
+
+    let new_config = RelayerConfig {
+        relayer_id: payload.relayer_id,
+        relayer_private_keys: payload.relayer_private_keys,
+        rpc_urls: payload.rpc_urls,
+        finality: TxExecutionStatus::default(),
+        factory: None,
+        create_account_deposit: NearToken::default(),
+        intear_dex: None,
+        slimedrop: None,
+        enabled: true,
+        max_accounts_created_per_day: payload.max_accounts_created_per_day,
+    };
+
+    if new_config.enabled {
+        let relayer_state = build_relayer_state(&new_config).map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("Failed to build relayer state: {}", e),
+            )
+        })?;
+
+        let mut relayers = app_state.relayers.write().await;
+        relayers.insert(id.clone(), relayer_state);
+    }
+
+    configs.insert(id.clone(), new_config);
+
+    Ok(Json(ConfigurationWriteResponse {
+        success: true,
+        message: format!("Relayer {} created successfully", id),
+    }))
+}
+
+async fn configuration_edit(
+    State(app_state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(payload): Json<ConfigurationWriteRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    check_auth_token(&headers)?;
+
+    let mut configs = app_state.configs.write().await;
+    let existing_config = configs
+        .get_mut(&id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Relayer not found: {}", id)))?;
+
+    existing_config.relayer_id = payload.relayer_id;
+    existing_config.relayer_private_keys = payload.relayer_private_keys;
+    existing_config.rpc_urls = payload.rpc_urls;
+    existing_config.max_accounts_created_per_day = payload.max_accounts_created_per_day;
+
+    let mut relayers = app_state.relayers.write().await;
+    if existing_config.enabled {
+        let relayer_state = build_relayer_state(existing_config).map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("Failed to build relayer state: {}", e),
+            )
+        })?;
+        relayers.insert(id.clone(), relayer_state);
+    }
+
+    Ok(Json(ConfigurationWriteResponse {
+        success: true,
+        message: format!("Relayer {} updated successfully", id),
+    }))
+}
+
+async fn configuration_set_enabled(
+    State(app_state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(payload): Json<SetEnabledRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    check_auth_token(&headers)?;
+
+    let mut configs = app_state.configs.write().await;
+    let existing_config = configs
+        .get_mut(&id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Relayer not found: {}", id)))?;
+
+    let was_enabled = existing_config.enabled;
+    existing_config.enabled = payload.enabled;
+
+    let mut relayers = app_state.relayers.write().await;
+    if payload.enabled && !was_enabled {
+        let relayer_state = build_relayer_state(existing_config).map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("Failed to build relayer state: {}", e),
+            )
+        })?;
+        relayers.insert(id.clone(), relayer_state);
+    } else if !payload.enabled {
+        relayers.remove(&id);
+    }
+
+    Ok(Json(ConfigurationWriteResponse {
+        success: true,
+        message: format!("Relayer {} enabled status set to {}", id, payload.enabled),
+    }))
+}
+
+async fn configuration_change_id(
+    State(app_state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(payload): Json<ChangeIdRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    check_auth_token(&headers)?;
+
+    let new_id = payload.new_id;
+
+    if id == new_id {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "New ID is the same as current ID".to_string(),
+        ));
+    }
+
+    let mut configs = app_state.configs.write().await;
+
+    if configs.contains_key(&new_id) {
+        return Err((
+            StatusCode::CONFLICT,
+            format!("Relayer with ID {} already exists", new_id),
+        ));
+    }
+
+    let config = configs
+        .remove(&id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Relayer not found: {}", id)))?;
+
+    configs.insert(new_id.clone(), config.clone());
+
+    let mut relayers = app_state.relayers.write().await;
+    if config.enabled
+        && let Some(relayer_state) = relayers.remove(&id)
+    {
+        relayers.insert(new_id.clone(), relayer_state);
+    }
+
+    let mut timestamps = app_state.account_creation_timestamps.write().await;
+    if let Some(ts) = timestamps.remove(&id) {
+        timestamps.insert(new_id.clone(), ts);
+    }
+
+    Ok(Json(ConfigurationWriteResponse {
+        success: true,
+        message: format!("Relayer ID changed from {} to {}", id, new_id),
+    }))
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 struct RelayerConfig {
     relayer_id: AccountId,
     relayer_private_keys: Vec<SecretKey>,
@@ -48,9 +307,20 @@ struct RelayerConfig {
     #[serde(default)]
     finality: TxExecutionStatus,
     factory: Option<AccountId>,
-    create_account_deposit: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_near_token")]
+    create_account_deposit: NearToken,
     intear_dex: Option<AccountId>,
     slimedrop: Option<AccountId>,
+    enabled: bool,
+    max_accounts_created_per_day: Option<u32>,
+}
+
+fn deserialize_near_token<'de, D>(deserializer: D) -> Result<NearToken, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(deserializer)?;
+    NearToken::from_str(&s).map_err(serde::de::Error::custom)
 }
 
 struct RelayerState {
@@ -117,7 +387,9 @@ struct RelaySignedDelegateActionResponse {
 
 #[derive(Clone)]
 struct AppState {
-    relayers: Arc<HashMap<String, RelayerState>>,
+    relayers: Arc<RwLock<HashMap<String, RelayerState>>>,
+    configs: Arc<RwLock<HashMap<String, RelayerConfig>>>,
+    account_creation_timestamps: Arc<RwLock<HashMap<String, Vec<SystemTime>>>>,
 }
 
 #[tokio::main]
@@ -143,34 +415,21 @@ async fn main() {
     tracing::info!("Loaded {} relayers from config", relayers_config.len());
 
     let mut relayers = HashMap::new();
+    let mut configs = HashMap::new();
 
     for (relayer_id, config) in relayers_config {
         tracing::info!("Initializing relayer: {}", relayer_id);
 
-        if config.relayer_private_keys.is_empty() {
-            panic!(
-                "At least one private key must be provided for relayer {}",
-                relayer_id
-            );
+        configs.insert(relayer_id.clone(), config.clone());
+
+        if !config.enabled {
+            tracing::info!("Skipping disabled relayer: {}", relayer_id);
+            continue;
         }
 
-        let key_queues = Arc::new(
-            config
-                .relayer_private_keys
-                .iter()
-                .map(|key| (key.public_key(), Arc::new(Mutex::new(()))))
-                .collect::<HashMap<_, _>>(),
-        );
-
-        let rpc_client = Arc::new(RpcClient::new(config.rpc_urls.clone()));
-
-        let create_account_deposit_amount = config
-            .create_account_deposit
-            .map(|deposit| {
-                deposit.parse::<NearToken>().unwrap_or_else(|_| panic!("Invalid CREATE_ACCOUNT_DEPOSIT format for relayer {}",
-                    relayer_id))
-            })
-            .unwrap_or_default();
+        let relayer_state = build_relayer_state(&config).unwrap_or_else(|e| {
+            panic!("Failed to build relayer state for {}: {}", relayer_id, e);
+        });
 
         if let Some(ref slimedrop) = config.slimedrop {
             tracing::info!("Relayer {} - Slimedrop enabled: {}", relayer_id, slimedrop);
@@ -179,18 +438,6 @@ async fn main() {
         if let Some(ref dex) = config.intear_dex {
             tracing::info!("Relayer {} - Intear DEX enabled: {}", relayer_id, dex);
         }
-
-        let relayer_state = RelayerState {
-            rpc_client,
-            relayer_id: config.relayer_id.clone(),
-            key_queues,
-            relayer_keys: config.relayer_private_keys,
-            desired_finality: config.finality,
-            factory: config.factory.clone(),
-            create_account_deposit_amount,
-            intear_dex: config.intear_dex.clone(),
-            slimedrop: config.slimedrop.clone(),
-        };
 
         if let Some(intear_dex) = config.intear_dex.clone() {
             let balance_check_state = relayer_state.clone();
@@ -208,7 +455,9 @@ async fn main() {
     }
 
     let state = AppState {
-        relayers: Arc::new(relayers),
+        relayers: Arc::new(RwLock::new(relayers)),
+        configs: Arc::new(RwLock::new(configs)),
+        account_creation_timestamps: Arc::new(RwLock::new(HashMap::new())),
     };
 
     let app = Router::new()
@@ -220,6 +469,17 @@ async fn main() {
         )
         .route("/swap-for-gas", post(swap_for_gas))
         .route("/get-root", get(get_root))
+        .route("/configuration/read/{id}", get(configuration_read))
+        .route("/configuration/create/{id}", post(configuration_create))
+        .route("/configuration/edit/{id}", post(configuration_edit))
+        .route(
+            "/configuration/set-enabled/{id}",
+            post(configuration_set_enabled),
+        )
+        .route(
+            "/configuration/change-id/{id}",
+            post(configuration_change_id),
+        )
         .layer(CorsLayer::permissive())
         .with_state(state.clone());
 
@@ -254,7 +514,35 @@ impl Clone for RelayerState {
     }
 }
 
-fn get_relayer_state(
+fn build_relayer_state(config: &RelayerConfig) -> Result<RelayerState, String> {
+    if config.relayer_private_keys.is_empty() {
+        return Err("At least one private key must be provided".to_string());
+    }
+
+    let key_queues = Arc::new(
+        config
+            .relayer_private_keys
+            .iter()
+            .map(|key| (key.public_key(), Arc::new(Mutex::new(()))))
+            .collect::<HashMap<_, _>>(),
+    );
+
+    let rpc_client = Arc::new(RpcClient::new(config.rpc_urls.clone()));
+
+    Ok(RelayerState {
+        rpc_client,
+        relayer_id: config.relayer_id.clone(),
+        key_queues,
+        relayer_keys: config.relayer_private_keys.clone(),
+        desired_finality: config.finality.clone(),
+        factory: config.factory.clone(),
+        create_account_deposit_amount: config.create_account_deposit,
+        intear_dex: config.intear_dex.clone(),
+        slimedrop: config.slimedrop.clone(),
+    })
+}
+
+async fn get_relayer_state(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<RelayerState, (StatusCode, String)> {
@@ -268,7 +556,8 @@ fn get_relayer_state(
             )
         })?;
 
-    state.relayers.get(relayer_id).cloned().ok_or_else(|| {
+    let relayers = state.relayers.read().await;
+    relayers.get(relayer_id).cloned().ok_or_else(|| {
         (
             StatusCode::NOT_FOUND,
             format!("Relayer not found: {}", relayer_id),
@@ -276,11 +565,53 @@ fn get_relayer_state(
     })
 }
 
+async fn check_account_creation_limit(
+    app_state: &AppState,
+    relayer_id: &str,
+    max_per_day: Option<u32>,
+) -> Result<(), (StatusCode, String)> {
+    if let Some(max) = max_per_day {
+        let now = SystemTime::now();
+        let day_ago = now
+            .checked_sub(Duration::from_secs(24 * 60 * 60))
+            .unwrap_or(now);
+
+        let mut timestamps = app_state.account_creation_timestamps.write().await;
+        let relayer_timestamps = timestamps
+            .entry(relayer_id.to_string())
+            .or_insert_with(Vec::new);
+
+        relayer_timestamps.retain(|&ts| ts > day_ago);
+
+        if relayer_timestamps.len() >= max as usize {
+            return Err((
+                StatusCode::TOO_MANY_REQUESTS,
+                format!(
+                    "Account creation limit reached: {} accounts created in the last 24 hours (max: {})",
+                    relayer_timestamps.len(),
+                    max
+                ),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+async fn record_account_creation(app_state: &AppState, relayer_id: &str) {
+    let now = SystemTime::now();
+    let mut timestamps = app_state.account_creation_timestamps.write().await;
+    let relayer_timestamps = timestamps
+        .entry(relayer_id.to_string())
+        .or_insert_with(Vec::new);
+    relayer_timestamps.push(now);
+}
+
 async fn get_root(
     State(app_state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let state = get_relayer_state(&app_state, &headers)?;
+    let state = get_relayer_state(&app_state, &headers).await?;
 
     let root_account_id = state.factory.as_ref().unwrap_or(&state.relayer_id).clone();
 
@@ -293,7 +624,30 @@ async fn create_account(
     headers: HeaderMap,
     Json(payload): Json<CreateAccountRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let state = get_relayer_state(&app_state, &headers)?;
+    let relayer_id = headers
+        .get("x-relayer-id")
+        .and_then(|h| h.to_str().ok())
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                "Missing x-relayer-id header".to_string(),
+            )
+        })?;
+
+    let configs = app_state.configs.read().await;
+    let config = configs.get(relayer_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("Relayer not found: {}", relayer_id),
+        )
+    })?;
+
+    check_account_creation_limit(&app_state, relayer_id, config.max_accounts_created_per_day)
+        .await?;
+
+    drop(configs);
+
+    let state = get_relayer_state(&app_state, &headers).await?;
 
     tracing::info!(
         "Received account creation request for {}",
@@ -439,6 +793,7 @@ async fn create_account(
                 match outcome.status {
                     FinalExecutionStatus::SuccessValue(_) => {
                         tracing::info!("Successfully created account for {}", payload.account_id);
+                        record_account_creation(&app_state, relayer_id).await;
                         Ok(Json(CreateAccountResponse {
                             success: true,
                             message: format!(
@@ -479,7 +834,7 @@ async fn recover_account(
     headers: HeaderMap,
     Json(payload): Json<RecoverAccountRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let state = get_relayer_state(&app_state, &headers)?;
+    let state = get_relayer_state(&app_state, &headers).await?;
 
     let (account_id, signature_data, message) = match payload {
         RecoverAccountRequest::EthereumSignature {
@@ -649,7 +1004,7 @@ async fn relay_signed_delegate_action(
     headers: HeaderMap,
     Json(payload): Json<RelaySignedDelegateActionRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let state = get_relayer_state(&app_state, &headers)?;
+    let state = get_relayer_state(&app_state, &headers).await?;
 
     validate_signed_delegate_action(state.clone(), &payload.signed_delegate_action).await?;
 
@@ -755,7 +1110,7 @@ async fn swap_for_gas(
     headers: HeaderMap,
     Json(payload): Json<SwapForGasRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let state = get_relayer_state(&app_state, &headers)?;
+    let state = get_relayer_state(&app_state, &headers).await?;
 
     if state.intear_dex.is_none() {
         return Err((

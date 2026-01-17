@@ -47,7 +47,8 @@ The same JSON payloads are also used when Intear Wallet runs in a desktop / mobi
     "message": "{\"messageToSign\":\"{\\\"message\\\":\\\"Hello\\\",\\\"nonce\\\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\\\"recipient\\\":\\\"app.near\\\",\\\"callback_url\\\":null,\\\"state\\\":\\\"optional string\\\"}\"}", // messageToSign is an optional stringified NEP-413 message to sign during connection, same structure as in sign-message request. If you don't need it, it should be "{}"
     "signature": "ed25519:...", // of sha256("${nonce}|${message}")
     "version": "V3", // only the V3 version is documented here, please refer to git history of this file to see previous documentation
-    "actualOrigin": "https://dapp.com" // If you use wallet-connector-iframe.html, the iframe injects this value. This is the value displayed to the user
+    "actualOrigin": "https://dapp.com", // If you use wallet-connector-iframe.html, the iframe injects this value. This is the value displayed to the user
+    "relayerId": "..." // Optional, custom relayer ID to allow users to create branded subaccounts instead of generic .near / .testnet names. You can get the ID on https://rainy.intea.rs
   }
 }
 ```

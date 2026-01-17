@@ -5,7 +5,7 @@ use chrono::Utc;
 use ed25519_dalek::SECRET_KEY_LENGTH;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
-use leptos_router::hooks::use_location;
+use leptos_router::hooks::{use_location, use_navigate};
 use near_min_api::types::{
     AccessKey, AccessKeyPermission, AccountId, Action, AddKeyAction, CryptoHash,
     FunctionCallPermission, NearToken,
@@ -74,6 +74,9 @@ pub struct SignInRequest {
     version: ConnectorVersion,
     #[serde(default)]
     actual_origin: Option<String>,
+    // Below: added in V3
+    #[serde(default)]
+    relayer_id: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -224,6 +227,18 @@ pub fn Connect() -> impl IntoView {
     } = expect_context::<TransactionQueueContext>();
     let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
     let (tauri_session_id, set_tauri_session_id) = signal::<Option<String>>(None);
+    let navigate = use_navigate();
+
+    Effect::new(move |_| {
+        let Some(data) = &*request_data.read() else {
+            return;
+        };
+        if matches!(data.version, ConnectorVersion::V3)
+            && let Some(relayer_id) = &data.relayer_id
+        {
+            navigate(format!("#{relayer_id}").as_str(), Default::default());
+        }
+    });
 
     let process_sign_in = move |data: SignInRequest, evt_origin: String| {
         if matches!(data.version, ConnectorVersion::V1) {

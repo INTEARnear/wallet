@@ -12,7 +12,8 @@
     ],
     "factory": "near",
     "intear_dex": "dex.intear.near",
-    "slimedrop": "slimedrop.intear.near"
+    "slimedrop": "slimedrop.intear.near",
+    "enabled": true
   },
   "testnet-relayer": {
     "relayer_id": "intear-wallet-relay.testnet",
@@ -28,6 +29,7 @@
     "factory": "testnet",
     "create_account_deposit": "2.5 NEAR",
     "intear_dex": null,
-    "slimedrop": null
+    "slimedrop": null,
+    "enabled": true
   }
 }
