@@ -586,11 +586,13 @@ async fn check_account_creation_limit(
         if relayer_timestamps.len() >= max as usize {
             return Err((
                 StatusCode::TOO_MANY_REQUESTS,
-                format!(
-                    "Account creation limit reached: {} accounts created in the last 24 hours (max: {})",
-                    relayer_timestamps.len(),
-                    max
-                ),
+                serde_json::json!({
+                    "message": format!(
+                        "Account creation limit reached: {} accounts created in the last 24 hours (max: {}). Please choose \".near\" in the dropdown.",
+                        relayer_timestamps.len(),
+                        max
+                    ),
+                }).to_string(),
             ));
         }
     }
