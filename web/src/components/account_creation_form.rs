@@ -42,6 +42,7 @@ use serde_wasm_bindgen;
 #[derive(Debug, Clone, serde::Deserialize)]
 struct GetRootResponse {
     root_account_id: AccountId,
+    network: Network,
 }
 
 struct AccountCreationDetails {
@@ -66,11 +67,11 @@ impl AccountCreateParent {
                 account_to_sign_with: None,
                 network: Network::Testnet,
             }),
-            AccountCreateParent::CustomRelayer(_relayer_id, root_account_id) => {
+            AccountCreateParent::CustomRelayer(_relayer_id, network, root_account_id) => {
                 Ok(AccountCreationDetails {
                     subaccount_of: root_account_id,
                     account_to_sign_with: None,
-                    network: Network::Mainnet,
+                    network,
                 })
             }
             AccountCreateParent::SubAccount(network, subaccount_of) => {
@@ -154,11 +155,12 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                         if let ModalState::Creating { parent, .. } = state {
                             *parent = AccountCreateParent::CustomRelayer(
                                 relayer_id.clone(),
+                                data.network.clone(),
                                 data.root_account_id.clone(),
                             );
                         }
                     });
-                    Some((relayer_id.clone(), data.root_account_id))
+                    Some((relayer_id.clone(), data.network, data.root_account_id))
                 }
                 Err(e) => {
                     log::error!("Failed to parse root account response: {e}");
@@ -361,7 +363,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                     let account_creation_service_addr =
                         dotenvy_macro::dotenv!("SHARED_ACCOUNT_CREATION_SERVICE_ADDR");
                     let relayer_id = match parent {
-                        AccountCreateParent::CustomRelayer(relayer_id, _) => relayer_id,
+                        AccountCreateParent::CustomRelayer(relayer_id, _, _) => relayer_id,
                         AccountCreateParent::Mainnet => "mainnet".to_string(),
                         AccountCreateParent::Testnet => "testnet".to_string(),
                         AccountCreateParent::SubAccount(network, _) => match network {
@@ -693,13 +695,20 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                             <Select
                                                 options=Signal::derive(move || {
                                                     let mut options = vec![];
-                                                    if let Some(Some((relayer_id, root_account_id))) = custom_root_account
+                                                    if let Some(Some((relayer_id, network, root_account_id))) = custom_root_account
                                                         .get()
                                                     {
                                                         options
                                                             .push(
                                                                 SelectOption::new(
-                                                                    format!("relayer:{relayer_id}"),
+                                                                    format!(
+                                                                        "relayer:{}:{relayer_id}",
+                                                                        match network {
+                                                                            Network::Mainnet => "mainnet",
+                                                                            Network::Testnet => "testnet",
+                                                                            Network::Localnet { .. } => unreachable!(),
+                                                                        },
+                                                                    ),
                                                                     move || format!(".{root_account_id}").into_any(),
                                                                 ),
                                                             );
@@ -741,26 +750,22 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                     options
                                                 })
                                                 on_change=Callback::new(move |value: String| {
-                                                    let parent_val = if let Some(relayer_id) = value
+                                                    let parent_val = if let Some(rest) = value
                                                         .strip_prefix("relayer:")
+                                                        && let Some((_, relayer_id)) = rest.split_once(':')
+                                                        && let Some(
+                                                            Some((provided_relayer_id, network, root_account_id)),
+                                                        ) = custom_root_account.get()
                                                     {
-                                                        if let Some(Some((provided_relayer_id, root_account_id))) = custom_root_account
-                                                            .get()
-                                                        {
-                                                            if relayer_id == provided_relayer_id {
-                                                                AccountCreateParent::CustomRelayer(
-                                                                    provided_relayer_id,
-                                                                    root_account_id,
-                                                                )
-                                                            } else {
-                                                                log::error!(
-                                                                    "Custom relayer selected but relayer ID mismatch"
-                                                                );
-                                                                return;
-                                                            }
+                                                        if relayer_id == provided_relayer_id {
+                                                            AccountCreateParent::CustomRelayer(
+                                                                provided_relayer_id,
+                                                                network,
+                                                                root_account_id,
+                                                            )
                                                         } else {
                                                             log::error!(
-                                                                "Custom relayer selected but no data available"
+                                                                "Custom relayer selected but relayer ID mismatch"
                                                             );
                                                             return;
                                                         }
@@ -798,8 +803,12 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                 initial_value=match parent_untracked() {
                                                     AccountCreateParent::Mainnet => "near".to_string(),
                                                     AccountCreateParent::Testnet => "testnet".to_string(),
-                                                    AccountCreateParent::CustomRelayer(relayer_id, _) => {
-                                                        format!("relayer:{relayer_id}")
+                                                    AccountCreateParent::CustomRelayer(relayer_id, network, _) => {
+                                                        format!("relayer:{}:{relayer_id}", match network {
+                                                            Network::Mainnet => "mainnet",
+                                                            Network::Testnet => "testnet",
+                                                            Network::Localnet { .. } => unreachable!(),
+                                                        })
                                                     }
                                                     AccountCreateParent::SubAccount(network, id) => {
                                                         format!(

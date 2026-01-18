@@ -71,7 +71,7 @@ pub enum AccountCreateParent {
     Mainnet,
     Testnet,
     SubAccount(Network, AccountId),
-    CustomRelayer(String, AccountId),
+    CustomRelayer(String, Network, AccountId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

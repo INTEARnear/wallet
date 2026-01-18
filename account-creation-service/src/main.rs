@@ -172,6 +172,9 @@ async fn configuration_create(
     }
 
     configs.insert(id.clone(), new_config);
+    drop(configs);
+
+    persist_configs(&app_state).await?;
 
     Ok(Json(ConfigurationWriteResponse {
         success: true,
@@ -207,6 +210,9 @@ async fn configuration_edit(
         })?;
         relayers.insert(id.clone(), relayer_state);
     }
+    drop(configs);
+
+    persist_configs(&app_state).await?;
 
     Ok(Json(ConfigurationWriteResponse {
         success: true,
@@ -242,6 +248,9 @@ async fn configuration_set_enabled(
     } else if !payload.enabled {
         relayers.remove(&id);
     }
+
+    drop(configs);
+    persist_configs(&app_state).await?;
 
     Ok(Json(ConfigurationWriteResponse {
         success: true,
@@ -293,10 +302,35 @@ async fn configuration_change_id(
         timestamps.insert(new_id.clone(), ts);
     }
 
+    drop(configs);
+    persist_configs(&app_state).await?;
+
     Ok(Json(ConfigurationWriteResponse {
         success: true,
         message: format!("Relayer ID changed from {} to {}", id, new_id),
     }))
+}
+
+async fn persist_configs(app_state: &AppState) -> Result<(), (StatusCode, String)> {
+    let configs = app_state.configs.read().await;
+    let serialized = serde_json::to_string_pretty(&*configs).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to serialize relayers config: {e}"),
+        )
+    })?;
+    drop(configs);
+
+    tokio::fs::write("relayers.json", serialized)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to write relayers config: {e}"),
+            )
+        })?;
+
+    Ok(())
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -307,20 +341,12 @@ struct RelayerConfig {
     #[serde(default)]
     finality: TxExecutionStatus,
     factory: Option<AccountId>,
-    #[serde(default, deserialize_with = "deserialize_near_token")]
+    #[serde(default, skip_serializing_if = "NearToken::is_zero")]
     create_account_deposit: NearToken,
     intear_dex: Option<AccountId>,
     slimedrop: Option<AccountId>,
     enabled: bool,
     max_accounts_created_per_day: Option<u32>,
-}
-
-fn deserialize_near_token<'de, D>(deserializer: D) -> Result<NearToken, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let s: String = Deserialize::deserialize(deserializer)?;
-    NearToken::from_str(&s).map_err(serde::de::Error::custom)
 }
 
 struct RelayerState {
@@ -372,6 +398,13 @@ struct RecoverAccountResponse {
 #[derive(Debug, Serialize)]
 struct GetRootResponse {
     root_account_id: AccountId,
+    network: Network,
+}
+
+#[derive(Debug, Serialize, Clone, Copy)]
+enum Network {
+    Mainnet,
+    Testnet,
 }
 
 #[derive(Debug, Deserialize)]
@@ -406,8 +439,9 @@ async fn main() {
 
     tracing::info!("Starting account creation service...");
 
-    let config_content =
-        std::fs::read_to_string("relayers.json").expect("Failed to read relayers config file");
+    let config_content = tokio::fs::read_to_string("relayers.json")
+        .await
+        .expect("Failed to read relayers config file");
 
     let relayers_config: HashMap<String, RelayerConfig> =
         serde_json::from_str(&config_content).expect("Failed to parse relayers config JSON");
@@ -617,7 +651,21 @@ async fn get_root(
 
     let root_account_id = state.factory.as_ref().unwrap_or(&state.relayer_id).clone();
 
-    Ok(Json(GetRootResponse { root_account_id }))
+    Ok(Json(GetRootResponse {
+        root_account_id,
+        // TODO: Change config format to include network and not rpc urls
+        network: if app_state
+            .configs
+            .read()
+            .await
+            .get(state.relayer_id.as_str())
+            .is_some_and(|config| config.rpc_urls.iter().any(|url| url.contains("testnet")))
+        {
+            Network::Testnet
+        } else {
+            Network::Mainnet
+        },
+    }))
 }
 
 #[axum::debug_handler]
