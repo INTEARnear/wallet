@@ -510,6 +510,7 @@ pub fn run() {
     let app = app.plugin(tauri_plugin_biometric::init());
     let app =
         app.plugin(tauri_plugin_os::init())
+            .plugin(tauri_plugin_opener::init())
             .plugin(tauri_plugin_deep_link::init())
             .manage(AppState {
                 config: Mutex::new(WalletConfig {

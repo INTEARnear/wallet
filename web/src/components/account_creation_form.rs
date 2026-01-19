@@ -439,6 +439,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                     seed_phrase,
                                     secret_key,
                                     network: network.clone(),
+                                    exported: false,
                                 });
                                 accounts.selected_account_id = Some(account_id);
                                 accounts_context.set_accounts.set(accounts);

@@ -72,6 +72,12 @@ pub struct Account {
     pub seed_phrase: Option<String>,
     #[serde(default = "default_account_network")]
     pub network: Network,
+    #[serde(default = "default_true")]
+    pub exported: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1008,6 +1014,7 @@ pub fn provide_accounts_context() {
                 secret_key: SecretKeyHolder::SecretKey(zero_secret_key),
                 seed_phrase: None,
                 network: Network::Mainnet,
+                exported: false,
             });
             new_state.selected_account_id = Some(account_id);
 

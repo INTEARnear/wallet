@@ -50,9 +50,10 @@ enum RecoverRequest {
 async fn find_accounts_by_public_key(
     public_key: near_min_api::types::near_crypto::PublicKey,
     accounts_context: &AccountsContext,
-) -> Vec<(AccountId, Network)> {
+) -> (Vec<(AccountId, Network)>, bool) {
     let mut all_accounts = vec![];
 
+    let mut has_accounts_with_same_public_key = false;
     for (network, api_url) in [
         (Network::Mainnet, "https://api.fastnear.com"),
         (Network::Testnet, "https://test.api.fastnear.com"),
@@ -70,19 +71,25 @@ async fn find_accounts_by_public_key(
                         .map(|id| (id, network.clone()))
                 })
                 .filter(|(id, _)| {
-                    !accounts_context
+                    if accounts_context
                         .accounts
                         .get_untracked()
                         .accounts
                         .iter()
                         .any(|a| a.account_id == *id)
+                    {
+                        has_accounts_with_same_public_key = true;
+                        false
+                    } else {
+                        true
+                    }
                 })
                 .collect();
             all_accounts.extend(accounts);
         }
     }
 
-    all_accounts
+    (all_accounts, has_accounts_with_same_public_key)
 }
 
 #[component]
@@ -318,6 +325,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                 seed_phrase: Some(mnemonic.to_string()),
                                                                 secret_key: SecretKeyHolder::SecretKey(secret_key),
                                                                 network,
+                                                                exported: false,
                                                             });
                                                             accounts.selected_account_id = Some(account_id);
                                                             accounts_context.set_accounts.set(accounts);
@@ -541,6 +549,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                 seed_phrase: Some(mnemonic.to_string()),
                                                                 secret_key: SecretKeyHolder::SecretKey(secret_key),
                                                                 network,
+                                                                exported: false,
                                                             });
                                                             accounts.selected_account_id = Some(account_id);
                                                             accounts_context.set_accounts.set(accounts);
@@ -615,16 +624,23 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                 )));
 
                                 spawn_local(async move {
-                                    let all_accounts =
+                                    let (all_accounts, has_existing) =
                                         find_accounts_by_public_key(public_key, &accounts_context)
                                             .await;
 
                                     set_available_accounts.set(all_accounts.clone());
                                     set_selected_accounts.set(vec![]);
                                     if all_accounts.is_empty() {
-                                        set_error.set(Some(
-                                            "No accounts found for this Ledger key".to_string(),
-                                        ));
+                                        if has_existing {
+                                            set_error.set(Some(
+                                                "You already have an account with this Ledger key imported. There are no other accounts that can be imported."
+                                                    .to_string(),
+                                            ));
+                                        } else {
+                                            set_error.set(Some(
+                                                "No accounts found for this Ledger key".to_string(),
+                                            ));
+                                        }
                                     }
                                 });
                             } else {
@@ -669,12 +685,20 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
         let public_key = secret_key.public_key();
 
         spawn_local(async move {
-            let all_accounts = find_accounts_by_public_key(public_key, &accounts_context).await;
+            let (all_accounts, has_existing) =
+                find_accounts_by_public_key(public_key, &accounts_context).await;
 
             set_available_accounts.set(all_accounts.clone());
             set_selected_accounts.set(vec![]);
             if all_accounts.is_empty() {
-                set_error.set(Some("No accounts found for this seed phrase".to_string()));
+                if has_existing {
+                    set_error.set(Some(
+                        "You already have an account with this seed phrase imported. There are no other accounts that can be imported."
+                            .to_string(),
+                    ));
+                } else {
+                    set_error.set(Some("No accounts found for this seed phrase".to_string()));
+                }
                 set_is_valid.set(None);
             } else {
                 set_is_valid.set(Some(secret_key));
@@ -699,12 +723,20 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
         let public_key = secret_key.public_key();
 
         spawn_local(async move {
-            let all_accounts = find_accounts_by_public_key(public_key, &accounts_context).await;
+            let (all_accounts, has_existing) =
+                find_accounts_by_public_key(public_key, &accounts_context).await;
 
             set_available_accounts.set(all_accounts.clone());
             set_selected_accounts.set(vec![]);
             if all_accounts.is_empty() {
-                set_error.set(Some("No accounts found for this private key".to_string()));
+                if has_existing {
+                    set_error.set(Some(
+                        "You already have an account with this private key imported. There are no other accounts that can be imported."
+                            .to_string(),
+                    ));
+                } else {
+                    set_error.set(Some("No accounts found for this private key".to_string()));
+                }
                 set_is_valid.set(None);
             } else {
                 set_is_valid.set(Some(secret_key));
@@ -744,6 +776,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                     secret_key: SecretKeyHolder::SecretKey(secret_key.clone()),
                     seed_phrase: seed_phrase.clone(),
                     network: network.clone(),
+                    exported: false,
                 });
                 last_account_id = Some(account_id.clone());
             }
@@ -2091,6 +2124,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                                 },
                                                                                 seed_phrase: None,
                                                                                 network: network.clone(),
+                                                                                exported: true,
                                                                             });
                                                                         last_account_id = Some(account_id.clone());
                                                                     }

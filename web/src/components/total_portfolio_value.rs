@@ -1,6 +1,7 @@
 use crate::components::swap_for_gas_modal::{
     MIN_NEAR_BALANCE_FOR_GAS, MIN_TOKEN_VALUE_USD, SWAP_FOR_GAS_WHITELIST, SwapForGasModal,
 };
+use crate::contexts::accounts_context::AccountsContext;
 use crate::contexts::config_context::ConfigContext;
 use crate::contexts::modal_context::ModalContext;
 use crate::contexts::network_context::{Network, NetworkContext};
@@ -10,6 +11,7 @@ use bigdecimal::{BigDecimal, ToPrimitive};
 use leptos::prelude::*;
 use leptos_icons::*;
 use leptos_router::components::A;
+use leptos_router::hooks::use_navigate;
 use std::str::FromStr;
 
 #[component]
@@ -25,6 +27,21 @@ pub fn TotalPortfolioValue() -> impl IntoView {
     let ModalContext { modal } = expect_context::<ModalContext>();
     let network = expect_context::<NetworkContext>().network;
     let (last_tap, set_last_tap) = signal(0u64);
+    let accounts_context = expect_context::<AccountsContext>();
+    let navigate = use_navigate();
+    let navigate = Callback::new(move |path: &str| navigate(path, Default::default()));
+
+    let current_account = move || {
+        accounts_context
+            .accounts
+            .get()
+            .accounts
+            .into_iter()
+            .find(|account| {
+                Some(&account.account_id)
+                    == accounts_context.accounts.get().selected_account_id.as_ref()
+            })
+    };
 
     let storage_persisted = LocalResource::new(|| async {
         if is_tauri() {
@@ -175,7 +192,7 @@ pub fn TotalPortfolioValue() -> impl IntoView {
                 if network.get() == Network::Testnet {
                     view! {
                         <div class="text-yellow-500 text-sm font-medium mb-4">
-                            This is a testnet account. Assets have no real value.
+                            "This is a testnet account. Assets have no real value."
                         </div>
                     }
                         .into_any()
@@ -219,6 +236,31 @@ pub fn TotalPortfolioValue() -> impl IntoView {
                             <Icon icon=icondata::LuTriangleAlert width="16" height="16" />
                             <span class="text-xs font-medium">"Enable Persistent Storage"</span>
                         </A>
+                    </div>
+                </Show>
+                <Show when=move || { current_account().is_some_and(|account| !account.exported) }>
+                    <div>
+                        <button
+                            class="inline-flex items-center gap-2 py-1.5 px-3 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-yellow-300 hover:bg-yellow-500/20 transition-colors cursor-pointer"
+                            on:click=move |_| {
+                                accounts_context
+                                    .set_accounts
+                                    .update(|accounts| {
+                                        accounts
+                                            .accounts
+                                            .iter_mut()
+                                            .find(|account| {
+                                                account.account_id == *accounts.selected_account_id.as_ref().unwrap()
+                                            })
+                                            .unwrap()
+                                            .exported = true;
+                                    });
+                                navigate.run("/settings/security/account");
+                            }
+                        >
+                            <Icon icon=icondata::LuTriangleAlert width="16" height="16" />
+                            <span class="text-xs font-medium">"Back Up Your Keys"</span>
+                        </button>
                     </div>
                 </Show>
                 <Show when=move || should_show_swap_for_gas()>
