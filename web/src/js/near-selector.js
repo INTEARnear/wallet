@@ -58,9 +58,6 @@ class IntearWalletAdapter {
         if (!this.near.connectedAccount) {
             throw new Error("Account is not connected");
         }
-        if (!navigator.userActivation.isActive) {
-            await window.selector.ui.whenApprove({ title: "App asks you to sign a message", button: "Sign" });
-        }
         return this.near.connectedAccount.signMessage({ message, nonce, recipient })
             .catch(async error => {
                 if (error.message === "Popup blocked") {
