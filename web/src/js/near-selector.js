@@ -58,15 +58,7 @@ class IntearWalletAdapter {
         if (!this.near.connectedAccount) {
             throw new Error("Account is not connected");
         }
-        return this.near.connectedAccount.signMessage({ message, nonce, recipient })
-            .catch(async error => {
-                if (error.message === "Popup blocked") {
-                    await window.selector.ui.whenApprove({ title: "App asks you to sign a message", button: "Sign" });
-                    return await this.near.connectedAccount.signMessage({ message, nonce, recipient });
-                } else {
-                    throw error;
-                }
-            });
+        return this.near.connectedAccount.signMessage({ message, nonce, recipient });
     }
     async signAndSendTransaction({ network, signerId, receiverId, actions }) {
         if (!this.near.connectedAccount) {

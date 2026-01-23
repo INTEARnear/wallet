@@ -118,9 +118,13 @@ function base58Decode(str) {
  * @throws Error if popup fails to open or wallet returns an error
  */
 async function openPopupFlow(config) {
-    const popup = window.selector.open(`${config.walletUrl}/${config.method}`, "dontcare", 'width=400,height=700,scrollbars=yes,resizable=yes');
+    let popup = window.selector.open(`${config.walletUrl}/${config.method}`, "dontcare", 'width=400,height=700,scrollbars=yes,resizable=yes');
     if (await popup.id() === null || popup.closed) {
-        throw new Error('Popup blocked');
+        await window.selector.ui.whenApprove({ title: "App asks you to sign a message", button: "Sign" });
+        popup = window.selector.open(`${config.walletUrl}/${config.method}`, "dontcare", 'width=400,height=700,scrollbars=yes,resizable=yes');
+        if (await popup.id() === null || popup.closed) {
+            throw new Error('Popup blocked');
+        }
     }
     return new Promise((resolve, reject) => {
         let resultReceived = false;
