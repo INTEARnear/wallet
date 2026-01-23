@@ -87,7 +87,7 @@ class IntearWalletAdapter {
             receiverId: t.receiverId,
             actions: t.actions.forEach(fixAction),
         }));
-        const result = await this.near.connectedAccount.sendTransactions({ transactions });
+        const result = await this.near.connectedAccount.sendTransactions(transactions);
         return result.outcomes;
     }
 }
