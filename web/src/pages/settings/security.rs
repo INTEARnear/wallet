@@ -337,7 +337,7 @@ pub fn SecuritySettings() -> impl IntoView {
 
     view! {
         <div class="flex flex-col gap-4 p-4">
-            <div class="text-xl font-semibold">Security</div>
+            <div class="text-xl font-semibold">"Security"</div>
 
             <div class="flex flex-col gap-4">
                 <A
@@ -346,7 +346,7 @@ pub fn SecuritySettings() -> impl IntoView {
                 >
                     <div class="flex items-center gap-3">
                         <Icon icon=icondata::LuUser width="20" height="20" />
-                        <span>Account</span>
+                        <span>"Account"</span>
                     </div>
                     <Icon icon=icondata::LuChevronRight width="20" height="20" />
                 </A>
@@ -357,7 +357,7 @@ pub fn SecuritySettings() -> impl IntoView {
                 >
                     <div class="flex items-center gap-3">
                         <Icon icon=icondata::LuAppWindow width="20" height="20" />
-                        <span>Connected Apps</span>
+                        <span>"Connected Apps"</span>
                     </div>
                     <Icon icon=icondata::LuChevronRight width="20" height="20" />
                 </A>
@@ -368,14 +368,14 @@ pub fn SecuritySettings() -> impl IntoView {
                 >
                     <div class="flex items-center gap-3">
                         <Icon icon=icondata::LuShieldCheck width="20" height="20" />
-                        <span>Security Log</span>
+                        <span>"Security Log"</span>
                     </div>
                     <Icon icon=icondata::LuChevronRight width="20" height="20" />
                 </A>
 
                 <Show when=move || supports_biometry.get()>
                     <div class="flex flex-col gap-2">
-                        <div class="text-lg font-medium">Biometric Authentication</div>
+                        <div class="text-lg font-medium">"Biometric Authentication"</div>
                         <div class="text-sm text-neutral-400">
                             "Use biometric authentication to unlock your wallet."
                         </div>
@@ -394,7 +394,7 @@ pub fn SecuritySettings() -> impl IntoView {
                 </Show>
 
                 <div class="flex flex-col gap-2">
-                    <div class="text-lg font-medium">Password</div>
+                    <div class="text-lg font-medium">"Password"</div>
                     <div class="text-sm text-neutral-400">
                         "Encrypt your wallet keys, so that even if your device is compromised (for example, if you get malware, or someone steals your device), it will be much harder for the attacker to access your accounts."
                     </div>
@@ -503,7 +503,7 @@ pub fn SecuritySettings() -> impl IntoView {
 
                         <Show when=move || accounts_context.is_encrypted.get()>
                             <div class="flex flex-col gap-3">
-                                <div class="text-lg font-medium">Remember Password</div>
+                                <div class="text-lg font-medium">"Remember Password"</div>
                                 <Select
                                     options=Signal::derive(move || {
                                         PasswordRememberDuration::all_variants()
@@ -572,7 +572,7 @@ pub fn SecuritySettings() -> impl IntoView {
                     class:hidden=move || is_tauri()
                 >
                     <Show when=move || storage_persisted.get().is_some()>
-                        <div class="text-lg font-medium">Storage Persistence</div>
+                        <div class="text-lg font-medium">"Storage Persistence"</div>
                         <div class="text-sm text-neutral-400">
                             "Protect your wallet data from being automatically cleared by your browser when storage space is low."
                         </div>

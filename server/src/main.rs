@@ -37,7 +37,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
         <!DOCTYPE html>
         <html lang="en" dir="ltr" data-theme="dark">
             <head>
-                <title>Intear Wallet</title>
+                <title>"Intear Wallet"</title>
 
                 <meta charset="UTF-8" />
                 <meta

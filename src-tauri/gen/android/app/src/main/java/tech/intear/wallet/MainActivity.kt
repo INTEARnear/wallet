@@ -738,4 +738,8 @@ class MainActivity : TauriActivity() {
     super.onPause()
     stopBleScanning()
   }
+
+  fun closeWindow() {
+    finish()
+  }
 }

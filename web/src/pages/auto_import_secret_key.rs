@@ -103,7 +103,7 @@ pub fn AutoImportSecretKey() -> impl IntoView {
                                             <span class="text-neutral-300 text-lg">{"🔑"}</span>
                                         </div>
                                         <div>
-                                            <p class="text-neutral-400 text-sm">Account Name</p>
+                                            <p class="text-neutral-400 text-sm">"Account Name"</p>
                                             <p class="text-white font-medium wrap-anywhere">
                                                 {move || {
                                                     if let Some((account_id, _)) = import_info() {

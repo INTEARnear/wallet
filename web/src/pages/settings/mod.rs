@@ -93,7 +93,7 @@ pub fn Settings() -> impl IntoView {
                     />
                     <span style=move || {
                         if is_active("/settings/security") { "font-weight: bold;" } else { "" }
-                    }>Security</span>
+                    }>"Security"</span>
                 </A>
                 <A
                     href="/settings/preferences"
@@ -115,7 +115,7 @@ pub fn Settings() -> impl IntoView {
                     />
                     <span style=move || {
                         if is_active("/settings/preferences") { "font-weight: bold;" } else { "" }
-                    }>Preferences</span>
+                    }>"Preferences"</span>
                 </A>
                 <A
                     href="/settings/developer"
@@ -137,7 +137,7 @@ pub fn Settings() -> impl IntoView {
                     />
                     <span style=move || {
                         if is_active("/settings/developer") { "font-weight: bold;" } else { "" }
-                    }>Developer</span>
+                    }>"Developer"</span>
                 </A>
             </div>
             <div class="flex-1">
@@ -145,7 +145,7 @@ pub fn Settings() -> impl IntoView {
             </div>
             <div>
                 <div class="flex flex-col items-center gap-4 p-4 border-t border-neutral-800">
-                    <div class="text-sm font-semibold">Support & Resources</div>
+                    <div class="text-sm font-semibold">"Support & Resources"</div>
                     <button
                         class="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-colors cursor-pointer text-sm font-medium"
                         on:click=move |_| open_live_chat(

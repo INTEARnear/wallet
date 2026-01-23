@@ -40,10 +40,10 @@ pub fn Receive() -> impl IntoView {
         <div class="flex flex-col gap-6 p-2 md:p-4">
             <A
                 href="/"
-                attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer no-mobile-ripple"
             >
                 <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                <span>Back</span>
+                <span>"Back"</span>
             </A>
             <div class="flex flex-col items-center justify-center min-h-[60vh] gap-6">
                 <h1 class="text-2xl font-bold text-white mb-4">"Receive"</h1>

@@ -26,4 +26,5 @@
     public boolean hasBlePermissions();
     public void requestBlePermissions();
     public java.lang.String exchangeApdu(java.lang.String, java.lang.String);
+    public void closeWindow();
 }

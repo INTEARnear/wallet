@@ -209,14 +209,14 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
                                 attr:class="text-blue-500"
                             />
                         </div>
-                        <h2 class="text-white text-2xl font-semibold mb-2">Welcome Back!</h2>
+                        <h2 class="text-white text-2xl font-semibold mb-2">"Welcome Back!"</h2>
                         <p class="text-neutral-400 text-sm">"Enter your password to log in"</p>
                     </div>
 
                     <div>
                         <div>
                             <label class="block text-neutral-400 text-sm font-medium mb-2">
-                                Password
+                                "Password"
                             </label>
                             <div class="relative">
                                 <input

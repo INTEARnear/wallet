@@ -62,11 +62,11 @@ pub fn Login() -> impl IntoView {
                                             <span class="text-neutral-300 text-lg">"🔑"</span>
                                         </div>
                                         <div>
-                                            <p class="text-neutral-400 text-sm">Account</p>
+                                            <p class="text-neutral-400 text-sm">"Account"</p>
                                             <p class="text-white font-medium wrap-anywhere">
                                                 {account_id}
                                             </p>
-                                            <p class="text-neutral-400 text-sm mt-2">Public Key</p>
+                                            <p class="text-neutral-400 text-sm mt-2">"Public Key"</p>
                                             <p class="text-white font-medium wrap-anywhere">
                                                 {public_key.to_string()}
                                             </p>

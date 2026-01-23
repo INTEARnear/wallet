@@ -99,7 +99,7 @@ pub fn History() -> impl IntoView {
     view! {
         <div class="md:p-4">
             <div class="flex justify-between items-center mb-4 px-4">
-                <h1 class="text-white text-2xl font-bold pt-4 sm:pt-0">Transaction History</h1>
+                <h1 class="text-white text-2xl font-bold pt-4 sm:pt-0">"Transaction History"</h1>
                 <button
                     on:click=move |_| {
                         set_config
@@ -340,7 +340,7 @@ fn display_transaction(
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let RpcContext { client, .. } = expect_context::<RpcContext>();
     let Some(me) = accounts().selected_account_id else {
-        return view! { <div>No selected account</div> }.into_any();
+        return view! { <div>"No selected account"</div> }.into_any();
     };
     let mut actions_config = ActionsConfig::default();
     match tx_type {
@@ -381,15 +381,15 @@ fn display_transaction(
             }
             if actions.is_empty() {
                 if transaction.final_outcome.transaction.actions.is_empty() {
-                    view! { <div>Empty Transaction</div> }.into_any()
+                    view! { <div>"Empty Transaction"</div> }.into_any()
                 } else {
-                    view! { <div>App Interaction</div> }.into_any()
+                    view! { <div>"App Interaction"</div> }.into_any()
                 }
             } else {
                 view! { <div class="flex flex-col gap-2">{actions}</div> }.into_any()
             }
         }
-        TransactionType::FtReceiver => view! { <div>Receive token</div> }.into_any(), // TODO
+        TransactionType::FtReceiver => view! { <div>"Receive token"</div> }.into_any(), // TODO
     }
 }
 
@@ -499,10 +499,10 @@ fn add_key_actions(
                                         height="40"
                                         attr:class="min-w-[40px] min-h-[40px]"
                                     />
-                                    <span>Add full key</span>
+                                    <span>"Add full key"</span>
                                 </div>
                                 <span class="text-sm text-neutral-400 pl-12">
-                                    This usually means someone else logged in to your account, or you started using a new wallet
+                                    "This usually means someone else logged in to your account, or you started using a new wallet"
                                 </span>
                             </div>
                         }
@@ -524,7 +524,7 @@ fn add_key_actions(
                                         height="40"
                                         attr:class="min-w-[40px] min-h-[40px]"
                                     />
-                                    <span>Add app key</span>
+                                    <span>"Add app key"</span>
                                 </div>
                                 <span class="text-sm text-neutral-400 pl-12">
                                     "Gives some web-app permission to execute"
@@ -570,7 +570,7 @@ fn add_key_actions(
                                     height="40"
                                     attr:class="min-w-[40px] min-h-[40px]"
                                 />
-                                <span>Delete Key</span>
+                                <span>"Delete Key"</span>
                             </div>
                             <span class="text-sm text-neutral-400 pl-12">
                                 This usually means you signed out in some application
@@ -625,7 +625,7 @@ fn add_staking_actions(
                                         height="40"
                                         attr:class="min-w-[40px] min-h-[40px]"
                                     />
-                                    <span>Stake {format_token_amount(amount, 24, "NEAR")}</span>
+                                    <span>"Stake " {format_token_amount(amount, 24, "NEAR")}</span>
                                 </div>
                             }
                             .into_any(),
@@ -665,7 +665,7 @@ fn add_staking_actions(
                                     height="40"
                                     attr:class="min-w-[40px] min-h-[40px]"
                                 />
-                                <span>Withdraw {format_token_amount(amount, 24, "NEAR")}</span>
+                                <span>"Withdraw " {format_token_amount(amount, 24, "NEAR")}</span>
                             </div>
                         }
                         .into_any(),
@@ -715,7 +715,7 @@ fn add_near_actions(
                                         class="rounded-full"
                                     />
                                     <span>
-                                        Transfer
+                                        "Transfer "
                                         {format_token_amount(deposit.as_yoctonear(), 24, "NEAR")}
                                     </span>
                                 </div>
@@ -749,7 +749,7 @@ fn add_near_actions(
                                                 class="rounded-sm"
                                             />
                                             <span>
-                                                Storage deposit refund
+                                                "Storage deposit refund "
                                                 {format_token_amount(deposit.as_yoctonear(), 24, "NEAR")}
                                             </span>
                                         </div>
@@ -769,7 +769,7 @@ fn add_near_actions(
                                                 class="rounded-full"
                                             />
                                             <span>
-                                                Receive
+                                                "Receive "
                                                 {format_token_amount(deposit.as_yoctonear(), 24, "NEAR")}
                                             </span>
                                         </div>
@@ -879,7 +879,7 @@ fn add_wrap_actions(
                                 height="40"
                                 attr:class="min-w-[40px] min-h-[40px]"
                             />
-                            <span>Wrap {format_token_amount(amount, 24, "NEAR")}</span>
+                            <span>"Wrap " {format_token_amount(amount, 24, "NEAR")}</span>
                         </div>
                     }
                     .into_any(),
@@ -900,7 +900,7 @@ fn add_wrap_actions(
                                 height="40"
                                 attr:class="min-w-[40px] min-h-[40px]"
                             />
-                            <span>Unwrap {format_token_amount(amount, 24, "NEAR")}</span>
+                            <span>"Unwrap " {format_token_amount(amount, 24, "NEAR")}</span>
                         </div>
                     }
                     .into_any(),
@@ -1844,7 +1844,7 @@ fn add_harvestmoon_actions(
                                         height="40"
                                         style="animation: none !important;"
                                     />
-                                    <span>Harvest</span>
+                                    <span>"Harvest"</span>
                                 </div>
                             }
                             .into_any(),

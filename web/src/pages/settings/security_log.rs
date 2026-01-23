@@ -52,7 +52,7 @@ pub fn SecurityLogPage() -> impl IntoView {
     view! {
         <div class="flex flex-col gap-4 p-4">
             <div class="flex items-center justify-between">
-                <div class="text-xl font-semibold">Security Log</div>
+                <div class="text-xl font-semibold">"Security Log"</div>
             </div>
 
             <div class="flex flex-col gap-4">
@@ -62,7 +62,7 @@ pub fn SecurityLogPage() -> impl IntoView {
                         view! {
                             <div class="flex flex-col items-center justify-center p-8 text-neutral-400">
                                 <Icon icon=icondata::LuShieldCheck width="32" height="32" />
-                                <div class="mt-4 text-center">No security logs found</div>
+                                <div class="mt-4 text-center">"No security logs found"</div>
                             </div>
                         }
                             .into_any()

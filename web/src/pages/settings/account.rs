@@ -1202,12 +1202,12 @@ pub fn AccountSettings() -> impl IntoView {
 
     view! {
         <div class="flex flex-col gap-4 p-4">
-            <div class="text-xl font-semibold">Account</div>
+            <div class="text-xl font-semibold">"Account"</div>
 
             // Export to Other Wallets section
             <div class="flex flex-col gap-4">
                 <div class="flex flex-col gap-2">
-                    <div class="text-lg font-medium">Export to Other Wallets</div>
+                    <div class="text-lg font-medium">"Export to Other Wallets"</div>
                     <div class="text-sm text-neutral-400">
                         "Export your account to another wallet or device. "
                         <span class="text-red-400">
@@ -1223,7 +1223,7 @@ pub fn AccountSettings() -> impl IntoView {
                     >
                         <div class="flex items-center gap-3">
                             <Icon icon=icondata::LuKeyRound width="20" height="20" />
-                            <span>Export to Other Wallets</span>
+                            <span>"Export to Other Wallets"</span>
                         </div>
                         <Show when=move || show_secrets.get()>
                             <Icon icon=icondata::LuEyeOff width="20" height="20" />
@@ -1284,7 +1284,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                 <div class="p-4 rounded-lg bg-neutral-900">
                                                     <div class="flex items-center justify-between">
                                                         <div class="text-sm text-neutral-400">
-                                                            Your seed phrase:
+                                                            "Your seed phrase:"
                                                         </div>
                                                         <Show when=move || seed_phrase_exists>
                                                             <button
@@ -1318,7 +1318,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                 <div class="p-4 rounded-lg bg-neutral-900">
                                                     <div class="flex items-center justify-between">
                                                         <div class="text-sm text-neutral-400">
-                                                            Your private key:
+                                                            "Your private key:"
                                                         </div>
                                                         <button
                                                             on:click=copy_key
@@ -1818,7 +1818,7 @@ pub fn AccountSettings() -> impl IntoView {
                                         view! {
                                             <div class="flex flex-col gap-4">
                                                 <div class="flex flex-col gap-2">
-                                                    <div class="text-lg font-medium">Smart Wallet</div>
+                                                    <div class="text-lg font-medium">"Smart Wallet"</div>
                                                     <Show when=move || !is_latest>
                                                         <div class="p-4 rounded-lg bg-blue-950/30 border border-blue-700/30">
                                                             <div class="text-sm font-medium text-blue-300 mb-2">
@@ -1958,7 +1958,7 @@ pub fn AccountSettings() -> impl IntoView {
                                     view! {
                                         <div class="flex flex-col gap-4">
                                             <div class="flex flex-col gap-2">
-                                                <div class="text-lg font-medium">Recovery</div>
+                                                <div class="text-lg font-medium">"Recovery"</div>
                                                 <div class="text-sm text-neutral-400">
                                                     "You can log in with these methods"
                                                 </div>
@@ -2119,7 +2119,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                         <Icon icon=icondata::SiEthereum width="24" height="24" />
                                                     </div>
                                                     <div class="text-center">
-                                                        <div class="font-medium">Ethereum</div>
+                                                        <div class="font-medium">"Ethereum"</div>
                                                         <div class=move || {
                                                             let recovery_methods_result = recovery_methods.get();
                                                             let has_ethereum = recovery_methods_result
@@ -2326,7 +2326,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                         <Icon icon=icondata::SiSolana width="24" height="24" />
                                                     </div>
                                                     <div class="text-center">
-                                                        <div class="font-medium">Solana</div>
+                                                        <div class="font-medium">"Solana"</div>
                                                         <div class=move || {
                                                             let recovery_methods_result = recovery_methods.get();
                                                             let has_solana = recovery_methods_result

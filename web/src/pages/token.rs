@@ -99,7 +99,7 @@ fn TokenInfoView(token: impl Fn() -> TokenInfo) -> impl IntoView {
                             disabled=move || user_balance().is_none()
                         >
                             <Icon icon=icondata::LuSend width="20" height="20" />
-                            <span>Send</span>
+                            <span>"Send"</span>
                         </button>
                     </A>
 
@@ -137,7 +137,7 @@ fn TokenInfoView(token: impl Fn() -> TokenInfo) -> impl IntoView {
                                             width="20"
                                             height="20"
                                         />
-                                        <span>Swap</span>
+                                        <span>"Swap"</span>
                                     </button>
                                 </A>
                             }
@@ -155,7 +155,7 @@ fn TokenInfoView(token: impl Fn() -> TokenInfo) -> impl IntoView {
                                     <A href=format!("/swap?from=near&to={acc_str}")>
                                         <button class="bg-neutral-900 rounded-xl p-3 text-white hover:bg-neutral-800 transition-colors flex items-center gap-2 cursor-pointer w-full">
                                             <Icon icon=icondata::LuPackage width="20" height="20" />
-                                            <span>Wrap</span>
+                                            <span>"Wrap"</span>
                                         </button>
                                     </A>
                                 }
@@ -193,13 +193,13 @@ fn TokenInfoView(token: impl Fn() -> TokenInfo) -> impl IntoView {
             <div class="bg-neutral-900 rounded-xl p-4">
                 <div class="flex justify-between items-center">
                     <div>
-                        <p class="text-gray-400">Price</p>
+                        <p class="text-gray-400">"Price"</p>
                         <p class="text-white text-xl">
                             {move || format_usd_value(token_info.price_usd.clone())}
                         </p>
                     </div>
                     <div class="text-right">
-                        <p class="text-gray-400">24h Change</p>
+                        <p class="text-gray-400">"24h Change"</p>
                         <p
                             class="text-xl"
                             style=move || {
@@ -225,10 +225,10 @@ fn TokenInfoView(token: impl Fn() -> TokenInfo) -> impl IntoView {
                         <div class="bg-red-500/10 p-4 rounded-lg border border-red-500/20">
                             <div class="flex items-center gap-2 text-red-400">
                                 <Icon icon=icondata::LuTriangleAlert width="20" height="20" />
-                                <p class="text-white font-medium">Warning: This is a spam token</p>
+                                <p class="text-white font-medium">"Warning: This is a spam token"</p>
                             </div>
                             <p class="text-gray-400 text-sm mt-2">
-                                This token has been identified as spam. Exercise extreme caution and do not trust it.
+                                "This token has been identified as spam. Exercise extreme caution and do not trust it."
                             </p>
                         </div>
                     }
@@ -239,10 +239,10 @@ fn TokenInfoView(token: impl Fn() -> TokenInfo) -> impl IntoView {
                         <div class="bg-yellow-500/10 p-4 rounded-lg border border-yellow-500/20">
                             <div class="flex items-center gap-2 text-yellow-400">
                                 <Icon icon=icondata::LuTriangleAlert width="20" height="20" />
-                                <p class="text-white font-medium">Warning: Unverified token</p>
+                                <p class="text-white font-medium">"Warning: Unverified token"</p>
                             </div>
                             <p class="text-gray-400 text-sm mt-2">
-                                This token has not been verified. Exercise caution when interacting with it.
+                                "This token has not been verified. Exercise caution when interacting with it."
                             </p>
                         </div>
                     }
@@ -256,7 +256,7 @@ fn TokenInfoView(token: impl Fn() -> TokenInfo) -> impl IntoView {
                         view! {
                             <div class="bg-neutral-900 rounded-xl p-4">
                                 <div class="flex items-center gap-2">
-                                    <p class="text-gray-400">Your Balance</p>
+                                    <p class="text-gray-400">"Your Balance"</p>
                                 </div>
                                 <p class="text-white text-xl">{tokens}</p>
                                 <p class="text-gray-400 text-sm text-right">{usd}</p>
@@ -267,9 +267,9 @@ fn TokenInfoView(token: impl Fn() -> TokenInfo) -> impl IntoView {
                         view! {
                             <div class="bg-neutral-900 rounded-xl p-4">
                                 <div class="flex items-center gap-2">
-                                    <p class="text-gray-400">Your Balance</p>
+                                    <p class="text-gray-400">"Your Balance"</p>
                                 </div>
-                                <p class="text-white text-xl">None</p>
+                                <p class="text-white text-xl">"None"</p>
                             </div>
                         }
                             .into_any()
@@ -281,7 +281,7 @@ fn TokenInfoView(token: impl Fn() -> TokenInfo) -> impl IntoView {
                         && token_account_id != Token::Nep141("wrap.testnet".parse().unwrap())
                 }>
                     <div class="bg-neutral-900 rounded-xl p-4">
-                        <p class="text-gray-400">Liquidity</p>
+                        <p class="text-gray-400">"Liquidity"</p>
                         <p class="text-white text-xl">
                             {move || format_usd_value_no_hide(
                                 BigDecimal::from_f64(token_info.liquidity_usd).unwrap(),
@@ -289,7 +289,7 @@ fn TokenInfoView(token: impl Fn() -> TokenInfo) -> impl IntoView {
                         </p>
                     </div>
                 </Show> <div class="bg-neutral-900 rounded-xl p-4">
-                    <p class="text-gray-400">24h Volume</p>
+                    <p class="text-gray-400">"24h Volume"</p>
                     <p class="text-white text-xl">
                         {move || format_usd_value_no_hide(
                             BigDecimal::from_f64(token_info.volume_usd_24h).unwrap(),
@@ -297,7 +297,7 @@ fn TokenInfoView(token: impl Fn() -> TokenInfo) -> impl IntoView {
                     </p>
                 </div> <div class="bg-neutral-900 rounded-xl p-4">
                     <div class="flex items-center gap-2">
-                        <p class="text-gray-400">Market Cap</p>
+                        <p class="text-gray-400">"Market Cap"</p>
                         <Tooltip text="Market cap is the total value of all tokens in circulation. It's calculated by multiplying the current price by the total number of tokens (excluding burned and locked)." />
                     </div>
                     <p class="text-white text-xl">
@@ -419,10 +419,10 @@ pub fn TokenDetails() -> impl IntoView {
         <div class="flex flex-col gap-4 p-2 md:p-4">
             <A
                 href="/"
-                attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-2 cursor-pointer"
+                attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-2 cursor-pointer no-mobile-ripple"
             >
                 <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                <span>Back</span>
+                <span>"Back"</span>
             </A>
 
             {move || {
@@ -441,7 +441,7 @@ pub fn TokenDetails() -> impl IntoView {
                             <div class="bg-red-500/10 p-4 rounded-lg border border-red-500/20">
                                 <div class="flex items-center gap-2 text-red-400">
                                     <Icon icon=icondata::LuTriangleAlert width="20" height="20" />
-                                    <p class="text-white font-medium">Token not found</p>
+                                    <p class="text-white font-medium">"Token not found"</p>
                                 </div>
                                 <p class="text-gray-400 text-sm mt-2">
                                     {if api_error() {

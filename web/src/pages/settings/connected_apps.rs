@@ -286,7 +286,7 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
 
     view! {
         <div class="flex flex-col gap-4 p-4">
-            <div class="text-xl font-semibold">Connected Apps</div>
+            <div class="text-xl font-semibold">"Connected Apps"</div>
 
             <div class="flex flex-col gap-4">
                 <div class="text-sm text-neutral-400">

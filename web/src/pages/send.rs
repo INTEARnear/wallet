@@ -683,10 +683,10 @@ pub fn SendToken() -> impl IntoView {
             <div class="flex items-center justify-between mb-2">
                 <A
                     href="/"
-                    attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                    attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer no-mobile-ripple"
                 >
                     <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                    <span>Back</span>
+                    <span>"Back"</span>
                 </A>
                 <div class="flex gap-2">
                     {move || {
@@ -713,7 +713,7 @@ pub fn SendToken() -> impl IntoView {
                         attr:class="flex items-center gap-2 bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
                     >
                         <Icon icon=icondata::LuUsers width="16" height="16" />
-                        <span>Multisend</span>
+                        <span>"Multisend"</span>
                     </A>
                 </div>
             </div>
@@ -976,7 +976,7 @@ pub fn SendToken() -> impl IntoView {
                                                 view! {
                                                     <>
                                                         <Icon icon=icondata::LuSend width="20" height="20" />
-                                                        <span>Send</span>
+                                                        <span>"Send"</span>
                                                     </>
                                                 }
                                                     .into_any()
@@ -994,7 +994,7 @@ pub fn SendToken() -> impl IntoView {
                             <div class="bg-red-500/10 p-4 rounded-lg border border-red-500/20">
                                 <div class="flex items-center gap-2 text-red-400">
                                     <Icon icon=icondata::LuTriangleAlert width="20" height="20" />
-                                    <p class="text-white font-medium">Token not found</p>
+                                    <p class="text-white font-medium">"Token not found"</p>
                                 </div>
                             </div>
                         </div>
@@ -1441,17 +1441,17 @@ pub fn SendMultiToken() -> impl IntoView {
             <div class="flex items-center justify-between mb-2">
                 <A
                     href=move || format!("/send/{}", token_id())
-                    attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                    attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer no-mobile-ripple"
                 >
                     <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                    <span>Back</span>
+                    <span>"Back"</span>
                 </A>
                 <A
                     href=move || format!("/send/{}", token_id())
                     attr:class="flex items-center gap-2 bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
                 >
                     <Icon icon=icondata::LuSend width="16" height="16" />
-                    <span>Single Send</span>
+                    <span>"Single Send"</span>
                 </A>
             </div>
 
@@ -1495,13 +1495,13 @@ pub fn SendMultiToken() -> impl IntoView {
             }}
 
             <div class="flex items-center justify-between mb-2">
-                <h3 class="text-white text-lg font-medium">Recipients</h3>
+                <h3 class="text-white text-lg font-medium">"Recipients"</h3>
                 <div class="flex gap-2">
                     <button
                         class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium cursor-pointer"
                         on:click=add_recipient
                     >
-                        <span>+ Add Recipient</span>
+                        <span>"+ Add Recipient"</span>
                     </button>
                     <button
                         class="bg-neutral-700 hover:bg-neutral-600 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1 cursor-pointer"
@@ -1542,7 +1542,7 @@ pub fn SendMultiToken() -> impl IntoView {
                                             index < 50
                                                 || index > recipients.get().len().saturating_sub(50)
                                         }}>
-                                            <label class="text-gray-400">Recipient</label>
+                                            <label class="text-gray-400">"Recipient"</label>
                                         </Show>
                                         <input
                                             type="text"
@@ -1682,7 +1682,7 @@ pub fn SendMultiToken() -> impl IntoView {
                                             index < 50
                                                 || index > recipients.get().len().saturating_sub(50)
                                         }}>
-                                            <label class="text-gray-400">Amount</label>
+                                            <label class="text-gray-400">"Amount"</label>
                                         </Show>
                                         <input
                                             type="text"
@@ -1767,7 +1767,7 @@ pub fn SendMultiToken() -> impl IntoView {
             <div class="bg-neutral-900/50 rounded-xl p-4 border border-neutral-700 mt-4">
                 <div class="flex items-center justify-between">
                     <div>
-                        <h4 class="text-white font-medium">Summary</h4>
+                        <h4 class="text-white font-medium">"Summary"</h4>
                         <p class="text-gray-400 text-sm mt-1">
                             {move || {
                                 let count = recipients.get().len();
@@ -1871,7 +1871,7 @@ pub fn SendMultiToken() -> impl IntoView {
             >
                 <div class="flex items-center justify-center gap-2">
                     <Icon icon=icondata::LuSend width="20" height="20" />
-                    <span>Send All</span>
+                    <span>"Send All"</span>
                 </div>
             </button>
         </div>

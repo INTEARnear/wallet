@@ -28,9 +28,13 @@ fn close_temporary_window(window: WebviewWindow) {
     let _ = window.navigate(url);
     #[cfg(desktop)]
     let _ = window.minimize();
-    #[cfg(mobile)]
+    #[cfg(target_os = "android")]
     {
-        // TODO: back to browser
+        let _ = window.with_webview(move |webview| {
+            webview.jni_handle().exec(move |env, activity, _webview| {
+                let _ = env.call_method(&activity, "closeWindow", "()V", &[]);
+            });
+        });
     }
 }
 

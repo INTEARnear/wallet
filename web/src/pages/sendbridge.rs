@@ -582,7 +582,7 @@ pub fn SendBridge() -> impl IntoView {
             <div class="flex items-center justify-between mb-2">
                 <A
                     href=move || format!("/send/{}", token_id())
-                    attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                    attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer no-mobile-ripple"
                 >
                     <Icon icon=icondata::LuArrowLeft width="20" height="20" />
                     <span>"Back"</span>

@@ -196,7 +196,7 @@ pub fn PreferencesSettings() -> impl IntoView {
     let window_width = use_window_size().width;
     view! {
         <div class="flex flex-col gap-4 p-4">
-            <div class="text-xl font-semibold">Preferences</div>
+            <div class="text-xl font-semibold">"Preferences"</div>
 
             <div class="space-y-1">
                 <Show when=move || is_tauri() && !is_android()>

@@ -956,7 +956,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                             // attr:class="text-indigo-400"
                             // />
                             // </div>
-                            // <div class="text-white text-sm font-medium">Ethereum</div>
+                            // <div class="text-white text-sm font-medium">"Ethereum"</div>
                             // </div>
                             // </button>
 
@@ -997,7 +997,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                             // attr:class="text-purple-400"
                             // />
                             // </div>
-                            // <div class="text-white text-sm font-medium">Solana</div>
+                            // <div class="text-white text-sm font-medium">"Solana"</div>
                             // </div>
                             // </button>
 

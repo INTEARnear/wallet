@@ -126,8 +126,8 @@ pub fn TrendingTokensSection() -> impl IntoView {
     view! {
         <div class="bg-neutral-900 rounded-xl p-4 mb-4">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-white text-xl font-semibold">Trending Tokens</h2>
-                <div class="text-neutral-400 text-sm">24h</div>
+                <h2 class="text-white text-xl font-semibold">"Trending Tokens"</h2>
+                <div class="text-neutral-400 text-sm">"24h"</div>
             </div>
             <Suspense fallback=move || {
                 view! {
@@ -257,7 +257,7 @@ pub fn LearnSection() -> impl IntoView {
 
     view! {
         <div class="bg-neutral-900 rounded-xl p-4 mb-4">
-            <h2 class="text-white text-xl font-semibold mb-4">Learn</h2>
+            <h2 class="text-white text-xl font-semibold mb-4">"Learn"</h2>
             <div class="space-y-0 rounded-lg overflow-hidden">
                 {move || {
                     displayed_articles()

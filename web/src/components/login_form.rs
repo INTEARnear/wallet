@@ -925,7 +925,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                         attr:class="text-blue-400"
                                     />
                                 </div>
-                                <div class="text-white text-sm font-medium">Seed Phrase</div>
+                                <div class="text-white text-sm font-medium">"Seed Phrase"</div>
                             </div>
                         </button>
 
@@ -956,7 +956,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                         attr:class="text-green-500"
                                     />
                                 </div>
-                                <div class="text-white text-sm font-medium">Private Key</div>
+                                <div class="text-white text-sm font-medium">"Private Key"</div>
                             </div>
                         </button>
 
@@ -990,7 +990,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                         // attr:class="text-indigo-400"
                         // />
                         // </div>
-                        // <div class="text-white text-sm font-medium">Ethereum</div>
+                        // <div class="text-white text-sm font-medium">"Ethereum"</div>
                         // </div>
                         // </button>
 
@@ -1024,7 +1024,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                         // attr:class="text-purple-400"
                         // />
                         // </div>
-                        // <div class="text-white text-sm font-medium">Solana</div>
+                        // <div class="text-white text-sm font-medium">"Solana"</div>
                         // </div>
                         // </button>
 
@@ -1057,7 +1057,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                         attr:class="text-purple-400"
                                     />
                                 </div>
-                                <div class="text-white text-sm font-medium">Ledger</div>
+                                <div class="text-white text-sm font-medium">"Ledger"</div>
                             </div>
                         </button>
                     </div>
@@ -1068,7 +1068,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                 <div class="space-y-4">
                                     <div class="text-center py-8">
                                         <p class="text-neutral-400">
-                                            Select a login method above to continue
+                                            "Select a login method above to continue"
                                         </p>
                                     </div>
                                 </div>
@@ -1145,8 +1145,8 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                                 if network == Network::Testnet {
                                                                                     view! {
                                                                                         <p class="text-yellow-500 text-sm mt-1 font-medium">
-                                                                                            This is a <b>testnet</b>
-                                                                                            account. Tokens sent to this account are not real and hold no value
+                                                                                            "This is a " <b>"testnet"</b>
+                                                                                            " account. Tokens sent to this account are not real and hold no value"
                                                                                         </p>
                                                                                     }
                                                                                         .into_any()
@@ -1232,7 +1232,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                 <div class="space-y-6">
                                     <div>
                                         <label class="block text-neutral-400 text-sm font-medium mb-2">
-                                            Private Key
+                                            "Private Key"
                                         </label>
                                         <div class="relative">
                                             <input
@@ -1264,7 +1264,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                             } else {
                                                 view! {
                                                     <p class="text-neutral-400 text-sm mt-2 font-medium">
-                                                        Enter your private key
+                                                        "Enter your private key"
                                                     </p>
                                                 }
                                                     .into_any()
@@ -2183,7 +2183,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                             <div class="w-full border-t border-neutral-800"></div>
                         </div>
                         <div class="relative flex justify-center text-sm">
-                            <span class="px-2 bg-neutral-950 text-neutral-400">or</span>
+                            <span class="px-2 bg-neutral-950 text-neutral-400">"or"</span>
                         </div>
                     </div>
 
@@ -2197,7 +2197,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                 })
                         }
                     >
-                        <span class="relative">Create New Account</span>
+                        <span class="relative">"Create New Account"</span>
                     </button>
                 </div>
             </div>

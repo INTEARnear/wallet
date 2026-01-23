@@ -730,10 +730,10 @@ pub fn Nfts() -> impl IntoView {
                 <div class="flex flex-col gap-6 p-2 md:p-4">
                     <A
                         href="/"
-                        attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                        attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer no-mobile-ripple"
                     >
                         <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                        <span>Back</span>
+                        <span>"Back"</span>
                     </A>
                     <div class="flex justify-between items-center pr-4">
                         <h1 class="text-white text-2xl font-bold">"Search Results"</h1>
@@ -1017,10 +1017,10 @@ pub fn Nfts() -> impl IntoView {
                         <div class="flex flex-col gap-6 p-2 md:p-4">
                             <A
                                 href="/"
-                                attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                                attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer no-mobile-ripple"
                             >
                                 <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                                <span>Back</span>
+                                <span>"Back"</span>
                             </A>
                             <div class="flex justify-between items-center pr-4">
                                 <h1 class="text-white text-2xl font-bold">"NFT Collections"</h1>
@@ -1228,10 +1228,10 @@ pub fn Nfts() -> impl IntoView {
                         <div class="flex flex-col gap-6 p-2 md:p-4">
                             <A
                                 href="/"
-                                attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                                attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer no-mobile-ripple"
                             >
                                 <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                                <span>Back</span>
+                                <span>"Back"</span>
                             </A>
                             <div class="flex justify-between items-center pr-4">
                                 <h1 class="text-white text-2xl font-bold">"Your NFTs"</h1>
@@ -1782,7 +1782,7 @@ pub fn SendNft() -> impl IntoView {
     view! {
         <div class="flex flex-col gap-4 p-2 md:p-4">
             <button
-                class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-2 cursor-pointer"
+                class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-2 cursor-pointer no-mobile-ripple"
                 on:click=move |_| {
                     navigate(
                         &format!("/nfts/{}/{}", contract_id(), token_id()),
@@ -1791,7 +1791,7 @@ pub fn SendNft() -> impl IntoView {
                 }
             >
                 <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                <span>Back</span>
+                <span>"Back"</span>
             </button>
 
             {move || {
@@ -1853,7 +1853,7 @@ pub fn SendNft() -> impl IntoView {
 
                                 <div class="flex flex-col gap-4">
                                     <div class="flex flex-col gap-2">
-                                        <label class="text-gray-400">Recipient</label>
+                                        <label class="text-gray-400">"Recipient"</label>
                                         <input
                                             type="text"
                                             class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 text-base"
@@ -1984,7 +1984,7 @@ pub fn SendNft() -> impl IntoView {
                                                 } else {
                                                     view! {
                                                         <Icon icon=icondata::LuSend width="20" height="20" />
-                                                        <span>Send</span>
+                                                        <span>"Send"</span>
                                                     }
                                                         .into_any()
                                                 }

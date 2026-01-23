@@ -157,7 +157,7 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                     on:click=|ev| ev.stop_propagation()
                 >
                     <div class="flex items-center justify-between mb-4">
-                        <h2 class="text-lg font-medium">Transaction Queue</h2>
+                        <h2 class="text-lg font-medium">"Transaction Queue"</h2>
                         <div class="flex items-center gap-2">
                             <button
                                 on:mouseup=move |_| overlay_mode.set(OverlayMode::Background)
