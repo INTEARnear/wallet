@@ -79,7 +79,7 @@ class IntearWalletAdapter {
 
         actions.forEach(fixAction);
         const result = await this.near.connectedAccount.sendTransactions([{ signerId, receiverId, actions }]);
-        return toObject(result.outcomes[0]);
+        return result.outcomes[0];
     }
     async signAndSendTransactions({ network, transactions }) {
         if (!this.near.connectedAccount) {
@@ -90,8 +90,8 @@ class IntearWalletAdapter {
             receiverId: t.receiverId,
             actions: t.actions.forEach(fixAction),
         }));
-        const result = await this.near.state._adapter.sendTransactions({ transactions });
-        return result.outcomes.map(toObject);
+        const result = await this.near.connectedAccount.sendTransactions({ transactions });
+        return result.outcomes;
     }
 }
 
