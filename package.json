@@ -16,7 +16,6 @@
     "@walletconnect/ethereum-provider": "^2.23.2",
     "buffer": "6.0.3",
     "events": "3.3.0",
-    "fastintear": "github:sliman4/fastintear#afb84690c31e489d820ad56f54423c31f6875e7b",
     "posthog-js": "1.254.0",
     "qr-code-styling": "^1.9.2",
     "react": "^19.2.3",

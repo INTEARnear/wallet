@@ -410,6 +410,28 @@
         .cancel-btn:active {
             transform: translateY(0);
         }
+
+        .close-btn {
+            width: 100%;
+            background: transparent;
+            color: #bbb;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .close-btn:hover {
+            background: #1a1a1a;
+            color: #ffffff;
+        }
+
+        .close-btn:active {
+            transform: translateY(0);
+        }
     </style>
 
     <script>
@@ -417,6 +439,8 @@
         let currentWebSocket = null;
         let currentSessionId = null;
         let tauriConnectionRetry = null;
+        let currentWebPopup = null;
+        let webConnectionRetry = null;
 
         function closeModal() {
             cleanupWebSocket();
@@ -688,6 +712,8 @@
         }
 
         function connectWebWallet(walletUrl) {
+            webConnectionRetry = () => connectWebWallet(walletUrl);
+
             const popup = window.open(
                 `${walletUrl}/connect`,
                 "_blank",
@@ -700,31 +726,54 @@
                 }, "*");
                 return;
             }
+
+            currentWebPopup = popup;
+            showWebWaitingScreen(walletUrl);
+
             let closedIntentionally = false;
-            window.addEventListener("message", (event) => {
+            let connectionSuccessful = false;
+
+            const messageHandler = (event) => {
                 console.log("Received message", event);
                 if (event.source === window.parent) {
                     if (event.data.type === "close") {
                         closedIntentionally = true;
+                        connectionSuccessful = true;
                         popup.close();
+                        hideWaitingScreen();
+                        cleanupWebConnection();
                     }
                     if (event.data.type === "signIn") {
                         event.data.data.actualOrigin = event.origin;
                     }
                     popup.postMessage(event.data, walletUrl);
                 } else if (event.source === popup) {
+                    if (event.data.type === "success" || event.data.type === "signIn") {
+                        connectionSuccessful = true;
+                        hideWaitingScreen();
+                        cleanupWebConnection();
+                    } else if (event.data.type === "error") {
+                        hideWaitingScreen();
+                        cleanupWebConnection();
+                    }
                     window.parent.postMessage(event.data, "*");
                 }
-            });
+            };
+
+            window.addEventListener("message", messageHandler);
+
             const checkPopupClosed = setInterval(() => {
                 if (popup.closed) {
                     clearInterval(checkPopupClosed);
-                    if (!closedIntentionally) {
+                    window.removeEventListener("message", messageHandler);
+                    if (!closedIntentionally && !connectionSuccessful) {
+                        hideWaitingScreen();
                         window.parent.postMessage({
                             type: "error",
                             message: "Popup closed"
                         }, "*");
                     }
+                    cleanupWebConnection();
                 }
             }, 100);
         }
@@ -811,16 +860,44 @@
         function showWaitingScreen() {
             const cardsContainer = document.getElementById('cards-container');
             const waitingScreen = document.getElementById('waiting-screen');
+            const closeBtn = document.getElementById('close-btn');
+            const waitingTitle = document.getElementById('waiting-title');
+            const waitingSubtitle = document.getElementById('waiting-subtitle');
+            const retryBtn = document.getElementById('retry-btn');
 
             cardsContainer.style.display = 'none';
+            closeBtn.style.display = 'none';
+            waitingTitle.textContent = 'Connecting to App';
+            waitingSubtitle.textContent = 'Please complete the connection in your app';
+            retryBtn.style.display = 'block';
+            waitingScreen.style.display = 'flex';
+        }
+
+        function showWebWaitingScreen(walletUrl) {
+            const cardsContainer = document.getElementById('cards-container');
+            const waitingScreen = document.getElementById('waiting-screen');
+            const closeBtn = document.getElementById('close-btn');
+            const waitingTitle = document.getElementById('waiting-title');
+            const waitingSubtitle = document.getElementById('waiting-subtitle');
+            const retryBtn = document.getElementById('retry-btn');
+            const cancelBtn = document.getElementById('cancel-btn');
+
+            cardsContainer.style.display = 'none';
+            closeBtn.style.display = 'none';
+            waitingTitle.textContent = 'Connecting to Wallet';
+            waitingSubtitle.textContent = 'Please complete the connection in the wallet popup';
+            retryBtn.style.display = 'none';
+            cancelBtn.onclick = cancelWebConnection;
             waitingScreen.style.display = 'flex';
         }
 
         function hideWaitingScreen() {
             const cardsContainer = document.getElementById('cards-container');
             const waitingScreen = document.getElementById('waiting-screen');
+            const closeBtn = document.getElementById('close-btn');
 
             cardsContainer.style.display = 'grid';
+            closeBtn.style.display = 'block';
             waitingScreen.style.display = 'none';
         }
 
@@ -835,6 +912,27 @@
             console.log("Cancelling tauri connection");
             cleanupWebSocket();
             hideWaitingScreen();
+        }
+
+        function retryWebConnection() {
+            console.log("Retrying web connection");
+            if (webConnectionRetry) {
+                webConnectionRetry();
+            }
+        }
+
+        function cancelWebConnection() {
+            console.log("Cancelling web connection");
+            if (currentWebPopup && !currentWebPopup.closed) {
+                currentWebPopup.close();
+            }
+            cleanupWebConnection();
+            hideWaitingScreen();
+        }
+
+        function cleanupWebConnection() {
+            currentWebPopup = null;
+            webConnectionRetry = null;
         }
 
         function cleanupWebSocket() {
@@ -863,13 +961,15 @@
             <div class="cards-container" id="cards-container">
             </div>
 
+            <button class="close-btn" id="close-btn" onclick="closeModal()">Close</button>
+
             <div class="waiting-screen" id="waiting-screen">
                 <div class="waiting-spinner"></div>
-                <div class="waiting-title">Connecting to App</div>
-                <div class="waiting-subtitle">Please complete the connection in your app</div>
+                <div class="waiting-title" id="waiting-title">Connecting to App</div>
+                <div class="waiting-subtitle" id="waiting-subtitle">Please complete the connection in your app</div>
                 <div class="waiting-buttons">
-                    <button class="retry-btn" onclick="retryTauriConnection()">Retry</button>
-                    <button class="cancel-btn" onclick="cancelTauriConnection()">Cancel</button>
+                    <button class="retry-btn" id="retry-btn" onclick="retryTauriConnection()">Retry</button>
+                    <button class="cancel-btn" id="cancel-btn" onclick="cancelTauriConnection()">Cancel</button>
                 </div>
             </div>
 
