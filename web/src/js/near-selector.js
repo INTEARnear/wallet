@@ -82,11 +82,14 @@ class IntearWalletAdapter {
         if (!this.near.connectedAccount) {
             throw new Error("Account is not connected");
         }
-        transactions = transactions.map(t => ({
-            signerId: t.signerId ?? this.near.connectedAccount.accountId,
-            receiverId: t.receiverId,
-            actions: t.actions.forEach(fixAction),
-        }));
+        transactions = transactions.map(t => {
+            t.actions.forEach(fixAction);
+            return {
+                signerId: t.signerId ?? this.near.connectedAccount.accountId,
+                receiverId: t.receiverId,
+                actions: t.actions,
+            };
+        });
         const result = await this.near.connectedAccount.sendTransactions(transactions);
         return result.outcomes;
     }
