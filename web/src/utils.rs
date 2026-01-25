@@ -824,6 +824,7 @@ pub struct WalletSelectorAccessKey {
 #[serde(untagged)]
 pub enum WalletSelectorAccessKeyPermission {
     FullAccess,
+    #[serde(rename_all = "camelCase")]
     FunctionCall {
         receiver_id: AccountId,
         allowance: Option<NearToken>,
