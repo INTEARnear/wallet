@@ -1709,6 +1709,7 @@ async fn execute_route(
                     account.account_id.clone(),
                     receiver_id.clone(),
                     actions,
+                    false,
                 );
                 add_transaction.update(|txs| {
                     txs.push(pending_tx);
@@ -1777,6 +1778,7 @@ async fn execute_route(
                 gas: NearGas::from_tgas(5).into(),
                 deposit: NearToken::from_yoctonear(1),
             }))],
+            true,
         );
         add_transaction.update(|txs| {
             txs.push(enqueued_tx);

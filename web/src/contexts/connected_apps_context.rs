@@ -64,6 +64,7 @@ impl ConnectedApp {
             TransactionType::NearTransaction {
                 actions,
                 receiver_id,
+                can_be_sponsored: _,
             } => {
                 if self.autoconfirm_all {
                     return true;
@@ -81,7 +82,7 @@ impl ConnectedApp {
 
                 false
             }
-            TransactionType::NearIntents { .. } | TransactionType::MetaTransaction { .. } => false,
+            TransactionType::NearIntents { .. } => false,
         }
     }
 }

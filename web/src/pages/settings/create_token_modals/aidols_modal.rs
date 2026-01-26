@@ -205,6 +205,7 @@ where
                                                     signer_id.clone(),
                                                     aidols_account,
                                                     vec![action],
+                                                    false,
                                                 );
 
                                                 add_transaction.update(|txs| txs.push(transaction));

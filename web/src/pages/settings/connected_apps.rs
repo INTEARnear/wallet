@@ -95,6 +95,7 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                     account_id.clone(),
                     account_id.clone(),
                     vec![action],
+                    true,
                 );
 
                 add_transaction.update(|queue| queue.push(transaction));

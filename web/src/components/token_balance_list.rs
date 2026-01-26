@@ -245,6 +245,7 @@ fn RheaBalanceModal(rhea_tokens: Vec<TokenData>) -> impl IntoView {
                                                                         }),
                                                                     ),
                                                                 ],
+                                                                false,
                                                             );
                                                             transactions.push(storage_tx);
                                                         }
@@ -269,6 +270,7 @@ fn RheaBalanceModal(rhea_tokens: Vec<TokenData>) -> impl IntoView {
                                                                     }),
                                                                 ),
                                                             ],
+                                                            false,
                                                         );
                                                         if !transactions.is_empty() {
                                                             transactions

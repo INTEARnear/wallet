@@ -165,8 +165,8 @@ pub fn DeveloperSandbox() -> impl IntoView {
     });
 
     Effect::new(move |_| {
-        let _name = new_account_name.get();
-        let _network = network();
+        new_account_name.track();
+        network();
         account_existence_resource.refetch();
     });
 
@@ -201,8 +201,8 @@ pub fn DeveloperSandbox() -> impl IntoView {
     });
 
     Effect::new(move |_| {
-        let _token_input = new_token_input.get();
-        let _network = network();
+        new_token_input.track();
+        network();
         token_validation_resource.refetch();
     });
 
@@ -635,6 +635,7 @@ pub fn DeveloperSandbox() -> impl IntoView {
                                                                     }),
                                                                 ),
                                                             ],
+                                                            false,
                                                         );
                                                         add_transaction.update(|queue| queue.push(transaction));
                                                         match details_receiver.await {

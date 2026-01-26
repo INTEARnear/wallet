@@ -1759,6 +1759,7 @@ pub fn SendNft() -> impl IntoView {
                 signer_id,
                 contract_id.clone(),
                 actions,
+                !needs_storage_deposit,
             );
             add_transaction.update(|txs| txs.push(transaction));
             if rx.await.is_ok() {

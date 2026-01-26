@@ -518,6 +518,7 @@ pub fn SendBridge() -> impl IntoView {
                             signer_id,
                             receiver_id,
                             actions,
+                            !needs_storage_deposit,
                         );
 
                         add_transaction.update(|txs| {

@@ -994,6 +994,7 @@ fn create_gift(
             selected_account_id.clone(),
             SLIMEDROP_CONTRACT_MAINNET.parse().unwrap(),
             vec![near_action],
+            false,
         ));
 
         // let mut storage_requests = Vec::new();
@@ -1080,6 +1081,7 @@ fn create_gift(
                 selected_account_id.clone(),
                 token_contract.clone(),
                 actions,
+                false,
             );
             transactions.push((details_tx, transaction.in_same_queue_as(&transactions[0].1)));
         }
@@ -1169,6 +1171,7 @@ fn create_gift(
                 selected_account_id.clone(),
                 contract_id.clone(),
                 actions,
+                false,
             );
             transactions.push((details_tx, transaction.in_same_queue_as(&transactions[0].1)));
         }
@@ -1466,6 +1469,7 @@ fn execute_cancel_drop(
             selected_account_id.clone(),
             SLIMEDROP_CONTRACT_MAINNET.parse().unwrap(),
             vec![action],
+            false,
         );
 
         add_transaction.update(|queue| queue.push(transaction));

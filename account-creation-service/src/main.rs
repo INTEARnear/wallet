@@ -50,6 +50,7 @@ struct ConfigurationReadResponse {
     create_account_deposit: NearToken,
     intear_dex: Option<AccountId>,
     slimedrop: Option<AccountId>,
+    near_intents: Option<AccountId>,
     enabled: bool,
     max_accounts_created_per_day: Option<u32>,
 }
@@ -124,6 +125,7 @@ async fn configuration_read(
         create_account_deposit: config.create_account_deposit,
         intear_dex: config.intear_dex.clone(),
         slimedrop: config.slimedrop.clone(),
+        near_intents: config.near_intents.clone(),
         enabled: config.enabled,
         max_accounts_created_per_day: config.max_accounts_created_per_day,
     }))
@@ -155,6 +157,7 @@ async fn configuration_create(
         create_account_deposit: NearToken::default(),
         intear_dex: None,
         slimedrop: None,
+        near_intents: None,
         enabled: true,
         max_accounts_created_per_day: payload.max_accounts_created_per_day,
     };
@@ -345,6 +348,7 @@ struct RelayerConfig {
     create_account_deposit: NearToken,
     intear_dex: Option<AccountId>,
     slimedrop: Option<AccountId>,
+    near_intents: Option<AccountId>,
     enabled: bool,
     max_accounts_created_per_day: Option<u32>,
 }
@@ -359,6 +363,7 @@ struct RelayerState {
     create_account_deposit_amount: NearToken,
     intear_dex: Option<AccountId>,
     slimedrop: Option<AccountId>,
+    near_intents: Option<AccountId>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -425,6 +430,9 @@ struct AppState {
     account_creation_timestamps: Arc<RwLock<HashMap<String, Vec<SystemTime>>>>,
 }
 
+const MAINNET_RELAYER_NAME: &str = "mainnet";
+const TESTNET_RELAYER_NAME: &str = "testnet";
+
 #[tokio::main]
 async fn main() {
     dotenv().ok();
@@ -445,6 +453,13 @@ async fn main() {
 
     let relayers_config: HashMap<String, RelayerConfig> =
         serde_json::from_str(&config_content).expect("Failed to parse relayers config JSON");
+
+    if !relayers_config.contains_key(MAINNET_RELAYER_NAME) {
+        panic!("Relayer with name '{MAINNET_RELAYER_NAME}' is required");
+    }
+    if !relayers_config.contains_key(TESTNET_RELAYER_NAME) {
+        panic!("Relayer with name '{TESTNET_RELAYER_NAME}' is required");
+    }
 
     tracing::info!("Loaded {} relayers from config", relayers_config.len());
 
@@ -544,6 +559,7 @@ impl Clone for RelayerState {
             create_account_deposit_amount: self.create_account_deposit_amount,
             intear_dex: self.intear_dex.clone(),
             slimedrop: self.slimedrop.clone(),
+            near_intents: self.near_intents.clone(),
         }
     }
 }
@@ -573,6 +589,7 @@ fn build_relayer_state(config: &RelayerConfig) -> Result<RelayerState, String> {
         create_account_deposit_amount: config.create_account_deposit,
         intear_dex: config.intear_dex.clone(),
         slimedrop: config.slimedrop.clone(),
+        near_intents: config.near_intents.clone(),
     })
 }
 
@@ -1514,11 +1531,154 @@ async fn validate_signed_delegate_action(
             false
         }
     };
+    let is_delete_key = {
+        if signed_delegate_action.delegate_action.actions.len() != 1 {
+            tracing::error!("Actions length is not 1");
+            false
+        } else if let Action::DeleteKey(_) = signed_delegate_action.delegate_action.actions[0]
+            .clone()
+            .into()
+        {
+            signed_delegate_action.delegate_action.receiver_id
+                == signed_delegate_action.delegate_action.sender_id
+        } else {
+            tracing::error!("Actions is not a DeleteKey action");
+            false
+        }
+    };
+    let is_function_call_add_key = {
+        if signed_delegate_action.delegate_action.actions.len() != 1 {
+            tracing::error!("Actions length is not 1");
+            false
+        } else if let Action::AddKey(add_key) = signed_delegate_action.delegate_action.actions[0]
+            .clone()
+            .into()
+        {
+            matches!(
+                add_key.access_key.permission,
+                near_min_api::types::AccessKeyPermission::FunctionCall(_)
+            ) && signed_delegate_action.delegate_action.receiver_id
+                == signed_delegate_action.delegate_action.sender_id
+        } else {
+            false
+        }
+    };
+    let is_intents_key_removal = {
+        if let Some(near_intents) = &state.near_intents {
+            if signed_delegate_action.delegate_action.receiver_id != *near_intents {
+                false
+            } else if signed_delegate_action.delegate_action.actions.is_empty() {
+                tracing::error!("No actions for intents key removal");
+                false
+            } else {
+                signed_delegate_action
+                    .delegate_action
+                    .actions
+                    .iter()
+                    .all(|action| {
+                        if let Action::FunctionCall(f) = action.clone().into() {
+                            f.method_name == "remove_public_key"
+                        } else {
+                            false
+                        }
+                    })
+            }
+        } else {
+            false
+        }
+    };
+    let is_global_token_deployment = {
+        if !signed_delegate_action
+            .delegate_action
+            .receiver_id
+            .is_sub_account_of(&signed_delegate_action.delegate_action.sender_id)
+        {
+            false
+        } else {
+            let actions: Vec<Action> = signed_delegate_action
+                .delegate_action
+                .actions
+                .iter()
+                .map(|a| a.clone().into())
+                .collect();
+
+            if actions.len() != 2 {
+                false
+            } else {
+                let has_use_global = if let Some(Action::UseGlobalContract(ugc)) = actions.first() {
+                    matches!(
+                        &ugc.contract_identifier,
+                        near_min_api::types::GlobalContractIdentifier::CodeHash(hash)
+                            if hash.to_string() == "8D1NEU2NC2hKhdtCkHyyAz2KVmVXRazm9ZQMC27D97jF"
+                    )
+                } else {
+                    false
+                };
+
+                let has_init = if let Some(Action::FunctionCall(fc)) = actions.get(1) {
+                    fc.method_name == "new"
+                } else {
+                    false
+                };
+
+                has_use_global && has_init
+            }
+        }
+    };
+    let is_ft_transfer = {
+        if signed_delegate_action.delegate_action.actions.len() != 1 {
+            false
+        } else if let Action::FunctionCall(f) = signed_delegate_action.delegate_action.actions[0]
+            .clone()
+            .into()
+        {
+            f.method_name == "ft_transfer" && f.deposit == NearToken::from_yoctonear(1)
+        } else {
+            false
+        }
+    };
+    let is_nft_transfer = {
+        if signed_delegate_action.delegate_action.actions.len() != 1 {
+            false
+        } else if let Action::FunctionCall(f) = signed_delegate_action.delegate_action.actions[0]
+            .clone()
+            .into()
+        {
+            f.method_name == "nft_transfer" && f.deposit == NearToken::from_yoctonear(1)
+        } else {
+            false
+        }
+    };
+    let is_key_rotation = {
+        if signed_delegate_action.delegate_action.actions.len() < 2 {
+            false
+        } else {
+            let (added_key, removals) = signed_delegate_action
+                .delegate_action
+                .actions
+                .split_last()
+                .unwrap();
+            if let Action::AddKey(_) = added_key.clone().into() {
+                removals
+                    .iter()
+                    .all(|removal| matches!(removal.clone().into(), Action::DeleteKey(_)))
+            } else {
+                false
+            }
+        }
+    };
     if !is_subaccount_creation
         && !is_gift_claim
         && !is_add_key
         && !is_swap_for_gas
         && !is_withdraw_wnear
+        && !is_delete_key
+        && !is_function_call_add_key
+        && !is_intents_key_removal
+        && !is_global_token_deployment
+        && !is_ft_transfer
+        && !is_nft_transfer
+        && !is_key_rotation
     {
         return Err((
             StatusCode::BAD_REQUEST,

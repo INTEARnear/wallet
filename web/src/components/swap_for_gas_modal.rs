@@ -2,9 +2,7 @@ use crate::contexts::accounts_context::AccountsContext;
 use crate::contexts::modal_context::ModalContext;
 use crate::contexts::network_context::{Network, NetworkContext};
 use crate::contexts::tokens_context::{Token, TokensContext};
-use crate::contexts::transaction_queue_context::{
-    EnqueuedTransaction, TransactionQueueContext, TransactionType,
-};
+use crate::contexts::transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext};
 use crate::utils::{balance_to_decimal, format_token_amount, format_usd_value};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
@@ -218,24 +216,23 @@ pub fn SwapForGasModal() -> impl IntoView {
             .expect("Token not found");
 
         if let Some(selected_account_id) = selected_account {
-            let (rx, transaction) = EnqueuedTransaction::create_with_type(
+            let (rx, transaction) = EnqueuedTransaction::create(
                 format!(
                     "Unwrap {} wNEAR",
                     balance_to_decimal(token_data.balance, token_data.token.metadata.decimals)
                 ),
                 selected_account_id.clone(),
-                TransactionType::MetaTransaction {
-                    actions: vec![Action::FunctionCall(Box::new(FunctionCallAction {
-                        method_name: "near_withdraw".to_string(),
-                        args: serde_json::to_vec(&serde_json::json!({
-                            "amount": NearToken::from_yoctonear(token_data.balance),
-                        }))
-                        .unwrap(),
-                        gas: NearGas::from_tgas(30).into(),
-                        deposit: NearToken::from_yoctonear(1),
-                    }))],
-                    receiver_id: token_contract_id.clone(),
-                },
+                token_contract_id.clone(),
+                vec![Action::FunctionCall(Box::new(FunctionCallAction {
+                    method_name: "near_withdraw".to_string(),
+                    args: serde_json::to_vec(&serde_json::json!({
+                        "amount": NearToken::from_yoctonear(token_data.balance),
+                    }))
+                    .unwrap(),
+                    gas: NearGas::from_tgas(30).into(),
+                    deposit: NearToken::from_yoctonear(1),
+                }))],
+                true,
             );
             add_transaction.update(|queue| queue.push(transaction));
             spawn_local(async move {
@@ -360,35 +357,34 @@ pub fn SwapForGasModal() -> impl IntoView {
                                 response.authorized_trade_intent,
                                 counter_trade_intent
                             );
-                            let (rx, transaction) = EnqueuedTransaction::create_with_type(
+                            let (rx, transaction) = EnqueuedTransaction::create(
                                 format!("Swap {symbol} for 0.3 NEAR"),
                                 selected_account_id.clone(),
-                                TransactionType::MetaTransaction {
-                                    actions: vec![Action::FunctionCall(Box::new(FunctionCallAction {
-                                        method_name: "ft_transfer_call".to_string(),
-                                        args: serde_json::to_vec(&serde_json::json!({
-                                            "receiver_id": "dex.intear.near",
-                                            "amount": response.authorized_trade_intent.trade_intent.amount_out,
-                                            "msg": serde_json::to_string(&serde_json::json!([Operation::DexCall {
-                                                dex_id: "slimedragon.near/otc".to_string(),
-                                                method: "match".to_string(),
-                                                attached_assets: BTreeMap::from_iter([
-                                                    (AssetId::Nep141(token_contract_id.clone()), response.authorized_trade_intent.trade_intent.amount_out)
-                                                ]),
-                                                args: BASE64_STANDARD.encode(borsh::to_vec(&OtcMatchArgs {
-                                                    authorized_trade_intents: vec![
-                                                        response.authorized_trade_intent,
-                                                        counter_trade_intent,
-                                                    ],
-                                                    output_destination: OtcOutputDestination::WithdrawToUser,
-                                                }).unwrap()),
-                                            }])).unwrap(),
-                                        })).unwrap(),
-                                        gas: NearGas::from_tgas(300).into(),
-                                        deposit: NearToken::from_yoctonear(1),
-                                    }))],
-                                    receiver_id: token_contract_id.clone(),
-                                },
+                                token_contract_id.clone(),
+                                vec![Action::FunctionCall(Box::new(FunctionCallAction {
+                                    method_name: "ft_transfer_call".to_string(),
+                                    args: serde_json::to_vec(&serde_json::json!({
+                                        "receiver_id": "dex.intear.near",
+                                        "amount": response.authorized_trade_intent.trade_intent.amount_out,
+                                        "msg": serde_json::to_string(&serde_json::json!([Operation::DexCall {
+                                            dex_id: "slimedragon.near/otc".to_string(),
+                                            method: "match".to_string(),
+                                            attached_assets: BTreeMap::from_iter([
+                                                (AssetId::Nep141(token_contract_id.clone()), response.authorized_trade_intent.trade_intent.amount_out)
+                                            ]),
+                                            args: BASE64_STANDARD.encode(borsh::to_vec(&OtcMatchArgs {
+                                                authorized_trade_intents: vec![
+                                                    response.authorized_trade_intent,
+                                                    counter_trade_intent,
+                                                ],
+                                                output_destination: OtcOutputDestination::WithdrawToUser,
+                                            }).unwrap()),
+                                        }])).unwrap(),
+                                    })).unwrap(),
+                                    gas: NearGas::from_tgas(300).into(),
+                                    deposit: NearToken::from_yoctonear(1),
+                                }))],
+                                true,
                             );
                             add_transaction.update(|queue| queue.push(transaction));
                             match rx.await {

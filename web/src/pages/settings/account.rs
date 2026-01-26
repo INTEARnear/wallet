@@ -76,7 +76,7 @@ const MIGRATIONS_ADDED_VERSION: CryptoHash = CryptoHash(
 );
 
 const BETTEAR_BOT_ACCOUNT_SUFFIX: &str = ".user.intear.near";
-const BETTEAR_BOT_PUBLIC_KEY: &str = "ed25519:3NhAUPmuSHbXoqzsvbsNzLiyWwm3LSWkCTpNB1RkxN7X";
+const BETTEAR_BOT_PUBLIC_KEY: &str = "ed25519:6ZfcBEyCE5sPRLBp8fEKF3pgwbxjpxMyWXYA4FK7FvHZ";
 
 fn supports_feature(
     current_version: CryptoHash,
@@ -415,13 +415,13 @@ fn TerminateSessionsModal(
                     <DangerConfirmInput
                         set_is_confirmed=set_is_confirmed
                         warning_title="Please read the above"
-                        warning_message=if is_ledger_account() {
+                        warning_message=Signal::derive(move || if is_ledger_account() {
                             "This action cannot be undone. Your Ledger device will be the ONLY way to access this account."
                                 .to_string()
                         } else {
                             "This action cannot be undone. This device will be the ONLY one that can access this account."
                                 .to_string()
-                        }
+                        })
                         attr:class="mb-4"
                     />
 
@@ -774,6 +774,7 @@ pub fn AccountSettings() -> impl IntoView {
                             selected_account_id.clone(),
                             selected_account_id.clone(),
                             vec![action],
+                            true,
                         );
 
                         add_transaction.update(|queue| queue.push(transaction));
@@ -856,6 +857,7 @@ pub fn AccountSettings() -> impl IntoView {
                             selected_account_id.clone(),
                             selected_account_id.clone(),
                             vec![action],
+                            true,
                         );
 
                         add_transaction.update(|queue| queue.push(transaction));
@@ -990,7 +992,7 @@ pub fn AccountSettings() -> impl IntoView {
 
             let mut actions = delete_actions;
 
-            let intents_transactions = match network.get() {
+            let intents_transactions = match network.get_untracked() {
                 Network::Mainnet => {
                     match rpc_client
                         .call::<Vec<PublicKey>>(
@@ -1078,6 +1080,7 @@ pub fn AccountSettings() -> impl IntoView {
                 account_id.clone(),
                 account_id.clone(),
                 actions,
+                true,
             );
             if let Some(intents_transactions) = intents_transactions {
                 let intents_transactions = intents_transactions
@@ -1089,6 +1092,7 @@ pub fn AccountSettings() -> impl IntoView {
                                 account_id.clone(),
                                 "intents.near".parse().unwrap(),
                                 intents_actions,
+                                true,
                             );
 
                         intents_transaction.in_same_queue_as(&replace_key_transaction)
@@ -1433,6 +1437,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                 selected_account_id.clone(),
                                                 selected_account_id.clone(),
                                                 actions,
+                                                true,
                                             );
                                             add_transaction.update(|q| q.push(transaction));
                                             match receiver.await {
@@ -1644,6 +1649,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                 selected_account_id.clone(),
                                                                 selected_account_id.clone(),
                                                                 actions,
+                                                                true,
                                                             );
                                                             add_transaction.update(|q| q.push(transaction));
                                                             match receiver.await {
@@ -1755,6 +1761,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                     selected_account_id.clone(),
                                                                     selected_account_id,
                                                                     vec![action],
+                                                                    true,
                                                                 );
                                                                 add_transaction.update(|queue| queue.push(transaction));
                                                                 spawn_local(async move {
@@ -1881,6 +1888,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                             } else {
                                                                                 vec![use_global_contract, after_upgrade]
                                                                             },
+                                                                            true,
                                                                         );
                                                                         add_transaction.update(|queue| queue.push(transaction));
                                                                         spawn_local(async move {
@@ -2019,6 +2027,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                                 selected_account_id.clone(),
                                                                                 selected_account_id.clone(),
                                                                                 vec![action],
+                                                                                true,
                                                                             );
                                                                             add_transaction.update(|queue| queue.push(transaction));
                                                                             match receiver.await {
@@ -2226,6 +2235,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                                 selected_account_id.clone(),
                                                                                 selected_account_id.clone(),
                                                                                 vec![action],
+                                                                                true,
                                                                             );
                                                                             add_transaction.update(|queue| queue.push(transaction));
                                                                             match receiver.await {
@@ -2491,6 +2501,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                         selected_account_id.clone(),
                                                         selected_account_id.clone(),
                                                         actions,
+                                                        true,
                                                     );
                                                     add_transaction.update(|queue| queue.push(transaction));
                                                     match receiver.await {

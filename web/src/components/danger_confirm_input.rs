@@ -7,7 +7,7 @@ pub fn DangerConfirmInput(
     #[prop(default = "Type 'CONFIRM' to proceed:")] label_text: &'static str,
     #[prop(default = "Type CONFIRM")] placeholder_text: &'static str,
     #[prop(into)] warning_title: String,
-    #[prop(into)] warning_message: String,
+    #[prop(into)] warning_message: Signal<String>,
 ) -> impl IntoView {
     let (confirmation_text, set_confirmation_text) = signal(String::new());
 

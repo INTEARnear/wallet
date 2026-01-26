@@ -24,9 +24,7 @@ use crate::{
         config_context::ConfigContext,
         network_context::{Network, NetworkContext},
         rpc_context::RpcContext,
-        transaction_queue_context::{
-            EnqueuedTransaction, TransactionQueueContext, TransactionType,
-        },
+        transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
     pages::gifts::{Drop, DropStatus},
     utils::{NEP413Payload, format_token_amount, sign_nep413},
@@ -195,16 +193,15 @@ pub fn GiftClaim() -> impl IntoView {
                 deposit: NearToken::from_yoctonear(0),
             }));
 
-            let (details_rx, transaction) = EnqueuedTransaction::create_with_type(
+            let (details_rx, transaction) = EnqueuedTransaction::create(
                 format!(
                     "Claim gift of {}",
                     format_gift_tokens_for_message(&GiftToken::from_drop(&drop), rpc_client).await
                 ),
                 selected_account_id.clone(),
-                TransactionType::MetaTransaction {
-                    actions: vec![action],
-                    receiver_id: SLIMEDROP_CONTRACT_MAINNET.parse().unwrap(),
-                },
+                SLIMEDROP_CONTRACT_MAINNET.parse().unwrap(),
+                vec![action],
+                true,
             );
 
             add_transaction.update(|queue| queue.push(transaction));

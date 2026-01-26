@@ -320,6 +320,7 @@ where
                                 selected_account.clone(),
                                 contract_id.clone(),
                                 actions,
+                                false,
                             );
                             add_transaction.update(|txs| txs.push(transaction));
                             match rx.await {
@@ -402,6 +403,7 @@ where
                 selected_account.clone(),
                 contract_id.clone(),
                 actions,
+                true,
             );
             add_transaction.update(|txs| txs.push(transaction));
             match rx.await {

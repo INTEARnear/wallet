@@ -502,6 +502,7 @@ fn ValidatorCard(
                                                                                                 signer_id.clone(),
                                                                                                 token_id.clone(),
                                                                                                 actions,
+                                                                                                false,
                                                                                             );
                                                                                             transaction_queue_context
                                                                                                 .add_transaction
@@ -530,6 +531,7 @@ fn ValidatorCard(
                                                                                             signer_id.clone(),
                                                                                             validator_account_id.clone(),
                                                                                             actions,
+                                                                                            false,
                                                                                         );
                                                                                         transaction_queue_context
                                                                                             .add_transaction
@@ -744,6 +746,7 @@ fn ValidatorCard(
                                                         signer_id,
                                                         pool_account_id.clone(),
                                                         actions,
+                                                        false,
                                                     );
                                                     transaction_queue_context
                                                         .add_transaction
@@ -2099,6 +2102,7 @@ pub fn StakeValidator() -> impl IntoView {
                 signer_id,
                 validator_pool.clone(),
                 actions,
+                false,
             );
             transaction_queue_context
                 .add_transaction
@@ -2553,6 +2557,7 @@ pub fn UnstakeValidator() -> impl IntoView {
                 signer_id,
                 validator_pool.clone(),
                 actions,
+                false,
             );
             transaction_queue_context
                 .add_transaction

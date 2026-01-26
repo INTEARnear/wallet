@@ -29,9 +29,7 @@ use crate::contexts::accounts_context::{
 use crate::contexts::config_context::ConfigContext;
 use crate::contexts::network_context::Network;
 use crate::contexts::security_log_context::add_security_log;
-use crate::contexts::transaction_queue_context::{
-    EnqueuedTransaction, TransactionQueueContext, TransactionType,
-};
+use crate::contexts::transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext};
 use crate::pages::settings::LedgerSelector;
 use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
 use crate::utils::serialize_to_js_value;
@@ -320,13 +318,12 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                 ];
 
                 let transaction_description = format!("Create account {account_id}");
-                let (tx_details_rx, tx) = EnqueuedTransaction::create_with_type(
+                let (tx_details_rx, tx) = EnqueuedTransaction::create(
                     transaction_description,
                     account_to_sign_with.account_id.clone(),
-                    TransactionType::MetaTransaction {
-                        actions,
-                        receiver_id: account_id.clone(),
-                    },
+                    account_id.clone(),
+                    actions,
+                    true,
                 );
                 add_transaction.update(|txs| {
                     txs.push(tx);
@@ -804,12 +801,19 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                 initial_value=match parent_untracked() {
                                                     AccountCreateParent::Mainnet => "near".to_string(),
                                                     AccountCreateParent::Testnet => "testnet".to_string(),
-                                                    AccountCreateParent::CustomRelayer(relayer_id, network, _) => {
-                                                        format!("relayer:{}:{relayer_id}", match network {
-                                                            Network::Mainnet => "mainnet",
-                                                            Network::Testnet => "testnet",
-                                                            Network::Localnet { .. } => unreachable!(),
-                                                        })
+                                                    AccountCreateParent::CustomRelayer(
+                                                        relayer_id,
+                                                        network,
+                                                        _,
+                                                    ) => {
+                                                        format!(
+                                                            "relayer:{}:{relayer_id}",
+                                                            match network {
+                                                                Network::Mainnet => "mainnet",
+                                                                Network::Testnet => "testnet",
+                                                                Network::Localnet { .. } => unreachable!(),
+                                                            },
+                                                        )
                                                     }
                                                     AccountCreateParent::SubAccount(network, id) => {
                                                         format!(

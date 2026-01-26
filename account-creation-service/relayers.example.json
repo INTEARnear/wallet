@@ -1,5 +1,5 @@
 {
-  "mainnet-relayer": {
+  "mainnet": {
     "relayer_id": "wallet-relay.intear.near",
     "relayer_private_keys": [
       "ed25519:..."
@@ -13,9 +13,10 @@
     "factory": "near",
     "intear_dex": "dex.intear.near",
     "slimedrop": "slimedrop.intear.near",
+    "near_intents": "intents.near",
     "enabled": true
   },
-  "testnet-relayer": {
+  "testnet": {
     "relayer_id": "intear-wallet-relay.testnet",
     "relayer_private_keys": [
       "ed25519:..."
@@ -30,6 +31,20 @@
     "create_account_deposit": "2.5 NEAR",
     "intear_dex": null,
     "slimedrop": null,
+    "near_intents": null,
+    "enabled": true
+  },
+  "custom": {
+    "relayer_id": "your-app.near",
+    "relayer_private_keys": [
+      "ed25519:..."
+    ],
+    "rpc_urls": [
+      "https://rpc.intea.rs",
+      "https://rpc.mainnet.fastnear.com",
+      "https://rpc.mainnet.near.org",
+      "https://near.lava.build"
+    ],
     "enabled": true
   }
 }

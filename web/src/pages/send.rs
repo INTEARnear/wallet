@@ -1907,6 +1907,7 @@ pub async fn execute_send(
                     vec![Action::Transfer(TransferAction {
                         deposit: NearToken::from_yoctonear(transfer.amount),
                     })],
+                    false,
                 )
             })
             .collect::<Vec<_>>(),
@@ -1996,16 +1997,16 @@ pub async fn execute_send(
                         actions,
                     )
                 })
-                .map(|(transfers, actions)| {
+                .map(|(pending_transfers, actions)| {
                     EnqueuedTransaction::create(
                         format!(
                             "Send {} to {}",
                             format_token_amount_full_precision(
-                                transfers.iter().map(|t| t.amount).sum(),
+                                pending_transfers.iter().map(|t| t.amount).sum(),
                                 decimals,
                                 &symbol
                             ),
-                            transfers
+                            pending_transfers
                                 .iter()
                                 .map(|t| t.recipient.to_string())
                                 .collect::<Vec<_>>()
@@ -2014,6 +2015,9 @@ pub async fn execute_send(
                         signer_id.clone(),
                         token_id.clone(),
                         actions,
+                        transfers
+                            .iter()
+                            .all(|(_, needs_storage_deposit)| !*needs_storage_deposit),
                     )
                 })
                 .collect::<Vec<_>>()

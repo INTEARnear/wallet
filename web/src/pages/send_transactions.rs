@@ -829,6 +829,7 @@ pub fn SendTransactions() -> impl IntoView {
                             .into_iter()
                             .map(|action| action.into())
                             .collect(),
+                        false,
                     )
                 })
                 .collect()

@@ -24,6 +24,7 @@ use std::time::Duration;
 use crate::contexts::accounts_context::Account;
 use crate::contexts::config_context::{ConfigContext, LedgerMode};
 use crate::contexts::network_context::Network;
+use crate::contexts::tokens_context::{Token, TokensContext};
 use crate::utils::{NEP413Payload, sign_nep366, sign_nep413};
 
 use super::accounts_context::AccountsContext;
@@ -44,14 +45,11 @@ pub enum TransactionType {
     NearTransaction {
         actions: Vec<Action>,
         receiver_id: AccountId,
+        can_be_sponsored: bool,
     },
     NearIntents {
         message_to_sign: String,
         quote_hash: CryptoHash,
-    },
-    MetaTransaction {
-        actions: Vec<Action>,
-        receiver_id: AccountId,
     },
 }
 
@@ -62,14 +60,12 @@ enum TransactionResult<'a> {
         rpc_client: &'a RpcClient,
         tx_hash: OnceCell<CryptoHash>,
     },
-    PendingMetaTransaction(PendingTransaction<'a>),
 }
 
 impl<'a> TransactionResult<'a> {
     async fn wait_for(&self, status: TxExecutionStatus, timeout: Duration) -> Result<(), String> {
         match self {
-            TransactionResult::PendingTransaction(tx)
-            | TransactionResult::PendingMetaTransaction(tx) => tx
+            TransactionResult::PendingTransaction(tx) => tx
                 .wait_for(status, timeout)
                 .await
                 .map_err(|e| format!("Failed to wait for transaction: {e}")),
@@ -144,8 +140,7 @@ impl<'a> TransactionResult<'a> {
 
     async fn get_tx_details(&self) -> Result<ExperimentalTxDetails, String> {
         match self {
-            TransactionResult::PendingTransaction(tx)
-            | TransactionResult::PendingMetaTransaction(tx) => tx
+            TransactionResult::PendingTransaction(tx) => tx
                 .EXPERIMENTAL_fetch_details()
                 .await
                 .map_err(|e| format!("Failed to fetch transaction details: {e}")),
@@ -174,11 +169,13 @@ impl TransactionType {
         rpc_client: &'a RpcClient,
         accounts_context: AccountsContext,
         ledger_mode: impl Fn() -> LedgerMode,
+        near_balance: NearToken,
     ) -> Result<TransactionResult<'a>, String> {
         match self {
             TransactionType::NearTransaction {
                 actions,
                 receiver_id,
+                can_be_sponsored,
             } => {
                 let access_key = match rpc_client
                     .get_access_key(
@@ -194,11 +191,11 @@ impl TransactionType {
                     }
                 };
 
-                let block_hash = match rpc_client
+                let recent_block_header = match rpc_client
                     .block(BlockReference::Finality(Finality::Final))
                     .await
                 {
-                    Ok(block) => block.header.hash,
+                    Ok(block) => block.header,
                     Err(e) => {
                         // Should never happen unless all RPCs are unstable, so no
                         // need to handle this gracefully
@@ -206,30 +203,128 @@ impl TransactionType {
                     }
                 };
 
-                let tx = Transaction::V0(TransactionV0 {
-                    signer_id: signer.account_id.clone(),
-                    public_key: signer.secret_key.public_key(),
-                    nonce: access_key.nonce + 1,
-                    receiver_id: receiver_id.clone(),
-                    block_hash,
-                    actions: actions.clone(),
-                });
-                let bytes = borsh::to_vec(&tx).expect("Failed to serialize");
-                let Ok(signature) = signer
-                    .secret_key
-                    .hash_and_sign(&bytes, accounts_context, ledger_mode)
-                    .await
-                else {
-                    return Err("User cancelled signing".to_string());
+                let needs_to_be_sponsored = *can_be_sponsored && {
+                    let function_gas_cost =
+                        NearToken::from_yoctonear(recent_block_header.gas_price).saturating_mul(
+                            actions
+                                .iter()
+                                .map(|a| a.get_prepaid_gas())
+                                .reduce(|a, b| a.saturating_add(b))
+                                .unwrap_or_default()
+                                .as_gas() as u128,
+                        );
+                    let max_estimated_gas_cost_for_transaction_and_actions =
+                        "0.001 NEAR".parse::<NearToken>().unwrap();
+                    let required_near_balance = function_gas_cost
+                        .saturating_add(max_estimated_gas_cost_for_transaction_and_actions);
+                    required_near_balance > near_balance
                 };
-                let signed_tx = SignedTransaction::new(signature, tx);
+                if needs_to_be_sponsored {
+                    let delegate_action = DelegateAction {
+                        sender_id: signer.account_id.clone(),
+                        receiver_id: receiver_id.clone(),
+                        actions: actions
+                            .iter()
+                            .map(|a| NonDelegateAction::try_from(a.clone()))
+                            .collect::<Result<Vec<_>, _>>()
+                            .map_err(|e| {
+                                format!("Failed to convert action to non-delegate action: {e}")
+                            })?,
+                        nonce: access_key.nonce + 1,
+                        max_block_height: recent_block_header.height + 100,
+                        public_key: signer.secret_key.public_key(),
+                    };
+                    let Ok(signature) = sign_nep366(
+                        signer.secret_key,
+                        &delegate_action,
+                        accounts_context,
+                        ledger_mode,
+                    )
+                    .await
+                    else {
+                        return Err("User cancelled signing".to_string());
+                    };
+                    let signed = SignedDelegateAction {
+                        delegate_action,
+                        signature,
+                    };
 
-                match rpc_client.send_tx(signed_tx).await {
-                    Ok(tx) => Ok(TransactionResult::PendingTransaction(tx)),
-                    Err(e) => {
-                        let error = format_tx_error(&e);
-                        log::error!("Failed to send transaction: {error}");
-                        Err(error)
+                    let account_creation_service_addr = match signer.network {
+                        Network::Mainnet => {
+                            dotenvy_macro::dotenv!("SHARED_ACCOUNT_CREATION_SERVICE_ADDR")
+                        }
+                        Network::Testnet => {
+                            dotenvy_macro::dotenv!("SHARED_ACCOUNT_CREATION_SERVICE_ADDR")
+                        }
+                        Network::Localnet { .. } => {
+                            return Err(
+                                "Sponsored transactions on localnet are not supported".to_string()
+                            );
+                        }
+                    };
+                    let relayer_id = match signer.network {
+                        Network::Mainnet => "mainnet",
+                        Network::Testnet => "testnet",
+                        Network::Localnet { .. } => unreachable!(),
+                    };
+                    let Ok(response) = reqwest::Client::new()
+                        .post(format!(
+                            "{account_creation_service_addr}/relay-signed-delegate-action"
+                        ))
+                        .header("x-relayer-id", relayer_id)
+                        .json(&serde_json::json!({
+                            "signed_delegate_action": signed,
+                        }))
+                        .send()
+                        .await
+                    else {
+                        return Err("Failed to relay signed delegate action".to_string());
+                    };
+
+                    #[derive(Debug, Deserialize)]
+                    struct RelaySignedDelegateActionResponse {
+                        message: String,
+                        transaction_hash: Option<CryptoHash>,
+                    }
+
+                    let Ok(response) = response.json::<RelaySignedDelegateActionResponse>().await
+                    else {
+                        return Err("Failed to parse relay response".to_string());
+                    };
+
+                    if let Some(tx_hash) = response.transaction_hash {
+                        Ok(TransactionResult::PendingTransaction(
+                            PendingTransaction::from_parts(rpc_client, tx_hash),
+                        ))
+                    } else {
+                        Err(response.message)
+                    }
+                } else {
+                    let tx = Transaction::V0(TransactionV0 {
+                        signer_id: signer.account_id.clone(),
+                        public_key: signer.secret_key.public_key(),
+                        nonce: access_key.nonce + 1,
+                        receiver_id: receiver_id.clone(),
+                        block_hash: recent_block_header.hash,
+                        actions: actions.clone(),
+                    });
+                    let bytes = borsh::to_vec(&tx).expect("Failed to serialize");
+                    let Ok(signature) = signer
+                        .secret_key
+                        .hash_and_sign(&bytes, accounts_context, ledger_mode)
+                        .await
+                    else {
+                        return Err("User cancelled signing".to_string());
+                    };
+                    let signed_tx = SignedTransaction::new(signature, tx);
+
+                    match rpc_client.send_tx(signed_tx).await {
+                        Ok(tx) => Ok(TransactionResult::PendingTransaction(tx)),
+                        Err(e) => {
+                            let error = format_tx_error(&e);
+                            log::error!("Failed to send transaction: {error}");
+                            Err(error)
+                        }
                     }
                 }
             }
@@ -300,116 +395,6 @@ impl TransactionType {
                     }
                 } else {
                     Err("Result not found in response".to_string())
-                }
-            }
-            TransactionType::MetaTransaction {
-                actions,
-                receiver_id,
-            } => {
-                let access_key = match rpc_client
-                    .get_access_key(
-                        signer.account_id.clone(),
-                        signer.secret_key.public_key(),
-                        QueryFinality::Finality(Finality::None),
-                    )
-                    .await
-                {
-                    Ok(key) => key,
-                    Err(e) => {
-                        return Err(format!("Failed to get access key: {e}"));
-                    }
-                };
-
-                let block_height = match rpc_client
-                    .block(BlockReference::Finality(Finality::Final))
-                    .await
-                {
-                    Ok(block) => block.header.height,
-                    Err(e) => {
-                        // Should never happen unless all RPCs are unstable, so no
-                        // need to handle this gracefully
-                        return Err(format!("Failed to fetch block hash: {e}"));
-                    }
-                };
-
-                let delegate_action = DelegateAction {
-                    sender_id: signer.account_id.clone(),
-                    receiver_id: receiver_id.clone(),
-                    actions: actions
-                        .iter()
-                        .map(|a| NonDelegateAction::try_from(a.clone()))
-                        .collect::<Result<Vec<_>, _>>()
-                        .map_err(|e| {
-                            format!("Failed to convert action to non-delegate action: {e}")
-                        })?,
-                    nonce: access_key.nonce + 1,
-                    max_block_height: block_height + 100,
-                    public_key: signer.secret_key.public_key(),
-                };
-                let Ok(signature) = sign_nep366(
-                    signer.secret_key,
-                    &delegate_action,
-                    accounts_context,
-                    ledger_mode,
-                )
-                .await
-                else {
-                    return Err("User cancelled signing".to_string());
-                };
-                let signed = SignedDelegateAction {
-                    delegate_action,
-                    signature,
-                };
-
-                let account_creation_service_addr = match signer.network {
-                    Network::Mainnet => {
-                        dotenvy_macro::dotenv!("SHARED_ACCOUNT_CREATION_SERVICE_ADDR")
-                    }
-                    Network::Testnet => {
-                        dotenvy_macro::dotenv!("SHARED_ACCOUNT_CREATION_SERVICE_ADDR")
-                    }
-                    Network::Localnet { .. } => {
-                        return Err(
-                            "Sponsored transactions on localnet are not supported".to_string()
-                        );
-                    }
-                };
-                let relayer_id = match signer.network {
-                    Network::Mainnet => "mainnet",
-                    Network::Testnet => "testnet",
-                    Network::Localnet { .. } => unreachable!(),
-                };
-                let Ok(response) = reqwest::Client::new()
-                    .post(format!(
-                        "{account_creation_service_addr}/relay-signed-delegate-action"
-                    ))
-                    .header("x-relayer-id", relayer_id)
-                    .json(&serde_json::json!({
-                        "signed_delegate_action": signed,
-                    }))
-                    .send()
-                    .await
-                else {
-                    return Err("Failed to relay signed delegate action".to_string());
-                };
-
-                #[derive(Debug, Deserialize)]
-                struct RelaySignedDelegateActionResponse {
-                    message: String,
-                    transaction_hash: Option<CryptoHash>,
-                }
-
-                let Ok(response) = response.json::<RelaySignedDelegateActionResponse>().await
-                else {
-                    return Err("Failed to parse relay response".to_string());
-                };
-
-                if let Some(tx_hash) = response.transaction_hash {
-                    Ok(TransactionResult::PendingMetaTransaction(
-                        PendingTransaction::from_parts(rpc_client, tx_hash),
-                    ))
-                } else {
-                    Err(response.message)
                 }
             }
         }
@@ -576,6 +561,7 @@ impl EnqueuedTransaction {
         signer_id: AccountId,
         receiver_id: AccountId,
         actions: Vec<Action>,
+        can_be_sponsored: bool,
     ) -> (
         oneshot::Receiver<Result<ExperimentalTxDetails, String>>,
         Self,
@@ -591,6 +577,7 @@ impl EnqueuedTransaction {
                 transaction_type: TransactionType::NearTransaction {
                     actions,
                     receiver_id,
+                    can_be_sponsored,
                 },
                 queue_id: OsRng.r#gen(),
                 details_tx: Some(details_tx),
@@ -671,6 +658,7 @@ pub fn provide_transaction_queue_context() {
     let accounts_context = expect_context::<AccountsContext>();
     let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     let signing_tx_id = RwSignal::new(None);
+    let TokensContext { tokens, .. } = expect_context::<TokensContext>();
 
     // Worker effect that processes the queue
     Effect::new(move |_| {
@@ -715,11 +703,21 @@ pub fn provide_transaction_queue_context() {
                         set_queue
                             .update(|q| q[tx_current_index].stage = TransactionStage::Publishing);
                         signing_tx_id.set(Some(transaction.id));
+                        let near_balance = tokens
+                            .get_untracked()
+                            .iter()
+                            .find(|token| token.token.account_id == Token::Near)
+                            .map(|token| NearToken::from_yoctonear(token.balance))
+                            .unwrap();
                         let pending_tx = match transaction
                             .transaction_type
-                            .execute(account, &rpc_client, accounts_context, move || {
-                                config.get_untracked().ledger_mode
-                            })
+                            .execute(
+                                account,
+                                &rpc_client,
+                                accounts_context,
+                                move || config.get_untracked().ledger_mode,
+                                near_balance,
+                            )
                             .await
                         {
                             Ok(tx) => tx,

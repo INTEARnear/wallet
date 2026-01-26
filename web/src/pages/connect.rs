@@ -671,6 +671,7 @@ pub fn Connect() -> impl IntoView {
                         selected_account.clone(),
                         selected_account.clone(),
                         vec![action],
+                        true,
                     );
 
                     add_transaction.update(|queue| queue.push(transaction));

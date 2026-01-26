@@ -2,7 +2,7 @@ use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_router::hooks::{use_location, use_navigate};
 use near_min_api::types::{
-    AccessKey, AccessKeyPermission, Action, AddKeyAction, NearToken, near_crypto::PublicKey,
+    AccessKey, AccessKeyPermission, Action, AddKeyAction, near_crypto::PublicKey,
 };
 
 use crate::{
@@ -10,17 +10,13 @@ use crate::{
     contexts::{
         accounts_context::AccountsContext,
         security_log_context::add_security_log,
-        tokens_context::{Token, TokensContext},
-        transaction_queue_context::{
-            EnqueuedTransaction, TransactionQueueContext, TransactionType,
-        },
+        transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
 };
 
 #[component]
 pub fn Login() -> impl IntoView {
     let accounts_context = expect_context::<AccountsContext>();
-    let tokens_context = expect_context::<TokensContext>();
     let TransactionQueueContext {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
@@ -137,32 +133,13 @@ pub fn Login() -> impl IntoView {
                                             },
                                         }),
                                     );
-                                    let near_balance = tokens_context
-                                        .tokens
-                                        .get()
-                                        .into_iter()
-                                        .find(|t| t.token.account_id == Token::Near)
-                                        .map(|t| t.balance)
-                                        .unwrap_or_default();
-                                    let threshold = NearToken::from_millinear(1).as_yoctonear();
-                                    let use_meta_transaction = near_balance < threshold;
-                                    let (details_rx, transaction) = if use_meta_transaction {
-                                        EnqueuedTransaction::create_with_type(
-                                            "Add Full Access Key".to_string(),
-                                            account_id.clone(),
-                                            TransactionType::MetaTransaction {
-                                                actions: vec![action],
-                                                receiver_id: account_id.clone(),
-                                            },
-                                        )
-                                    } else {
-                                        EnqueuedTransaction::create(
-                                            "Add Full Access Key".to_string(),
-                                            account_id.clone(),
-                                            account_id.clone(),
-                                            vec![action],
-                                        )
-                                    };
+                                    let (details_rx, transaction) = EnqueuedTransaction::create(
+                                        "Add Full Access Key".to_string(),
+                                        account_id.clone(),
+                                        account_id.clone(),
+                                        vec![action],
+                                        true,
+                                    );
                                     add_transaction.update(|queue| queue.push(transaction));
                                     let navigate_clone = navigate_clone.clone();
                                     spawn_local(async move {
