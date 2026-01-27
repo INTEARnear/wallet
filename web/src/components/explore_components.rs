@@ -56,10 +56,10 @@ async fn fetch_trending_tokens(network: Network) -> Vec<TrendingToken> {
             data.account_id != Token::Nep141("wrap.near".parse().unwrap())
                 && data.account_id != Token::Nep141("wrap.testnet".parse().unwrap())
                 && data.account_id != Token::Near
-                && data.price_usd_hardcoded != BigDecimal::from(1)
+                && data.price_usd_hardcoded != 1
         })
         .map(|(_, data)| {
-            let change_24h = if data.price_usd_raw_24h_ago > BigDecimal::from(0) {
+            let change_24h = if data.price_usd_raw_24h_ago > 0 {
                 ((&data.price_usd_raw - &data.price_usd_raw_24h_ago) / &data.price_usd_raw_24h_ago)
                     .to_f64()
                     .expect("Could not convert to f64")
@@ -182,7 +182,7 @@ pub fn TrendingTokensSection() -> impl IntoView {
                                                         </div>
                                                         <div style=format!(
                                                             "color: {}",
-                                                            if token.change_24h >= BigDecimal::from(0) {
+                                                            if token.change_24h >= 0 {
                                                                 "rgb(34 197 94)"
                                                             } else {
                                                                 "rgb(239 68 68)"
@@ -190,7 +190,7 @@ pub fn TrendingTokensSection() -> impl IntoView {
                                                         )>
                                                             {format!(
                                                                 "{}{:.1}%",
-                                                                if token.change_24h >= BigDecimal::from(0) {
+                                                                if token.change_24h >= 0 {
                                                                     "+"
                                                                 } else {
                                                                     ""
@@ -353,7 +353,7 @@ pub fn ForYouSection() -> impl IntoView {
             .sum();
 
         // Add Shitzu Boost recommendation if total value is less than $100
-        if total_value < BigDecimal::from(100) {
+        if total_value < 100 {
             recs.push((
                 "Earn with Shitzu Boost",
                 "https://t.me/ShitzuTasks",
@@ -390,7 +390,7 @@ pub fn ForYouSection() -> impl IntoView {
                 }) {
                     let normalized_balance =
                         balance_to_decimal(token.balance, token.token.metadata.decimals);
-                    if normalized_balance >= BigDecimal::from(100) {
+                    if normalized_balance >= 100 {
                         Some((
                             token.token.metadata.icon.clone(),
                             token.token.metadata.symbol.clone(),
@@ -424,7 +424,7 @@ pub fn ForYouSection() -> impl IntoView {
                 {
                     let normalized_balance =
                         balance_to_decimal(token.balance, token.token.metadata.decimals);
-                    if normalized_balance >= BigDecimal::from(100) {
+                    if normalized_balance >= 100 {
                         Some((
                             token.token.metadata.icon.clone(),
                             token.token.metadata.symbol.clone(),
@@ -456,7 +456,7 @@ pub fn ForYouSection() -> impl IntoView {
                     let normalized_balance =
                         balance_to_decimal(token.balance, token.token.metadata.decimals);
                     let usd_value = &normalized_balance * &token.token.price_usd;
-                    if usd_value >= BigDecimal::from(50) {
+                    if usd_value >= 50 {
                         Some((
                             token.token.metadata.icon.clone(),
                             token.token.metadata.symbol.clone(),

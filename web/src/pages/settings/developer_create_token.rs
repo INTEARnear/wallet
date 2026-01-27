@@ -216,7 +216,7 @@ fn supply_or_decimals_invalid(supply_str: &str, decimals_str: &str) -> bool {
 
     let result = decimal_to_balance(supply.clone(), decimals);
 
-    result == 0 || supply <= BigDecimal::from(0) || decimals == 0
+    result == 0 || supply <= 0 || decimals == 0
 }
 
 #[component]

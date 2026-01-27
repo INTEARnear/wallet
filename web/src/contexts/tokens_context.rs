@@ -481,7 +481,7 @@ pub fn provide_token_context() {
                         let normalized_price = &raw_price * &multiplier;
                         token.token.price_usd_raw = raw_price.clone();
                         token.token.price_usd = normalized_price.clone();
-                        if token.token.price_usd_hardcoded != BigDecimal::from(1) {
+                        if token.token.price_usd_hardcoded != 1 {
                             // Don't update stablecoin prices in realtime. They're unlikely
                             // to change in real time, but UX is shit when USDC costs $0.99
                             // or $1.01.

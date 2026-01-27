@@ -91,7 +91,7 @@ pub fn TotalPortfolioValue() -> impl IntoView {
                     balance_to_decimal(token.balance, token.token.metadata.decimals);
                 acc + (&token.token.price_usd_hardcoded * &normalized_balance)
             });
-            total > BigDecimal::from(0)
+            total > 0
         }
     };
 
@@ -171,7 +171,7 @@ pub fn TotalPortfolioValue() -> impl IntoView {
                 },
             );
             let pnl = &current_total - &previous_total;
-            let pnl_percentage = if previous_total > BigDecimal::from(0) {
+            let pnl_percentage = if previous_total > 0 {
                 (&pnl / &previous_total) * BigDecimal::from(100)
             } else {
                 BigDecimal::from(0)

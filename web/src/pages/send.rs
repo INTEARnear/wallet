@@ -581,7 +581,7 @@ pub fn SendToken() -> impl IntoView {
 
         if let Some(token) = token() {
             if let Ok(amount_decimal) = amount.parse::<BigDecimal>() {
-                if amount_decimal <= BigDecimal::from(0) {
+                if amount_decimal <= 0 {
                     set_amount_error.set(Some("Amount must be greater than 0".to_string()));
                     set_balance_error_count.set(0);
                     return;
@@ -1094,7 +1094,7 @@ pub fn SendMultiToken() -> impl IntoView {
                         }
                         match amount_trim.parse::<BigDecimal>() {
                             Ok(dec) => {
-                                if dec <= BigDecimal::from(0) {
+                                if dec <= 0 {
                                     rec.amount_error =
                                         Some("Amount must be greater than 0".to_string());
                                     return;

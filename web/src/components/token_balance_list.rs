@@ -359,7 +359,7 @@ pub fn TokenBalanceList() -> impl IntoView {
                             let market_cap_is_abnormal = &token.token.price_usd_raw
                                 * &BigDecimal::from(token.token.circulating_supply)
                                 / power_of_10(USDT_DECIMALS)
-                                >= BigDecimal::from(100_000_000_000_000u128);
+                                >= 100_000_000_000_000u128;
                             if market_cap_is_abnormal && network.get() == Network::Mainnet {
                                 log::warn!(
                                     "Hiding token {:?} as it has abnormal market cap",
@@ -391,7 +391,7 @@ pub fn TokenBalanceList() -> impl IntoView {
                             &token.token.price_usd * &normalized_balance
                         })
                         .fold(BigDecimal::from(0), |acc, val| acc + val);
-                    let rhea_total_is_significant = rhea_total_usd >= BigDecimal::from(10);
+                    let rhea_total_is_significant = rhea_total_usd >= 10;
                     let visible_token_count = filtered_tokens.len();
 
                     view! {
@@ -421,10 +421,10 @@ pub fn TokenBalanceList() -> impl IntoView {
                                     &token.token.price_usd * &normalized_balance,
                                 );
                                 let price_change = if token.token.price_usd_hardcoded
-                                    == BigDecimal::from(1)
+                                    == 1
                                 {
                                     BigDecimal::from(0)
-                                } else if token.token.price_usd_raw_24h_ago > BigDecimal::from(0) {
+                                } else if token.token.price_usd_raw_24h_ago > 0 {
                                     let hundred = BigDecimal::from(100);
                                     ((&token.token.price_usd_raw
                                         - &token.token.price_usd_raw_24h_ago)

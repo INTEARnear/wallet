@@ -21,9 +21,9 @@ use crate::{
 #[component]
 fn TokenInfoView(token: impl Fn() -> TokenInfo) -> impl IntoView {
     let token_info = token();
-    let price_change = if token_info.price_usd_hardcoded == BigDecimal::from(1) {
+    let price_change = if token_info.price_usd_hardcoded == 1 {
         BigDecimal::from(0)
-    } else if token_info.price_usd_raw_24h_ago > BigDecimal::from(0) {
+    } else if token_info.price_usd_raw_24h_ago > 0 {
         let hundred = BigDecimal::from(100);
         ((&token_info.price_usd_raw - &token_info.price_usd_raw_24h_ago)
             / &token_info.price_usd_raw_24h_ago)

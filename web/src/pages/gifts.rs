@@ -308,7 +308,7 @@ pub fn Gifts() -> impl IntoView {
 
         match amount_trim.parse::<BigDecimal>() {
             Ok(dec) => {
-                if dec <= BigDecimal::from(0) {
+                if dec <= 0 {
                     set_near_amount_error.set(Some("Amount must be greater than 0".to_string()));
                 } else {
                     let min_amount = calculate_total_fee() + BigDecimal::from_str("0.01").unwrap();
@@ -364,7 +364,7 @@ pub fn Gifts() -> impl IntoView {
         } else {
             match amount_trim.parse::<BigDecimal>() {
                 Ok(dec) => {
-                    if dec <= BigDecimal::from(0) {
+                    if dec <= 0 {
                         Some("Amount must be greater than 0".to_string())
                     } else {
                         let max_amount_decimal = balance_to_decimal(
@@ -435,7 +435,7 @@ pub fn Gifts() -> impl IntoView {
                     return None;
                 }
                 let amount_decimal = amount_str.parse::<BigDecimal>().ok()?;
-                if amount_decimal <= BigDecimal::from(0) {
+                if amount_decimal <= 0 {
                     return None;
                 }
                 let token_amount =
@@ -491,7 +491,7 @@ pub fn Gifts() -> impl IntoView {
         if let Ok(amount_decimal) = near_amount.get().parse::<BigDecimal>() {
             let total_fee = calculate_total_fee();
             let gift_amount = &amount_decimal - &total_fee;
-            if gift_amount >= BigDecimal::from(0) {
+            if gift_amount >= 0 {
                 Some(gift_amount)
             } else {
                 None

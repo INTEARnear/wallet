@@ -23,7 +23,7 @@ pub fn ProjectedRevenue(
 
     let projected_revenue = Memo::new(move |_| {
         if let Ok(amount_decimal) = amount.parse::<BigDecimal>() {
-            if amount_decimal > BigDecimal::from(0) {
+            if amount_decimal > 0 {
                 let yearly = &amount_decimal * &apy_bigdecimal();
                 let monthly = &yearly / BigDecimal::from(12);
                 let daily = &yearly / BigDecimal::from(365);

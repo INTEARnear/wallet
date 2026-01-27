@@ -134,7 +134,7 @@ pub fn format_usd_value(value: BigDecimal) -> String {
 pub fn format_usd_value_no_hide(value: BigDecimal) -> String {
     let one = BigDecimal::from(1);
     if value.abs() < one {
-        let is_negative = value < BigDecimal::from(0);
+        let is_negative = value < 0;
         let sign = if is_negative { "-" } else { "" };
         let abs_value = value.abs();
         return match &abs_value {
@@ -146,7 +146,7 @@ pub fn format_usd_value_no_hide(value: BigDecimal) -> String {
         };
     }
 
-    let is_negative = value < BigDecimal::from(0);
+    let is_negative = value < 0;
     let abs_value = value.abs();
     let formatted = format!("{abs_value:.2}");
     let parts: Vec<&str> = formatted.split('.').collect();

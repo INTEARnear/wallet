@@ -410,7 +410,7 @@ fn ValidatorCard(
                                                             })
                                                             .collect_view()
                                                     }}
-                                                    {if total_usd > BigDecimal::from(0) {
+                                                    {if total_usd > 0 {
                                                         view! {
                                                             <div class="text-yellow-400 text-center text-xs">
                                                                 {move || {
@@ -834,7 +834,7 @@ fn ValidatorCard(
                                                         * BigDecimal::from(NANOSECONDS_IN_YEAR))
                                                         / BigDecimal::from(farm_period.num_nanoseconds().unwrap());
                                                     let token_symbol = &farm.token.metadata.symbol;
-                                                    if farm.token.price_usd_raw > BigDecimal::from(0) {
+                                                    if farm.token.price_usd_raw > 0 {
                                                         let annual_amount_decimal = balance_to_decimal(
                                                             annual_amount.to_u128().unwrap_or(0),
                                                             farm.token.metadata.decimals,
@@ -846,7 +846,7 @@ fn ValidatorCard(
                                                             24,
                                                         );
                                                         let total_stake_usd = &total_stake_decimal * &near_price();
-                                                        if total_stake_usd > BigDecimal::from(0) {
+                                                        if total_stake_usd > 0 {
                                                             let additional_apy = (&annual_usd_value / &total_stake_usd)
                                                                 * BigDecimal::from(100);
                                                             view! {
@@ -1042,7 +1042,7 @@ async fn compute_liquid_staking_apys(
 
     let metapool =
         if let (Ok(metapool_now), Ok(metapool_prev)) = (metapool_now_res, metapool_prev_res) {
-            if metapool_prev != BigDecimal::from(0u8) {
+            if metapool_prev != 0u8 {
                 let growth = (&metapool_now - &metapool_prev) / &metapool_prev;
                 Some(
                     growth * BigDecimal::from(SECONDS_IN_YEAR)
@@ -1057,7 +1057,7 @@ async fn compute_liquid_staking_apys(
         };
 
     let linear = if let (Ok(l_now), Ok(l_prev)) = (linear_now_res, linear_prev_res) {
-        if l_prev != BigDecimal::from(0u8) {
+        if l_prev != 0u8 {
             let growth = (&l_now - &l_prev) / &l_prev;
             Some(
                 growth * BigDecimal::from(SECONDS_IN_YEAR)
@@ -1072,7 +1072,7 @@ async fn compute_liquid_staking_apys(
     };
 
     let rhea = if let (Ok(r_now), Ok(r_prev)) = (rhea_now_res, rhea_prev_res) {
-        if r_prev != BigDecimal::from(0u8) {
+        if r_prev != 0u8 {
             let growth = (&r_now - &r_prev) / &r_prev;
             Some(
                 growth * BigDecimal::from(SECONDS_IN_YEAR)
@@ -2051,7 +2051,7 @@ pub fn StakeValidator() -> impl IntoView {
     let check_amount = move |amount_str: String| {
         set_has_typed_amount.set(true);
         if let Ok(amount_decimal) = amount_str.parse::<BigDecimal>() {
-            if amount_decimal <= BigDecimal::from(0) {
+            if amount_decimal <= 0 {
                 set_amount_error.set(Some("Amount must be greater than 0".to_string()));
                 return;
             }
@@ -2502,7 +2502,7 @@ pub fn UnstakeValidator() -> impl IntoView {
     let check_amount = move |val: String| {
         set_has_typed_amount.set(true);
         if let Ok(decimal) = val.parse::<BigDecimal>() {
-            if decimal <= BigDecimal::from(0) {
+            if decimal <= 0 {
                 set_amount_error.set(Some("Amount must be greater than 0".to_string()));
             } else {
                 if let Some(Some(staked_token)) = staked_balance.get() {

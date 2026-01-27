@@ -30,7 +30,7 @@ pub fn Invoices() -> impl IntoView {
 
         match amount_trim.parse::<BigDecimal>() {
             Ok(dec) => {
-                if dec <= BigDecimal::from(0) {
+                if dec <= 0 {
                     set_amount_error.set(Some("Amount must be greater than 0".to_string()));
                 } else {
                     set_amount_error.set(None);

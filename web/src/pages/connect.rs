@@ -853,7 +853,7 @@ pub fn Connect() -> impl IntoView {
                                                     {
                                                         "🛠 Localhost".to_string()
                                                     } else {
-                                                        format!("{}", actual_origin)
+                                                        actual_origin.to_string()
                                                     }
                                                 }}
                                             </p>

@@ -297,7 +297,7 @@ async fn get_transactions(
     }
 
     // Sort by timestamp in descending order (newest first)
-    transaction_metadata.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    transaction_metadata.sort_by_key(|t| std::cmp::Reverse(t.timestamp));
     transaction_metadata.truncate(50);
 
     tracing::debug!(

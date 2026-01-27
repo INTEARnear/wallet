@@ -61,7 +61,7 @@ where
         } else {
             match buy_str.parse::<BigDecimal>() {
                 Ok(amount) => {
-                    if amount <= BigDecimal::from(0) {
+                    if amount <= 0 {
                         return Some("Amount must be greater than 0".to_string());
                     }
                     let yoctonear = decimal_to_balance(amount, 24);
@@ -354,7 +354,7 @@ where
                             </div>
                             {move || {
                                 let supply_matches = token_supply
-                                    == BigDecimal::from(AIDOLS_SUPPLY);
+                                    == AIDOLS_SUPPLY;
                                 let decimals_match = token_decimals == AIDOLS_DECIMALS;
                                 if !supply_matches || !decimals_match {
                                     view! {

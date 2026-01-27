@@ -322,7 +322,7 @@ pub fn Swap() -> impl IntoView {
 
         let amount_decimal = amount_str.parse::<BigDecimal>().ok()?;
 
-        if amount_decimal <= BigDecimal::from(0) {
+        if amount_decimal <= 0 {
             return None;
         }
 
@@ -2624,7 +2624,7 @@ fn SwapConfirmationModal(
                                                     <span class=move || {
                                                         format!(
                                                             "text-sm {}",
-                                                            if impact_clone > BigDecimal::from(5) {
+                                                            if impact_clone > 5 {
                                                                 "text-red-400"
                                                             } else {
                                                                 "text-yellow-400"
