@@ -697,7 +697,11 @@ pub fn Connect() -> impl IntoView {
                                     function_call_key_added: true,
                                     logout_key: logout_key.public_key(),
                                     use_bridge: tauri_session_id.get_untracked().is_some(),
-                                    wallet_url: location().origin().expect("No origin"),
+                                    wallet_url: if is_tauri() {
+                                        "intear://".to_string()
+                                    } else {
+                                        location().origin().expect("No origin")
+                                    },
                                     signed_message: signed_message.clone(),
                                 };
                                 post_to_opener(message, true);
@@ -733,7 +737,11 @@ pub fn Connect() -> impl IntoView {
                         function_call_key_added: false,
                         logout_key: logout_key.public_key(),
                         use_bridge: tauri_session_id.get_untracked().is_some(),
-                        wallet_url: location().origin().expect("No origin"),
+                        wallet_url: if is_tauri() {
+                            "intear://".to_string()
+                        } else {
+                            location().origin().expect("No origin")
+                        },
                         signed_message: signed_message.clone(),
                     };
                     post_to_opener(message, true);
@@ -845,7 +853,7 @@ pub fn Connect() -> impl IntoView {
                                                     {
                                                         "🛠 Localhost".to_string()
                                                     } else {
-                                                        format!("🔒 {}", actual_origin)
+                                                        format!("{}", actual_origin)
                                                     }
                                                 }}
                                             </p>

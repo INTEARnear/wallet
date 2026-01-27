@@ -979,7 +979,7 @@ pub fn SendTransactions() -> impl IntoView {
                                                     if is_localhost_app(&app) {
                                                         "🛠 Localhost".to_string()
                                                     } else {
-                                                        format!("🔒 {}", app.origin)
+                                                        format!("{}", app.origin)
                                                     }
                                                 } else {
                                                     "⚠️ Unknown".to_string()

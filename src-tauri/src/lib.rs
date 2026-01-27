@@ -8,7 +8,7 @@ use std::time::Duration;
 use std::time::Instant;
 #[cfg(mobile)]
 use tauri::Emitter;
-use tauri::{AppHandle, Manager, Url, WebviewWindow, Wry};
+use tauri::{AppHandle, Manager, Url, WebviewWindow};
 #[cfg(desktop)]
 use tauri::{
     menu::{Menu, MenuItem},
@@ -554,6 +554,14 @@ pub fn run() {
                         .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {}))?;
                 }
 
+                let base_url = app
+                    .handle()
+                    .get_webview_window(WINDOW_MAIN)
+                    .unwrap()
+                    .url()
+                    .unwrap();
+                let base_url_clone = base_url.clone();
+
                 app.handle().plugin(tauri_plugin_deep_link::init())?;
                 #[cfg(any(target_os = "windows", target_os = "linux"))]
                 app.deep_link().register_all()?;
@@ -561,8 +569,22 @@ pub fn run() {
                 let handle = app.handle().clone();
                 app.deep_link().on_open_url(move |event| {
                     for url in event.urls() {
-                        if let Err(err) = process_deep_link(&handle, &url) {
-                            log::warn!("Failed to process deep link: {err:?}");
+                        match process_deep_link(&base_url, &url) {
+                            Ok(url) => {
+                                let window = handle.get_webview_window(WINDOW_MAIN).unwrap();
+
+                                #[cfg(desktop)]
+                                {
+                                    let _ = window.unminimize();
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
+
+                                let _ = window.navigate(url);
+                            }
+                            Err(err) => {
+                                log::warn!("Failed to process deep link: {err:?}");
+                            }
                         }
                     }
                 });
@@ -639,18 +661,29 @@ pub fn run() {
                     let app_handle = app.handle().clone();
                     let is_first_resume = std::sync::atomic::AtomicBool::new(true);
                     let deep_link_current = app.deep_link().get_current();
+                    let app_handle_clone = app_handle.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(Duration::from_millis(100));
+                        if let Ok(Some(url)) = deep_link_current.as_ref() {
+                            for url in url {
+                                match process_deep_link(&base_url_clone, &url) {
+                                    Ok(url) => {
+                                        let window = app_handle_clone
+                                            .get_webview_window(WINDOW_MAIN)
+                                            .unwrap();
+                                        let _ = window.navigate(url);
+                                    }
+                                    Err(err) => {
+                                        log::warn!("Failed to process deep link: {err:?}");
+                                    }
+                                }
+                            }
+                        }
+                    });
                     let _ = app_handle.clone().app_events().set_resume_handler(
                         tauri::ipc::Channel::new(move |_| {
                             if is_first_resume.swap(false, std::sync::atomic::Ordering::Relaxed) {
                                 log::info!("App resumed for the first time");
-
-                                if let Ok(Some(url)) = deep_link_current.as_ref() {
-                                    for url in url {
-                                        if let Err(err) = process_deep_link(&app_handle, &url) {
-                                            log::warn!("Failed to process deep link: {err:?}");
-                                        }
-                                    }
-                                }
                             } else {
                                 log::info!("App resumed");
                                 let app_handle_clone = app_handle.clone();
@@ -678,9 +711,21 @@ pub fn run() {
 
                 #[cfg(desktop)]
                 if let Ok(Some(url)) = app.deep_link().get_current() {
+                    let handle = app.handle().clone();
                     for url in url {
-                        if let Err(err) = process_deep_link(app.handle(), &url) {
-                            log::warn!("Failed to process deep link: {err:?}");
+                        match process_deep_link(&base_url_clone, &url) {
+                            Ok(url) => {
+                                let window = handle.get_webview_window(WINDOW_MAIN).unwrap();
+
+                                let _ = window.unminimize();
+                                let _ = window.show();
+                                let _ = window.set_focus();
+
+                                let _ = window.navigate(url);
+                            }
+                            Err(err) => {
+                                log::warn!("Failed to process deep link: {err:?}");
+                            }
                         }
                     }
                 }
@@ -710,16 +755,22 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-fn process_deep_link(app: &AppHandle<Wry>, url: &Url) -> Result<(), anyhow::Error> {
-    if url.scheme() != "intear" {
-        return Err(anyhow::anyhow!("Invalid deep link: {}", url));
+fn process_deep_link(base_url: &Url, opened_deep_link_url: &Url) -> Result<Url, anyhow::Error> {
+    if opened_deep_link_url.scheme() != "intear" {
+        return Err(anyhow::anyhow!(
+            "Invalid deep link: {}",
+            opened_deep_link_url
+        ));
     }
-    let Some(host) = url.host() else {
-        return Err(anyhow::anyhow!("Invalid deep link: {}", url));
+    let Some(host) = opened_deep_link_url.host() else {
+        return Err(anyhow::anyhow!(
+            "Invalid deep link: {}",
+            opened_deep_link_url
+        ));
     };
     match host.to_string().as_str() {
         "connect" => {
-            let session_id = url
+            let session_id = opened_deep_link_url
                 .query_pairs()
                 .find(|(key, _)| key == "session_id")
                 .map(|(_, value)| value.to_string());
@@ -728,24 +779,14 @@ fn process_deep_link(app: &AppHandle<Wry>, url: &Url) -> Result<(), anyhow::Erro
                 return Err(anyhow::anyhow!("No session_id found in deep link"));
             };
 
-            let window = app.get_webview_window(WINDOW_MAIN).unwrap();
-
-            #[cfg(desktop)]
-            {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
-
-            let mut url = window.url().unwrap();
-            url.set_path("/connect");
+            let mut url = base_url.clone();
+            url.set_path("connect");
             url.set_query(Some(&format!("session_id={session_id}")));
-            let _ = window.navigate(url);
 
-            Ok(())
+            Ok(url)
         }
         "sign-message" => {
-            let session_id = url
+            let session_id = opened_deep_link_url
                 .query_pairs()
                 .find(|(key, _)| key == "session_id")
                 .map(|(_, value)| value.to_string());
@@ -754,24 +795,14 @@ fn process_deep_link(app: &AppHandle<Wry>, url: &Url) -> Result<(), anyhow::Erro
                 return Err(anyhow::anyhow!("No session_id found in deep link"));
             };
 
-            let window = app.get_webview_window(WINDOW_MAIN).unwrap();
-
-            #[cfg(desktop)]
-            {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
-
-            let mut url = window.url().unwrap();
-            url.set_path("/sign-message");
+            let mut url = base_url.clone();
+            url.set_path("sign-message");
             url.set_query(Some(&format!("session_id={session_id}")));
-            let _ = window.navigate(url);
 
-            Ok(())
+            Ok(url)
         }
         "send-transactions" => {
-            let session_id = url
+            let session_id = opened_deep_link_url
                 .query_pairs()
                 .find(|(key, _)| key == "session_id")
                 .map(|(_, value)| value.to_string());
@@ -780,24 +811,14 @@ fn process_deep_link(app: &AppHandle<Wry>, url: &Url) -> Result<(), anyhow::Erro
                 return Err(anyhow::anyhow!("No session_id found in deep link"));
             };
 
-            let window = app.get_webview_window(WINDOW_MAIN).unwrap();
-
-            #[cfg(desktop)]
-            {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
-
-            let mut url = window.url().unwrap();
-            url.set_path("/send-transactions");
+            let mut url = base_url.clone();
+            url.set_path("send-transactions");
             url.set_query(Some(&format!("session_id={session_id}")));
-            let _ = window.navigate(url);
 
-            Ok(())
+            Ok(url)
         }
         _ => {
-            anyhow::bail!("Unknown deep link with path {:?}", url);
+            anyhow::bail!("Unknown deep link with path {:?}", opened_deep_link_url);
         }
     }
 }

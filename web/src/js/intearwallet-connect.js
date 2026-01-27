@@ -215,7 +215,7 @@ async function openNativeAppFlow(config) {
                         type: config.sendMessageType,
                         data: config.sendData
                     }));
-                    const intearUrl = `intear://${config.method}?session_id=${encodeURIComponent(sessionId)}`;
+                    const intearUrl = `${INTEAR_NATIVE_WALLET_URL}${config.method}?session_id=${encodeURIComponent(sessionId)}`;
                     window.selector.openNativeApp(intearUrl);
                 }
                 else if (data.type === config.successMessageType && !resultReceived) {
@@ -264,7 +264,7 @@ async function openNativeAppFlow(config) {
  * @throws Error if the flow fails
  */
 async function openWalletFlow(config) {
-    if (config.walletUrl === INTEAR_NATIVE_WALLET_URL || config.walletUrl == "tauri://localhost") {
+    if (config.walletUrl === INTEAR_NATIVE_WALLET_URL) {
         return openNativeAppFlow(config);
     }
     else {

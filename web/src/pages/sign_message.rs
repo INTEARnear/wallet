@@ -1598,7 +1598,7 @@ pub fn SignMessage() -> impl IntoView {
                                                     {
                                                         "🛠 Localhost".to_string()
                                                     } else {
-                                                        format!("🔒 {}", app.origin)
+                                                        format!("{}", app.origin)
                                                     }
                                                 } else {
                                                     "⚠️ Unknown, not connected".to_string()
