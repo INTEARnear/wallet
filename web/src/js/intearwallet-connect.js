@@ -120,7 +120,7 @@ function base58Decode(str) {
 async function openPopupFlow(config) {
     let popup = window.selector.open(`${config.walletUrl}/${config.method}`, "dontcare", 'width=400,height=700,scrollbars=yes,resizable=yes');
     if (await popup.id() === null || popup.closed) {
-        await window.selector.ui.whenApprove({ title: "App asks you to sign a message", button: "Sign" });
+        await window.selector.ui.whenApprove({ title: `App asks you to ${config.description}`, button: config.button });
         popup = window.selector.open(`${config.walletUrl}/${config.method}`, "dontcare", 'width=400,height=700,scrollbars=yes,resizable=yes');
         if (await popup.id() === null || popup.closed) {
             throw new Error('Popup blocked');
@@ -216,7 +216,8 @@ async function openNativeAppFlow(config) {
                         data: config.sendData
                     }));
                     const intearUrl = `${INTEAR_NATIVE_WALLET_URL}${config.method}?session_id=${encodeURIComponent(sessionId)}`;
-                    window.selector.openNativeApp(intearUrl);
+                    await window.selector.ui.whenApprove({ title: `App asks you to ${config.description}`, button: config.button });
+                    const result = await window.selector.openNativeApp(intearUrl);
                 }
                 else if (data.type === config.successMessageType && !resultReceived) {
                     resultReceived = true;
@@ -355,6 +356,8 @@ class ConnectedAccount {
                 };
             },
             isUserRejection: (msg) => msg === "User rejected the signature",
+            description: "sign a message",
+            button: "Open Wallet"
         });
     }
     /**
@@ -413,6 +416,8 @@ class ConnectedAccount {
                 };
             },
             isUserRejection: (msg) => msg === "User rejected the transactions",
+            description: "send a transaction",
+            button: "Open Wallet"
         });
     }
 }
@@ -666,7 +671,9 @@ export class IntearWalletConnector {
                     }
                     return result;
                 },
-                isUserRejection: (msg) => msg === "User rejected the connection"
+                isUserRejection: (msg) => msg === "User rejected the connection",
+                description: "sign in with Intear Wallet",
+                button: "Open Wallet"
             });
         }
     }

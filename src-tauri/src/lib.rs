@@ -559,7 +559,15 @@ pub fn run() {
                     .get_webview_window(WINDOW_MAIN)
                     .unwrap()
                     .url()
-                    .unwrap();
+                    .unwrap_or_else(|_| {
+                        if cfg!(any(windows, target_os = "android")) {
+                            "http://tauri.localhost"
+                        } else {
+                            "tauri://localhost"
+                        }
+                        .parse()
+                        .unwrap()
+                    });
                 let base_url_clone = base_url.clone();
 
                 app.handle().plugin(tauri_plugin_deep_link::init())?;
@@ -663,15 +671,21 @@ pub fn run() {
                     let deep_link_current = app.deep_link().get_current();
                     let app_handle_clone = app_handle.clone();
                     std::thread::spawn(move || {
-                        std::thread::sleep(Duration::from_millis(100));
                         if let Ok(Some(url)) = deep_link_current.as_ref() {
                             for url in url {
                                 match process_deep_link(&base_url_clone, &url) {
                                     Ok(url) => {
-                                        let window = app_handle_clone
-                                            .get_webview_window(WINDOW_MAIN)
-                                            .unwrap();
-                                        let _ = window.navigate(url);
+                                        let mut attempts = 0;
+                                        while attempts < 100 {
+                                            let window = app_handle_clone
+                                                .get_webview_window(WINDOW_MAIN)
+                                                .unwrap();
+                                            if window.url().unwrap() != url {
+                                                let _ = window.navigate(url.clone());
+                                            }
+                                            attempts += 1;
+                                            std::thread::sleep(Duration::from_millis(50));
+                                        }
                                     }
                                     Err(err) => {
                                         log::warn!("Failed to process deep link: {err:?}");

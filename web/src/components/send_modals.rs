@@ -330,7 +330,7 @@ pub fn SendSuccessModal(result: SendResult) -> impl IntoView {
                                 attr:class="text-white"
                             />
                         </div>
-                        <h3 class="text-white font-bold text-xl mb-2">"Send Successful!"</h3>
+                        <h3 class="text-white font-bold text-xl mb-2">"Sent!"</h3>
                     </div>
 
                     <div class="space-y-4">
