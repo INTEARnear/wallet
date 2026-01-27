@@ -21,7 +21,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2025-12-01
+          toolchain: nightly-2026-01-27
           components: rust-src
 
       - name: Setup Node.js
