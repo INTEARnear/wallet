@@ -649,7 +649,7 @@
                         hideWaitingScreen();
                         cleanupWebConnection();
                     } else if (event.data.type === "signIn") {
-                        if (event.origin === "null") {
+                        if (!event.origin || event.origin === "null") {
                             try {
                                 const dappUrl = hotConnector.location;
                                 const protocol = dappUrl.split("://")[0];
@@ -708,7 +708,7 @@
                 }, 100);
             }
             if (event.data.type === "signIn") {
-                if (!event.origin) {
+                if (!event.origin || event.origin === "null") {
                     try {
                         const dappUrl = hotConnector.location;
                         const protocol = dappUrl.split("://")[0];
