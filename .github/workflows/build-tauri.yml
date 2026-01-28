@@ -97,12 +97,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libayatana-appindicator3-dev \
-            libwebkit2gtk-4.1-0=2.44.0-2 \
-            libwebkit2gtk-4.1-dev=2.44.0-2 \
-            libjavascriptcoregtk-4.1-0=2.44.0-2 \
-            libjavascriptcoregtk-4.1-dev=2.44.0-2 \
-            gir1.2-javascriptcoregtk-4.1=2.44.0-2 \
-            gir1.2-webkit2-4.1=2.44.0-2 \
+            libwebkit2gtk-4.1-0=2.50.4-0 \
+            libwebkit2gtk-4.1-dev=2.50.4-0 \
+            libjavascriptcoregtk-4.1-0=2.50.4-0 \
+            libjavascriptcoregtk-4.1-dev=2.50.4-0 \
+            gir1.2-javascriptcoregtk-4.1=2.50.4-0 \
+            gir1.2-webkit2-4.1=2.50.4-0 \
             librsvg2-dev \
             libusb-1.0-0-dev \
             patchelf \
@@ -172,6 +172,8 @@ jobs:
         with:
           tauriScript: cargo tauri
           mobile: ${{ matrix.platform == 'android' && 'android' || '' }}
+        env:
+          USE_ALTERNATIVE_WASM_PROTOCOL: ${{ matrix.platform == 'android' && '' || 'true' }}
 
       - name: Build macOS app
         if: matrix.platform == 'macos'
@@ -185,6 +187,8 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_PATH: ~/AuthKey.p8
+        env:
+          USE_ALTERNATIVE_WASM_PROTOCOL: "true"
 
       - name: Build macOS app (x86)
         if: matrix.platform == 'macos'
@@ -196,6 +200,8 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ env.CERT_ID }}
+        env:
+          USE_ALTERNATIVE_WASM_PROTOCOL: "true"
 
       - name: Upload Tauri artifacts
         uses: actions/upload-artifact@v4

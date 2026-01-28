@@ -496,6 +496,28 @@ pub fn run() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
 
+    #[cfg(feature = "alternative_wasm_protocol")]
+    std::thread::spawn(move || {
+        use warp::Filter;
+
+        // This file will appear during build
+        let contents = include_bytes!(concat!("../../dist/pkg/", env!("WASM_FILE")));
+        let filter = warp::any().map(|| warp::reply::Response::new(contents.to_vec().into()));
+        println!("Starting fast wasm loading server on port 23878");
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let routes = filter.with(
+                warp::cors()
+                    .allow_origin("http://localhost:3000")
+                    .allow_origin("http://127.0.0.1:3000")
+                    .allow_origin("http://intearwallet.localhost:3000")
+                    .allow_origin("tauri://localhost")
+                    .allow_methods(vec!["GET", "OPTIONS"])
+                    .allow_headers(vec!["Content-Type"]),
+            );
+            warp::serve(routes).run(([127, 0, 0, 1], 23878)).await;
+        });
+    });
+
     #[cfg(target_os = "linux")]
     keyring_core::set_default_store(dbus_secret_service_keyring_store::Store::new().unwrap());
     #[cfg(target_os = "macos")]

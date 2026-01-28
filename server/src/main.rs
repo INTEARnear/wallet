@@ -52,7 +52,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                     style-src 'self' 'unsafe-inline';
                     font-src 'self' data:;
                     img-src 'self' data: https://nft-proxy-service.intear.tech https://indexer.nearcatalog.org https://intea.rs http://localhost:* blob:;
-                    connect-src 'self' ws://127.0.0.1:5678/live_reload ws://localhost:5678/live_reload ws://tauri.localhost:5678 https://intea.rs https://rpc.near.org https://rpc.mainnet.near.org https://rpc.testnet.near.org https://beta.rpc.mainnet.near.org https://archival-rpc.mainnet.near.org https://archival-rpc.testnet.near.org https://rpc.intea.rs https://archival-rpc.mainnet.fastnear.com https://archival-rpc.testnet.fastnear.com https://rpc.shitzuapes.xyz https://events-v3.intear.tech https://events-v3-testnet.intear.tech https://logout-bridge-service.intear.tech https://rpc.testnet.fastnear.com https://rpc.mainnet.fastnear.com https://password-storage-service.intear.tech https://prices.intear.tech https://prices-testnet.intear.tech wss://ws-events-v3.intear.tech wss://ws-events-v3-testnet.intear.tech https://api.fastnear.com https://test.api.fastnear.com https://nft-proxy-service.intear.tech https://wallet-history-service.intear.tech https://wallet-history-service-testnet.intear.tech https://api.nearcatalog.org https://router.intear.tech https://wallet-account-creation-service.intear.tech https://wallet-account-creation-service-testnet.intear.tech https://ai-tools-service.intear.tech https://1click.chaindefuser.com https://bridge.chaindefuser.com https://solver-relay-v2.chaindefuser.com https://bridge.chaindefuser.com https://api.web3modal.org wss://relay.walletconnect.org https://eu-assets.i.posthog.com https://eu.i.posthog.com https://app.chatwoot.com https://api.pinata.cloud/pinning/pinFileToIPFS http://localhost:* ipc:;
+                    connect-src 'self' ws://127.0.0.1:5678/live_reload ws://localhost:5678/live_reload ws://tauri.localhost:5678 http://127.0.0.1:23878 https://intea.rs https://rpc.near.org https://rpc.mainnet.near.org https://rpc.testnet.near.org https://beta.rpc.mainnet.near.org https://archival-rpc.mainnet.near.org https://archival-rpc.testnet.near.org https://rpc.intea.rs https://archival-rpc.mainnet.fastnear.com https://archival-rpc.testnet.fastnear.com https://rpc.shitzuapes.xyz https://events-v3.intear.tech https://events-v3-testnet.intear.tech https://logout-bridge-service.intear.tech https://rpc.testnet.fastnear.com https://rpc.mainnet.fastnear.com https://password-storage-service.intear.tech https://prices.intear.tech https://prices-testnet.intear.tech wss://ws-events-v3.intear.tech wss://ws-events-v3-testnet.intear.tech https://api.fastnear.com https://test.api.fastnear.com https://nft-proxy-service.intear.tech https://wallet-history-service.intear.tech https://wallet-history-service-testnet.intear.tech https://api.nearcatalog.org https://router.intear.tech https://wallet-account-creation-service.intear.tech https://wallet-account-creation-service-testnet.intear.tech https://ai-tools-service.intear.tech https://1click.chaindefuser.com https://bridge.chaindefuser.com https://solver-relay-v2.chaindefuser.com https://bridge.chaindefuser.com https://api.web3modal.org wss://relay.walletconnect.org https://eu-assets.i.posthog.com https://eu.i.posthog.com https://app.chatwoot.com https://api.pinata.cloud/pinning/pinFileToIPFS http://localhost:* ipc:;
                     frame-src 'self' https://chart.intear.tech https://chart-testnet.intear.tech https://verify.walletconnect.org https://app.chatwoot.com;
                     "
                 />
@@ -132,7 +132,20 @@ async fn main() {
 
     let index_path = PathBuf::from(&*leptos_options.site_root).join("index.html");
 
-    tokio::fs::write(index_path, shell(leptos_options.clone()).to_html())
+    let html = shell(leptos_options.clone()).to_html();
+    assert!(
+        html.contains("`${root}/${pkg_path}/${wasm_output_name}.wasm`"),
+        "generated .html wasm loader format changed"
+    );
+    let html = if std::env::var("USE_ALTERNATIVE_WASM_PROTOCOL").is_ok_and(|v| v == "true") {
+        html.replace(
+            "`${root}/${pkg_path}/${wasm_output_name}.wasm`",
+            "`http://127.0.0.1:23878/${root}/${pkg_path}/${wasm_output_name}.wasm`",
+        )
+    } else {
+        html
+    };
+    tokio::fs::write(index_path, html)
         .await
         .expect("could not write index.html");
     log::info!("Wrote index.html");
