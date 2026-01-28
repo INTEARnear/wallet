@@ -187,7 +187,6 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_PATH: ~/AuthKey.p8
-        env:
           USE_ALTERNATIVE_WASM_PROTOCOL: "true"
 
       - name: Build macOS app (x86)
@@ -200,7 +199,6 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ env.CERT_ID }}
-        env:
           USE_ALTERNATIVE_WASM_PROTOCOL: "true"
 
       - name: Upload Tauri artifacts
