@@ -1066,3 +1066,9 @@ pub fn serialize_to_js_value<T: Serialize>(
 ) -> Result<JsValue, serde_wasm_bindgen::Error> {
     value.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
 }
+
+pub fn serialize_to_js_value_old<T: Serialize>(
+    value: &T,
+) -> Result<JsValue, serde_wasm_bindgen::Error> {
+    value.serialize(&serde_wasm_bindgen::Serializer::default())
+}

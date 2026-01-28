@@ -28,7 +28,8 @@ use crate::{
     contexts::{
         accounts_context::{Account, AccountsContext},
         connected_apps_context::{
-            ConnectedAppsContext, action_attaches_deposit, is_dangerous_action,
+            ConnectedApp, ConnectedAppsContext, ConnectorVersion, action_attaches_deposit,
+            is_dangerous_action,
         },
         network_context::Network,
         security_log_context::add_security_log,
@@ -38,6 +39,7 @@ use crate::{
     utils::{
         SendTransactionsAction, WalletSelectorAction, WalletSelectorTransaction,
         format_token_amount_no_hide, is_debug_enabled, serialize_to_js_value,
+        serialize_to_js_value_old,
     },
 };
 
@@ -559,11 +561,46 @@ pub fn SendTransactions() -> impl IntoView {
         _ => window(),
     };
 
+    let connected_app = Memo::new(move |_| {
+        match &*request_data.read() {
+            Some(request_data) => {
+                let text_to_prove = format!("{}|{}", request_data.nonce, request_data.transactions);
+                let to_prove = text_to_prove.as_bytes();
+                let to_prove = CryptoHash::hash_bytes(to_prove); // sha256
+                let is_valid = request_data
+                    .signature
+                    .verify(to_prove.as_bytes(), &request_data.public_key)
+                    && request_data.nonce > Date::now() as u64 - 1000 * 60 * 5
+                    && request_data.nonce <= Date::now() as u64;
+                is_valid
+                    .then(|| {
+                        apps.get()
+                            .apps
+                            .iter()
+                            .find(|app| {
+                                app.public_key == request_data.public_key
+                                    && app.account_id == request_data.account_id
+                                    && app.logged_out_at.is_none()
+                            })
+                            .cloned()
+                    })
+                    .flatten()
+            }
+            _ => None,
+        }
+    });
+
     let post_to_opener = move |message: SendMessage, close_window: bool| {
         if let Some(session_id) = tauri_session_id.get_untracked() {
             spawn_local(submit_tauri_response(session_id, message, close_window));
         } else {
-            let js_value = serialize_to_js_value(&message).unwrap();
+            let js_value = match connected_app() {
+                Some(ConnectedApp {
+                    connector_version: ConnectorVersion::V1 | ConnectorVersion::V2,
+                    ..
+                }) => serialize_to_js_value_old(&message).unwrap(),
+                _ => serialize_to_js_value(&message).unwrap(),
+            };
             opener()
                 .post_message(&js_value, &origin.read_untracked())
                 .expect("Failed to send message");
@@ -606,34 +643,6 @@ pub fn SendTransactions() -> impl IntoView {
             .expect("Failed to send message");
     });
 
-    let connected_app = Memo::new(move |_| {
-        match &*request_data.read() {
-            Some(request_data) => {
-                let text_to_prove = format!("{}|{}", request_data.nonce, request_data.transactions);
-                let to_prove = text_to_prove.as_bytes();
-                let to_prove = CryptoHash::hash_bytes(to_prove); // sha256
-                let is_valid = request_data
-                    .signature
-                    .verify(to_prove.as_bytes(), &request_data.public_key)
-                    && request_data.nonce > Date::now() as u64 - 1000 * 60 * 5
-                    && request_data.nonce <= Date::now() as u64;
-                is_valid
-                    .then(|| {
-                        apps.get()
-                            .apps
-                            .iter()
-                            .find(|app| {
-                                app.public_key == request_data.public_key
-                                    && app.account_id == request_data.account_id
-                                    && app.logged_out_at.is_none()
-                            })
-                            .cloned()
-                    })
-                    .flatten()
-            }
-            _ => None,
-        }
-    });
     Effect::new(move || {
         if let Some(app) = connected_app()
             && accounts_context.accounts.get().selected_account_id != Some(app.account_id.clone())
