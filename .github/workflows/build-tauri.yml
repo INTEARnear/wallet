@@ -173,7 +173,7 @@ jobs:
           tauriScript: cargo tauri
           mobile: ${{ matrix.platform == 'android' && 'android' || '' }}
         env:
-          USE_ALTERNATIVE_WASM_PROTOCOL: ${{ matrix.platform == 'android' && '' || 'true' }}
+          USE_ALTERNATIVE_WASM_PROTOCOL: ${{ matrix.platform == 'android' && 'false' || 'true' }}
 
       - name: Build macOS app
         if: matrix.platform == 'macos'
