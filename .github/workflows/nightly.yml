@@ -47,7 +47,7 @@ jobs:
             for artifact in \
               intear-wallet-app-linux-x86_64 \
               intear-wallet-app-linux-aarch64 \
-              intear-wallet-app-windows-x86_64 \
+              # intear-wallet-app-windows-x86_64 \
               intear-wallet-app-macos-aarch64-and-x86_64 \
               intear-wallet-app-android-universal; do
               echo "Downloading $artifact..."

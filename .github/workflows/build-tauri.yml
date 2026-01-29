@@ -26,12 +26,12 @@ jobs:
               target/release/bundle/deb/Intear Wallet_0.1.0_arm64.deb
               target/release/bundle/rpm/Intear Wallet-0.1.0-1.aarch64.rpm
               target/release/bundle/appimage/Intear Wallet_0.1.0_aarch64.AppImage
-          - os: windows-latest
-            platform: windows
-            arch: x86_64
-            bundle_paths: |
-              target/release/bundle/msi/Intear Wallet_0.1.0_x64_en-US.msi
-              target/release/bundle/nsis/Intear Wallet_0.1.0_x64-setup.exe
+          # - os: windows-latest
+          #   platform: windows
+          #   arch: x86_64
+          #   bundle_paths: |
+          #     target/release/bundle/msi/Intear Wallet_0.1.0_x64_en-US.msi
+          #     target/release/bundle/nsis/Intear Wallet_0.1.0_x64-setup.exe
           - os: macos-15
             platform: macos
             arch: aarch64-and-x86_64
