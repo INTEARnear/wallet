@@ -23,6 +23,7 @@ pub enum WordValidationState {
 pub fn SeedPhraseInput(#[prop(into)] on_change: Callback<String>) -> impl IntoView {
     let (word_values, set_word_values) = signal(vec!["".to_string(); WORD_COUNT]);
     let (focused_index, set_focused_index) = signal::<Option<usize>>(None);
+    let (warning_message, set_warning_message) = signal::<Option<String>>(None);
     let input_refs = (0..WORD_COUNT)
         .map(|_| NodeRef::<Input>::new())
         .collect::<Vec<_>>();
@@ -144,8 +145,12 @@ pub fn SeedPhraseInput(#[prop(into)] on_change: Callback<String>) -> impl IntoVi
         {
             let words: Vec<&str> = pasted_text.split_whitespace().collect();
 
-            if words.len() == WORD_COUNT {
-                // If we have enough words, fill all fields
+            if words.len() == 13 {
+                set_warning_message.set(Some(
+                    "13-word seed phrases are only supported in HOT Wallet. If you are importing from HOT Wallet, please copy Private Key from Security & Apps > Seed phrase & Private keys > Private keys > NEAR, and import it via Private Key".to_string()
+                ));
+            } else if words.len() == WORD_COUNT {
+                set_warning_message.set(None);
                 let new_words: Vec<String> = words
                     .iter()
                     .take(WORD_COUNT)
@@ -154,9 +159,9 @@ pub fn SeedPhraseInput(#[prop(into)] on_change: Callback<String>) -> impl IntoVi
 
                 set_word_values.set(new_words);
                 update_seed_phrase();
-                clipboard_event.prevent_default();
             } else if words.len() > 1 && words.len() < WORD_COUNT {
                 // If we have multiple words but less than required, fill from target index
+                set_warning_message.set(None);
                 set_word_values.update(|current_words| {
                     for (i, &word) in words.iter().enumerate() {
                         if target_index + i < WORD_COUNT {
@@ -165,14 +170,15 @@ pub fn SeedPhraseInput(#[prop(into)] on_change: Callback<String>) -> impl IntoVi
                     }
                 });
                 update_seed_phrase();
-                clipboard_event.prevent_default();
             }
+            clipboard_event.prevent_default();
         }
     };
 
     let handle_key_down = {
         let input_refs = input_refs.clone();
         move |event: web_sys::KeyboardEvent, index: usize| {
+            set_warning_message.set(None);
             let key = event.key();
             match key.as_str() {
                 " " | "Enter" => {
@@ -386,6 +392,19 @@ pub fn SeedPhraseInput(#[prop(into)] on_change: Callback<String>) -> impl IntoVi
     view! {
         <div class="space-y-4">
             <label class="block text-neutral-400 text-sm font-medium">"Seed Phrase"</label>
+
+            {move || {
+                if let Some(warning) = warning_message.get() {
+                    view! {
+                        <div class="bg-yellow-900/20 border border-yellow-600/50 rounded-lg px-4 py-3 text-yellow-400 text-sm">
+                            {warning}
+                        </div>
+                    }
+                        .into_any()
+                } else {
+                    ().into_any()
+                }
+            }}
 
             <div class="grid grid-cols-3 gap-3">
                 {(0..WORD_COUNT)
