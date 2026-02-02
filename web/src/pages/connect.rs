@@ -453,13 +453,16 @@ pub fn Connect() -> impl IntoView {
             log::error!("No account selected");
             return;
         };
-        let selected_account = accounts_context
+        let Some(selected_account) = accounts_context
             .accounts
             .get_untracked()
             .accounts
             .into_iter()
             .find(|a| a.account_id == selected_account_id)
-            .expect("Selected account not found");
+        else {
+            log::error!("Selected account not found");
+            return;
+        };
         let user_public_key = selected_account.secret_key.public_key();
 
         if !is_public_key_valid() {
@@ -773,15 +776,16 @@ pub fn Connect() -> impl IntoView {
                     .get()
                     .selected_account_id
                 {
-                    let selected_account_network = accounts_context
+                    let Some(selected_account_network) = accounts_context
                         .accounts
                         .get()
                         .accounts
                         .iter()
                         .find(|a| a.account_id == selected_account_id)
-                        .expect("Selected account not found")
-                        .network
-                        .clone();
+                        .map(|a| a.network.clone()) else {
+                        log::error!("Selected account not found");
+                        return ().into_any();
+                    };
                     let request_network = Network::from_lowecase(
                         request_data().expect("No request data").network_id,
                         &config.read(),

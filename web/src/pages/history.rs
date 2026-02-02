@@ -53,11 +53,14 @@ async fn fetch_transactions() -> Vec<TransactionResponse> {
     let Some(selected_account_id) = accounts().selected_account_id else {
         return vec![];
     };
-    let selected_account = accounts()
+    let Some(selected_account) = accounts()
         .accounts
         .into_iter()
         .find(|a| a.account_id == selected_account_id)
-        .expect("Selected account not found");
+    else {
+        log::error!("Selected account not found");
+        return vec![];
+    };
 
     let history_service_addr = match selected_account.network {
         Network::Mainnet => dotenvy_macro::dotenv!("MAINNET_HISTORY_SERVICE_ADDR").to_string(),
@@ -268,7 +271,7 @@ pub fn History() -> impl IntoView {
                                                                                 <div class="flex justify-between items-center p-4 md:p-6 min-h-35 transition-all duration-100">
                                                                                     <a
                                                                                         href=move || {
-                                                                                            let selected_account = accounts()
+                                                                                            let selected_account_network = accounts()
                                                                                                 .accounts
                                                                                                 .into_iter()
                                                                                                 .find(|a| {
@@ -277,8 +280,12 @@ pub fn History() -> impl IntoView {
                                                                                                             .selected_account_id
                                                                                                             .expect("No selected account")
                                                                                                 })
-                                                                                                .expect("Selected account not found");
-                                                                                            let explorer_url = match &selected_account.network {
+                                                                                                .map(|a| a.network.clone())
+                                                                                                .unwrap_or_else(|| {
+                                                                                                    log::error!("Selected account not found");
+                                                                                                    Network::Mainnet
+                                                                                                });
+                                                                                            let explorer_url = match &selected_account_network {
                                                                                                 Network::Mainnet => "https://nearblocks.io".to_string(),
                                                                                                 Network::Testnet => {
                                                                                                     "https://testnet.nearblocks.io".to_string()

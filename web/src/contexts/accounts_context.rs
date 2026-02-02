@@ -1074,5 +1074,25 @@ pub fn provide_accounts_context() {
         }
     });
 
+    Effect::new(move || {
+        accounts.track();
+        set_accounts.maybe_update(|accounts| {
+            if let Some(selected_account_id) = accounts.selected_account_id.as_ref()
+                && accounts
+                    .accounts
+                    .iter()
+                    .find(|a| a.account_id == *selected_account_id)
+                    .is_none()
+            {
+                log::info!("Selected account not found, setting to first account");
+                accounts.selected_account_id =
+                    accounts.accounts.first().map(|a| a.account_id.clone());
+                true
+            } else {
+                false
+            }
+        });
+    });
+
     provide_context(accounts_context);
 }

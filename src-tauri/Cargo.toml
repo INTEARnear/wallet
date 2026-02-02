@@ -1,3 +1,5 @@
+cargo-features = ["profile-rustflags", "trim-paths"]
+
 [package]
 name = "app"
 version = "0.1.0"
@@ -70,3 +72,10 @@ tauri-plugin-biometric = "2"
 [features]
 default = []
 alternative_wasm_protocol = []
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true
+trim-paths = "all"
+rustflags = ["-Cdebuginfo=0", "-Zthreads=8"]

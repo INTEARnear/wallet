@@ -43,9 +43,11 @@ pub fn provide_network_context() {
                 .accounts
                 .iter()
                 .find(|a| a.account_id == selected_account)
-                .expect("Selected account not found")
-                .network
-                .clone()
+                .map(|a| a.network.clone())
+                .unwrap_or_else(|| {
+                    log::error!("Selected account not found");
+                    Network::Mainnet
+                })
         } else {
             Network::Mainnet
         },
