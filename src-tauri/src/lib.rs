@@ -511,6 +511,7 @@ pub fn run() {
                     .allow_origin("http://127.0.0.1:3000")
                     .allow_origin("http://intearwallet.localhost:3000")
                     .allow_origin("tauri://localhost")
+                    .allow_origin("http://tauri.localhost")
                     .allow_methods(vec!["GET", "OPTIONS"])
                     .allow_headers(vec!["Content-Type"]),
             );
