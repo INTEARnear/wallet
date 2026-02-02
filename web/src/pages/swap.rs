@@ -134,6 +134,7 @@ pub fn Swap() -> impl IntoView {
         DexId::Linear,
         DexId::XRhea,
         DexId::RNear,
+        // DexId::Plach,
     ]);
 
     Effect::new(move |_| {
@@ -1125,6 +1126,15 @@ pub fn Swap() -> impl IntoView {
                                                         }
                                                             .into_any()
                                                     }
+                                                    DexId::Plach => {
+                                                        view! {
+                                                            <div class="flex items-center gap-2">
+                                                                <img src="/intear.svg" alt="Intear" class="w-auto h-8" />
+                                                                <span class="text-white font-medium text-sm">"Plach"</span>
+                                                            </div>
+                                                        }
+                                                            .into_any()
+                                                    }
                                                 }} <div class="flex items-center gap-2">
                                                     <span class="text-white font-medium text-sm">
                                                         "Best Route"
@@ -1486,6 +1496,7 @@ pub fn Swap() -> impl IntoView {
                                                         DexId::Linear,
                                                         DexId::XRhea,
                                                         DexId::RNear,
+                                                        DexId::Plach,
                                                     ];
                                                     all_dexes
                                                         .into_iter()
@@ -2156,6 +2167,10 @@ pub enum DexId {
     ///
     /// Supports NEAR -> rNEAR and rNEAR -> NEAR, both AmountIn and AmountOut
     RNear,
+    /// AMM DEX
+    ///
+    /// Supports AmountIn, doesn't support AmountOut
+    Plach,
 }
 
 const RHEA_STR: &str = "Rhea";
@@ -2167,6 +2182,7 @@ const METAPOOL_STR: &str = "MetaPool";
 const LINEAR_STR: &str = "Linear";
 const XRHEA_STR: &str = "XRhea";
 const RNEAR_STR: &str = "RNear";
+const PLACH_STR: &str = "Plach";
 
 impl Display for DexId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -2180,6 +2196,7 @@ impl Display for DexId {
             DexId::Linear => f.write_str(LINEAR_STR),
             DexId::XRhea => f.write_str(XRHEA_STR),
             DexId::RNear => f.write_str(RNEAR_STR),
+            DexId::Plach => f.write_str(PLACH_STR),
         }
     }
 }
@@ -2197,6 +2214,8 @@ impl FromStr for DexId {
             METAPOOL_STR => DexId::MetaPool,
             LINEAR_STR => DexId::Linear,
             XRHEA_STR => DexId::XRhea,
+            RNEAR_STR => DexId::RNear,
+            PLACH_STR => DexId::Plach,
             _ => return Err(format!("Invalid dex id: {}", s)),
         })
     }
@@ -2590,6 +2609,15 @@ fn SwapConfirmationModal(
                                                 <div class="flex items-center gap-1">
                                                     <img src="/rhea.svg" alt="XRhea" class="w-auto h-5" />
                                                     <span class="text-white text-sm">"Stake NEAR"</span>
+                                                </div>
+                                            }
+                                                .into_any()
+                                        }
+                                        DexId::Plach => {
+                                            view! {
+                                                <div class="flex items-center gap-1">
+                                                    <img src="/intear.svg" alt="Intear" class="w-auto h-5" />
+                                                    <span class="text-white text-sm">"Plach"</span>
                                                 </div>
                                             }
                                                 .into_any()
