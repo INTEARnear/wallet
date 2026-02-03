@@ -577,20 +577,15 @@ pub fn run() {
                         .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {}))?;
                 }
 
-                let base_url = app
-                    .handle()
-                    .get_webview_window(WINDOW_MAIN)
-                    .unwrap()
-                    .url()
-                    .unwrap_or_else(|_| {
-                        if cfg!(any(windows, target_os = "android")) {
-                            "http://tauri.localhost"
-                        } else {
-                            "tauri://localhost"
-                        }
-                        .parse()
-                        .unwrap()
-                    });
+                let base_url = if cfg!(debug_assertions) {
+                    "http://localhost:3000"
+                } else if cfg!(any(windows, target_os = "android")) {
+                    "http://tauri.localhost"
+                } else {
+                    "tauri://localhost"
+                }
+                .parse::<Url>()
+                .unwrap();
                 let base_url_clone = base_url.clone();
 
                 app.handle().plugin(tauri_plugin_deep_link::init())?;
