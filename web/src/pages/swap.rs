@@ -134,7 +134,7 @@ pub fn Swap() -> impl IntoView {
         DexId::Linear,
         DexId::XRhea,
         DexId::RNear,
-        // DexId::Plach,
+        DexId::Plach,
     ]);
 
     Effect::new(move |_| {
