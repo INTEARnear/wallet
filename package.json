@@ -13,6 +13,7 @@
     "@solana/spl-token": "^0.4.14",
     "@tailwindcss/cli": "4.1.8",
     "@tanstack/react-query": "^5.90.17",
+    "@wagmi/core": "^3.3.2",
     "@walletconnect/ethereum-provider": "^2.23.2",
     "buffer": "6.0.3",
     "events": "3.3.0",
