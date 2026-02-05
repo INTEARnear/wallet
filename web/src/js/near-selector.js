@@ -58,7 +58,12 @@ class IntearWalletAdapter {
         if (!this.near.connectedAccount) {
             throw new Error("Account is not connected");
         }
-        return this.near.connectedAccount.signMessage({ message, nonce, recipient });
+        const result = await this.near.connectedAccount.signMessage({ message, nonce, recipient });
+        if (result !== null) {
+            return result;
+        } else {
+            throw new Error("User rejected the message");
+        }
     }
     async signAndSendTransaction({ network, signerId, receiverId, actions }) {
         if (!this.near.connectedAccount) {
@@ -68,7 +73,11 @@ class IntearWalletAdapter {
 
         actions.forEach(fixAction);
         const result = await this.near.connectedAccount.sendTransactions([{ signerId, receiverId, actions }]);
-        return result.outcomes[0];
+        if (result !== null) {
+            return result.outcomes[0];
+        } else {
+            throw new Error("User rejected the transaction");
+        }
     }
     async signAndSendTransactions({ network, transactions }) {
         if (!this.near.connectedAccount) {
@@ -83,7 +92,11 @@ class IntearWalletAdapter {
             };
         });
         const result = await this.near.connectedAccount.sendTransactions(transactions);
-        return result.outcomes;
+        if (result !== null) {
+            return result.outcomes;
+        } else {
+            throw new Error("User rejected the transactions");
+        }
     }
 }
 
