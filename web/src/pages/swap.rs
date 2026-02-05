@@ -60,8 +60,13 @@ pub struct SwapResult {
 pub struct SwapConfirmation {
     pub token_in: TokenInfo,
     pub token_out: TokenInfo,
+    /// For ExactIn: the exact input amount. For ExactOut: the estimated input amount.
     pub amount_in: Balance,
+    /// For ExactIn: the estimated output amount. For ExactOut: the exact output amount.
     pub estimated_amount_out: Balance,
+    /// For ExactIn: same as amount_in. For ExactOut: the worst-case (maximum) input amount.
+    pub worst_case_amount_in: Balance,
+    /// For ExactIn: the worst-case (minimum) output amount. For ExactOut: same as estimated_amount_out.
     pub worst_case_amount_out: Balance,
     pub route: Route,
     pub swap_mode: SwapMode,
@@ -1233,9 +1238,12 @@ pub fn Swap() -> impl IntoView {
                                             return;
                                         };
                                         if config.get().swap_confirmation_enabled {
-                                            let (estimated_amount_out, worst_case_amount_out) = match swap_mode_memo
-                                                .get()
-                                            {
+                                            let (
+                                                amount_in,
+                                                estimated_amount_out,
+                                                worst_case_amount_in,
+                                                worst_case_amount_out,
+                                            ) = match swap_mode_memo.get() {
                                                 SwapMode::ExactIn => {
                                                     match (
                                                         best_route.estimated_amount,
@@ -1244,7 +1252,14 @@ pub fn Swap() -> impl IntoView {
                                                         (
                                                             Amount::AmountOut(estimated),
                                                             Amount::AmountOut(worst_case),
-                                                        ) => (estimated, worst_case),
+                                                        ) => {
+                                                            (
+                                                                validated_amount_entered,
+                                                                estimated,
+                                                                validated_amount_entered,
+                                                                worst_case,
+                                                            )
+                                                        }
                                                         _ => {
                                                             log::error!("Invalid route amounts for ExactIn mode");
                                                             return;
@@ -1252,14 +1267,34 @@ pub fn Swap() -> impl IntoView {
                                                     }
                                                 }
                                                 SwapMode::ExactOut => {
-                                                    (validated_amount_entered, validated_amount_entered)
+                                                    match (
+                                                        best_route.estimated_amount,
+                                                        best_route.worst_case_amount,
+                                                    ) {
+                                                        (
+                                                            Amount::AmountIn(estimated_in),
+                                                            Amount::AmountIn(worst_case_in),
+                                                        ) => {
+                                                            (
+                                                                estimated_in,
+                                                                validated_amount_entered,
+                                                                worst_case_in,
+                                                                validated_amount_entered,
+                                                            )
+                                                        }
+                                                        _ => {
+                                                            log::error!("Invalid route amounts for ExactOut mode");
+                                                            return;
+                                                        }
+                                                    }
                                                 }
                                             };
                                             let confirmation = SwapConfirmation {
                                                 token_in: token_in.token.clone(),
                                                 token_out: token_out.token.clone(),
-                                                amount_in: validated_amount_entered,
+                                                amount_in,
                                                 estimated_amount_out,
+                                                worst_case_amount_in,
                                                 worst_case_amount_out,
                                                 route: best_route.clone(),
                                                 swap_mode: swap_mode_memo.get(),
@@ -2398,6 +2433,16 @@ fn SwapConfirmationModal(
         None
     };
 
+    let worst_case_amount_in_decimal = balance_to_decimal(
+        confirmation.worst_case_amount_in,
+        token_in.metadata.decimals,
+    );
+    let worst_case_amount_in_formatted = format!(
+        "{} {}",
+        round_precision_or_significant(worst_case_amount_in_decimal.clone()),
+        token_in.metadata.symbol
+    );
+
     let worst_case_amount_out_decimal = balance_to_decimal(
         confirmation.worst_case_amount_out,
         token_out.metadata.decimals,
@@ -2626,7 +2671,7 @@ fn SwapConfirmationModal(
                                 </div>
                             </div>
 
-                            // Minimum received
+                            // Minimum received / Maximum spent
                             <div class="flex justify-between items-center">
                                 <span class="text-gray-400 text-sm">
                                     {match swap_mode {
@@ -2635,7 +2680,10 @@ fn SwapConfirmationModal(
                                     }}
                                 </span>
                                 <span class="text-white text-sm">
-                                    {worst_case_amount_out_formatted}
+                                    {match swap_mode {
+                                        SwapMode::ExactIn => worst_case_amount_out_formatted.clone(),
+                                        SwapMode::ExactOut => worst_case_amount_in_formatted.clone(),
+                                    }}
                                 </span>
                             </div>
 

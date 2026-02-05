@@ -24,7 +24,7 @@ use std::time::Duration;
 use crate::contexts::accounts_context::Account;
 use crate::contexts::config_context::{ConfigContext, LedgerMode};
 use crate::contexts::network_context::Network;
-use crate::contexts::tokens_context::{Token, TokensContext};
+use crate::contexts::tokens_context::{Token, TokenData, TokensContext};
 use crate::utils::{NEP413Payload, sign_nep366, sign_nep413};
 
 use super::accounts_context::AccountsContext;
@@ -169,7 +169,7 @@ impl TransactionType {
         rpc_client: &'a RpcClient,
         accounts_context: AccountsContext,
         ledger_mode: impl Fn() -> LedgerMode,
-        near_balance: NearToken,
+        tokens: ReadSignal<Vec<TokenData>>,
     ) -> Result<TransactionResult<'a>, String> {
         match self {
             TransactionType::NearTransaction {
@@ -217,7 +217,19 @@ impl TransactionType {
                         "0.001 NEAR".parse::<NearToken>().unwrap();
                     let required_near_balance = function_gas_cost
                         .saturating_add(max_estimated_gas_cost_for_transaction_and_actions);
-                    required_near_balance > near_balance
+                    let mut near_balance = None;
+                    for _ in 0..100 {
+                        near_balance = tokens
+                            .get_untracked()
+                            .iter()
+                            .find(|token| token.token.account_id == Token::Near)
+                            .map(|token| NearToken::from_yoctonear(token.balance));
+                        if near_balance.is_some() {
+                            break;
+                        }
+                        Delay::new(Duration::from_millis(100)).await;
+                    }
+                    required_near_balance > near_balance.unwrap_or_default()
                 };
                 if needs_to_be_sponsored {
                     let delegate_action = DelegateAction {
@@ -703,12 +715,6 @@ pub fn provide_transaction_queue_context() {
                         set_queue
                             .update(|q| q[tx_current_index].stage = TransactionStage::Publishing);
                         signing_tx_id.set(Some(transaction.id));
-                        let near_balance = tokens
-                            .get_untracked()
-                            .iter()
-                            .find(|token| token.token.account_id == Token::Near)
-                            .map(|token| NearToken::from_yoctonear(token.balance))
-                            .unwrap();
                         let pending_tx = match transaction
                             .transaction_type
                             .execute(
@@ -716,7 +722,7 @@ pub fn provide_transaction_queue_context() {
                                 &rpc_client,
                                 accounts_context,
                                 move || config.get_untracked().ledger_mode,
-                                near_balance,
+                                tokens,
                             )
                             .await
                         {
