@@ -20,11 +20,14 @@ use near_min_api::{
 use serde::{Deserialize, Serialize};
 use std::{fmt::Display, ops::Deref, str::FromStr, sync::Arc, time::Duration};
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
-use web_sys::js_sys::{Promise, Reflect};
+use web_sys::js_sys::{Array, Function, Object, Promise, Reflect};
 
 use crate::contexts::{
     accounts_context::{AccountsContext, SecretKeyHolder, UserCancelledSigning},
-    config_context::{ConfigContext, LedgerMode},
+    config_context::{
+        CompactDisplay, ConfigContext, ConstrainedUsize, InsanelyCustomizableAmountFormat,
+        LedgerMode, Notation, NumberConfig, RoundingIncrement, RoundingPriority, UseGrouping,
+    },
     network_context::Network,
     rpc_context::RpcContext,
     tokens_context::{Token, TokenData, TokenInfo, TokenMetadata},
@@ -50,13 +53,13 @@ pub fn format_token_amount(balance: Balance, decimals: u32, symbol: &str) -> Str
 
 #[track_caller]
 pub fn format_token_amount_no_hide(amount: Balance, decimals: u32, symbol: &str) -> String {
-    let short = if let Some(config_context) = use_context::<ConfigContext>() {
-        config_context.config.get().short_amounts
+    let number_config = if let Some(config_context) = use_context::<ConfigContext>() {
+        config_context.config.get().number_config
     } else {
-        false
+        NumberConfig::default()
     };
     let normalized_decimal = balance_to_decimal(amount, decimals);
-    let formatted_balance = format_number(normalized_decimal, short, true);
+    let formatted_balance = format_number_with_config(normalized_decimal, &number_config, true);
     format!("{formatted_balance} {symbol}")
 }
 
@@ -74,7 +77,7 @@ pub fn format_token_amount_full_precision(amount: Balance, decimals: u32, symbol
 
 pub fn format_number(number: BigDecimal, short: bool, suffixes: bool) -> String {
     if !short {
-        let mut amount_str = number.to_string();
+        let mut amount_str = number.to_plain_string();
         if amount_str.contains('.') {
             amount_str = amount_str
                 .trim_end_matches('0')
@@ -99,26 +102,215 @@ pub fn format_number(number: BigDecimal, short: bool, suffixes: bool) -> String 
         }
     }
 
-    format!(
-        "{}",
-        number.with_scale_round(
-            match number.abs() {
-                x if x >= BigDecimal::from_str("0.1").unwrap() => 2,
-                x if x >= BigDecimal::from_str("0.01").unwrap() => 3,
-                x if x >= BigDecimal::from_str("0.001").unwrap() => 4,
-                x if x >= BigDecimal::from_str("0.0001").unwrap() => 5,
-                x if x >= BigDecimal::from_str("0.00001").unwrap() => 6,
-                x if x >= BigDecimal::from_str("0.000001").unwrap() => 7,
-                x if x >= BigDecimal::from_str("0.0000001").unwrap() => 8,
-                x if x >= BigDecimal::from_str("0.00000001").unwrap() => 9,
-                x if x >= BigDecimal::from_str("0.000000001").unwrap() => 10,
-                x if x >= BigDecimal::from_str("0.0000000001").unwrap() => 11,
-                x if x >= BigDecimal::from_str("0.00000000001").unwrap() => 12,
-                _ => 0,
-            },
-            RoundingMode::Down
-        )
-    )
+    let abs = number.abs();
+    let scale = if abs.is_zero() {
+        0
+    } else if abs >= BigDecimal::from_str("0.1").unwrap() {
+        2
+    } else {
+        let one = BigDecimal::one();
+        let ten = BigDecimal::from(10);
+        let mut shifted = abs;
+        let mut s: i64 = 1;
+        while shifted < one && s < 100 {
+            shifted *= &ten;
+            s += 1;
+        }
+        s
+    };
+    number
+        .with_scale_round(scale, RoundingMode::Down)
+        .to_plain_string()
+        .trim_end_matches('0')
+        .trim_end_matches('.')
+        .to_string()
+}
+
+pub fn sanitize_custom_format(
+    format: InsanelyCustomizableAmountFormat,
+) -> InsanelyCustomizableAmountFormat {
+    let mut sanitized = format;
+    if sanitized.maximum_fraction_digits() < sanitized.minimum_fraction_digits()
+        && let Some(value) = ConstrainedUsize::<0, 101>::new(sanitized.minimum_fraction_digits())
+    {
+        sanitized = sanitized.with_maximum_fraction_digits(value);
+    }
+    if sanitized.maximum_significant_digits() < sanitized.minimum_significant_digits()
+        && let Some(value) = ConstrainedUsize::<1, 22>::new(sanitized.minimum_significant_digits())
+    {
+        sanitized = sanitized.with_maximum_significant_digits(value);
+    }
+
+    if sanitized.rounding_priority() != RoundingPriority::Auto
+        && sanitized.rounding_increment() != RoundingIncrement::One
+    {
+        sanitized = sanitized.with_rounding_increment(RoundingIncrement::One);
+    }
+
+    if sanitized.rounding_increment() != RoundingIncrement::One {
+        if let Some(value) = ConstrainedUsize::<0, 101>::new(sanitized.minimum_fraction_digits()) {
+            sanitized = sanitized.with_maximum_fraction_digits(value);
+        }
+        sanitized = sanitized.with_rounding_priority(RoundingPriority::Auto);
+    }
+
+    if sanitized.notation() == Notation::Compact {
+        if sanitized.compact_display().is_none() {
+            sanitized = sanitized.with_compact_display(Some(CompactDisplay::Short));
+        }
+    } else {
+        sanitized = sanitized.with_compact_display(None);
+    }
+
+    sanitized
+}
+
+fn use_grouping_js_value(value: UseGrouping) -> JsValue {
+    match value {
+        UseGrouping::False => JsValue::from_bool(false),
+        UseGrouping::Always => JsValue::from_str("always"),
+        UseGrouping::Auto => JsValue::from_str("auto"),
+        UseGrouping::Min2 => JsValue::from_str("min2"),
+    }
+}
+
+fn build_intl_number_format_options(format: InsanelyCustomizableAmountFormat) -> Object {
+    let options = Object::new();
+    let _ = Reflect::set(
+        &options,
+        &JsValue::from_str("minimumIntegerDigits"),
+        &JsValue::from_f64(format.minimum_integer_digits() as f64),
+    );
+    let _ = Reflect::set(
+        &options,
+        &JsValue::from_str("minimumFractionDigits"),
+        &JsValue::from_f64(format.minimum_fraction_digits() as f64),
+    );
+    let _ = Reflect::set(
+        &options,
+        &JsValue::from_str("maximumFractionDigits"),
+        &JsValue::from_f64(format.maximum_fraction_digits() as f64),
+    );
+
+    if format.rounding_increment() == RoundingIncrement::One
+        && format.rounding_priority() != RoundingPriority::Auto
+    {
+        let _ = Reflect::set(
+            &options,
+            &JsValue::from_str("minimumSignificantDigits"),
+            &JsValue::from_f64(format.minimum_significant_digits() as f64),
+        );
+        let _ = Reflect::set(
+            &options,
+            &JsValue::from_str("maximumSignificantDigits"),
+            &JsValue::from_f64(format.maximum_significant_digits() as f64),
+        );
+    }
+
+    let _ = Reflect::set(
+        &options,
+        &JsValue::from_str("roundingPriority"),
+        &JsValue::from_str(format.rounding_priority().as_str()),
+    );
+
+    if format.rounding_increment() != RoundingIncrement::One {
+        let _ = Reflect::set(
+            &options,
+            &JsValue::from_str("roundingIncrement"),
+            &JsValue::from_f64(usize::from(format.rounding_increment()) as f64),
+        );
+    }
+
+    let _ = Reflect::set(
+        &options,
+        &JsValue::from_str("roundingMode"),
+        &JsValue::from_str(format.rounding_mode().as_str()),
+    );
+    let _ = Reflect::set(
+        &options,
+        &JsValue::from_str("trailingZeroDisplay"),
+        &JsValue::from_str(format.trailing_zero_display().as_str()),
+    );
+    let _ = Reflect::set(
+        &options,
+        &JsValue::from_str("notation"),
+        &JsValue::from_str(format.notation().as_str()),
+    );
+    if format.notation() == Notation::Compact
+        && let Some(display) = format.compact_display()
+    {
+        let _ = Reflect::set(
+            &options,
+            &JsValue::from_str("compactDisplay"),
+            &JsValue::from_str(display.as_str()),
+        );
+    }
+
+    let _ = Reflect::set(
+        &options,
+        &JsValue::from_str("useGrouping"),
+        &use_grouping_js_value(format.use_grouping()),
+    );
+
+    options
+}
+
+fn format_number_with_intl(
+    value: f64,
+    format: InsanelyCustomizableAmountFormat,
+    locale: Option<&str>,
+) -> Option<String> {
+    let options = build_intl_number_format_options(format);
+    let intl = Reflect::get(&window(), &JsValue::from_str("Intl")).ok()?;
+    let constructor = Reflect::get(&intl, &JsValue::from_str("NumberFormat")).ok()?;
+    let constructor: Function = constructor.into();
+    let args = Array::new();
+    if let Some(locale) = locale {
+        args.push(&JsValue::from_str(locale));
+    } else {
+        args.push(&JsValue::UNDEFINED);
+    }
+    args.push(&options);
+    let formatter = Reflect::construct(&constructor, &args).ok()?;
+    let format_fn = Reflect::get(&formatter, &JsValue::from_str("format")).ok()?;
+    let format_fn: Function = format_fn.into();
+    let formatted = format_fn
+        .call1(&formatter, &JsValue::from_f64(value))
+        .ok()?;
+    formatted.as_string()
+}
+
+pub fn format_number_with_config(
+    number: BigDecimal,
+    number_config: &NumberConfig,
+    suffixes: bool,
+) -> String {
+    match number_config {
+        NumberConfig::Simple { short_amounts } => format_number(number, *short_amounts, suffixes),
+        NumberConfig::Customizable { amount_format } => {
+            let sanitized = sanitize_custom_format(*amount_format);
+            number
+                .to_f64()
+                .and_then(|value| format_number_with_intl(value, sanitized, None))
+                .unwrap_or_else(|| number.to_string())
+        }
+    }
+}
+
+pub fn format_number_for_input(number: BigDecimal, number_config: &NumberConfig) -> String {
+    match number_config {
+        NumberConfig::Simple { short_amounts } => format_number(number, *short_amounts, false),
+        NumberConfig::Customizable { amount_format } => {
+            let sanitized = sanitize_custom_format(*amount_format)
+                .with_notation(Notation::Standard)
+                .with_compact_display(None)
+                .with_use_grouping(UseGrouping::False);
+            number
+                .to_f64()
+                .and_then(|value| format_number_with_intl(value, sanitized, Some("en-US")))
+                .unwrap_or_else(|| number.to_string())
+        }
+    }
 }
 
 #[track_caller]
@@ -149,9 +341,9 @@ pub fn format_usd_value_no_hide(value: BigDecimal) -> String {
     let is_negative = value < 0;
     let abs_value = value.abs();
     let formatted = format!("{abs_value:.2}");
-    let parts: Vec<&str> = formatted.split('.').collect();
-    let integer_part = parts[0].trim_start_matches('$');
-    let decimal_part = parts[1];
+    let (integer_part, decimal_part) = formatted
+        .split_once('.')
+        .unwrap_or((formatted.as_str(), "0"));
 
     let mut result = String::new();
 
@@ -166,6 +358,15 @@ pub fn format_usd_value_no_hide(value: BigDecimal) -> String {
     format!(
         "{sign}${integer_part}.{decimal_part}",
         integer_part = result.chars().rev().collect::<String>(),
+        decimal_part = if decimal_part
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .is_empty()
+        {
+            "0"
+        } else {
+            decimal_part.trim_end_matches('0')
+        }
     )
 }
 

@@ -38,8 +38,8 @@ use crate::components::transaction_modals::{TransactionErrorModal, TransactionSu
 use crate::contexts::config_context::ConfigContext;
 use crate::contexts::tokens_context::TokenInfo;
 use crate::utils::{
-    Resolution, StorageBalance, USDT_DECIMALS, fetch_token_info, format_number, format_usd_value,
-    power_of_10, proxify_url,
+    Resolution, StorageBalance, USDT_DECIMALS, fetch_token_info, format_number_for_input,
+    format_usd_value, power_of_10, proxify_url,
 };
 use crate::{
     contexts::{
@@ -2267,11 +2267,16 @@ pub fn StakeValidator() -> impl IntoView {
                                                             let gas_cost = "0.01".parse::<BigDecimal>().unwrap();
                                                             let final_amount = (max_amount - gas_cost)
                                                                 .max(BigDecimal::from(0));
-                                                            let final_amount_str = format_number(
+                                                            let mut final_amount_str = format_number_for_input(
                                                                 final_amount,
-                                                                config().short_amounts,
-                                                                false,
+                                                                &config().number_config,
                                                             );
+                                                            if final_amount_str.contains('.') {
+                                                                final_amount_str = final_amount_str
+                                                                    .trim_end_matches('0')
+                                                                    .trim_end_matches('.')
+                                                                    .to_string();
+                                                            }
                                                             set_amount.set(final_amount_str.clone());
                                                             check_amount(final_amount_str);
                                                         }

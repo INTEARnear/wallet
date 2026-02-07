@@ -1,6 +1,9 @@
 use std::str::FromStr;
 use std::time::Duration;
 
+use crate::components::{
+    number_format_settings::NumberFormatSettings, toggle_switch::ToggleSwitch,
+};
 use crate::contexts::config_context::{BackgroundGroup, ConfigContext, HiddenNft, LedgerMode};
 use crate::pages::swap::Slippage;
 use crate::utils::{is_android, is_tauri, tauri_invoke_no_args};
@@ -12,62 +15,6 @@ use leptos_use::use_window_size;
 use wasm_bindgen_futures::JsFuture;
 
 pub const SLIPPAGE_PRESETS: [f64; 4] = [0.5, 1.0, 2.0, 5.0];
-
-#[component]
-pub fn ToggleSwitch(
-    label: &'static str,
-    #[prop(into)] value: Signal<bool>,
-    #[prop(into)] disabled: Signal<bool>,
-    on_toggle: impl Fn() + 'static,
-) -> impl IntoView {
-    view! {
-        <div class="flex items-center justify-between py-3">
-            <label
-                class="text-sm font-medium"
-                style=move || {
-                    format!("color: {};", if disabled.get() { "#374151" } else { "#9ca3af" })
-                }
-            >
-                {label}
-            </label>
-            <button
-                class="relative inline-flex h-6 min-w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2"
-                disabled=disabled
-                style=move || {
-                    format!(
-                        "background-color: {};",
-                        if disabled.get() {
-                            "#9ca3af"
-                        } else if value.get() {
-                            "#0284c7"
-                        } else {
-                            "#e5e7eb"
-                        },
-                    )
-                }
-                on:click=move |_| on_toggle()
-            >
-                <span
-                    class="inline-block h-4 w-4 transform rounded-full transition duration-200 ease-in-out"
-                    style=move || {
-                        format!(
-                            "transform: translateX({}); background-color: {};",
-                            if value.get() { "1.5rem" } else { "0.25rem" },
-                            if disabled.get() {
-                                "#d1d5db"
-                            } else if value.get() {
-                                "#ffffff"
-                            } else {
-                                "#000000"
-                            },
-                        )
-                    }
-                />
-            </button>
-        </div>
-    }
-}
-
 #[component]
 pub fn LedgerSelector(#[prop(optional, into)] on_change: Option<Callback<()>>) -> impl IntoView {
     let config_context = expect_context::<ConfigContext>();
@@ -183,7 +130,6 @@ pub fn PreferencesSettings() -> impl IntoView {
     let hide_to_tray = Memo::new(move |_| config_context.config.get().hide_to_tray);
     let autostart = Memo::new(move |_| config_context.config.get().autostart);
     let amounts_hidden = Memo::new(move |_| config_context.config.get().amounts_hidden);
-    let short_amounts = Memo::new(move |_| config_context.config.get().short_amounts);
     let prevent_screenshots = Memo::new(move |_| config_context.config.get().prevent_screenshots);
 
     let updates_disabled = Signal::derive(|| false);
@@ -290,18 +236,6 @@ pub fn PreferencesSettings() -> impl IntoView {
                             });
                     }
                 />
-                <ToggleSwitch
-                    label="Short Amounts (1.00K instead of 1000.00)"
-                    value=short_amounts
-                    disabled=Signal::derive(|| false)
-                    on_toggle=move || {
-                        config_context
-                            .set_config
-                            .update(|config| {
-                                config.short_amounts = !config.short_amounts;
-                            });
-                    }
-                />
                 <Show when=is_android>
                     <ToggleSwitch
                         label="Disable screenshots"
@@ -316,6 +250,7 @@ pub fn PreferencesSettings() -> impl IntoView {
                         }
                     />
                 </Show>
+                <NumberFormatSettings />
             </div>
 
             // Ledger hardware wallet settings

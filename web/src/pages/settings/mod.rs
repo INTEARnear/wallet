@@ -20,13 +20,14 @@ mod preferences;
 mod security;
 mod security_log;
 
+pub use crate::components::ToggleSwitch;
 pub use account::{AccountSettings, JsWalletRequest, JsWalletResponse};
 pub use connected_apps::ConnectedAppsSettings;
 pub use developer::DeveloperSettings;
 pub use developer_create_token::DeveloperCreateToken;
 pub use developer_sandbox::DeveloperSandbox;
 use near_min_api::types::AccountId;
-pub use preferences::{LedgerSelector, PreferencesSettings, SLIPPAGE_PRESETS, ToggleSwitch};
+pub use preferences::{LedgerSelector, PreferencesSettings, SLIPPAGE_PRESETS};
 pub use security::SecuritySettings;
 pub use security_log::SecurityLogPage;
 use web_sys::{ScrollBehavior, ScrollToOptions};

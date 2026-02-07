@@ -18,8 +18,8 @@ use crate::{
     data::bridge_networks::{BRIDGEABLE_TOKENS, ChainInfo, USDC_ON_NEAR, USDT_ON_NEAR},
     pages::settings::open_live_chat,
     utils::{
-        StorageBalance, balance_to_decimal, decimal_to_balance, format_number, format_token_amount,
-        format_token_amount_full_precision,
+        StorageBalance, balance_to_decimal, decimal_to_balance, format_number_for_input,
+        format_token_amount, format_token_amount_full_precision,
     },
 };
 use bigdecimal::BigDecimal;
@@ -836,14 +836,16 @@ pub fn SendBridge() -> impl IntoView {
                                                                                         let final_amount_decimal = (&max_amount_decimal
                                                                                             - &gas_cost_decimal)
                                                                                             .max(BigDecimal::from(0));
-                                                                                        let max_amount_str = format_number(
-                                                                                                final_amount_decimal,
-                                                                                                config().short_amounts,
-                                                                                                false,
-                                                                                            )
-                                                                                            .trim_end_matches('0')
-                                                                                            .trim_end_matches('.')
-                                                                                            .to_string();
+                                                                                        let mut max_amount_str = format_number_for_input(
+                                                                                            final_amount_decimal,
+                                                                                            &config().number_config,
+                                                                                        );
+                                                                                        if max_amount_str.contains('.') {
+                                                                                            max_amount_str = max_amount_str
+                                                                                                .trim_end_matches('0')
+                                                                                                .trim_end_matches('.')
+                                                                                                .to_string();
+                                                                                        }
                                                                                         set_amount.set(max_amount_str);
                                                                                     }
                                                                                 }

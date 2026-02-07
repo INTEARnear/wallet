@@ -15,7 +15,7 @@ use crate::{
     pages::stake::is_validator_supported,
     utils::{
         StorageBalance, balance_to_decimal, decimal_to_balance, format_account_id_no_hide,
-        format_number, format_token_amount, format_token_amount_full_precision,
+        format_number_for_input, format_token_amount, format_token_amount_full_precision,
         format_token_amount_no_hide, format_usd_value_no_hide,
     },
 };
@@ -916,14 +916,16 @@ pub fn SendToken() -> impl IntoView {
                                                 let final_amount_decimal = (&max_amount_decimal
                                                     - &gas_cost_decimal)
                                                     .max(BigDecimal::from(0));
-                                                let max_amount_str = format_number(
-                                                        final_amount_decimal,
-                                                        config().short_amounts,
-                                                        false,
-                                                    )
-                                                    .trim_end_matches('0')
-                                                    .trim_end_matches('.')
-                                                    .to_string();
+                                                let mut max_amount_str = format_number_for_input(
+                                                    final_amount_decimal,
+                                                    &config().number_config,
+                                                );
+                                                if max_amount_str.contains('.') {
+                                                    max_amount_str = max_amount_str
+                                                        .trim_end_matches('0')
+                                                        .trim_end_matches('.')
+                                                        .to_string();
+                                                }
                                                 set_amount.set(max_amount_str.clone());
                                                 check_amount(max_amount_str);
                                             }

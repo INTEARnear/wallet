@@ -38,7 +38,7 @@ use crate::{
     pages::nfts::fetch_nfts,
     utils::{
         Resolution, balance_to_decimal, decimal_to_balance, format_account_id_no_hide,
-        format_duration, format_number, format_token_amount, proxify_url,
+        format_duration, format_number_for_input, format_token_amount, proxify_url,
     },
 };
 
@@ -347,10 +347,14 @@ pub fn Gifts() -> impl IntoView {
         let final_amount_decimal =
             (&max_amount_decimal - &gas_cost_decimal).max(BigDecimal::from(0));
 
-        let max_amount_str = format_number(final_amount_decimal, config().short_amounts, false)
-            .trim_end_matches('0')
-            .trim_end_matches('.')
-            .to_string();
+        let mut max_amount_str =
+            format_number_for_input(final_amount_decimal, &config().number_config);
+        if max_amount_str.contains('.') {
+            max_amount_str = max_amount_str
+                .trim_end_matches('0')
+                .trim_end_matches('.')
+                .to_string();
+        }
 
         let trimmed_max_amount = trim_to_three_decimals(max_amount_str);
         set_near_amount.set(trimmed_max_amount.clone());
@@ -395,10 +399,14 @@ pub fn Gifts() -> impl IntoView {
     let handle_token_max = move |token_data: TokenData| {
         let max_amount_decimal =
             balance_to_decimal(token_data.balance, token_data.token.metadata.decimals);
-        let max_amount_str = format_number(max_amount_decimal, config().short_amounts, false)
-            .trim_end_matches('0')
-            .trim_end_matches('.')
-            .to_string();
+        let mut max_amount_str =
+            format_number_for_input(max_amount_decimal, &config().number_config);
+        if max_amount_str.contains('.') {
+            max_amount_str = max_amount_str
+                .trim_end_matches('0')
+                .trim_end_matches('.')
+                .to_string();
+        }
 
         let trimmed_max_amount = trim_to_three_decimals(max_amount_str);
 
