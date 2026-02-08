@@ -10,8 +10,8 @@ use near_min_api::{
         AccessKeyPermission, AccountId, Action, AddKeyAction, CryptoHash, DeleteAccountAction,
         DeleteKeyAction, DeployContractAction, DeployGlobalContractAction,
         FinalExecutionOutcomeViewEnum, FunctionCallAction, FunctionCallPermission,
-        GlobalContractDeployMode, GlobalContractIdentifier, NearGas, NearToken, StakeAction,
-        TransferAction, UseGlobalContractAction,
+        GlobalContractDeployMode, GlobalContractIdentifier, NearGas, NearToken,
+        SignedDelegateAction, StakeAction, TransferAction, UseGlobalContractAction,
         near_crypto::{PublicKey, Signature},
     },
 };
@@ -33,7 +33,9 @@ use crate::{
         },
         network_context::Network,
         security_log_context::add_security_log,
-        transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
+        transaction_queue_context::{
+            EnqueuedTransaction, TransactionQueueContext, TransactionType,
+        },
     },
     pages::connect::submit_tauri_response,
     utils::{
@@ -43,6 +45,13 @@ use crate::{
     },
 };
 
+#[derive(Deserialize, Debug, Clone, Default, PartialEq)]
+pub enum SendTransactionsMode {
+    #[default]
+    Send,
+    SignDelegateActions,
+}
+
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SendTransactionsRequest {
@@ -51,6 +60,8 @@ pub struct SendTransactionsRequest {
     public_key: PublicKey,
     signature: Signature,
     transactions: String,
+    #[serde(default)]
+    mode: SendTransactionsMode,
 }
 
 #[derive(Deserialize, Debug)]
@@ -64,10 +75,23 @@ pub enum ReceiveMessage {
 pub enum SendMessage {
     Ready,
     Sent {
-        outcomes: Vec<FinalExecutionOutcomeViewEnum>,
+        #[serde(flatten)]
+        result: ResultToSend,
     },
     Error {
         message: String,
+    },
+}
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum ResultToSend {
+    Send {
+        outcomes: Vec<FinalExecutionOutcomeViewEnum>,
+    },
+    #[serde(rename_all = "camelCase")]
+    SignDelegateActions {
+        signed_delegate_actions: Vec<SignedDelegateAction>,
     },
 }
 
@@ -800,6 +824,7 @@ pub fn SendTransactions() -> impl IntoView {
             log::error!("No request data found");
             return;
         };
+        let mode = request_data.mode.clone();
 
         // Update app settings if checkboxes are checked
         if let Some(app) = connected_app()
@@ -822,14 +847,17 @@ pub fn SendTransactions() -> impl IntoView {
 
         let deserialized_transactions =
             serde_json::from_str::<Vec<WalletSelectorTransaction>>(&request_data.transactions);
+        let mut signed_delegate_receivers: Vec<
+            oneshot::Receiver<Result<SignedDelegateAction, String>>,
+        > = Vec::new();
         let mut transactions: Vec<(
             oneshot::Receiver<Result<ExperimentalTxDetails, String>>,
             EnqueuedTransaction,
         )> = if let Ok(transactions) = deserialized_transactions {
             transactions
                 .into_iter()
-                .map(|transaction| {
-                    EnqueuedTransaction::create(
+                .map(|transaction| match &mode {
+                    SendTransactionsMode::Send => EnqueuedTransaction::create(
                         "App Interaction".to_string(),
                         transaction.signer_id,
                         transaction.receiver_id,
@@ -839,7 +867,24 @@ pub fn SendTransactions() -> impl IntoView {
                             .map(|action| action.into())
                             .collect(),
                         false,
-                    )
+                    ),
+                    SendTransactionsMode::SignDelegateActions => {
+                        let (signed_delegate_tx, signed_delegate_rx) = oneshot::channel();
+                        signed_delegate_receivers.push(signed_delegate_rx);
+                        EnqueuedTransaction::create_with_type(
+                            "App Interaction".to_string(),
+                            transaction.signer_id,
+                            TransactionType::SignDelegateAction {
+                                actions: transaction
+                                    .actions
+                                    .into_iter()
+                                    .map(|action| action.into())
+                                    .collect(),
+                                receiver_id: transaction.receiver_id,
+                                sender: Some(signed_delegate_tx),
+                            },
+                        )
+                    }
                 })
                 .collect()
         } else {
@@ -895,53 +940,106 @@ pub fn SendTransactions() -> impl IntoView {
 
         let (details_receivers, transactions): (Vec<_>, Vec<_>) = transactions.into_iter().unzip();
         add_transaction.update(|queue| queue.extend(transactions));
-        let details = futures_util::future::join_all(details_receivers);
-        spawn_local(async move {
-            let details = details.await.into_iter().collect::<Result<Vec<_>, _>>();
-            match details {
-                Ok(details) => {
-                    let outcomes = details
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, outcome_result)| {
-                            outcome_result
-                                .map(|d| d.final_execution_outcome)
-                                .map_err(|e| format!("Failed to send transaction {}: {e}", i + 1))
-                        })
-                        .collect::<Result<Option<Vec<_>>, String>>();
-                    let outcomes = match outcomes {
-                        Ok(Some(outcomes)) => outcomes,
-                        Ok(None) => {
-                            // Not available ..?
-                            panic!(
-                                "Transaction details not available for one or more transactions"
-                            );
-                        }
-                        Err(error) => {
-                            let message = SendMessage::Error { message: error };
+
+        match mode {
+            SendTransactionsMode::Send => {
+                let details = futures_util::future::join_all(details_receivers);
+                spawn_local(async move {
+                    let details = details.await.into_iter().collect::<Result<Vec<_>, _>>();
+                    match details {
+                        Ok(details) => {
+                            let outcomes = details
+                                .into_iter()
+                                .enumerate()
+                                .map(|(i, outcome_result)| {
+                                    outcome_result
+                                        .map(|d| d.final_execution_outcome)
+                                        .map_err(|e| {
+                                            format!("Failed to send transaction {}: {e}", i + 1)
+                                        })
+                                })
+                                .collect::<Result<Option<Vec<_>>, String>>();
+                            let outcomes = match outcomes {
+                                Ok(Some(outcomes)) => outcomes,
+                                Ok(None) => {
+                                    panic!(
+                                        "For some reason transaction details not available for one or more transactions. This is a bug, please contact support"
+                                    );
+                                }
+                                Err(error) => {
+                                    let message = SendMessage::Error { message: error };
+                                    post_to_opener(message, true);
+                                    return;
+                                }
+                            };
+                            let message = SendMessage::Sent {
+                                result: ResultToSend::Send {
+                                outcomes:
+                                    outcomes
+                                        .into_iter()
+                                        .map(|d| {
+                                            FinalExecutionOutcomeViewEnum::FinalExecutionOutcomeWithReceipt(d)
+                                        })
+                                        .collect(),
+                            }
+                            };
                             post_to_opener(message, true);
-                            return;
                         }
-                    };
-                    let message = SendMessage::Sent {
-                        outcomes: outcomes
-                            .into_iter()
-                            .map(|d| {
-                                FinalExecutionOutcomeViewEnum::FinalExecutionOutcomeWithReceipt(d)
-                            })
-                            .collect(),
-                    };
-                    post_to_opener(message, true);
-                }
-                Err(_) => {
-                    log::error!("Failed to fetch transaction details");
-                    let message = SendMessage::Error {
-                        message: "Failed to fetch transaction details".to_string(),
-                    };
-                    post_to_opener(message, true);
-                }
+                        Err(_) => {
+                            log::error!("Failed to fetch transaction details");
+                            let message = SendMessage::Error {
+                                message: "Failed to fetch transaction details".to_string(),
+                            };
+                            post_to_opener(message, true);
+                        }
+                    }
+                });
             }
-        });
+            SendTransactionsMode::SignDelegateActions => {
+                drop(details_receivers);
+                let signed_delegates = futures_util::future::join_all(signed_delegate_receivers);
+                spawn_local(async move {
+                    let signed_delegates = signed_delegates
+                        .await
+                        .into_iter()
+                        .collect::<Result<Vec<_>, _>>();
+                    match signed_delegates {
+                        Ok(results) => {
+                            let signed_delegate_actions = results
+                                .into_iter()
+                                .enumerate()
+                                .map(|(i, result)| {
+                                    result.map_err(|e| {
+                                        format!("Failed to sign delegate action {}: {e}", i + 1)
+                                    })
+                                })
+                                .collect::<Result<Vec<_>, String>>();
+                            match signed_delegate_actions {
+                                Ok(actions) => {
+                                    let message = SendMessage::Sent {
+                                        result: ResultToSend::SignDelegateActions {
+                                            signed_delegate_actions: actions,
+                                        },
+                                    };
+                                    post_to_opener(message, true);
+                                }
+                                Err(error) => {
+                                    let message = SendMessage::Error { message: error };
+                                    post_to_opener(message, true);
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            log::error!("Failed to receive signed delegate actions");
+                            let message = SendMessage::Error {
+                                message: "Failed to receive signed delegate actions".to_string(),
+                            };
+                            post_to_opener(message, true);
+                        }
+                    }
+                });
+            }
+        }
     };
 
     let handle_cancel = move |_| {

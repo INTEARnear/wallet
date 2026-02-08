@@ -40,7 +40,7 @@ pub enum TransactionStage {
     Failed(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum TransactionType {
     NearTransaction {
         actions: Vec<Action>,
@@ -51,6 +51,11 @@ pub enum TransactionType {
         message_to_sign: String,
         quote_hash: CryptoHash,
     },
+    SignDelegateAction {
+        actions: Vec<Action>,
+        receiver_id: AccountId,
+        sender: Option<futures_channel::oneshot::Sender<Result<SignedDelegateAction, String>>>,
+    },
 }
 
 enum TransactionResult<'a> {
@@ -60,6 +65,7 @@ enum TransactionResult<'a> {
         rpc_client: &'a RpcClient,
         tx_hash: OnceCell<CryptoHash>,
     },
+    SignedDelegateAction,
 }
 
 impl<'a> TransactionResult<'a> {
@@ -135,6 +141,7 @@ impl<'a> TransactionResult<'a> {
                     Either::Right((_, _)) => Err("Intent polling timed out".to_string()),
                 }
             }
+            TransactionResult::SignedDelegateAction => Ok(()),
         }
     }
 
@@ -158,13 +165,46 @@ impl<'a> TransactionResult<'a> {
                     Err("Intent was not waited for".to_string())
                 }
             }
+            TransactionResult::SignedDelegateAction => {
+                Err("Signed delegate action does not have details".to_string())
+            }
         }
     }
 }
 
 impl TransactionType {
+    fn clone_and_take(&mut self) -> Self {
+        match self {
+            TransactionType::NearTransaction {
+                actions,
+                receiver_id,
+                can_be_sponsored,
+            } => TransactionType::NearTransaction {
+                actions: actions.clone(),
+                receiver_id: receiver_id.clone(),
+                can_be_sponsored: *can_be_sponsored,
+            },
+            TransactionType::NearIntents {
+                message_to_sign,
+                quote_hash,
+            } => TransactionType::NearIntents {
+                message_to_sign: message_to_sign.clone(),
+                quote_hash: *quote_hash,
+            },
+            TransactionType::SignDelegateAction {
+                actions,
+                receiver_id,
+                sender,
+            } => TransactionType::SignDelegateAction {
+                actions: actions.clone(),
+                receiver_id: receiver_id.clone(),
+                sender: sender.take(),
+            },
+        }
+    }
+
     async fn execute<'a>(
-        &self,
+        self,
         signer: Account,
         rpc_client: &'a RpcClient,
         accounts_context: AccountsContext,
@@ -203,7 +243,7 @@ impl TransactionType {
                     }
                 };
 
-                let needs_to_be_sponsored = *can_be_sponsored && {
+                let needs_to_be_sponsored = can_be_sponsored && {
                     let function_gas_cost =
                         NearToken::from_yoctonear(recent_block_header.gas_price).saturating_mul(
                             actions
@@ -409,6 +449,70 @@ impl TransactionType {
                     Err("Result not found in response".to_string())
                 }
             }
+            TransactionType::SignDelegateAction {
+                actions,
+                receiver_id,
+                sender,
+            } => {
+                let access_key = match rpc_client
+                    .get_access_key(
+                        signer.account_id.clone(),
+                        signer.secret_key.public_key(),
+                        QueryFinality::Finality(Finality::None),
+                    )
+                    .await
+                {
+                    Ok(key) => key,
+                    Err(e) => {
+                        return Err(format!("Failed to get access key: {e}"));
+                    }
+                };
+
+                let recent_block_header = match rpc_client
+                    .block(BlockReference::Finality(Finality::Final))
+                    .await
+                {
+                    Ok(block) => block.header,
+                    Err(e) => {
+                        // Should never happen unless all RPCs are unstable, so no
+                        // need to handle this gracefully
+                        return Err(format!("Failed to fetch block hash: {e}"));
+                    }
+                };
+
+                let delegate_action = DelegateAction {
+                    sender_id: signer.account_id.clone(),
+                    receiver_id: receiver_id.clone(),
+                    actions: actions
+                        .iter()
+                        .map(|a| NonDelegateAction::try_from(a.clone()))
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(|e| {
+                            format!("Failed to convert action to non-delegate action: {e}")
+                        })?,
+                    nonce: access_key.nonce + 1,
+                    max_block_height: recent_block_header.height + 100,
+                    public_key: signer.secret_key.public_key(),
+                };
+                let Ok(signature) = sign_nep366(
+                    signer.secret_key,
+                    &delegate_action,
+                    accounts_context,
+                    ledger_mode,
+                )
+                .await
+                else {
+                    return Err("User cancelled signing".to_string());
+                };
+                let signed = SignedDelegateAction {
+                    delegate_action,
+                    signature,
+                };
+                let _ = sender
+                    .expect("Sender should have been taken by this instance of TransactionType")
+                    .send(Ok(signed));
+                Ok(TransactionResult::SignedDelegateAction)
+            }
         }
     }
 }
@@ -559,8 +663,6 @@ pub struct EnqueuedTransaction {
     pub description: String,
     pub stage: TransactionStage,
     pub signer_id: AccountId,
-    // pub receiver_id: AccountId,
-    // pub actions: Vec<Action>,
     pub transaction_type: TransactionType,
     /// None if the transaction has been taken
     details_tx: Option<oneshot::Sender<Result<ExperimentalTxDetails, String>>>,
@@ -627,7 +729,7 @@ impl EnqueuedTransaction {
         }
     }
 
-    fn clone_and_take_tx(&mut self) -> Self {
+    fn clone_and_take(&mut self) -> Self {
         let tx = match self.details_tx.take() {
             Some(details_tx) => details_tx,
             _ => {
@@ -639,7 +741,7 @@ impl EnqueuedTransaction {
             description: self.description.clone(),
             stage: self.stage.clone(),
             signer_id: self.signer_id.clone(),
-            transaction_type: self.transaction_type.clone(),
+            transaction_type: self.transaction_type.clone_and_take(),
             details_tx: Some(tx),
             queue_id: self.queue_id,
         }
@@ -686,7 +788,7 @@ pub fn provide_transaction_queue_context() {
             match queue_mut
                 .get_mut(current_index.get())
                 .filter(|tx| tx.stage == TransactionStage::Preparing)
-                .map(|tx| tx.clone_and_take_tx())
+                .map(|tx| tx.clone_and_take())
             {
                 Some(transaction) => {
                     set_is_processing.set(true);
@@ -730,15 +832,15 @@ pub fn provide_transaction_queue_context() {
                             Err(error) => {
                                 signing_tx_id.set(None);
                                 set_queue.update(|q| {
-                                q[tx_current_index].stage = TransactionStage::Failed(error.clone());
-                                for tx in q.iter_mut() {
-                                    if tx.stage == TransactionStage::Preparing && tx.queue_id == current_queue_id {
-                                        tx.stage = TransactionStage::Failed("Cancelled because of previous transaction failure".into());
-                                        tx.details_tx.take().expect("Transaction details sender should have not been taken until previous transaction in queue is near-final").send(Err(error.clone())).ok();
+                                    q[tx_current_index].stage = TransactionStage::Failed(error.clone());
+                                    for tx in q.iter_mut() {
+                                        if tx.stage == TransactionStage::Preparing && tx.queue_id == current_queue_id {
+                                            tx.stage = TransactionStage::Failed("Cancelled because of previous transaction failure".into());
+                                            tx.details_tx.take().expect("Transaction details sender should have not been taken until previous transaction in queue is near-final").send(Err(error.clone())).ok();
+                                        }
                                     }
-                                }
-                                transaction.details_tx.expect("Transaction details sender should have been taken by this task").send(Err(error.clone())).ok();
-                            });
+                                    transaction.details_tx.expect("Transaction details sender should have been taken by this task").send(Err(error.clone())).ok();
+                                });
                                 set_current_index.update(|i| *i += 1);
                                 Delay::new(Duration::from_secs(5)).await;
                                 set_queue.update(|q| {
@@ -769,26 +871,30 @@ pub fn provide_transaction_queue_context() {
                                     q[tx_current_index].stage = TransactionStage::Doomslug
                                 });
                                 transaction
-                            .details_tx
-                            .expect(
-                                "Transaction details sender should have been taken by this task",
-                            )
-                            .send(Ok(details))
-                            .ok();
+                                    .details_tx
+                                    .expect(
+                                        "Transaction details sender should have been taken by this task",
+                                    )
+                                    .send(Ok(details))
+                                    .ok();
                             }
                             Err(e) => {
+                                if matches!(pending_tx, TransactionResult::SignedDelegateAction) {
+                                    // get_tx_details is supposed to return an error because it hasn't been sent yet
+                                    return;
+                                }
                                 let error = format!("Transaction failed to execute: {e}");
                                 log::error!("{error}");
                                 set_queue.update(|q| {
-                                q[tx_current_index].stage = TransactionStage::Failed(error);
-                                for tx in q.iter_mut() {
-                                    if tx.stage == TransactionStage::Preparing && tx.queue_id == current_queue_id {
-                                        tx.stage = TransactionStage::Failed("Cancelled because of previous transaction failure".into());
-                                        tx.details_tx.take().expect("Transaction details sender should have not been taken until previous transaction in queue is near-final").send(Err(e.to_string())).ok();
+                                    q[tx_current_index].stage = TransactionStage::Failed(error);
+                                    for tx in q.iter_mut() {
+                                        if tx.stage == TransactionStage::Preparing && tx.queue_id == current_queue_id {
+                                            tx.stage = TransactionStage::Failed("Cancelled because of previous transaction failure".into());
+                                            tx.details_tx.take().expect("Transaction details sender should have not been taken until previous transaction in queue is near-final").send(Err(e.to_string())).ok();
+                                        }
                                     }
-                                }
-                                transaction.details_tx.expect("Transaction details sender should have been taken by this task").send(Err(e.to_string())).ok();
-                            });
+                                    transaction.details_tx.expect("Transaction details sender should have been taken by this task").send(Err(e.to_string())).ok();
+                                });
                                 set_is_processing.set(false);
                                 set_current_index.update(|i| *i += 1);
                                 return;

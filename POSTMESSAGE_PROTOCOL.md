@@ -137,7 +137,8 @@ The popup needs to be closed by the dApp after receiving `signed` or `error` mes
     "publicKey": "ed25519:...", // app's public key, used for signature verification
     "nonce": 0, // must be a recent timestamp in milliseconds since unix epoch
     "signature": "ed25519:...", // of sha256("${nonce}|${transactions}")
-    "transactions": "[ ... ]" // stringified JSON array of transaction objects as in https://github.com/near/wallet-selector/blob/30703fdfccb7138eead12a0a65c6b0dba89429d7/packages/core/src/lib/wallet/transactions.types.ts#L1-L78. For actions, it also accepts the real action syntax that is used in RPC communication, indexing, and Rust codebases, except for Delegate action which is unsupported
+    "transactions": "[ ... ]", // stringified JSON array of transaction objects as in https://github.com/near/wallet-selector/blob/30703fdfccb7138eead12a0a65c6b0dba89429d7/packages/core/src/lib/wallet/transactions.types.ts#L1-L78. For actions, it also accepts the real action syntax that is used in RPC communication, indexing, and Rust codebases, except for Delegate action which is unsupported
+    "mode": "Send", // or "SignDelegateActions". Defaults to "Send" if omitted
   }
 }
 ```
@@ -150,11 +151,15 @@ The popup needs to be closed by the dApp after receiving `signed` or `error` mes
 Success:
 ```jsonc
 {
-  "type": "sent",
+  "type": "sent", // is always "sent", even if mode is not "Send"
   "outcomes": [
     { /* FinalExecutionOutcomeViewEnum in Rust, same type as returned by RPC, but possibly different from what typescript libraries provide */ },
     ...
-  ]
+  ], // this field only exists if mode is "Send"
+  "signedDelegateActions": [
+    { /* SignedDelegateAction in Rust */ },
+    ...
+  ] // this field only exists if mode is "SignDelegateActions"
 }
 ```
 

@@ -65,6 +65,11 @@ impl ConnectedApp {
                 actions,
                 receiver_id,
                 can_be_sponsored: _,
+            }
+            | TransactionType::SignDelegateAction {
+                actions,
+                receiver_id,
+                ..
             } => {
                 if self.autoconfirm_all {
                     return true;
@@ -82,7 +87,7 @@ impl ConnectedApp {
 
                 false
             }
-            TransactionType::NearIntents { .. } => false,
+            TransactionType::NearIntents { .. } => self.autoconfirm_all,
         }
     }
 }
