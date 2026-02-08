@@ -35,7 +35,7 @@ function base64Encode(bytes) {
  * @param bytes - The byte array to encode
  * @returns The base58 encoded string
  */
-function base58Encode(bytes) {
+export function base58Encode(bytes) {
     const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
     let bytesArray;
     if (!(bytes instanceof Uint8Array)) {
