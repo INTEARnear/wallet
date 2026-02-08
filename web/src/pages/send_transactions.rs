@@ -974,13 +974,10 @@ pub fn SendTransactions() -> impl IntoView {
                             };
                             let message = SendMessage::Sent {
                                 result: ResultToSend::Send {
-                                outcomes:
-                                    outcomes
-                                        .into_iter()
-                                        .map(|d| {
-                                            FinalExecutionOutcomeViewEnum::FinalExecutionOutcomeWithReceipt(d)
-                                        })
-                                        .collect(),
+                                outcomes: outcomes
+                                    .into_iter()
+                                    .map(FinalExecutionOutcomeViewEnum::FinalExecutionOutcomeWithReceipt)
+                                    .collect(),
                             }
                             };
                             post_to_opener(message, true);

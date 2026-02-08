@@ -75,7 +75,7 @@ function base58Encode(bytes) {
  * @param str - The base58 encoded string
  * @returns The decoded byte array
  */
-function base58Decode(str) {
+export function base58Decode(str) {
     const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
     const ALPHABET_MAP = {};
     for (let i = 0; i < ALPHABET.length; i++) {
@@ -347,7 +347,7 @@ class ConnectedAccount {
             sendMessageType: 'signMessage',
             sendData: signMessageData,
             successMessageType: 'signed',
-            onSuccess: (data) => {
+            onSuccess: async (data) => {
                 return {
                     accountId: data.signature.accountId,
                     publicKey: data.signature.publicKey,
@@ -363,10 +363,10 @@ class ConnectedAccount {
     /**
      * Sends transactions to be signed and executed via wallet popup
      * @param transactions - Array of transactions to send. Each transaction specifies signerId, receiverId, and actions.
-     * @returns A promise that resolves with the execution outcomes, or null if user rejected
+     * @returns A promise that resolves with the execution outcomes (or signed delegate actions if onlySignDelegate is true), or null if user rejected
      * @throws Error if not connected or sending fails
      */
-    async sendTransactions(transactions) {
+    async sendTransactions(transactions, onlySignDelegate = false) {
         if (this.disconnected) {
             throw new Error('Account is disconnected');
         }
@@ -399,7 +399,8 @@ class ConnectedAccount {
             publicKey,
             nonce,
             signature,
-            transactions: transactionsJson
+            transactions: transactionsJson,
+            mode: onlySignDelegate ? 'SignDelegateActions' : 'Send'
         };
         const walletUrl = this.#connector.walletUrl;
         const logoutBridgeUrl = this.#connector.logoutBridgeUrl;
@@ -410,10 +411,18 @@ class ConnectedAccount {
             sendMessageType: 'signAndSendTransactions',
             sendData: sendTransactionsData,
             successMessageType: 'sent',
-            onSuccess: (data) => {
-                return {
-                    outcomes: data.outcomes
-                };
+            onSuccess: async (data) => {
+                if (data.outcomes) {
+                    return {
+                        outcomes: data.outcomes
+                    };
+                }
+                if (data.signedDelegateActions) {
+                    return {
+                        signedDelegateActions: data.signedDelegateActions
+                    };
+                }
+                throw new Error('No outcomes or signedDelegateActions returned from wallet, this should never happen, a bug on wallet side');
             },
             isUserRejection: (msg) => msg === "User rejected the transactions",
             description: "send a transaction",

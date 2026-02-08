@@ -1,4 +1,4 @@
-import IntearWalletConnector from "./intearwallet-connect.js";
+import IntearWalletConnector, { base58Decode } from "./intearwallet-connect.js";
 
 const selectorStorage = {
     get: async (key) => {
@@ -96,6 +96,63 @@ class IntearWalletAdapter {
             return result.outcomes;
         } else {
             throw new Error("User rejected the transactions");
+        }
+    }
+    async signDelegateActions({ network, signerId, delegateActions }) {
+        if (!this.near.connectedAccount) {
+            throw new Error("Account is not connected");
+        }
+        delegateActions = delegateActions.map(t => {
+            t.actions.forEach(fixAction);
+            return {
+                signerId: signerId ?? this.near.connectedAccount.accountId,
+                receiverId: t.receiverId,
+                actions: t.actions,
+            };
+        });
+        const result = await this.near.connectedAccount.sendTransactions(transactions);
+        if (result !== null) {
+            const signedDelegateActions = result.signedDelegateActions;
+            return {
+                signedDelegateActions: signedDelegateActions.map(s => {
+                    return {
+                        delegateHash: null, // Uint8Array
+                        signedDelegate: {
+                            delegateAction: {
+                                senderId: s.delegate_action.sender_id,
+                                receiverId: s.delegate_action.receiver_id,
+                                actions: s.delegate_action.actions, // TODO check Action type
+                                nonce: BigInt(s.delegate_action.nonce),
+                                maxBlockHeight: BigInt(s.delegate_action.max_block_height),
+                                publicKey: {
+                                    enum: s.delegate_action.public_key.split(":")[0] == "ed25519" ? "ed25519Key" : "secp256k1Key",
+                                    ed25519Key: s.delegate_action.public_key.split(":")[0] == "ed25519" ? {
+                                        keyType: 0,
+                                        data: base58Decode(s.delegate_action.public_key.split(":")[1]),
+                                    } : undefined,
+                                    secp256k1Key: s.delegate_action.public_key.split(":")[0] == "secp256k1" ? {
+                                        keyType: 1,
+                                        data: base58Decode(s.delegate_action.public_key.split(":")[1]),
+                                    } : undefined,
+                                },
+                                signature: {
+                                    enum: s.signature.split(":")[0] == "ed25519" ? "ed25519Signature" : "secp256k1Signature",// todo
+                                    ed25519Signature: s.signature.split(":")[0] == "ed25519" ? {
+                                        keyType: 0,
+                                        data: base58Decode(s.signature.split(":")[1]),
+                                    } : undefined,
+                                    secp256k1Signature: s.signature.split(":")[0] == "secp256k1" ? {
+                                        keyType: 1,
+                                        data: base58Decode(s.signature.split(":")[1]),
+                                    } : undefined,
+                                },
+                            }
+                        }
+                    };
+                })
+            };
+        } else {
+            throw new Error("User rejected signing the delegate actions");
         }
     }
 }
