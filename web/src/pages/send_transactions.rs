@@ -83,6 +83,18 @@ pub enum SendMessage {
     },
 }
 
+#[derive(Serialize, Debug)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum SendMessageOld {
+    Ready,
+    Sent {
+        outcomes: Vec<FinalExecutionOutcomeViewEnum>,
+    },
+    Error {
+        message: String,
+    },
+}
+
 #[derive(Serialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum ResultToSend {
@@ -631,6 +643,17 @@ pub fn SendTransactions() -> impl IntoView {
         }
     };
 
+    let post_to_opener_old = move |message: SendMessageOld, close_window: bool| {
+        if let Some(session_id) = tauri_session_id.get_untracked() {
+            spawn_local(submit_tauri_response(session_id, message, close_window));
+        } else {
+            let js_value = serialize_to_js_value_old(&message).unwrap();
+            opener()
+                .post_message(&js_value, &origin.read_untracked())
+                .expect("Failed to send message");
+        }
+    };
+
     window_event_listener(leptos::ev::message, move |event| {
         if is_debug_enabled() {
             log::info!(
@@ -974,15 +997,31 @@ pub fn SendTransactions() -> impl IntoView {
                                     return;
                                 }
                             };
-                            let message = SendMessage::Sent {
-                                result: ResultToSend::Send {
-                                outcomes: outcomes
-                                    .into_iter()
-                                    .map(FinalExecutionOutcomeViewEnum::FinalExecutionOutcomeWithReceipt)
-                                    .collect(),
-                            }
+                            match connected_app()
+                                .map(|app| app.connector_version)
+                                .unwrap_or_default()
+                            {
+                                ConnectorVersion::V1 | ConnectorVersion::V2 => {
+                                    let message = SendMessageOld::Sent {
+                                        outcomes: outcomes
+                                            .into_iter()
+                                            .map(FinalExecutionOutcomeViewEnum::FinalExecutionOutcomeWithReceipt)
+                                            .collect(),
+                                    };
+                                    post_to_opener_old(message, true);
+                                }
+                                ConnectorVersion::V3 => {
+                                    let message = SendMessage::Sent {
+                                        result: ResultToSend::Send {
+                                            outcomes: outcomes
+                                                .into_iter()
+                                                .map(FinalExecutionOutcomeViewEnum::FinalExecutionOutcomeWithReceipt)
+                                                .collect(),
+                                        }
+                                    };
+                                    post_to_opener(message, true);
+                                }
                             };
-                            post_to_opener(message, true);
                         }
                         Err(_) => {
                             log::error!("Failed to fetch transaction details");
