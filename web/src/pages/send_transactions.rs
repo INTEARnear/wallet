@@ -943,9 +943,11 @@ pub fn SendTransactions() -> impl IntoView {
 
         match mode {
             SendTransactionsMode::Send => {
+                log::info!("Sending transactions");
                 let details = futures_util::future::join_all(details_receivers);
                 spawn_local(async move {
                     let details = details.await.into_iter().collect::<Result<Vec<_>, _>>();
+                    log::info!("Details of all transactions: {details:?}");
                     match details {
                         Ok(details) => {
                             let outcomes = details
