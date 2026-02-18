@@ -10,6 +10,7 @@ use leptos::ev::{mousemove, mouseup, scroll, touchcancel, touchend, touchmove};
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_router::components::A;
+use leptos_router::hooks::use_location;
 use leptos_use::{
     UseEventListenerOptions, UseIntervalFnOptions, use_event_listener,
     use_event_listener_with_options, use_interval_fn, use_interval_fn_with_options,
@@ -734,6 +735,7 @@ pub fn AccountSelector() -> impl IntoView {
     Effect::new(move |_| {
         if accounts_context.accounts.get().accounts.is_empty()
             && !accounts_context.is_encrypted.get()
+            && use_location().pathname.get() != "/auto-import-secret-key"
         {
             set_expanded(true);
             set_modal_state.set(ModalState::Creating {

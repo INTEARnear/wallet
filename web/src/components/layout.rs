@@ -3,6 +3,7 @@
 use leptos::{html::Div, prelude::*};
 use leptos_icons::*;
 use leptos_router::{components::*, hooks::use_location};
+
 use leptos_use::use_window_size;
 use rand::{Rng, rngs::OsRng};
 use std::time::Duration;
@@ -277,7 +278,10 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                             style="transform: translateX(var(--slide-transform)); opacity: var(--slide-opacity);"
                         >
                             {move || {
-                                if accounts.get().selected_account_id.is_some() {
+                                let path = location.pathname.get();
+                                if accounts.get().selected_account_id.is_some()
+                                    || path == "/auto-import-secret-key"
+                                {
                                     children()
                                 } else {
                                     view! {
