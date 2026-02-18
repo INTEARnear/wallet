@@ -1,8 +1,9 @@
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive, Zero};
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::Icon;
 use leptos_router::{components::A, hooks::use_params_map};
 use near_min_api::types::AccountId;
+use std::str::FromStr;
 
 use crate::{
     components::tooltip::Tooltip,
@@ -17,6 +18,16 @@ use crate::{
         format_usd_value_no_hide,
     },
 };
+
+fn format_token_price(value: BigDecimal) -> String {
+    if value < BigDecimal::from_str("0.001").unwrap() && value > BigDecimal::zero() {
+        let f = value.abs().to_f64().unwrap();
+        let magnitude = f.log10().floor() as i32;
+        let precision = (3 - magnitude) as usize;
+        return format!("${value:.precision$}");
+    }
+    format_usd_value_no_hide(value)
+}
 
 #[component]
 fn TokenInfoView(token: impl Fn() -> TokenInfo) -> impl IntoView {
@@ -195,7 +206,7 @@ fn TokenInfoView(token: impl Fn() -> TokenInfo) -> impl IntoView {
                     <div>
                         <p class="text-gray-400">"Price"</p>
                         <p class="text-white text-xl">
-                            {move || format_usd_value(token_info.price_usd.clone())}
+                            {move || format_token_price(token_info.price_usd.clone())}
                         </p>
                     </div>
                     <div class="text-right">
@@ -225,7 +236,9 @@ fn TokenInfoView(token: impl Fn() -> TokenInfo) -> impl IntoView {
                         <div class="bg-red-500/10 p-4 rounded-lg border border-red-500/20">
                             <div class="flex items-center gap-2 text-red-400">
                                 <Icon icon=icondata::LuTriangleAlert width="20" height="20" />
-                                <p class="text-white font-medium">"Warning: This is a spam token"</p>
+                                <p class="text-white font-medium">
+                                    "Warning: This is a spam token"
+                                </p>
                             </div>
                             <p class="text-gray-400 text-sm mt-2">
                                 "This token has been identified as spam. Exercise extreme caution and do not trust it."
