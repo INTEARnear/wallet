@@ -72,10 +72,3 @@ tauri-plugin-biometric = "2"
 [features]
 default = []
 alternative_wasm_protocol = []
-
-[profile.release]
-codegen-units = 1
-lto = true
-strip = true
-trim-paths = "all"
-rustflags = ["-Cdebuginfo=0", "-Zthreads=8"]
