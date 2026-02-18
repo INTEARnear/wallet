@@ -400,6 +400,7 @@ pub fn AccountSelector() -> impl IntoView {
     let (profile_images, set_profile_images) =
         signal::<HashMap<AccountId, Option<String>>>(HashMap::new());
     let network = expect_context::<NetworkContext>();
+    let location = use_location();
 
     let (drag_state, set_drag_state) = signal::<Option<DragState>>(None);
     let scroll_container_ref = NodeRef::<leptos::html::Div>::new();
@@ -735,7 +736,7 @@ pub fn AccountSelector() -> impl IntoView {
     Effect::new(move |_| {
         if accounts_context.accounts.get().accounts.is_empty()
             && !accounts_context.is_encrypted.get()
-            && use_location().pathname.get() != "/auto-import-secret-key"
+            && location.pathname.get_untracked() != "/auto-import-secret-key"
         {
             set_expanded(true);
             set_modal_state.set(ModalState::Creating {

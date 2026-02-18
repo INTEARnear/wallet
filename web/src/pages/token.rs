@@ -53,7 +53,7 @@ fn TokenInfoView(token: impl Fn() -> TokenInfo) -> impl IntoView {
     let TokensContext { tokens, .. } = expect_context::<TokensContext>();
     let user_balance = move || {
         tokens
-            .get()
+            .read()
             .iter()
             .find(|t| t.token.account_id == token_account_id)
             .map(|t| {

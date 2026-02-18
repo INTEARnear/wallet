@@ -3,7 +3,6 @@
 use leptos::{html::Div, prelude::*};
 use leptos_icons::*;
 use leptos_router::{components::*, hooks::use_location};
-
 use leptos_use::use_window_size;
 use rand::{Rng, rngs::OsRng};
 use std::time::Duration;
@@ -233,6 +232,9 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
         }
     });
 
+    let is_valid_without_account =
+        Memo::new(move |_| location.pathname.get() == "/auto-import-secret-key");
+
     view! {
         <ErrorBoundary fallback=|errors| {
             view! {
@@ -262,7 +264,10 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                     <PasswordUnlockOverlay />
                     <TransactionQueueOverlay />
                     {move || {
-                        match &*modal.read() { Some(modal) => { modal() } _ => { ().into_any() }}
+                        match &*modal.read() {
+                            Some(modal) => modal(),
+                            _ => ().into_any(),
+                        }
                     }}
                     <div class="p-2 sm:p-4">
                         <WalletHeader />
@@ -278,9 +283,8 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                             style="transform: translateX(var(--slide-transform)); opacity: var(--slide-opacity);"
                         >
                             {move || {
-                                let path = location.pathname.get();
                                 if accounts.get().selected_account_id.is_some()
-                                    || path == "/auto-import-secret-key"
+                                    || is_valid_without_account()
                                 {
                                     children()
                                 } else {
