@@ -120,7 +120,7 @@ impl Network {
                 .find(|n| n.id == *id)
                 .map(|n| Network::Localnet(Box::new(n.clone())))
                 .ok_or_else(|| {
-                    format!("Network '{id}' not found. Is the app deployed on a local network?")
+                    format!("Network '{id}' not found. If the app is deployed on a local network, you can add the network in Settings > Developer > Localnet, and the network ID must match.")
                 })?,
         })
     }
