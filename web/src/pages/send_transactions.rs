@@ -505,6 +505,7 @@ pub fn SendTransactions() -> impl IntoView {
     } = expect_context::<TransactionQueueContext>();
     let (expanded_actions, set_expanded_actions) =
         signal::<HashSet<(usize, usize)>>(HashSet::new());
+    let (error, set_error) = signal::<Option<String>>(None);
 
     let is_localhost_app = move |app: &crate::contexts::connected_apps_context::ConnectedApp| {
         let domain = app
@@ -542,12 +543,23 @@ pub fn SendTransactions() -> impl IntoView {
                             if let Some(message) = json.get("message") {
                                 let Some(message) = message.as_str() else {
                                     log::error!("Bridge: Message is not a string");
+                                    set_error(Some(
+                                        "Failed to receive transaction details: unexpected response format".to_string(),
+                                    ));
+                                    set_loading(false);
                                     return;
                                 };
-                                let Ok(message) = serde_json::from_str::<ReceiveMessage>(message)
-                                else {
-                                    log::error!("Bridge: Failed to parse message: {message}");
-                                    return;
+                                let message = match serde_json::from_str::<ReceiveMessage>(message)
+                                {
+                                    Ok(message) => message,
+                                    Err(e) => {
+                                        log::error!("Bridge: Failed to parse message: {e}");
+                                        set_error(Some(format!(
+                                            "Failed to parse the transaction request from the app: {e}\nMessage: {message}"
+                                        )));
+                                        set_loading(false);
+                                        return;
+                                    }
                                 };
                                 log::info!("Bridge: Request data: {:?}", message);
                                 set_tauri_session_id(Some(session_id.clone()));
@@ -558,10 +570,14 @@ pub fn SendTransactions() -> impl IntoView {
                                 }
                             } else {
                                 log::warn!("Bridge: No message field in response");
+                                set_error(Some("No message field in response".to_string()));
+                                set_loading(false);
                             }
                         }
                         Err(e) => {
                             log::error!("Bridge: Failed to parse response JSON: {e}");
+                            set_error(Some(format!("Failed to parse bridge response JSON: {e}")));
+                            set_loading(false);
                         }
                     }
                 }
@@ -570,9 +586,18 @@ pub fn SendTransactions() -> impl IntoView {
                         "Bridge: Bridge service responded with status {}",
                         response.status()
                     );
+                    set_error(Some(format!(
+                        "Connection bridge returned an error (HTTP {})",
+                        response.status()
+                    )));
+                    set_loading(false);
                 }
                 Err(e) => {
                     log::error!("Bridge: Failed to connect to bridge service: {e}");
+                    set_error(Some(
+                        "Failed to connect to the connection bridge service".to_string(),
+                    ));
+                    set_loading(false);
                 }
             }
         });
@@ -1098,13 +1123,25 @@ pub fn SendTransactions() -> impl IntoView {
         <div class="flex flex-col items-center justify-center min-h-[calc(80vh-100px)] pt-4 pb-4">
             {move || {
                 if loading.get() {
-                    view! {
-                        <div class="flex flex-col items-center gap-4">
-                            <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-white"></div>
-                            <p class="text-white text-lg">"Receiving transaction details..."</p>
-                        </div>
+                    if let Some(error_msg) = error.get() {
+                        view! {
+                            <div class="flex flex-col items-center gap-4 text-center max-w-sm">
+                                <p class="text-red-400 text-lg font-semibold">
+                                    "Transaction Error"
+                                </p>
+                                <p class="text-neutral-300 text-sm">{error_msg}</p>
+                            </div>
+                        }
+                            .into_any()
+                    } else {
+                        view! {
+                            <div class="flex flex-col items-center gap-4">
+                                <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-white"></div>
+                                <p class="text-white text-lg">"Receiving transaction details..."</p>
+                            </div>
+                        }
+                            .into_any()
                     }
-                        .into_any()
                 } else {
                     view! {
                         <div class="flex flex-col items-center gap-6 max-w-md w-full">

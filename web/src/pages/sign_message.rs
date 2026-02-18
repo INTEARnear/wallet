@@ -1300,6 +1300,7 @@ pub fn SignMessage() -> impl IntoView {
     let (request_data, set_request_data) = signal::<Option<SignMessageRequest>>(None);
     let (origin, set_origin) = signal::<String>("*".to_string());
     let (tauri_session_id, set_tauri_session_id) = signal::<Option<String>>(None);
+    let (error, set_error) = signal::<Option<String>>(None);
     let ConnectedAppsContext { apps, .. } = expect_context::<ConnectedAppsContext>();
     let accounts_context = expect_context::<AccountsContext>();
     let ledger_signing_state = accounts_context.ledger_signing_state;
@@ -1323,12 +1324,24 @@ pub fn SignMessage() -> impl IntoView {
                             if let Some(message) = json.get("message") {
                                 let Some(message) = message.as_str() else {
                                     log::error!("Bridge: Message is not a string");
+                                    set_error(Some(
+                                        "Failed to receive sign request: message is not a string"
+                                            .to_string(),
+                                    ));
+                                    set_loading(false);
                                     return;
                                 };
-                                let Ok(message) = serde_json::from_str::<ReceiveMessage>(message)
-                                else {
-                                    log::error!("Bridge: Failed to parse message: {message}");
-                                    return;
+                                let message = match serde_json::from_str::<ReceiveMessage>(message)
+                                {
+                                    Ok(message) => message,
+                                    Err(e) => {
+                                        log::error!("Bridge: Failed to parse message: {e}");
+                                        set_error(Some(format!(
+                                            "Failed to parse the sign request from the app: {e}\nMessage: {message}"
+                                        )));
+                                        set_loading(false);
+                                        return;
+                                    }
                                 };
                                 log::info!("Bridge: Request data: {:?}", message);
                                 set_tauri_session_id(Some(session_id.clone()));
@@ -1339,10 +1352,14 @@ pub fn SignMessage() -> impl IntoView {
                                 }
                             } else {
                                 log::warn!("Bridge: No message field in response");
+                                set_error(Some("No message field in response".to_string()));
+                                set_loading(false);
                             }
                         }
                         Err(e) => {
                             log::error!("Bridge: Failed to parse response JSON: {e}");
+                            set_error(Some(format!("Failed to parse bridge response JSON: {e}")));
+                            set_loading(false);
                         }
                     }
                 }
@@ -1351,9 +1368,18 @@ pub fn SignMessage() -> impl IntoView {
                         "Bridge: Bridge service responded with status {}",
                         response.status()
                     );
+                    set_error(Some(format!(
+                        "Connection bridge returned an error (HTTP {})",
+                        response.status()
+                    )));
+                    set_loading(false);
                 }
                 Err(e) => {
                     log::error!("Bridge: Failed to connect to bridge service: {e}");
+                    set_error(Some(
+                        "Failed to connect to the connection bridge service".to_string(),
+                    ));
+                    set_loading(false);
                 }
             }
         });
@@ -1569,13 +1595,25 @@ pub fn SignMessage() -> impl IntoView {
         <div class="flex flex-col items-center justify-center min-h-[calc(80vh-100px)] p-4">
             {move || {
                 if loading.get() {
-                    view! {
-                        <div class="flex flex-col items-center gap-4">
-                            <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-white"></div>
-                            <p class="text-white text-lg">"Receiving message to sign..."</p>
-                        </div>
+                    if let Some(error_msg) = error.get() {
+                        view! {
+                            <div class="flex flex-col items-center gap-4 text-center max-w-sm">
+                                <p class="text-red-400 text-lg font-semibold">
+                                    "Sign Request Error"
+                                </p>
+                                <p class="text-neutral-300 text-sm">{error_msg}</p>
+                            </div>
+                        }
+                            .into_any()
+                    } else {
+                        view! {
+                            <div class="flex flex-col items-center gap-4">
+                                <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-white"></div>
+                                <p class="text-white text-lg">"Receiving message to sign..."</p>
+                            </div>
+                        }
+                            .into_any()
                     }
-                        .into_any()
                 } else {
                     view! {
                         <div class="flex flex-col items-center gap-6 max-w-md w-full">

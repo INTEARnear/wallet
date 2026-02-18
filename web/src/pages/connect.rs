@@ -110,18 +110,19 @@ impl<'de> Deserialize<'de> for NetworkLowercase {
 }
 
 impl Network {
-    fn from_lowecase(network: NetworkLowercase, config: &WalletConfig) -> Self {
-        match network {
+    fn from_lowecase(network: NetworkLowercase, config: &WalletConfig) -> Result<Self, String> {
+        Ok(match network {
             NetworkLowercase::Mainnet => Network::Mainnet,
             NetworkLowercase::Testnet => Network::Testnet,
-            NetworkLowercase::Local(network) => {
-                if let Some(network) = config.custom_networks.iter().find(|n| n.id == network) {
-                    Network::Localnet(Box::new(network.clone()))
-                } else {
-                    panic!("Network not found");
-                }
-            }
-        }
+            NetworkLowercase::Local(ref id) => config
+                .custom_networks
+                .iter()
+                .find(|n| n.id == *id)
+                .map(|n| Network::Localnet(Box::new(n.clone())))
+                .ok_or_else(|| {
+                    format!("Network '{id}' not found. Is the app deployed on a local network?")
+                })?,
+        })
     }
 }
 
@@ -227,6 +228,7 @@ pub fn Connect() -> impl IntoView {
     } = expect_context::<TransactionQueueContext>();
     let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
     let (tauri_session_id, set_tauri_session_id) = signal::<Option<String>>(None);
+    let (error, set_error) = signal::<Option<String>>(None);
     let navigate = use_navigate();
 
     Effect::new(move |_| {
@@ -248,11 +250,14 @@ pub fn Connect() -> impl IntoView {
             set_origin_for_post_message(evt_origin.clone());
             set_actual_origin(Some(evt_origin.clone()));
         } else {
-            set_actual_origin(Some(
-                data.actual_origin
-                    .clone()
-                    .expect("No actual_origin sent in V2+"),
-            ));
+            let Some(origin) = data.actual_origin.clone() else {
+                set_error(Some(
+                    "Protocol error: sign-in request is missing required in V2+ actual_origin field".to_string(),
+                ));
+                set_loading(false);
+                return;
+            };
+            set_actual_origin(Some(origin));
         }
         set_loading(false);
         let has_contract = data.contract_id.as_deref().is_some_and(|v| !v.is_empty());
@@ -278,12 +283,23 @@ pub fn Connect() -> impl IntoView {
                             if let Some(message) = json.get("message") {
                                 let Some(message) = message.as_str() else {
                                     log::error!("Bridge: Message is not a string");
+                                    set_error(Some(
+                                        "Failed to receive connection details: unexpected response format".to_string(),
+                                    ));
+                                    set_loading(false);
                                     return;
                                 };
-                                let Ok(message) = serde_json::from_str::<ReceiveMessage>(message)
-                                else {
-                                    log::error!("Bridge: Failed to parse message: {message}");
-                                    return;
+                                let message = match serde_json::from_str::<ReceiveMessage>(message)
+                                {
+                                    Ok(message) => message,
+                                    Err(e) => {
+                                        log::error!("Bridge: Failed to parse message: {e}");
+                                        set_error(Some(format!(
+                                            "Failed to parse the connection request from the app: {e}\nMessage: {message}"
+                                        )));
+                                        set_loading(false);
+                                        return;
+                                    }
                                 };
                                 log::info!("Bridge request data: {:?}", message);
                                 set_tauri_session_id(Some(session_id.clone()));
@@ -300,10 +316,14 @@ pub fn Connect() -> impl IntoView {
                                 }
                             } else {
                                 log::warn!("Bridge: No message field in response");
+                                set_error(Some("No message field in response".to_string()));
+                                set_loading(false);
                             }
                         }
                         Err(e) => {
                             log::error!("Bridge: Failed to parse response JSON: {e}");
+                            set_error(Some(format!("Failed to parse bridge response JSON: {e}")));
+                            set_loading(false);
                         }
                     }
                 }
@@ -312,9 +332,18 @@ pub fn Connect() -> impl IntoView {
                         "Bridge: Bridge service responded with status {}",
                         response.status()
                     );
+                    set_error(Some(format!(
+                        "Bridge service returned an error (HTTP {})",
+                        response.status()
+                    )));
+                    set_loading(false);
                 }
                 Err(e) => {
                     log::error!("Bridge: Failed to connect to bridge service: {e}");
+                    set_error(Some(
+                        "Failed to connect to the connection bridge service".to_string(),
+                    ));
+                    set_loading(false);
                 }
             }
         });
@@ -764,13 +793,23 @@ pub fn Connect() -> impl IntoView {
         <div class="flex flex-col items-center justify-center min-h-[calc(80vh-100px)] p-4">
             {move || {
                 if loading.get() {
-                    view! {
-                        <div class="flex flex-col items-center gap-4">
-                            <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-white"></div>
-                            <p class="text-white text-lg">"Receiving connection details..."</p>
-                        </div>
+                    if let Some(error_msg) = error.get() {
+                        view! {
+                            <div class="flex flex-col items-center gap-4 text-center max-w-sm">
+                                <p class="text-red-400 text-lg font-semibold">"Connection Error"</p>
+                                <p class="text-neutral-300 text-sm">{error_msg}</p>
+                            </div>
+                        }
+                            .into_any()
+                    } else {
+                        view! {
+                            <div class="flex flex-col items-center gap-4">
+                                <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-white"></div>
+                                <p class="text-white text-lg">"Receiving connection details..."</p>
+                            </div>
+                        }
+                            .into_any()
                     }
-                        .into_any()
                 } else if let Some(selected_account_id) = accounts_context
                     .accounts
                     .get()
@@ -786,10 +825,29 @@ pub fn Connect() -> impl IntoView {
                         log::error!("Selected account not found");
                         return ().into_any();
                     };
-                    let request_network = Network::from_lowecase(
-                        request_data().expect("No request data").network_id,
+                    let Some(rd) = request_data() else {
+                        return view! {
+                            <p class="text-red-400 text-sm">"Error: connection data unavailable"</p>
+                        }
+                            .into_any();
+                    };
+                    let request_network = match Network::from_lowecase(
+                        rd.network_id,
                         &config.read(),
-                    );
+                    ) {
+                        Ok(n) => n,
+                        Err(e) => {
+                            return view! {
+                                <div class="flex flex-col items-center gap-4 text-center max-w-sm">
+                                    <p class="text-red-400 text-lg font-semibold">
+                                        "Connection Error"
+                                    </p>
+                                    <p class="text-neutral-300 text-sm">{e}</p>
+                                </div>
+                            }
+                                .into_any();
+                        }
+                    };
                     let network_mismatch = selected_account_network != request_network
                         && !matches!(selected_account_network, Network::Localnet(_));
 
@@ -839,8 +897,9 @@ pub fn Connect() -> impl IntoView {
                                             <p class="text-neutral-400 text-sm">"Connecting to"</p>
                                             <p class="text-white font-medium wrap-anywhere">
                                                 {move || {
-                                                    let actual_origin = actual_origin()
-                                                        .expect("No actual origin");
+                                                    let Some(actual_origin) = actual_origin() else {
+                                                        return "WARNING: Unknown origin".to_string();
+                                                    };
                                                     let domain = actual_origin
                                                         .trim_start_matches("http://")
                                                         .trim_start_matches("https://")
