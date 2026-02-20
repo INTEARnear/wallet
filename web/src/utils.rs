@@ -84,7 +84,11 @@ pub fn format_number(number: BigDecimal, short: bool, suffixes: bool) -> String 
                 .trim_end_matches('.')
                 .to_string();
         }
-        return amount_str;
+        return if amount_str.is_empty() {
+            "0".to_string()
+        } else {
+            amount_str
+        }
     }
 
     if suffixes {

@@ -6900,7 +6900,7 @@ impl fmt::Display for ServerError {
     Default,
 )]
 #[serde(transparent)]
-pub struct U128(#[serde(with = "dec_format")] u128);
+pub struct U128(#[serde(with = "dec_format")] pub u128);
 
 #[derive(
     Debug,
@@ -6920,7 +6920,7 @@ pub struct U128(#[serde(with = "dec_format")] u128);
     Default,
 )]
 #[serde(transparent)]
-pub struct U64(#[serde(with = "dec_format")] u64);
+pub struct U64(#[serde(with = "dec_format")] pub u64);
 
 /// Wrapper type over [`near_gas::NearGas`], which itself is a wrapper type over u64.
 ///
