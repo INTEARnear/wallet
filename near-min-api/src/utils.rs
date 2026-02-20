@@ -30,29 +30,34 @@ pub mod dec_format {
         fn from_u64(value: u64) -> Self;
     }
 
-    impl DecType for u64 {
-        fn serialize(&self) -> Option<String> {
-            Some(self.to_string())
-        }
-        fn try_from_str(value: &str) -> Result<Self, std::num::ParseIntError> {
-            Self::from_str_radix(value, 10)
-        }
-        fn from_u64(value: u64) -> Self {
-            value
-        }
+    macro_rules! impl_dec_type {
+        ($type:ty) => {
+            impl DecType for $type {
+                fn serialize(&self) -> Option<String> {
+                    Some(self.to_string())
+                }
+                fn try_from_str(value: &str) -> Result<Self, std::num::ParseIntError> {
+                    Self::from_str_radix(value, 10)
+                }
+                fn from_u64(value: u64) -> Self {
+                    <$type>::try_from(value).unwrap_or_else(|_| {
+                        panic!("Number out of bounds for {}", stringify!($type))
+                    })
+                }
+            }
+        };
     }
 
-    impl DecType for u128 {
-        fn serialize(&self) -> Option<String> {
-            Some(self.to_string())
-        }
-        fn try_from_str(value: &str) -> Result<Self, std::num::ParseIntError> {
-            Self::from_str_radix(value, 10)
-        }
-        fn from_u64(value: u64) -> Self {
-            value.into()
-        }
-    }
+    impl_dec_type!(i8);
+    impl_dec_type!(i16);
+    impl_dec_type!(i32);
+    impl_dec_type!(i64);
+    impl_dec_type!(i128);
+    impl_dec_type!(u8);
+    impl_dec_type!(u16);
+    impl_dec_type!(u32);
+    impl_dec_type!(u64);
+    impl_dec_type!(u128);
 
     impl<T: DecType> DecType for Option<T> {
         fn serialize(&self) -> Option<String> {
@@ -114,7 +119,7 @@ pub mod dec_format {
 pub mod dec_format_vec {
     use std::{fmt::Display, str::FromStr};
 
-    use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
+    use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 
     pub fn serialize<S, T>(value: &[T], serializer: S) -> Result<S::Ok, S::Error>
     where
