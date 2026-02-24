@@ -11,7 +11,7 @@ use crate::{
         tokens_context::{Token, TokenInfo, TokenScore, TokensContext},
     },
     data::learn::ARTICLES,
-    utils::{balance_to_decimal, format_usd_value_no_hide},
+    utils::{balance_to_decimal, format_token_price},
 };
 
 #[derive(Clone)]
@@ -178,7 +178,7 @@ pub fn TrendingTokensSection() -> impl IntoView {
                                                     </div>
                                                     <div class="text-right">
                                                         <div class="text-white">
-                                                            {format_usd_value_no_hide(token.price)}
+                                                            {format_token_price(token.price)}
                                                         </div>
                                                         <div style=format!(
                                                             "color: {}",

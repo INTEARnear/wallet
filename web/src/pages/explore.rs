@@ -92,7 +92,7 @@ pub fn Explore() -> impl IntoView {
     view! {
         <div class="pt-4 lg:p-2">
             <h1 class="text-4xl font-bold mb-8 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                Explore NEAR Ecosystem
+                "Explore NEAR Ecosystem"
             </h1>
             {move || {
                 if protocols.with(|p| p.is_none()) {

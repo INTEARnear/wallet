@@ -88,7 +88,7 @@ pub fn format_number(number: BigDecimal, short: bool, suffixes: bool) -> String 
             "0".to_string()
         } else {
             amount_str
-        }
+        };
     }
 
     if suffixes {
@@ -322,6 +322,16 @@ pub fn format_usd_value(value: BigDecimal) -> String {
     let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     if config().amounts_hidden {
         return "😭".to_string();
+    }
+    format_usd_value_no_hide(value)
+}
+
+pub fn format_token_price(value: BigDecimal) -> String {
+    if value < BigDecimal::from_str("0.001").unwrap() && value > BigDecimal::zero() {
+        let f = value.abs().to_f64().unwrap();
+        let magnitude = f.log10().floor() as i32;
+        let precision = (3 - magnitude) as usize;
+        return format!("${value:.precision$}");
     }
     format_usd_value_no_hide(value)
 }

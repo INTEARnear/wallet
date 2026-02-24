@@ -2298,7 +2298,11 @@ fn SwapSuccessModal(result: SwapResult) -> impl IntoView {
 
                     <div class="space-y-4">
                         <div class="bg-neutral-800 rounded-lg p-4">
-                            <div class="text-gray-400 text-sm mb-2">"You spent"</div>
+                            <div class="text-gray-400 text-sm mb-2">"You spent"
+                                <Show when=move || result.token_in.account_id == Token::Near>
+                                    " (including gas)"
+                                </Show>
+                            </div>
                             <div class="flex items-center gap-3">
                                 {match result.token_in.metadata.icon {
                                     Some(icon) => {
@@ -2752,7 +2756,10 @@ fn SwapConfirmationModal(
                                     let modal_clone = modal;
                                     spawn_local(
                                         execute_route(
-                                            confirmation_exec.amount_in,
+                                            match confirmation_exec.swap_mode {
+                                                SwapMode::ExactIn => confirmation_exec.amount_in,
+                                                SwapMode::ExactOut => confirmation_exec.estimated_amount_out,
+                                            },
                                             confirmation_exec.swap_mode,
                                             confirmation_exec.token_in,
                                             confirmation_exec.token_out,

@@ -1,9 +1,8 @@
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive, Zero};
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::Icon;
 use leptos_router::{components::A, hooks::use_params_map};
 use near_min_api::types::AccountId;
-use std::str::FromStr;
 
 use crate::{
     components::tooltip::Tooltip,
@@ -14,20 +13,10 @@ use crate::{
         },
     },
     utils::{
-        balance_to_decimal, fetch_token_info, format_token_amount, format_usd_value,
-        format_usd_value_no_hide,
+        balance_to_decimal, fetch_token_info, format_token_amount, format_token_price,
+        format_usd_value, format_usd_value_no_hide,
     },
 };
-
-fn format_token_price(value: BigDecimal) -> String {
-    if value < BigDecimal::from_str("0.001").unwrap() && value > BigDecimal::zero() {
-        let f = value.abs().to_f64().unwrap();
-        let magnitude = f.log10().floor() as i32;
-        let precision = (3 - magnitude) as usize;
-        return format!("${value:.precision$}");
-    }
-    format_usd_value_no_hide(value)
-}
 
 #[component]
 fn TokenInfoView(token: impl Fn() -> TokenInfo) -> impl IntoView {

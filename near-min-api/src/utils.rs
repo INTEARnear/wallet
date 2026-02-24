@@ -119,7 +119,7 @@ pub mod dec_format {
 pub mod dec_format_vec {
     use std::{fmt::Display, str::FromStr};
 
-    use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
     pub fn serialize<S, T>(value: &[T], serializer: S) -> Result<S::Ok, S::Error>
     where
