@@ -19,8 +19,8 @@ use crate::{
 };
 
 use super::create_token_modals::{
-    aidols_modal::AidolsModal, meme_cooking_modal::MemeCookingModal,
-    without_launchpad_modal::WithoutLaunchpadModal,
+    aidols_modal::AidolsModal, intear_launch_modal::IntearLaunchModal,
+    meme_cooking_modal::MemeCookingModal, without_launchpad_modal::WithoutLaunchpadModal,
 };
 
 pub fn generate_default_icon(symbol: &str) -> String {
@@ -209,12 +209,12 @@ fn supply_or_decimals_invalid(supply_str: &str, decimals_str: &str) -> bool {
         Err(_) => return false,
     };
 
-    let decimals: u32 = match decimals_str.parse() {
+    let decimals: u8 = match decimals_str.parse() {
         Ok(d) => d,
         Err(_) => return false,
     };
 
-    let result = decimal_to_balance(supply.clone(), decimals);
+    let result = decimal_to_balance(supply.clone(), decimals as u32);
 
     result == 0 || supply <= 0 || decimals == 0
 }
@@ -354,6 +354,27 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                     token_decimals={form.decimals.parse::<u32>().unwrap()}
                     token_image=token_image.clone()
                     original_image_data_url=original_image.clone()
+                    on_confirm=clear_form
+                />
+            }
+            .into_any()
+        })));
+    };
+
+    let open_intear_launch_modal = move || {
+        let form = form_data.get();
+        let token_image = form
+            .image
+            .clone()
+            .unwrap_or_else(|| generate_default_icon(&form.symbol));
+        modal_context.modal.set(Some(Box::new(move || {
+            view! {
+                <IntearLaunchModal
+                    token_symbol=form.symbol.clone()
+                    token_name=form.name.clone()
+                    token_supply={form.supply.parse().unwrap()}
+                    token_decimals={form.decimals.parse::<u8>().unwrap()}
+                    token_image=token_image.clone()
                     on_confirm=clear_form
                 />
             }
@@ -646,6 +667,29 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                     <div class="text-sm font-medium text-gray-300">"Choose Launch Method:"</div>
 
                     <button
+                        on:click=move |_| open_intear_launch_modal()
+                        disabled=move || !is_mainnet() || !is_form_valid()
+                        class="w-full px-4 py-3 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm rounded cursor-pointer text-left"
+                    >
+                        <div class="font-semibold">"Launch on Intear Launch"</div>
+                        <div class="text-xs text-amber-100 mt-1">
+                            "Official Intear launchpad, bonding curve-like (immediately deployed on Intear DEX)"
+                        </div>
+                    </button>
+                    {move || {
+                        if !is_mainnet() {
+                            view! {
+                                <div class="text-xs text-yellow-400 bg-yellow-950 p-2 rounded border border-yellow-700 mt-1">
+                                    "⚠️ Intear Launch is only available on mainnet"
+                                </div>
+                            }
+                                .into_any()
+                        } else {
+                            ().into_any()
+                        }
+                    }}
+
+                    <button
                         on:click=move |_| open_meme_cooking_modal()
                         disabled=move || {
                             let form = form_data.get();
@@ -691,7 +735,9 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                         class="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm rounded cursor-pointer text-left"
                     >
                         <div class="font-semibold">"Launch on Aidols"</div>
-                        <div class="text-xs text-blue-200 mt-1">"Bonding curve launch"</div>
+                        <div class="text-xs text-blue-200 mt-1">
+                            "Bonding curve launchpad for AI agents"
+                        </div>
                     </button>
                     {move || {
                         let form = form_data.get();
