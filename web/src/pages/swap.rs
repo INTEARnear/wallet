@@ -340,8 +340,8 @@ pub fn Swap() -> impl IntoView {
 
     let (_routes_action_handle, set_routes_action_handle) =
         signal::<Option<ActionAbortHandle>>(None);
-    let get_routes_action =
-        leptos::prelude::Action::new(move |(swap_request, wait_mode): &(SwapRequest, WaitMode)| {
+    let get_routes_action = leptos::prelude::Action::new(
+        move |(swap_request, wait_mode, router_url): &(SwapRequest, WaitMode, String)| {
             let swap_request = swap_request.clone();
             // This should always run before set_routes_action_handle.set(get_routes_action.dispatch(...)),
             // so we have time to abort the previous request
@@ -349,15 +349,17 @@ pub fn Swap() -> impl IntoView {
                 handle.abort();
             }
             let wait_mode = *wait_mode;
+            let router_url = router_url.clone();
             async move {
                 let (oneshot_tx, oneshot_rx) = futures_channel::oneshot::channel();
                 spawn_local(async move {
-                    let routes = get_routes(swap_request, wait_mode).await;
+                    let routes = get_routes(swap_request, wait_mode, router_url).await;
                     let _ = oneshot_tx.send(routes);
                 });
                 oneshot_rx.await.unwrap()
             }
-        });
+        },
+    );
 
     Effect::new(move || {
         validated_amount_entered.track();
@@ -511,6 +513,10 @@ pub fn Swap() -> impl IntoView {
                     skip_intents: true,
                     duration: Duration::from_millis(2000),
                 },
+                config
+                    .get()
+                    .custom_router_url
+                    .unwrap_or_else(|| dotenvy_macro::dotenv!("ROUTER_URL").to_string()),
             ));
             if selected_dexes.get().contains(&DexId::NearIntents) {
                 // Request 2: Fast, include intents. When including intents,
@@ -521,14 +527,24 @@ pub fn Swap() -> impl IntoView {
                         skip_intents: false,
                         duration: Duration::from_millis(2000),
                     },
+                    config
+                        .get()
+                        .custom_router_url
+                        .unwrap_or_else(|| dotenvy_macro::dotenv!("ROUTER_URL").to_string()),
                 ));
                 // Request 3: Full, include intents. Takes nearly 3 seconds.
-                set_routes_action_handle.set(Some(get_routes_action.dispatch((
-                    swap_request,
-                    WaitMode::Full {
-                        duration: Duration::from_millis(3000),
-                    },
-                ))));
+                set_routes_action_handle.set(Some(
+                    get_routes_action.dispatch((
+                        swap_request,
+                        WaitMode::Full {
+                            duration: Duration::from_millis(3000),
+                        },
+                        config
+                            .get()
+                            .custom_router_url
+                            .unwrap_or_else(|| dotenvy_macro::dotenv!("ROUTER_URL").to_string()),
+                    )),
+                ));
             }
         }
     });
@@ -617,6 +633,9 @@ pub fn Swap() -> impl IntoView {
                             WaitMode::Full {
                                 duration: Duration::from_millis(3000),
                             },
+                            config.get_untracked().custom_router_url.unwrap_or_else(|| {
+                                dotenvy_macro::dotenv!("ROUTER_URL").to_string()
+                            }),
                         ))));
                     }
                 }
@@ -1036,7 +1055,7 @@ pub fn Swap() -> impl IntoView {
                                     && get_routes_action.value().get().is_none();
                                 if !has_amount {
                                     view! {
-                                        <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-start gap-3 w-full min-h-[56px]">
+                                        <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-center gap-3 w-full min-h-[56px]">
                                             <span class="text-gray-400 font-medium text-sm">
                                                 "Enter amount"
                                             </span>
@@ -1193,6 +1212,15 @@ pub fn Swap() -> impl IntoView {
                                         }
                                             .into_any()
                                     }
+                                } else if let Some(Err(error)) = get_routes_action.value().get() {
+                                    view! {
+                                        <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-center gap-3 w-full min-h-[56px]">
+                                            <span class="text-red-400 font-medium text-sm text-center">
+                                                {format!("Router Connection Error: {}", error)}
+                                            </span>
+                                        </div>
+                                    }
+                                        .into_any()
                                 } else {
                                     // Fallback case
                                     view! {
@@ -1908,7 +1936,11 @@ pub enum WaitMode {
     Full { duration: Duration },
 }
 
-async fn get_routes(swap_request: SwapRequest, wait_mode: WaitMode) -> Result<Routes, String> {
+async fn get_routes(
+    swap_request: SwapRequest,
+    wait_mode: WaitMode,
+    router_url: String,
+) -> Result<Routes, String> {
     let mut filtered_dexes = swap_request.dexes.clone().unwrap_or_default();
 
     // Filter out NearIntents for fast mode when skip_intents is true
@@ -1932,7 +1964,7 @@ async fn get_routes(swap_request: SwapRequest, wait_mode: WaitMode) -> Result<Ro
         ..swap_request
     };
     let routes = reqwest::Client::new()
-        .get(format!("{}/route", dotenvy_macro::dotenv!("ROUTER_URL")))
+        .get(format!("{}/route", router_url.trim_end_matches('/')))
         .query(&swap_request)
         .send()
         .await
@@ -2298,10 +2330,11 @@ fn SwapSuccessModal(result: SwapResult) -> impl IntoView {
 
                     <div class="space-y-4">
                         <div class="bg-neutral-800 rounded-lg p-4">
-                            <div class="text-gray-400 text-sm mb-2">"You spent"
-                                <Show when=move || result.token_in.account_id == Token::Near>
-                                    " (including gas)"
-                                </Show>
+                            <div class="text-gray-400 text-sm mb-2">
+                                "You spent"
+                                <Show when=move || {
+                                    result.token_in.account_id == Token::Near
+                                }>" (including gas)"</Show>
                             </div>
                             <div class="flex items-center gap-3">
                                 {match result.token_in.metadata.icon {

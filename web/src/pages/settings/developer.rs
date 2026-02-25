@@ -89,6 +89,8 @@ pub fn DeveloperSettings() -> impl IntoView {
     let (network_statuses, set_network_statuses) =
         signal::<HashMap<String, NetworkStatus>>(HashMap::new());
     let navigate = use_navigate();
+    let default_router_url = dotenvy_macro::dotenv!("ROUTER_URL");
+    let (router_url_error, set_router_url_error) = signal::<Option<String>>(None);
 
     // Function to validate all networks on page load or config change
     let validate_all_networks = move || {
@@ -243,6 +245,34 @@ pub fn DeveloperSettings() -> impl IntoView {
         None
     };
 
+    let validate_router_url = move |url: &str| -> Option<String> {
+        if url.is_empty() {
+            return None;
+        }
+
+        if url.parse::<Url>().is_err() {
+            return Some("Invalid URL".to_string());
+        }
+
+        None
+    };
+
+    let save_router_url = move |s: &str| {
+        if let Some(error) = validate_router_url(&s) {
+            set_router_url_error(Some(error));
+            return;
+        }
+
+        set_router_url_error(None);
+        set_config.update(|config_data| {
+            config_data.custom_router_url = if s.is_empty() {
+                None
+            } else {
+                Some(s.to_string())
+            };
+        });
+    };
+
     let is_form_valid = move || {
         let form = form_data.get();
         let is_editing = matches!(editor_state.get(), EditorState::Editing(_));
@@ -287,6 +317,39 @@ pub fn DeveloperSettings() -> impl IntoView {
                         attr:class="min-w-5 min-h-5 text-gray-400"
                     />
                 </A>
+            </div>
+
+            // API overrides
+            <div class="flex flex-col gap-3">
+                <div class="text-lg font-semibold">"API overrides"</div>
+                <div class="p-4 bg-neutral-800 rounded-lg border border-neutral-700">
+                    <div class="flex flex-col gap-3">
+                        <div>
+                            <label class="block text-sm font-medium mb-1">
+                                "DEX Aggregator"
+                            </label>
+                            <input
+                                type="text"
+                                prop:value=move || config.get().custom_router_url.unwrap_or_default()
+                                on:input=move |ev| { save_router_url(&event_target_value(&ev)) }
+                                class="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded text-base text-white"
+                                placeholder=default_router_url
+                            />
+                            <div class="text-xs text-gray-500 mt-1">
+                                "Leave empty to use default"
+                            </div>
+                            {move || {
+                                router_url_error
+                                    .get()
+                                    .map(|error| {
+                                        view! {
+                                            <div class="text-sm text-red-400 mt-1">{error}</div>
+                                        }
+                                    })
+                            }}
+                        </div>
+                    </div>
+                </div>
             </div>
 
             // Localnet section

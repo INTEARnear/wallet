@@ -84,11 +84,7 @@ pub fn format_number(number: BigDecimal, short: bool, suffixes: bool) -> String 
                 .trim_end_matches('.')
                 .to_string();
         }
-        return if amount_str.is_empty() {
-            "0".to_string()
-        } else {
-            amount_str
-        };
+        return amount_str;
     }
 
     if suffixes {
@@ -289,7 +285,7 @@ pub fn format_number_with_config(
     number_config: &NumberConfig,
     suffixes: bool,
 ) -> String {
-    match number_config {
+    let s = match number_config {
         NumberConfig::Simple { short_amounts } => format_number(number, *short_amounts, suffixes),
         NumberConfig::Customizable { amount_format } => {
             let sanitized = sanitize_custom_format(*amount_format);
@@ -298,7 +294,8 @@ pub fn format_number_with_config(
                 .and_then(|value| format_number_with_intl(value, sanitized, None))
                 .unwrap_or_else(|| number.to_string())
         }
-    }
+    };
+    if s.is_empty() { "0".to_string() } else { s }
 }
 
 pub fn format_number_for_input(number: BigDecimal, number_config: &NumberConfig) -> String {

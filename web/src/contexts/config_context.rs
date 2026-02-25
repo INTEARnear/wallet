@@ -211,6 +211,8 @@ pub struct WalletConfig {
     pub ledger_mode: LedgerMode,
     #[serde(default)]
     pub number_config: NumberConfig,
+    #[serde(default)]
+    pub custom_router_url: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -725,6 +727,7 @@ impl Default for WalletConfig {
             autostart: false,
             swap_confirmation_enabled: true,
             custom_networks: vec![],
+            custom_router_url: None,
             biometric_enabled: false,
             prevent_screenshots: true,
             storage_persistence_warning_dismissed: false,
