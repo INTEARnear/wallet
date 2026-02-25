@@ -258,7 +258,7 @@ pub fn DeveloperSettings() -> impl IntoView {
     };
 
     let save_router_url = move |s: &str| {
-        if let Some(error) = validate_router_url(&s) {
+        if let Some(error) = validate_router_url(s) {
             set_router_url_error(Some(error));
             return;
         }

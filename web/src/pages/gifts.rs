@@ -82,6 +82,52 @@ pub struct Drop {
     pub status: DropStatus,
 }
 
+pub const GIFT_BASE_FEE: NearToken = NearToken::from_millinear(50);
+pub const GIFT_PER_TOKEN_FEE: NearToken = NearToken::from_millinear(5);
+
+pub fn gift_total_fee(ft_count: usize, nft_count: usize) -> NearToken {
+    let token_count = (ft_count + nft_count) as u128;
+    GIFT_BASE_FEE.saturating_add(GIFT_PER_TOKEN_FEE.saturating_mul(token_count))
+}
+
+pub fn gift_near_amount_after_fee(
+    near_amount: NearToken,
+    ft_count: usize,
+    nft_count: usize,
+) -> NearToken {
+    near_amount.saturating_sub(gift_total_fee(ft_count, nft_count))
+}
+
+fn remove_duplicate_fungible_tokens(
+    tokens: &mut Vec<(TokenData, String, Option<String>)>,
+    preferred_index: Option<usize>,
+) {
+    let preferred_token_account_id = preferred_index
+        .and_then(|index| tokens.get(index))
+        .map(|(token_data, _, _)| token_data.token.account_id.clone());
+
+    let mut seen = HashSet::new();
+    let mut deduped = Vec::with_capacity(tokens.len());
+
+    for (index, entry) in std::mem::take(tokens).into_iter().enumerate() {
+        let account_id = entry.0.token.account_id.clone();
+        if let Some(preferred_id) = &preferred_token_account_id
+            && account_id == *preferred_id
+        {
+            if Some(index) == preferred_index {
+                deduped.push(entry);
+            }
+            continue;
+        }
+
+        if seen.insert(account_id) {
+            deduped.push(entry);
+        }
+    }
+
+    *tokens = deduped;
+}
+
 #[component]
 pub fn Gifts() -> impl IntoView {
     let (near_amount, set_near_amount) = signal(String::new());
@@ -248,12 +294,14 @@ pub fn Gifts() -> impl IntoView {
     };
 
     let calculate_total_fee = move || {
-        let base_fee = BigDecimal::from_str("0.05").unwrap();
-        let num_ft_tokens = selected_fungible_tokens.get().len() as i32;
-        let num_nfts = selected_nfts.get().len() as i32;
-        let ft_fee = BigDecimal::from_str("0.005").unwrap() * BigDecimal::from(num_ft_tokens);
-        let nft_fee = BigDecimal::from_str("0.005").unwrap() * BigDecimal::from(num_nfts);
-        base_fee + ft_fee + nft_fee
+        balance_to_decimal(
+            gift_total_fee(
+                selected_fungible_tokens.get().len(),
+                selected_nfts.get().len(),
+            )
+            .as_yoctonear(),
+            24,
+        )
     };
 
     let is_nft_already_selected = move |contract_id: AccountId, token_id: String| -> bool {
@@ -435,10 +483,14 @@ pub fn Gifts() -> impl IntoView {
 
         let near_deposit_amount = decimal_to_balance(near_amount_decimal.clone(), 24);
 
+        let mut seen_ft_tokens = HashSet::new();
         let fungible_tokens = selected_fungible_tokens
             .get()
             .into_iter()
             .filter_map(|(token_data, amount_str, amount_error)| {
+                if !seen_ft_tokens.insert(token_data.token.account_id.clone()) {
+                    return None;
+                }
                 if amount_error.is_some() {
                     return None;
                 }
@@ -674,11 +726,14 @@ pub fn Gifts() -> impl IntoView {
                                             !selected_account_ids.contains(&t.token.account_id)
                                         })
                                     {
-                                        let current = selected_fungible_tokens.get();
-                                        let mut new_list = current;
-                                        new_list
-                                            .push((first_available_token.clone(), String::new(), None));
-                                        set_selected_fungible_tokens.set(new_list);
+                                        set_selected_fungible_tokens.update(|tokens| {
+                                            tokens.push((
+                                                first_available_token.clone(),
+                                                String::new(),
+                                                None,
+                                            ));
+                                            remove_duplicate_fungible_tokens(tokens, None);
+                                        });
                                         if has_typed_near_amount.get() {
                                             check_near_amount(near_amount.get());
                                         }
@@ -697,7 +752,8 @@ pub fn Gifts() -> impl IntoView {
                                 selected_fungible_tokens
                                     .get()
                                     .into_iter()
-                                    .map(|(token_data, amount, amount_error)| {
+                                    .enumerate()
+                                    .map(|(token_index, (token_data, amount, amount_error))| {
                                         let amount_clone = amount.clone();
                                         let amount_error_clone = amount_error.clone();
                                         let token_data_clone = token_data.clone();
@@ -719,16 +775,15 @@ pub fn Gifts() -> impl IntoView {
                                                                     on_select=move |new_token: TokenData| {
                                                                         set_selected_fungible_tokens
                                                                             .update(|tokens| {
-                                                                                if let Some(entry) = tokens
-                                                                                    .iter_mut()
-                                                                                    .find(|(t, _, _)| {
-                                                                                        t.token.account_id == new_token.token.account_id
-                                                                                    })
-                                                                                {
+                                                                                if let Some(entry) = tokens.get_mut(token_index) {
                                                                                     entry.0 = new_token;
                                                                                     entry.1 = String::new();
                                                                                     entry.2 = None;
                                                                                 }
+                                                                                remove_duplicate_fungible_tokens(
+                                                                                    tokens,
+                                                                                    Some(token_index),
+                                                                                );
                                                                             });
                                                                     }
                                                                     placeholder="Select token"

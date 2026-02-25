@@ -32,7 +32,7 @@ use crate::{
         rpc_context::RpcContext, tokens_context::Token,
         transaction_queue_context::EnqueuedTransaction,
     },
-    pages::gifts::Drop,
+    pages::gifts::{Drop, gift_near_amount_after_fee},
     utils::StorageBalance,
 };
 
@@ -1195,9 +1195,12 @@ fn create_gift(
         if all_successful {
             log::info!("Gift created successfully");
             let mut tokens = Vec::new();
-            tokens.push(GiftToken::Near(NearToken::from_yoctonear(
-                gift_data.near_amount,
-            )));
+            let near_amount_after_fee = gift_near_amount_after_fee(
+                NearToken::from_yoctonear(gift_data.near_amount),
+                gift_data.fts.len(),
+                gift_data.nfts.len(),
+            );
+            tokens.push(GiftToken::Near(near_amount_after_fee));
             for (contract_id, amount) in &gift_data.fts {
                 tokens.push(GiftToken::Nep141(contract_id.clone(), *amount));
             }
