@@ -23,9 +23,11 @@ use crate::{
 };
 
 const INTEAR_LAUNCH_ACCOUNT: &str = "launch.intear.near";
-const LONG_ID_BASE_DEPOSIT: NearToken = NearToken::from_millinear(27);
-const SHORT_ID_BASE_DEPOSIT: NearToken = NearToken::from_millinear(1020);
-const STORAGE_ESTIMATE_OVERHEAD_BYTES: usize = 1_000;
+const LONG_ID_BASE_DEPOSIT: NearToken = NearToken::from_millinear(33);
+const SHORT_ID_COST: NearToken = NearToken::from_near(1);
+const SHORT_ID_BASE_DEPOSIT: NearToken =
+    NearToken::from_yoctonear(SHORT_ID_COST.as_yoctonear() + LONG_ID_BASE_DEPOSIT.as_yoctonear());
+const STORAGE_ESTIMATE_OVERHEAD_BYTES: usize = 400;
 
 #[component]
 pub fn IntearLaunchModal<F>(
@@ -89,6 +91,7 @@ where
     type FeeEntryArg = (FeeReceiverArg, FeeAmountArg);
 
     let (form, set_form) = signal(IntearLaunchForm::default());
+    let (first_buy, set_first_buy) = signal(String::new());
     let fee_preset_to_value = |preset: FeePreset| -> &'static str {
         match preset {
             FeePreset::NoFee => "no_fee",
@@ -175,6 +178,22 @@ where
         }
         None
     };
+    let validate_first_buy = move |buy_str: &str| -> Option<String> {
+        if buy_str.is_empty() {
+            return None;
+        }
+
+        match buy_str.parse::<BigDecimal>() {
+            Ok(amount) => {
+                if amount <= 0 {
+                    Some("Amount must be greater than 0".to_string())
+                } else {
+                    None
+                }
+            }
+            Err(_) => Some("Invalid number".to_string()),
+        }
+    };
     let preview_id_resource = LocalResource::new({
         let token_symbol = token_symbol.clone();
         move || {
@@ -233,14 +252,33 @@ where
     };
     let calculate_storage_deposit_for_total = calculate_storage_deposit.clone();
     let calculate_total_deposit = move || {
-        let base_deposit = if form.get().short_id {
+        let values = form.get();
+        let base_deposit = if values.short_id {
             SHORT_ID_BASE_DEPOSIT
         } else {
             LONG_ID_BASE_DEPOSIT
         };
-        base_deposit
+        let with_storage = base_deposit
             .checked_add(calculate_storage_deposit_for_total())
-            .unwrap_or(base_deposit)
+            .unwrap_or(base_deposit);
+        let first_buy_token = if first_buy.get().is_empty() {
+            NearToken::from_yoctonear(0)
+        } else {
+            match first_buy.get().parse::<BigDecimal>() {
+                Ok(amount) => {
+                    if amount <= 0 {
+                        NearToken::from_yoctonear(0)
+                    } else {
+                        let yoctonear = decimal_to_balance(amount, 24);
+                        NearToken::from_yoctonear(yoctonear)
+                    }
+                }
+                Err(_) => NearToken::from_yoctonear(0),
+            }
+        };
+        with_storage
+            .checked_add(first_buy_token)
+            .unwrap_or(with_storage)
     };
     let calculate_total_deposit_label = calculate_total_deposit.clone();
 
@@ -256,6 +294,9 @@ where
             return false;
         }
         if validate_website(&values.website).is_some() {
+            return false;
+        }
+        if validate_first_buy(&first_buy.get()).is_some() {
             return false;
         }
         matches!(preview_id_resource.get(), Some(Ok(_)))
@@ -280,6 +321,7 @@ where
         let token_name = token_name_clone.clone();
         let token_supply = token_supply_clone.clone();
         let token_image = token_image_clone.clone();
+        let first_buy_value = first_buy.get();
         let signer_id = accounts_context
             .accounts
             .get_untracked()
@@ -330,6 +372,21 @@ where
                     },
                 )]),
             };
+            let first_buy_token = if first_buy_value.is_empty() {
+                None
+            } else {
+                match first_buy_value.parse::<BigDecimal>() {
+                    Ok(amount) => {
+                        if amount <= 0 {
+                            None
+                        } else {
+                            let yoctonear = decimal_to_balance(amount, 24);
+                            Some(NearToken::from_yoctonear(yoctonear))
+                        }
+                    }
+                    Err(_) => None,
+                }
+            };
             let args = serde_json::json!({
                 "name": token_name,
                 "symbol": token_symbol.clone(),
@@ -338,6 +395,7 @@ where
                 "total_supply": total_supply.to_string(),
                 "short_id": values.short_id,
                 "fees": fees,
+                "first_buy": first_buy_token,
                 "launch_data": {
                     "telegram": optional_string(&values.telegram),
                     "x": optional_string(&values.x),
@@ -470,7 +528,7 @@ where
                 </div>
 
                 <div class="text-sm text-gray-400 mb-4">
-                    "Launch your token on Intear with optional short IDs."
+                    "Official Intear launchpad, bonding curve-like (immediately deployed on Intear DEX)"
                 </div>
 
                 <div class="flex flex-col gap-4 p-4 bg-neutral-800 rounded-lg border border-neutral-700">
@@ -597,15 +655,44 @@ where
                         }}
                     </div>
 
+                    // First Buy
+                    <div>
+                        <label class="block text-sm font-medium mb-1">
+                            "First Buy (NEAR) " <span class="text-gray-500">"(optional)"</span>
+                        </label>
+                        <input
+                            type="text"
+                            prop:value=move || first_buy.get()
+                            on:input=move |ev| {
+                                let value = event_target_value(&ev);
+                                set_first_buy.set(value);
+                            }
+                            class="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded text-base text-white"
+                            placeholder="1.0"
+                        />
+                        <div class="text-xs text-gray-500 mt-1">
+                            "If you want to be guaranteed to buy first, enter the amount here"
+                        </div>
+                        {move || {
+                            if let Some(error_msg) = validate_first_buy(&first_buy.get()) {
+                                view! { <div class="text-xs text-red-400 mt-1">{error_msg}</div> }
+                                    .into_any()
+                            } else {
+                                ().into_any()
+                            }
+                        }}
+                    </div>
+
                     // Fee Preset
                     <div>
-                        <label class="block text-sm font-medium mb-1">"Fee Preset"</label>
+                        <label class="block text-sm font-medium mb-1">"Fees"</label>
                         <Select
                             options=fee_preset_options
                             on_change=Callback::new(move |value: String| {
-                                set_form.update(|f| {
-                                    f.fee_preset = fee_preset_from_value(&value);
-                                });
+                                set_form
+                                    .update(|f| {
+                                        f.fee_preset = fee_preset_from_value(&value);
+                                    });
                             })
                             initial_value=fee_preset_to_value(form.get_untracked().fee_preset)
                                 .to_string()
@@ -701,7 +788,7 @@ fn IntearLaunchSuccessModal(token_symbol: String, token_account_id: AccountId) -
                     <h2 class="text-xl font-semibold">"Token Launched!"</h2>
                     <p class="text-center text-gray-400">
                         "Your token " <span class="font-semibold text-white">{token_symbol}</span>
-                        " was launched with account ID "
+                        " was launched with CA "
                         <span class="font-mono text-white break-all">
                             {token_account_id.to_string()}
                         </span>
