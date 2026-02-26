@@ -318,7 +318,7 @@ fn TokenInfoView(token: impl Fn() -> TokenInfo) -> impl IntoView {
             <iframe
                 src=move || {
                     format!(
-                        "{}/?token={}&interval=15m",
+                        "{}/?token={}&interval=15m&search=false&theme=dark",
                         match network.get() {
                             Network::Mainnet => "https://chart.intear.tech".to_string(),
                             Network::Testnet => "https://chart-testnet.intear.tech".to_string(),
