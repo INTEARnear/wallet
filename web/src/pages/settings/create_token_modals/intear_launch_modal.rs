@@ -53,6 +53,7 @@ where
         telegram: String,
         x: String,
         website: String,
+        description: String,
         short_id: bool,
         fee_preset: FeePreset,
     }
@@ -243,6 +244,7 @@ where
             + values.telegram.len()
             + values.x.len()
             + values.website.len()
+            + values.description.len()
             + STORAGE_ESTIMATE_OVERHEAD_BYTES;
         let size_bd = BigDecimal::from(estimated_size_bytes as u64);
         let divisor = BigDecimal::from(100_000_u64);
@@ -400,6 +402,7 @@ where
                     "telegram": optional_string(&values.telegram),
                     "x": optional_string(&values.x),
                     "website": optional_string(&values.website),
+                    "description": optional_string(&values.description),
                 },
             });
 
@@ -653,6 +656,22 @@ where
                                 ().into_any()
                             }
                         }}
+                    </div>
+
+                    // Description
+                    <div>
+                        <label class="block text-sm font-medium mb-1">
+                            "Description " <span class="text-gray-500">"(optional)"</span>
+                        </label>
+                        <textarea
+                            prop:value=move || form.get().description
+                            on:input=move |ev| {
+                                let value = event_target_value(&ev);
+                                set_form.update(|f| f.description = value);
+                            }
+                            class="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded text-base text-white min-h-24"
+                            placeholder="Write a short description for your token launch"
+                        />
                     </div>
 
                     // First Buy
