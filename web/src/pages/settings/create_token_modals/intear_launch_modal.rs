@@ -546,14 +546,14 @@ where
                                 }
                                 class="w-4 h-4 cursor-pointer"
                             />
-                            <span class="text-sm font-medium">"Short CA"</span>
+                            <span class="text-sm font-medium">"Short CA without numbers"</span>
                         </label>
                         <div class="text-xs text-gray-500 mt-1">"Costs 1 NEAR"</div>
                     </div>
 
                     // Preview
                     <div class="border border-neutral-700 rounded p-4 bg-neutral-900">
-                        <div class="text-sm font-medium mb-2">"Token CA Preview"</div>
+                        <div class="text-sm font-medium mb-2">"CA Preview"</div>
                         {move || {
                             match preview_id_resource.get() {
                                 None => {
@@ -594,7 +594,7 @@ where
                                 set_form.update(|f| f.telegram = value);
                             }
                             class="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded text-base text-white"
-                            placeholder="https://t.me/yourchannel"
+                            placeholder="https://t.me/yourchat"
                         />
                         {move || {
                             if let Some(error_msg) = validate_telegram_link(&form.get().telegram) {
@@ -721,7 +721,7 @@ where
                             {move || {
                                 selected_account()
                                     .map(|account_id| {
-                                        format!("Receiver for account presets: {account_id}")
+                                        format!("Receiver for fees: {account_id}")
                                     })
                                     .unwrap_or_else(|| "Select an account first".to_string())
                             }}
