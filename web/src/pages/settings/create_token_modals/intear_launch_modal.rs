@@ -28,6 +28,8 @@ const SHORT_ID_COST: NearToken = NearToken::from_near(1);
 const SHORT_ID_BASE_DEPOSIT: NearToken =
     NearToken::from_yoctonear(SHORT_ID_COST.as_yoctonear() + LONG_ID_BASE_DEPOSIT.as_yoctonear());
 const STORAGE_ESTIMATE_OVERHEAD_BYTES: usize = 400;
+const MAX_SOCIAL_LINK_LENGTH: usize = 50;
+const MAX_DESCRIPTION_LENGTH: usize = 200;
 
 #[component]
 pub fn IntearLaunchModal<F>(
@@ -135,9 +137,23 @@ where
             Some(trimmed.to_string())
         }
     };
+    let validate_max_length =
+        |value: &str, field_name: &str, max_len: usize| -> Option<String> {
+            let char_count = value.chars().count();
+            if char_count > max_len {
+                Some(format!("{field_name} must be at most {max_len} characters"))
+            } else {
+                None
+            }
+        };
     let validate_telegram_link = |telegram: &str| -> Option<String> {
         if telegram.is_empty() {
             return None;
+        }
+        if let Some(error) =
+            validate_max_length(telegram, "Telegram link", MAX_SOCIAL_LINK_LENGTH)
+        {
+            return Some(error);
         }
         let prefix = "https://t.me/";
         let Some(handle) = telegram.strip_prefix(prefix) else {
@@ -155,6 +171,9 @@ where
         if x.is_empty() {
             return None;
         }
+        if let Some(error) = validate_max_length(x, "X link", MAX_SOCIAL_LINK_LENGTH) {
+            return Some(error);
+        }
         let prefix = "https://x.com/";
         let Some(handle) = x.strip_prefix(prefix) else {
             return Some(format!("Must start with {prefix}"));
@@ -171,6 +190,9 @@ where
         if website.is_empty() {
             return None;
         }
+        if let Some(error) = validate_max_length(website, "Website link", MAX_SOCIAL_LINK_LENGTH) {
+            return Some(error);
+        }
         if !website.starts_with("https://") {
             return Some("Must start with https://".to_string());
         }
@@ -178,6 +200,9 @@ where
             return Some("Must be a valid URL".to_string());
         }
         None
+    };
+    let validate_description = |description: &str| -> Option<String> {
+        validate_max_length(description, "Description", MAX_DESCRIPTION_LENGTH)
     };
     let validate_first_buy = move |buy_str: &str| -> Option<String> {
         if buy_str.is_empty() {
@@ -296,6 +321,9 @@ where
             return false;
         }
         if validate_website(&values.website).is_some() {
+            return false;
+        }
+        if validate_description(&values.description).is_some() {
             return false;
         }
         if validate_first_buy(&first_buy.get()).is_some() {
@@ -672,6 +700,14 @@ where
                             class="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded text-base text-white min-h-24"
                             placeholder="Write a short description for your token launch"
                         />
+                        {move || {
+                            if let Some(error_msg) = validate_description(&form.get().description) {
+                                view! { <div class="text-xs text-red-400 mt-1">{error_msg}</div> }
+                                    .into_any()
+                            } else {
+                                ().into_any()
+                            }
+                        }}
                     </div>
 
                     // First Buy
