@@ -31,6 +31,15 @@ const STORAGE_ESTIMATE_OVERHEAD_BYTES: usize = 400;
 const MAX_SOCIAL_LINK_LENGTH: usize = 50;
 const MAX_DESCRIPTION_LENGTH: usize = 200;
 
+fn validate_max_length(value: &str, field_name: &str, max_len: usize) -> Option<String> {
+    let char_count = value.chars().count();
+    if char_count > max_len {
+        Some(format!("{field_name} must be at most {max_len} characters"))
+    } else {
+        None
+    }
+}
+
 #[component]
 pub fn IntearLaunchModal<F>(
     token_symbol: String,
@@ -137,21 +146,11 @@ where
             Some(trimmed.to_string())
         }
     };
-    let validate_max_length =
-        |value: &str, field_name: &str, max_len: usize| -> Option<String> {
-            let char_count = value.chars().count();
-            if char_count > max_len {
-                Some(format!("{field_name} must be at most {max_len} characters"))
-            } else {
-                None
-            }
-        };
     let validate_telegram_link = |telegram: &str| -> Option<String> {
         if telegram.is_empty() {
             return None;
         }
-        if let Some(error) =
-            validate_max_length(telegram, "Telegram link", MAX_SOCIAL_LINK_LENGTH)
+        if let Some(error) = validate_max_length(telegram, "Telegram link", MAX_SOCIAL_LINK_LENGTH)
         {
             return Some(error);
         }
