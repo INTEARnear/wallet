@@ -255,9 +255,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
         };
 
         let (secret_key, seed_phrase) = match recovery_method_untracked() {
-            AccountCreateRecoveryMethod::RecoveryPhrase
-            | AccountCreateRecoveryMethod::EthereumWallet
-            | AccountCreateRecoveryMethod::SolanaWallet => {
+            AccountCreateRecoveryMethod::RecoveryPhrase => {
                 let mnemonic = bip39::Mnemonic::generate(12).unwrap();
                 (
                     SecretKeyHolder::SecretKey(mnemonic_to_key(mnemonic.clone()).unwrap()),
@@ -922,89 +920,6 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                     </div>
                                 </div>
                             </button>
-
-                            // <button
-                            // class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
-                            // style=move || {
-                            // if recovery_method()
-                            // == AccountCreateRecoveryMethod::EthereumWallet
-                            // {
-                            // "border-color: rgb(129 140 248); background-color: rgb(99 102 241 / 0.1);"
-                            // } else {
-                            // "border-color: rgb(55 65 81); background-color: transparent;"
-                            // }
-                            // }
-                            // on:click=move |_| {
-                            // set_modal_state
-                            // .update(|state| {
-                            // if let ModalState::Creating { recovery_method, .. } = state {
-                            // *recovery_method = AccountCreateRecoveryMethod::EthereumWallet;
-                            // } else {
-                            // unreachable!()
-                            // }
-                            // });
-                            // set_error.set(None);
-                            // window()
-                            // .alert_with_message(
-                            // "Come back in a few days for Ethereum support",
-                            // )
-                            // .unwrap();
-                            // }
-                            // >
-                            // <div class="flex flex-col items-center gap-2">
-                            // <div class="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center">
-                            // <Icon
-                            // icon=icondata::SiEthereum
-                            // width="16"
-                            // height="16"
-                            // attr:class="text-indigo-400"
-                            // />
-                            // </div>
-                            // <div class="text-white text-sm font-medium">"Ethereum"</div>
-                            // </div>
-                            // </button>
-
-                            // <button
-                            // class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
-                            // style=move || {
-                            // if recovery_method()
-                            // == AccountCreateRecoveryMethod::SolanaWallet
-                            // {
-                            // "border-color: rgb(196 181 253); background-color: rgb(147 51 234 / 0.1);"
-                            // } else {
-                            // "border-color: rgb(55 65 81); background-color: transparent;"
-                            // }
-                            // }
-                            // on:click=move |_| {
-                            // set_modal_state
-                            // .update(|state| {
-                            // if let ModalState::Creating { recovery_method, .. } = state {
-                            // *recovery_method = AccountCreateRecoveryMethod::SolanaWallet;
-                            // } else {
-                            // unreachable!()
-                            // }
-                            // });
-                            // set_error.set(None);
-                            // window()
-                            // .alert_with_message(
-                            // "Come back in a few days for Solana support",
-                            // )
-                            // .unwrap();
-                            // }
-                            // >
-                            // <div class="flex flex-col items-center gap-2">
-                            // <div class="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
-                            // <Icon
-                            // icon=icondata::SiSolana
-                            // width="16"
-                            // height="16"
-                            // attr:class="text-purple-400"
-                            // />
-                            // </div>
-                            // <div class="text-white text-sm font-medium">"Solana"</div>
-                            // </div>
-                            // </button>
-
                             <button
                                 class="flex-1 p-3 rounded-lg border transition-all duration-200 text-center cursor-pointer"
                                 style=move || {
@@ -1186,7 +1101,6 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                         AccountCreateRecoveryMethod::Ledger => {
                                             ledger_current_key_data.get().is_none()
                                         }
-                                        _ => true,
                                     }
                             }
                             on:click=move |_| do_create_account()

@@ -639,8 +639,8 @@ pub fn provide_token_context() {
                                         let token_data = response
                                             .into_iter()
                                             .zip(tokens.iter())
-                                            .zip(metadata_response.into_iter())
-                                            .zip(total_supply_response.into_iter())
+                                            .zip(metadata_response)
+                                            .zip(total_supply_response)
                                             .filter_map(
                                                 |(((balance_result, token), metadata_result), supply_result)| {
                                                     match (balance_result, metadata_result, supply_result)
@@ -813,7 +813,7 @@ pub fn provide_token_context() {
 
                     if let Ok(balance_results) = token_balance_results {
                         for (contract_id, balance_result) in
-                            nep141_tokens.iter().zip(balance_results.into_iter())
+                            nep141_tokens.iter().zip(balance_results)
                         {
                             if let Ok(balance) = balance_result {
                                 set_tokens.update(|tokens| {

@@ -1,30 +1,15 @@
 {
   "dependencies": {
-    "@coinbase/wallet-sdk": "^4.3.7",
-    "@fastnear/utils": "0.9.7",
     "@ledgerhq/hw-transport": "^6.31.14",
     "@ledgerhq/hw-transport-web-ble": "6.29.7",
     "@ledgerhq/hw-transport-webhid": "6.30.3",
     "@ledgerhq/hw-transport-webusb": "6.29.7",
-    "@metamask/sdk": "^0.33.1",
-    "@reown/appkit": "^1.8.16",
-    "@reown/appkit-adapter-solana": "^1.7.14",
-    "@reown/appkit-adapter-wagmi": "^1.8.16",
-    "@solana/spl-token": "^0.4.14",
-    "@tailwindcss/cli": "4.1.8",
-    "@tanstack/react-query": "^5.90.17",
-    "@walletconnect/ethereum-provider": "^2.23.2",
-    "buffer": "6.0.3",
-    "events": "3.3.0",
     "posthog-js": "1.254.0",
     "qr-code-styling": "^1.9.2",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3",
-    "tailwindcss": "4.1.8",
-    "viem": "^2.44.2",
-    "wagmi": "^2.19.5"
+    "tailwindcss": "^4.2.1"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "^4.2.1",
     "esbuild": "0.25.5",
     "esbuild-plugin-polyfill-node": "0.3.0",
     "esbuild-plugins-node-modules-polyfill": "1.7.1"

@@ -344,9 +344,9 @@ pub fn SeedPhraseInput(#[prop(into)] on_change: Callback<String>) -> impl IntoVi
                         }
                     }
                 }
-                "ArrowUp" => {
+                "ArrowUp"
                     // Navigate to word in previous row (4 words per row in grid)
-                    if index >= 3 {
+                    if index >= 3 => {
                         let prev_row_index = index - 3;
                         if let Some(target) = event.target()
                             && let Ok(input_element) =
@@ -370,7 +370,6 @@ pub fn SeedPhraseInput(#[prop(into)] on_change: Callback<String>) -> impl IntoVi
                             }
                         }
                     }
-                }
                 "Tab" => {
                     // Completion
                     if let Some(completion) =

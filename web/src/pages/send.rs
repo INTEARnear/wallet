@@ -1946,7 +1946,7 @@ pub async fn execute_send(
             let transfers: Vec<_> = confirmation
                 .transfers
                 .iter()
-                .zip(storage_balance_results.into_iter())
+                .zip(storage_balance_results)
                 .map(|(transfer, storage_balance_result)| {
                     let needs_storage_deposit = match storage_balance_result {
                         Ok(storage_balance) => match storage_balance {

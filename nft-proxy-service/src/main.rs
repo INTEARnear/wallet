@@ -847,20 +847,14 @@ async fn meme_cooking_create_handler(
 
 fn is_local(host: Option<Host<&str>>) -> bool {
     match host {
-        Some(Host::Domain(host)) => {
-            if host == "localhost" || !host.contains('.') {
-                return true;
-            }
+        Some(Host::Domain(host)) if (host == "localhost" || !host.contains('.')) => {
+            return true;
         }
-        Some(Host::Ipv4(ip)) => {
-            if !ip.is_global() {
-                return true;
-            }
+        Some(Host::Ipv4(ip)) if !ip.is_global() => {
+            return true;
         }
-        Some(Host::Ipv6(ip)) => {
-            if !ip.is_global() {
-                return true;
-            }
+        Some(Host::Ipv6(ip)) if !ip.is_global() => {
+            return true;
         }
         _ => {}
     }

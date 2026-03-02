@@ -78,8 +78,6 @@ pub enum AccountCreateParent {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AccountCreateRecoveryMethod {
     RecoveryPhrase,
-    EthereumWallet,
-    SolanaWallet,
     Ledger,
 }
 
@@ -88,8 +86,6 @@ pub enum LoginMethod {
     NotSelected,
     SeedPhrase,
     PrivateKey,
-    EthereumWallet,
-    SolanaWallet,
     Ledger,
 }
 
@@ -593,7 +589,7 @@ pub fn AccountSelector() -> impl IntoView {
                     continue;
                 };
 
-                for (account, result) in accs.into_iter().zip(results.into_iter()) {
+                for (account, result) in accs.into_iter().zip(results) {
                     let public_key = account.secret_key.public_key();
                     if let Err(Error::OtherQueryError(err)) = result
                         && err == format!("access key {public_key} does not exist while viewing")
@@ -1039,9 +1035,6 @@ pub fn AccountSelector() -> impl IntoView {
                                                     "Move on and create a new account with a fresh seed phrase (if your old account didn't have a lot of money)"
                                                 </li>
                                                 <li>
-                                                    "Try to recover it with your Google / Ethereum / Solana wallet if you connected it to your account"
-                                                </li>
-                                                <li>
                                                     <a
                                                         href="https://t.me/intearchat"
                                                         target="_blank"
@@ -1049,7 +1042,7 @@ pub fn AccountSelector() -> impl IntoView {
                                                     >
                                                         "Contact support for assistance"
                                                     </a>
-                                                    ". We are not able to recover your account, but we can give you the exact time when it happened, so you can try to remember what you did"
+                                                    ". We are not able to recover your account, but we can give you the exact time when it happened, so you can try to remember what you did. Maybe you terminated all sessions from a different device."
                                                 </li>
                                             </ul>
                                             <button

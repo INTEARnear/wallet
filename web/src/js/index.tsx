@@ -1,8 +1,4 @@
-import React from "react";
-import { createRoot } from "react-dom/client";
-import Overlays from "./Overlays";
 import { createClient as createLedgerClient, getSupportedTransport as getSupportedLedgerTransport } from "./near-ledger-js";
-import { toObject } from "./utils";
 import "./qr-generator.js";
 
 // Analytics
@@ -21,14 +17,6 @@ if (!posthog_api_key.startsWith("{{{")) {
         );
     }
 }
-
-// Non-near wallet modals
-
-const rootElement = document.createElement("div");
-document.body.appendChild(rootElement);
-
-const root = createRoot(rootElement);
-root.render(<Overlays />);
 
 // Ripple effect
 
@@ -133,10 +121,6 @@ window.addEventListener('message', async (event) => {
         return;
     }
     let data = event.data;
-    try {
-        data = toObject(data);
-    } catch {
-    }
     if (data.type === 'ledger-connect') {
         const mode = data.mode;
         const localLedgerClient = await connectLedger(mode)
