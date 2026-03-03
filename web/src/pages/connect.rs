@@ -15,9 +15,6 @@ use serde::{Deserialize, Deserializer, Serialize};
 use wasm_bindgen::JsCast;
 use web_sys::{Window, js_sys::Date};
 
-use crate::utils::{
-    NEP413Payload, format_account_id, is_debug_enabled, serialize_to_js_value, sign_nep413,
-};
 use crate::{
     contexts::account_selector_context::AccountSelectorContext,
     pages::{
@@ -31,6 +28,12 @@ use crate::{
     utils::is_tauri,
 };
 use crate::{
+    contexts::connected_apps_context::GasAllowance,
+    utils::{
+        NEP413Payload, format_account_id, is_debug_enabled, serialize_to_js_value, sign_nep413,
+    },
+};
+use crate::{
     contexts::{
         accounts_context::{AccountsContext, LedgerSigningState, SecretKeyHolder},
         connected_apps_context::{ConnectedApp, ConnectedAppsContext, ConnectorVersion},
@@ -40,8 +43,6 @@ use crate::{
     },
     pages::sign_message::{SignedMessageV1, SignedMessageV2},
 };
-
-const GAS_ALLOWANCE: NearToken = NearToken::from_millinear(1000); // 1 NEAR
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -64,6 +65,8 @@ pub struct SignInRequest {
     contract_id: Option<String>,
     #[serde(default)]
     method_names: Option<Vec<String>>,
+    #[serde(default)]
+    gas_allowance: GasAllowance,
     public_key: PublicKey,
     network_id: NetworkLowercase,
     nonce: u64,
@@ -226,7 +229,7 @@ pub fn Connect() -> impl IntoView {
     let TransactionQueueContext {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
-    let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
+    let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     let (tauri_session_id, set_tauri_session_id) = signal::<Option<String>>(None);
     let (error, set_error) = signal::<Option<String>>(None);
     let navigate = use_navigate();
@@ -260,14 +263,6 @@ pub fn Connect() -> impl IntoView {
             set_actual_origin(Some(origin));
         }
         set_loading(false);
-        let has_contract = data.contract_id.as_deref().is_some_and(|v| !v.is_empty());
-        let default_checked = has_contract;
-        let restored = config
-            .get_untracked()
-            .autoconfirm_preference_by_origin
-            .get(&evt_origin)
-            .copied();
-        set_add_function_call_key(restored.unwrap_or(default_checked));
         set_request_data(Some(data));
     };
 
@@ -420,6 +415,11 @@ pub fn Connect() -> impl IntoView {
         }
     });
 
+    let function_call_is_optional = |version: ConnectorVersion| match version {
+        ConnectorVersion::V1 | ConnectorVersion::V2 => true,
+        ConnectorVersion::V3 => false,
+    };
+
     window_event_listener(leptos::ev::message, move |event| {
         if is_debug_enabled() {
             log::info!(
@@ -478,6 +478,14 @@ pub fn Connect() -> impl IntoView {
 
     let handle_connect = move |_| {
         let request_data = request_data().expect("No request data");
+        let function_call_key_required = !function_call_is_optional(request_data.version)
+            && request_data
+                .contract_id
+                .as_ref()
+                .is_some_and(|contract_id| !contract_id.is_empty());
+        if function_call_key_required && !add_function_call_key() {
+            return;
+        }
         let Some(selected_account_id) = accounts_context.accounts.get().selected_account_id else {
             log::error!("No account selected");
             return;
@@ -655,9 +663,9 @@ pub fn Connect() -> impl IntoView {
                             .as_ref()
                             .is_some_and(|v| !v.is_empty())
                         {
-                            GAS_ALLOWANCE
+                            request_data.gas_allowance
                         } else {
-                            NearToken::from_yoctonear(0)
+                            GasAllowance::Amount(NearToken::from_yoctonear(0))
                         },
                         origin: actual_origin
                             .get_untracked()
@@ -691,7 +699,10 @@ pub fn Connect() -> impl IntoView {
                         access_key: AccessKey {
                             nonce: 0,
                             permission: AccessKeyPermission::FunctionCall(FunctionCallPermission {
-                                allowance: Some(GAS_ALLOWANCE),
+                                allowance: match request_data.gas_allowance {
+                                    GasAllowance::Amount(amount) => Some(amount),
+                                    GasAllowance::Unlimited => None,
+                                },
                                 receiver_id: contract_id.clone(),
                                 method_names: method_names.clone(),
                             }),
@@ -831,6 +842,11 @@ pub fn Connect() -> impl IntoView {
                         }
                             .into_any();
                     };
+                    let function_call_key_required = !function_call_is_optional(rd.version)
+                        && rd
+                            .contract_id
+                            .as_ref()
+                            .is_some_and(|contract_id| !contract_id.is_empty());
                     let request_network = match Network::from_lowecase(
                         rd.network_id,
                         &config.read(),
@@ -983,12 +999,26 @@ pub fn Connect() -> impl IntoView {
                                         Some(contract_id) => {
                                             let method_names = request.method_names.unwrap_or_default();
                                             let label = if method_names.is_empty() {
-                                                format!("Allow calling {contract_id} without confirmation")
+                                                format!(
+                                                    "Allow calling {contract_id} without confirmation and spend {} for gas",
+                                                    match request.gas_allowance {
+                                                        GasAllowance::Amount(amount) => format!("up to {amount}"),
+                                                        GasAllowance::Unlimited => {
+                                                            "UNLIMITED amount of NEAR".to_string()
+                                                        }
+                                                    },
+                                                )
                                             } else {
                                                 format!(
-                                                    "Allow calling {} on {} without confirmation",
+                                                    "Allow calling {} on {} without confirmation and spend {} for gas",
                                                     method_names.join(", "),
                                                     contract_id,
+                                                    match request.gas_allowance {
+                                                        GasAllowance::Amount(amount) => format!("up to {amount}"),
+                                                        GasAllowance::Unlimited => {
+                                                            "UNLIMITED amount of NEAR".to_string()
+                                                        }
+                                                    },
                                                 )
                                             };
 
@@ -999,18 +1029,11 @@ pub fn Connect() -> impl IntoView {
                                                             <input
                                                                 type="checkbox"
                                                                 class="w-4 h-4"
+                                                                required=!function_call_is_optional(rd.version)
                                                                 prop:checked=add_function_call_key
                                                                 on:change=move |ev| {
                                                                     let checked = event_target_checked(&ev);
                                                                     set_add_function_call_key(checked);
-                                                                    let current_origin = actual_origin
-                                                                        .get_untracked()
-                                                                        .expect("No actual origin");
-                                                                    set_config
-                                                                        .update(|cfg| {
-                                                                            cfg.autoconfirm_preference_by_origin
-                                                                                .insert(current_origin, checked);
-                                                                        });
                                                                 }
                                                             />
                                                             <span class="text-neutral-300 text-sm wrap-anywhere">
@@ -1068,7 +1091,10 @@ pub fn Connect() -> impl IntoView {
                                             <button
                                                 class="cursor-pointer w-full px-6 py-3.5 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/10 hover:shadow-blue-500/20"
                                                 on:click=handle_connect
-                                                disabled=network_mismatch
+                                                disabled=move || {
+                                                    network_mismatch
+                                                        || (function_call_key_required && !add_function_call_key())
+                                                }
                                             >
                                                 "Connect"
                                             </button>
@@ -1118,7 +1144,7 @@ pub fn Connect() -> impl IntoView {
                                                         attr:class="text-red-500"
                                                     />
                                                     <p class="text-sm font-bold">"Ledger Error"</p>
-                                                    <p class="text-xs max-w-xs break-words text-red-400">
+                                                    <p class="text-xs max-w-xs wrap-break-word text-red-400">
                                                         {error.clone()}
                                                     </p>
                                                     <LedgerSelector on_change=Callback::new(move |_| {

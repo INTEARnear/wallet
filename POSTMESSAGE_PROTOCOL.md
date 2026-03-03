@@ -42,6 +42,7 @@ The same JSON payloads are also used when Intear Wallet runs in a desktop / mobi
     "publicKey": "ed25519:...", // a random public key owned by the app's frontend. Must be random for every connection session. Used for authenticating subsequent requests, and optionally can be added as a function call key (see below)
     "contractId": "contract.near", // optional contract ID. If present, the app's public key is added as a function call key
     "methodNames": ["storage_deposit", "ft_transfer"], // optional, for the function call key
+    "gasAllowance": { "Amount": "100000000000000000000000" }, // or "Unlimited" instead of the object
     "networkId": "mainnet" | "testnet" | string, // (can be any string for a custom localnet)
     "nonce": 0, // must be a recent timestamp in milliseconds since unix epoch
     "message": "{\"messageToSign\":\"{\\\"message\\\":\\\"Hello\\\",\\\"nonce\\\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\\\"recipient\\\":\\\"app.near\\\",\\\"callback_url\\\":null,\\\"state\\\":\\\"optional string\\\"}\"}", // messageToSign is an optional stringified NEP-413 message to sign during connection, same structure as in sign-message request. If you don't need it, it should be "{}"

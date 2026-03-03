@@ -2,7 +2,7 @@ use leptos::prelude::*;
 use near_min_api::types::AccountId;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     hash::{Hash, Hasher},
 };
 use wasm_bindgen_futures::JsFuture;
@@ -191,8 +191,6 @@ pub struct WalletConfig {
     pub hidden_nfts: Vec<HiddenNft>,
     #[serde(default)]
     pub background_group: BackgroundGroup,
-    #[serde(default)]
-    pub autoconfirm_preference_by_origin: HashMap<String, bool>,
     #[serde(default = "default_true")]
     pub hide_to_tray: bool,
     #[serde(default)]
@@ -722,7 +720,6 @@ impl Default for WalletConfig {
             nfts_view_state: NftsViewState::default(),
             hidden_nfts: vec![],
             background_group: BackgroundGroup::default(),
-            autoconfirm_preference_by_origin: HashMap::new(),
             hide_to_tray: true,
             autostart: false,
             swap_confirmation_enabled: true,

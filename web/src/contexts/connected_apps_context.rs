@@ -36,7 +36,7 @@ pub struct ConnectedApp {
     pub requested_method_names: Vec<String>,
     /// If requested_contract_id is Some, the app can use this much gas
     /// without opening a wallet. If it's None, this should be zero
-    pub requested_gas_allowance: NearToken,
+    pub requested_gas_allowance: GasAllowance,
     pub origin: String,
     pub connected_at: DateTime<Utc>,
     /// Automatically confirm transactions to these contracts that don't
@@ -56,6 +56,18 @@ pub struct ConnectedApp {
     /// The version of the connector that was used to connect to this app
     #[serde(default)]
     pub connector_version: ConnectorVersion,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
+pub enum GasAllowance {
+    Unlimited,
+    Amount(NearToken),
+}
+
+impl Default for GasAllowance {
+    fn default() -> Self {
+        Self::Amount("0.25 NEAR".parse().unwrap())
+    }
 }
 
 impl ConnectedApp {

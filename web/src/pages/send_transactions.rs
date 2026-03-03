@@ -306,7 +306,7 @@ fn TransactionAction(
     view! {
         <div class="flex flex-col gap-1">
             <div class="flex items-start gap-2">
-                <span class="text-neutral-400 text-sm min-w-[1.5rem]">
+                <span class="text-neutral-400 text-sm min-w-6">
                     {format!("{}.", action_idx + 1)}
                 </span>
                 <span class="text-neutral-300 text-sm flex-1">{format_action(&action)}</span>
