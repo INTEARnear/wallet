@@ -851,7 +851,7 @@ where
                                 if total_supply_balance < MIN_TOTAL_SUPPLY {
                                     view! {
                                         <div class="flex gap-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-xs text-red-300">
-                                            <div class="flex-shrink-0 mt-0.5">
+                                            <div class="shrink-0 mt-0.5">
                                                 <Icon
                                                     icon=icondata::LuTriangleAlert
                                                     width="16"
@@ -872,7 +872,7 @@ where
                                 if token_image.len() > MAX_ICON_SIZE_BYTES {
                                     view! {
                                         <div class="flex gap-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-xs text-red-300">
-                                            <div class="flex-shrink-0 mt-0.5">
+                                            <div class="shrink-0 mt-0.5">
                                                 <Icon
                                                     icon=icondata::LuTriangleAlert
                                                     width="16"

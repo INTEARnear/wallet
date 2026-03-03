@@ -726,14 +726,12 @@ pub fn Gifts() -> impl IntoView {
                                             !selected_account_ids.contains(&t.token.account_id)
                                         })
                                     {
-                                        set_selected_fungible_tokens.update(|tokens| {
-                                            tokens.push((
-                                                first_available_token.clone(),
-                                                String::new(),
-                                                None,
-                                            ));
-                                            remove_duplicate_fungible_tokens(tokens, None);
-                                        });
+                                        set_selected_fungible_tokens
+                                            .update(|tokens| {
+                                                tokens
+                                                    .push((first_available_token.clone(), String::new(), None));
+                                                remove_duplicate_fungible_tokens(tokens, None);
+                                            });
                                         if has_typed_near_amount.get() {
                                             check_near_amount(near_amount.get());
                                         }
@@ -780,10 +778,7 @@ pub fn Gifts() -> impl IntoView {
                                                                                     entry.1 = String::new();
                                                                                     entry.2 = None;
                                                                                 }
-                                                                                remove_duplicate_fungible_tokens(
-                                                                                    tokens,
-                                                                                    Some(token_index),
-                                                                                );
+                                                                                remove_duplicate_fungible_tokens(tokens, Some(token_index));
                                                                             });
                                                                     }
                                                                     placeholder="Select token"
@@ -986,7 +981,7 @@ pub fn Gifts() -> impl IntoView {
                                                                                                                                 <ProgressiveImage
                                                                                                                                     low_res_src=low_res_url
                                                                                                                                     high_res_src=high_res_url
-                                                                                                                                    attr:class="w-6 h-6 rounded-full flex-shrink-0"
+                                                                                                                                    attr:class="w-6 h-6 rounded-full shrink-0"
                                                                                                                                 />
                                                                                                                             }
                                                                                                                                 .into_any()
@@ -1078,7 +1073,7 @@ pub fn Gifts() -> impl IntoView {
                                                                                                                                 <ProgressiveImage
                                                                                                                                     low_res_src=low_res_url
                                                                                                                                     high_res_src=high_res_url
-                                                                                                                                    attr:class="w-6 h-6 rounded flex-shrink-0 object-cover"
+                                                                                                                                    attr:class="w-6 h-6 rounded shrink-0 object-cover"
                                                                                                                                 />
                                                                                                                             }
                                                                                                                                 .into_any()

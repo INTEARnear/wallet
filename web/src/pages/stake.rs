@@ -321,13 +321,13 @@ fn ValidatorCard(
                         view! {
                             <img
                                 src=proxify_url(logo_url, Resolution::Low)
-                                class="w-10 h-10 rounded-full flex-shrink-0 object-cover"
+                                class="w-10 h-10 rounded-full shrink-0 object-cover"
                             />
                         }
                             .into_any()
                     } else {
                         view! {
-                            <div class="w-10 h-10 rounded-full bg-neutral-700 flex-shrink-0 flex items-center justify-center">
+                            <div class="w-10 h-10 rounded-full bg-neutral-700 shrink-0 flex items-center justify-center">
                                 <Icon icon=icondata::LuCircleUser width="24" height="24" />
                             </div>
                         }
@@ -686,7 +686,7 @@ fn ValidatorCard(
                     </div>
                 </div>
             </div>
-            <div class="flex flex-col items-end flex-shrink-0 gap-2">
+            <div class="flex flex-col items-end shrink-0 gap-2">
                 {if is_supported {
                     let threshold = NearToken::from_millinear(1);
                     let staked = validator().user_staked;
@@ -1114,7 +1114,7 @@ fn LiquidStakingCard(
                 <img
                     src={logo_src}
                     alt={logo_alt}
-                    class="h-12 flex-shrink-0 object-contain mb-2 m-4"
+                    class="h-12 shrink-0 object-contain mb-2 m-4"
                 />
                 <div class="flex flex-col items-center justify-center bg-black/75 w-full h-full">
                     {move || {
@@ -2204,13 +2204,13 @@ pub fn StakeValidator() -> impl IntoView {
                                                         view! {
                                                             <img
                                                                 src=proxify_url(logo_url, Resolution::Low)
-                                                                class="w-12 h-12 rounded-full flex-shrink-0 object-cover"
+                                                                class="w-12 h-12 rounded-full shrink-0 object-cover"
                                                             />
                                                         }
                                                             .into_any()
                                                     } else {
                                                         view! {
-                                                            <div class="w-12 h-12 rounded-full bg-neutral-700 flex-shrink-0 flex items-center justify-center">
+                                                            <div class="w-12 h-12 rounded-full bg-neutral-700 shrink-0 flex items-center justify-center">
                                                                 <Icon icon=icondata::LuCircleUser width="24" height="24" />
                                                             </div>
                                                         }
@@ -2302,7 +2302,7 @@ pub fn StakeValidator() -> impl IntoView {
                                                 mode=ProjectedRevenueMode::Increase
                                             />
                                             <button
-                                                class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden hover:bg-neutral-900/70 enabled:bg-gradient-to-r enabled:from-blue-500 enabled:to-purple-500 enabled:hover:from-blue-600 enabled:hover:to-purple-600"
+                                                class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden hover:bg-neutral-900/70 enabled:bg-linear-to-r enabled:from-blue-500 enabled:to-purple-500 enabled:hover:from-blue-600 enabled:hover:to-purple-600"
                                                 disabled=move || {
                                                     amount_error.with(|e| e.is_some())
                                                         || amount.with(|a| a.is_empty())
@@ -2666,13 +2666,13 @@ pub fn UnstakeValidator() -> impl IntoView {
                                                     view! {
                                                         <img
                                                             src=proxify_url(logo_url, Resolution::Low)
-                                                            class="w-12 h-12 rounded-full flex-shrink-0 object-cover"
+                                                            class="w-12 h-12 rounded-full shrink-0 object-cover"
                                                         />
                                                     }
                                                         .into_any()
                                                 } else {
                                                     view! {
-                                                        <div class="w-12 h-12 rounded-full bg-neutral-700 flex-shrink-0 flex items-center justify-center">
+                                                        <div class="w-12 h-12 rounded-full bg-neutral-700 shrink-0 flex items-center justify-center">
                                                             <Icon icon=icondata::LuCircleUser width="24" height="24" />
                                                         </div>
                                                     }
@@ -2816,7 +2816,7 @@ pub fn UnstakeValidator() -> impl IntoView {
             }}
 
             <button
-                class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden hover:bg-neutral-900/70 enabled:bg-gradient-to-r enabled:from-blue-500 enabled:to-purple-500 enabled:hover:from-blue-600 enabled:hover:to-purple-600"
+                class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden hover:bg-neutral-900/70 enabled:bg-linear-to-r enabled:from-blue-500 enabled:to-purple-500 enabled:hover:from-blue-600 enabled:hover:to-purple-600"
                 disabled=move || amount_error.with(|e| e.is_some()) || amount.with(|a| a.is_empty())
                 on:click=handle_unstake
             >

@@ -179,7 +179,7 @@ pub fn Select(
                                     icon=icondata::LuChevronDown
                                     width="16"
                                     height="16"
-                                    attr:class="absolute right-3 flex-shrink-0 pointer-events-none"
+                                    attr:class="absolute right-3 shrink-0 pointer-events-none"
                                     attr:style=move || {
                                         format!(
                                             "transform: rotate({}deg);",
@@ -225,7 +225,7 @@ pub fn Select(
                                     icon=icondata::LuChevronDown
                                     width="16"
                                     height="16"
-                                    attr:class="flex-shrink-0 ml-2"
+                                    attr:class="shrink-0 ml-2"
                                     attr:style=move || {
                                         format!(
                                             "transform: rotate({}deg);",
@@ -241,7 +241,7 @@ pub fn Select(
 
                 <Show when=is_open>
                     <div
-                        class="absolute top-full right-0 z-[50000] mt-1 max-h-60 overflow-auto rounded-lg bg-neutral-800 border border-neutral-700 shadow-lg flex flex-col"
+                        class="absolute top-full right-0 z-50000 mt-1 max-h-60 overflow-auto rounded-lg bg-neutral-800 border border-neutral-700 shadow-lg flex flex-col"
                         style=format!(
                             "width: {}",
                             if let Some(width) = width.as_ref() { width } else { "100%" },
@@ -279,7 +279,7 @@ pub fn Select(
                                                             icon=icondata::LuCheck
                                                             width="16"
                                                             height="16"
-                                                            attr:class="flex-shrink-0 ml-2 text-blue-400"
+                                                            attr:class="shrink-0 ml-2 text-blue-400"
                                                         />
                                                     </Show>
                                                 </div>

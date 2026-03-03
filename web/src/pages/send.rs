@@ -130,7 +130,7 @@ fn ImportModal(
                             if is_loading() {
                                 "flex-1 bg-neutral-700 text-white rounded-lg px-4 py-6 font-semibold cursor-not-allowed"
                             } else {
-                                "flex-1 bg-gradient-to-r from-purple-500 via-pink-500 to-red-500 hover:opacity-90 text-white rounded-lg px-4 py-6 font-semibold shadow-lg transition-all duration-200 cursor-pointer"
+                                "flex-1 bg-linear-to-r from-purple-500 via-pink-500 to-red-500 hover:opacity-90 text-white rounded-lg px-4 py-6 font-semibold shadow-lg transition-all duration-200 cursor-pointer"
                             }
                         }}
                         disabled=is_loading
@@ -261,7 +261,7 @@ fn ImportModal(
                     <button
                         class={move || {
                             if has_rows() {
-                                "w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-lg px-4 py-3 font-medium cursor-pointer"
+                                "w-full bg-linear-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-lg px-4 py-3 font-medium cursor-pointer"
                             } else {
                                 "w-full bg-neutral-700 text-neutral-400 rounded-lg px-4 py-3 font-medium cursor-not-allowed"
                             }
@@ -959,7 +959,7 @@ pub fn SendToken() -> impl IntoView {
                                 </div>
 
                                 <button
-                                    class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden hover:bg-neutral-900/70 enabled:bg-gradient-to-r enabled:from-blue-500 enabled:to-purple-500 enabled:hover:from-blue-600 enabled:hover:to-purple-600"
+                                    class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden hover:bg-neutral-900/70 enabled:bg-linear-to-r enabled:from-blue-500 enabled:to-purple-500 enabled:hover:from-blue-600 enabled:hover:to-purple-600"
                                     disabled=move || {
                                         recipient_balance.get().is_none()
                                             || amount_error.get().is_some()
@@ -1679,7 +1679,7 @@ pub fn SendMultiToken() -> impl IntoView {
                                             }
                                         }}
                                     </div>
-                                    <div class="flex flex-col gap-1 w-32 flex-shrink-0">
+                                    <div class="flex flex-col gap-1 w-32 shrink-0">
                                         <Show when={move || {
                                             index < 50
                                                 || index > recipients.get().len().saturating_sub(50)
@@ -1732,7 +1732,7 @@ pub fn SendMultiToken() -> impl IntoView {
                                         }}
                                     </div>
                                     <button
-                                        class="text-red-400 hover:text-red-300 cursor-pointer self-start flex-shrink-0"
+                                        class="text-red-400 hover:text-red-300 cursor-pointer self-start shrink-0"
                                         on:click=move |_| remove_recipient(index)
                                     >
                                         <Icon
@@ -1867,7 +1867,7 @@ pub fn SendMultiToken() -> impl IntoView {
             </div>
 
             <button
-                class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden hover:bg-neutral-900/70 enabled:bg-gradient-to-r enabled:from-blue-500 enabled:to-purple-500 enabled:hover:from-blue-600 enabled:hover:to-purple-600"
+                class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden hover:bg-neutral-900/70 enabled:bg-linear-to-r enabled:from-blue-500 enabled:to-purple-500 enabled:hover:from-blue-600 enabled:hover:to-purple-600"
                 disabled=move || !can_send()
                 on:click=handle_send_multi
             >

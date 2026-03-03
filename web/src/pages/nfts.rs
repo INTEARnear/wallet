@@ -1968,7 +1968,7 @@ pub fn SendNft() -> impl IntoView {
                                     </div>
 
                                     <button
-                                        class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden hover:bg-neutral-900/70 enabled:bg-gradient-to-r enabled:from-blue-500 enabled:to-purple-500 enabled:hover:from-blue-600 enabled:hover:to-purple-600"
+                                        class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden hover:bg-neutral-900/70 enabled:bg-linear-to-r enabled:from-blue-500 enabled:to-purple-500 enabled:hover:from-blue-600 enabled:hover:to-purple-600"
                                         disabled=move || {
                                             recipient_balance.get().is_none()
                                                 || is_loading_recipient.get()
@@ -2261,10 +2261,10 @@ pub fn NftTokenDetails() -> impl IntoView {
                                     <Icon icon=icondata::LuSend width="20" height="20" />
                                     <span>"Send"</span>
                                 </A> <div class="space-y-4 px-2">
-                                    <h2 class="text-2xl font-semibold text-white break-words">
+                                    <h2 class="text-2xl font-semibold text-white wrap-break-word">
                                         {title}
                                     </h2>
-                                    <p class="text-neutral-400 whitespace-pre-wrap break-words mb-4">
+                                    <p class="text-neutral-400 whitespace-pre-wrap wrap-break-word mb-4">
                                         {if description.is_empty() {
                                             "No description".to_string()
                                         } else {

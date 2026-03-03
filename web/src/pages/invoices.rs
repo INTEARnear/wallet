@@ -198,7 +198,7 @@ pub fn Invoices() -> impl IntoView {
                     <div class="flex items-start gap-3">
                         <Icon
                             icon=icondata::LuInfo
-                            attr:class="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5"
+                            attr:class="w-5 h-5 text-blue-400 shrink-0 mt-0.5"
                         />
                         <div class="text-sm text-blue-300">
                             <p class="font-medium mb-1">"Beta Feature"</p>

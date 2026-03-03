@@ -359,7 +359,7 @@ where
                                 if !supply_matches || !decimals_match {
                                     view! {
                                         <div class="flex gap-2 p-2 bg-blue-900/30 border border-blue-700/50 rounded text-xs text-blue-300">
-                                            <div class="flex-shrink-0 mt-0.5">
+                                            <div class="shrink-0 mt-0.5">
                                                 <Icon icon=icondata::LuInfo width="16" height="16" />
                                             </div>
                                             <span>
@@ -376,7 +376,7 @@ where
                                 if token_image.len() > MAX_IMAGE_SIZE_BYTES {
                                     view! {
                                         <div class="flex gap-2 p-2 bg-yellow-900/30 border border-yellow-700/50 rounded text-xs text-yellow-300">
-                                            <div class="flex-shrink-0 mt-0.5">
+                                            <div class="shrink-0 mt-0.5">
                                                 <Icon
                                                     icon=icondata::LuTriangleAlert
                                                     width="16"

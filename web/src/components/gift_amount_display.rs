@@ -370,8 +370,8 @@ pub fn GiftAmountDisplay() -> impl IntoView {
                                     .collect();
 
                                 view! {
-                                    <div class="bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-2xl p-4 text-center">
-                                        <div class="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center mx-auto mb-3">
+                                    <div class="bg-linear-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-2xl p-4 text-center">
+                                        <div class="w-16 h-16 bg-linear-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center mx-auto mb-3">
                                             <Icon
                                                 icon=icondata::LuGift
                                                 attr:class="w-8 h-8 text-white"

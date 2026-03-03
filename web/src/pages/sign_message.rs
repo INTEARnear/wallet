@@ -816,7 +816,7 @@ fn IntentItem(intent: intents::Intent, index: usize) -> impl IntoView {
                 <div>
                     <p class="text-white text-sm font-medium break-all">{title}</p>
                     {if !details.is_empty() {
-                        view! { <p class="text-neutral-400 text-xs mt-1 break-words">{details}</p> }
+                        view! { <p class="text-neutral-400 text-xs mt-1 wrap-break-word">{details}</p> }
                             .into_any()
                     } else {
                         ().into_any()
@@ -1192,7 +1192,7 @@ pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
                                                                     icon=icondata::LuTriangleAlert
                                                                     width="16"
                                                                     height="16"
-                                                                    attr:class=format!("{} mt-0.5 flex-shrink-0", icon_class)
+                                                                    attr:class=format!("{} mt-0.5 shrink-0", icon_class)
                                                                 />
                                                                 <span class=format!(
                                                                     "{} text-sm",
@@ -1721,7 +1721,7 @@ pub fn SignMessage() -> impl IntoView {
                                                             attr:class="text-red-500"
                                                         />
                                                         <p class="text-sm font-bold">"Ledger Error"</p>
-                                                        <p class="text-xs max-w-xs break-words text-red-400">
+                                                        <p class="text-xs max-w-xs wrap-break-word text-red-400">
                                                             {error.clone()}
                                                         </p>
                                                         <LedgerSelector on_change=Callback::new(move |_| {

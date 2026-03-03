@@ -1436,9 +1436,9 @@ pub fn AccountSettings() -> impl IntoView {
                                                                 });
                                                             }
                                                         }
-                                                        class="relative flex items-center justify-center p-4 rounded-lg bg-gradient-to-r from-purple-600 via-blue-600 to-cyan-500 hover:from-purple-700 hover:via-blue-700 hover:to-cyan-600 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-xl transform hover:scale-[1.02] overflow-hidden group"
+                                                        class="relative flex items-center justify-center p-4 rounded-lg bg-linear-to-r from-purple-600 via-blue-600 to-cyan-500 hover:from-purple-700 hover:via-blue-700 hover:to-cyan-600 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-xl transform hover:scale-[1.02] overflow-hidden group"
                                                     >
-                                                        <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent transform skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+                                                        <div class="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent transform skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
                                                         <span class="relative z-10 font-semibold text-white flex items-center gap-2">
                                                             <Icon icon=icondata::LuSparkles width="20" height="20" />
                                                             "Enable Smart Wallet"

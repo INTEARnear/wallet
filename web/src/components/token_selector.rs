@@ -122,7 +122,7 @@ fn TokenSelectorModal(
         >
             <div on:click=|ev| ev.stop_propagation() class="md:w-md">
                 <div class="bg-neutral-900 rounded-2xl w-full max-h-[60vh] overflow-hidden flex flex-col">
-                    <div class="p-4 border-b border-neutral-800 flex-shrink-0">
+                    <div class="p-4 border-b border-neutral-800 shrink-0">
                         <div class="flex items-center justify-between mb-4">
                             <h3 class="text-white font-bold text-lg">"Select Token"</h3>
                             <button
@@ -281,7 +281,7 @@ fn TokenSelectorModal(
                                                                             icon=icondata::LuTriangleAlert
                                                                             width="16"
                                                                             height="16"
-                                                                            attr:class="text-yellow-500 flex-shrink-0"
+                                                                            attr:class="text-yellow-500 shrink-0"
                                                                             attr:title="Warning: This token has unknown reputation. Exercise caution."
                                                                         />
                                                                     }
@@ -425,7 +425,7 @@ fn TokenSelectorModal(
                                                                                         icon=icondata::LuTriangleAlert
                                                                                         width="16"
                                                                                         height="16"
-                                                                                        attr:class="text-yellow-500 flex-shrink-0"
+                                                                                        attr:class="text-yellow-500 shrink-0"
                                                                                         attr:title="Warning: This token has unknown reputation. Exercise caution."
                                                                                     />
                                                                                 }
@@ -566,21 +566,21 @@ pub fn TokenSelector(
                     view! {
                         <>
                             <div class="flex items-center gap-2 min-w-0">
-                                <div class="relative flex-shrink-0">
+                                <div class="relative shrink-0">
                                     {match token.token.metadata.icon {
                                         Some(icon) => {
                                             view! {
                                                 <img
                                                     src=icon
                                                     alt=token.token.metadata.symbol.clone()
-                                                    class="w-6 h-6 rounded-full flex-shrink-0"
+                                                    class="w-6 h-6 rounded-full shrink-0"
                                                 />
                                             }
                                                 .into_any()
                                         }
                                         None => {
                                             view! {
-                                                <div class="w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs flex-shrink-0">
+                                                <div class="w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs shrink-0">
                                                     {token.token.metadata.symbol.chars().next().unwrap_or('?')}
                                                 </div>
                                             }
@@ -612,7 +612,7 @@ pub fn TokenSelector(
                                 icon=icondata::LuChevronDown
                                 width="16"
                                 height="16"
-                                attr:class="text-gray-400 min-w-4 min-h-4 flex-shrink-0"
+                                attr:class="text-gray-400 min-w-4 min-h-4 shrink-0"
                             />
                         </>
                     }
@@ -625,7 +625,7 @@ pub fn TokenSelector(
                                 icon=icondata::LuChevronDown
                                 width="16"
                                 height="16"
-                                attr:class="text-gray-400 min-w-4 min-h-4 flex-shrink-0"
+                                attr:class="text-gray-400 min-w-4 min-h-4 shrink-0"
                             />
                         </>
                     }

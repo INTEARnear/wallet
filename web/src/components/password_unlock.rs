@@ -160,7 +160,7 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
 
     view! {
         <div
-            class="absolute inset-0 bg-neutral-950 lg:rounded-3xl transition-opacity duration-200 z-[10000]"
+            class="absolute inset-0 bg-neutral-950 lg:rounded-3xl transition-opacity duration-200 z-10000"
             style=move || {
                 if should_show_unlock() {
                     "opacity: 1;"

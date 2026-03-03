@@ -494,7 +494,7 @@ pub fn SwapForGasModal() -> impl IntoView {
                                             }
                                         >
                                             <div class="flex items-center gap-3">
-                                                <div class="w-10 h-10 rounded-full bg-neutral-700 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                                <div class="w-10 h-10 rounded-full bg-neutral-700 flex items-center justify-center overflow-hidden shrink-0">
                                                     {move || {
                                                         if let Some(icon) = &token_clone.token.metadata.icon {
                                                             view! {

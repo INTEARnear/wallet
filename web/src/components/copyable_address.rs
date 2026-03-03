@@ -18,7 +18,7 @@ pub fn CopyableAddress(
                 })} <div class="flex items-center gap-2 w-full bg-neutral-600 rounded-lg p-3">
                 <span class="text-white text-sm font-mono break-all flex-1">{address}</span>
                 <button
-                    class="bg-neutral-500 hover:bg-neutral-400 rounded-lg p-2 transition-colors cursor-pointer flex-shrink-0"
+                    class="bg-neutral-500 hover:bg-neutral-400 rounded-lg p-2 transition-colors cursor-pointer shrink-0"
                     on:click=move |_| {
                         let clipboard = window().navigator().clipboard();
                         let _ = clipboard.write_text(&address_clone);

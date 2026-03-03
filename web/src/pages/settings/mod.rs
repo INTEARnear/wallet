@@ -72,11 +72,11 @@ pub fn Settings() -> impl IntoView {
         <div class="flex flex-col h-full text-white">
             <div
                 node_ref=scroll_div_ref
-                class="flex flex-row gap-2 p-4 pb-0 border-b scrollbar-hide border-neutral-800 overflow-x-auto whitespace-nowrap w-full flex-shrink-0"
+                class="flex flex-row gap-2 p-4 pb-0 border-b scrollbar-hide border-neutral-800 overflow-x-auto whitespace-nowrap w-full shrink-0"
             >
                 <A
                     href="/settings/security"
-                    attr:class="flex items-center gap-3 p-3 transition-colors relative flex-shrink-0"
+                    attr:class="flex items-center gap-3 p-3 transition-colors relative shrink-0"
                     attr:style=move || {
                         if is_active("/settings/security") {
                             "border-bottom: 2px solid white;"
@@ -98,7 +98,7 @@ pub fn Settings() -> impl IntoView {
                 </A>
                 <A
                     href="/settings/preferences"
-                    attr:class="flex items-center gap-3 p-3 transition-colors relative flex-shrink-0"
+                    attr:class="flex items-center gap-3 p-3 transition-colors relative shrink-0"
                     attr:style=move || {
                         if is_active("/settings/preferences") {
                             "border-bottom: 2px solid white;"
@@ -120,7 +120,7 @@ pub fn Settings() -> impl IntoView {
                 </A>
                 <A
                     href="/settings/developer"
-                    attr:class="flex items-center gap-3 p-3 transition-colors relative flex-shrink-0"
+                    attr:class="flex items-center gap-3 p-3 transition-colors relative shrink-0"
                     attr:style=move || {
                         if is_active("/settings/developer") {
                             "border-bottom: 2px solid white;"

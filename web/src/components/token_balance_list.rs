@@ -33,7 +33,7 @@ fn RheaBalanceCard(rhea_tokens: Vec<TokenData>, total_usd: BigDecimal) -> impl I
 
     view! {
         <button
-            class="relative overflow-hidden bg-gradient-to-br from-purple-900/40 to-pink-900/40 border border-purple-500/30 rounded-xl p-5 hover:border-purple-500/50 transition-all gap-4 mobile-ripple cursor-pointer"
+            class="relative overflow-hidden bg-linear-to-br from-purple-900/40 to-pink-900/40 border border-purple-500/30 rounded-xl p-5 hover:border-purple-500/50 transition-all gap-4 mobile-ripple cursor-pointer"
             on:click=move |_| {
                 let rhea_tokens_clone = rhea_tokens.clone();
                 modal
@@ -50,7 +50,7 @@ fn RheaBalanceCard(rhea_tokens: Vec<TokenData>, total_usd: BigDecimal) -> impl I
             <div class="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
             <div class="relative flex items-center justify-between">
                 <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/30 text-white">
+                    <div class="w-12 h-12 rounded-xl bg-linear-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/30 text-white">
                         <Icon icon=icondata::LuWallet width="24" height="24" />
                     </div>
                     <div class="text-left">

@@ -261,7 +261,7 @@ pub fn GiftClaim() -> impl IntoView {
                                             Some(false) => {
                                                 view! {
                                                     <button
-                                                        class="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 cursor-pointer text-lg shadow-lg transform hover:scale-105"
+                                                        class="w-full bg-linear-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 cursor-pointer text-lg shadow-lg transform hover:scale-105"
                                                         on:click=handle_claim
                                                     >
                                                         <div class="flex items-center justify-center gap-3">

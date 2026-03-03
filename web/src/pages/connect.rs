@@ -65,8 +65,6 @@ pub struct SignInRequest {
     contract_id: Option<String>,
     #[serde(default)]
     method_names: Option<Vec<String>>,
-    #[serde(default)]
-    gas_allowance: GasAllowance,
     public_key: PublicKey,
     network_id: NetworkLowercase,
     nonce: u64,
@@ -80,6 +78,17 @@ pub struct SignInRequest {
     // Below: added in V3
     #[serde(default)]
     relayer_id: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_null_default")]
+    gas_allowance: GasAllowance,
+}
+
+fn deserialize_null_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    T: Default + Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    let opt = Option::deserialize(deserializer)?;
+    Ok(opt.unwrap_or_default())
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -429,7 +438,9 @@ pub fn Connect() -> impl IntoView {
             );
         }
 
-        match serde_wasm_bindgen::from_value::<ReceiveMessage>(event.data()) {
+        match serde_json::from_value::<ReceiveMessage>(
+            serde_wasm_bindgen::from_value::<serde_json::Value>(event.data()).unwrap(),
+        ) {
             Ok(message) => {
                 if is_debug_enabled() {
                     log::info!("Successfully parsed message: {:?}", message);

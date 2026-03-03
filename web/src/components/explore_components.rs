@@ -283,7 +283,7 @@ pub fn LearnSection() -> impl IntoView {
                                             <img
                                                 src=article.image_url.clone()
                                                 alt=""
-                                                class="w-full group-hover:scale-105 group-hover:saturate-[120%] transition-all duration-500"
+                                                class="w-full group-hover:scale-105 group-hover:saturate-120 transition-all duration-500"
                                             />
                                         </div>
                                         <div class="text-white font-medium">

@@ -97,7 +97,7 @@ pub fn Receive() -> impl IntoView {
                                         {move || format_account_id_full(&account_id)}
                                     </span>
                                     <button
-                                        class="bg-neutral-700 hover:bg-neutral-600 rounded-lg p-2 transition-colors cursor-pointer flex-shrink-0"
+                                        class="bg-neutral-700 hover:bg-neutral-600 rounded-lg p-2 transition-colors cursor-pointer shrink-0"
                                         on:click=copy_to_clipboard
                                         title="Copy address"
                                     >

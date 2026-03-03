@@ -342,7 +342,7 @@ pub fn PreferencesSettings() -> impl IntoView {
                                 }
                             />
                             <span class="text-gray-400 text-sm self-center shrink-0">"%"</span>
-                            <div class="h-6 w-[1px] bg-neutral-500 self-center shrink-0"></div>
+                            <div class="h-6 w-px bg-neutral-500 self-center shrink-0"></div>
                             <span class="text-gray-400 text-sm self-center shrink-0">"or"</span>
                             <button
                                 class="px-3 min-w-20 shrink-0 py-2 rounded-lg text-sm transition-colors cursor-pointer"

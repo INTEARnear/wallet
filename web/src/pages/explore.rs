@@ -44,7 +44,7 @@ pub fn Explore() -> impl IntoView {
                         <img
                             src=protocol.image_url.to_string()
                             alt=protocol.name.clone()
-                            class="w-full h-full object-cover  group-hover:scale-110 group-hover:saturate-[120%] transition-all duration-1000"
+                            class="w-full h-full object-cover  group-hover:scale-110 group-hover:saturate-120 transition-all duration-1000"
                         />
                     </div>
                     <div class="flex-1 flex flex-col p-3 pt-2 transition-all duration-100">
@@ -91,7 +91,7 @@ pub fn Explore() -> impl IntoView {
 
     view! {
         <div class="pt-4 lg:p-2">
-            <h1 class="text-4xl font-bold mb-8 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+            <h1 class="text-4xl font-bold mb-8 bg-linear-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
                 "Explore NEAR Ecosystem"
             </h1>
             {move || {
@@ -130,7 +130,7 @@ pub fn Explore() -> impl IntoView {
                                 <a
                                     href="https://app.nearcatalog.org/"
                                     target="_blank"
-                                    class="block bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl hover:opacity-90 transition-opacity p-12"
+                                    class="block bg-linear-to-r from-blue-500 to-purple-500 rounded-xl hover:opacity-90 transition-opacity p-12"
                                 >
                                     <h2 class="text-white text-3xl font-semibold mb-1">
                                         "📒NEARCatalog"

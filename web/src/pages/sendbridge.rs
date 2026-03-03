@@ -999,7 +999,7 @@ pub fn SendBridge() -> impl IntoView {
                                                                             format!(
                                                                                 "w-full rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg {}",
                                                                                 if can_send() && !is_sending.get() {
-                                                                                    "bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white cursor-pointer"
+                                                                                    "bg-linear-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white cursor-pointer"
                                                                                 } else if is_sending.get() {
                                                                                     "bg-neutral-700 text-gray-400 cursor-wait"
                                                                                 } else {

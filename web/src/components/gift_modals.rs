@@ -699,7 +699,7 @@ pub fn GiftConfirmationModal(
                             "Cancel"
                         </button>
                         <button
-                            class="flex-1 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-xl px-4 py-3 font-medium transition-all cursor-pointer"
+                            class="flex-1 bg-linear-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-xl px-4 py-3 font-medium transition-all cursor-pointer"
                             on:click={
                                 let confirmation_clone = confirmation_for_button.clone();
                                 move |_| {
@@ -1277,7 +1277,7 @@ pub fn CancelDropConfirmationModal(
                             "Keep Gift"
                         </button>
                         <button
-                            class="flex-1 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl px-4 py-3 font-medium transition-all cursor-pointer"
+                            class="flex-1 bg-linear-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl px-4 py-3 font-medium transition-all cursor-pointer"
                             on:click={
                                 let confirmation_clone = confirmation_for_button.clone();
                                 move |_| {
@@ -1380,7 +1380,7 @@ pub fn CancelDropSuccessModal(
                             "Close"
                         </button>
                         <button
-                            class="flex-1 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-xl px-4 py-3 font-medium transition-all cursor-pointer"
+                            class="flex-1 bg-linear-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-xl px-4 py-3 font-medium transition-all cursor-pointer"
                             on:click={
                                 let drop_clone = result.drop.clone();
                                 move |_| {

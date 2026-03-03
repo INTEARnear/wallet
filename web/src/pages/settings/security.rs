@@ -693,7 +693,7 @@ pub fn SecuritySettings() -> impl IntoView {
                                         icon=icondata::LuInfo
                                         width="20"
                                         height="20"
-                                        attr:class="text-yellow-400 mt-0.5 flex-shrink-0"
+                                        attr:class="text-yellow-400 mt-0.5 shrink-0"
                                     />
                                     <div class="flex-1">
                                         <h4 class="font-medium text-yellow-200 mb-2">

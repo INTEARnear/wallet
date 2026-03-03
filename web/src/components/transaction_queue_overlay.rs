@@ -149,7 +149,7 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
 
         <Show when=move || overlay_mode.get() == OverlayMode::Modal && !queue.read().is_empty()>
             <div
-                class="fixed inset-0 bg-black/50 transition-opacity duration-200 z-[5000] text-white"
+                class="fixed inset-0 bg-black/50 transition-opacity duration-200 z-5000 text-white"
                 on:click=move |_| overlay_mode.set(OverlayMode::Background)
             >
                 <div
@@ -233,7 +233,7 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                                                                         attr:class="text-red-500"
                                                                     />
                                                                     <p class="text-sm font-bold">"Ledger Error"</p>
-                                                                    <p class="text-xs max-w-xs break-words text-red-400">
+                                                                    <p class="text-xs max-w-xs wrap-break-word text-red-400">
                                                                         {error.clone()}
                                                                     </p>
                                                                     <LedgerSelector on_change=Callback::new(move |_| {
