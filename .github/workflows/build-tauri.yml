@@ -147,10 +147,10 @@ jobs:
         run: cargo install patch-crate cargo-leptos tauri-cli --debug --locked --force
 
       - name: Install npm dependencies
-        run: npm install
+        run: npm install -D
 
       - name: Install Tailwind CLI
-        run: npm install -g @tailwindcss/cli@4.1.8
+        run: npm install -g @tailwindcss/cli@4.2.1
 
       - name: Add WASM target
         run: rustup target add wasm32-unknown-unknown
