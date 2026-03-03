@@ -62,19 +62,19 @@ export interface InitOutput {
   readonly __wbindgen_export_4: WebAssembly.Table;
   readonly __wbindgen_free: (a: number, b: number, c: number) => void;
   readonly __wbindgen_export_6: WebAssembly.Table;
-  readonly closure11084_externref_shim: (a: number, b: number, c: any) => void;
   readonly closure11780_externref_shim: (a: number, b: number, c: any) => void;
-  readonly wasm_bindgen_4be2b48c741033d9___convert__closures_____invoke______: (a: number, b: number) => void;
   readonly closure2639_externref_shim: (a: number, b: number, c: any) => void;
+  readonly closure11084_externref_shim: (a: number, b: number, c: any) => void;
+  readonly wasm_bindgen_4be2b48c741033d9___convert__closures_____invoke______: (a: number, b: number) => void;
   readonly wasm_bindgen_4be2b48c741033d9___convert__closures_____invoke______12: (a: number, b: number) => void;
-  readonly closure2637_externref_shim: (a: number, b: number, c: any) => void;
-  readonly closure11040_externref_shim: (a: number, b: number, c: any) => void;
-  readonly closure11958_externref_shim: (a: number, b: number, c: any) => void;
-  readonly closure11877_externref_shim: (a: number, b: number, c: any) => void;
-  readonly wasm_bindgen_4be2b48c741033d9___convert__closures_____invoke______17: (a: number, b: number) => void;
   readonly closure2638_externref_shim: (a: number, b: number, c: any, d: any) => void;
-  readonly wasm_bindgen_4be2b48c741033d9___convert__closures_____invoke______19: (a: number, b: number) => void;
-  readonly wasm_bindgen_4be2b48c741033d9___convert__closures_____invoke______20: (a: number, b: number) => void;
+  readonly wasm_bindgen_4be2b48c741033d9___convert__closures_____invoke______14: (a: number, b: number) => void;
+  readonly closure11040_externref_shim: (a: number, b: number, c: any) => void;
+  readonly closure2637_externref_shim: (a: number, b: number, c: any) => void;
+  readonly wasm_bindgen_4be2b48c741033d9___convert__closures_____invoke______17: (a: number, b: number) => void;
+  readonly wasm_bindgen_4be2b48c741033d9___convert__closures_____invoke______18: (a: number, b: number) => void;
+  readonly closure11877_externref_shim: (a: number, b: number, c: any) => void;
+  readonly closure11958_externref_shim: (a: number, b: number, c: any) => void;
   readonly closure11974_externref_shim: (a: number, b: number, c: any, d: any) => void;
   readonly __wbindgen_start: () => void;
 }
