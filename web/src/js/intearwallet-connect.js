@@ -2,15 +2,15 @@
  * The native wallet URL for Intear Wallet desktop/mobile apps.
  * Use this as the walletUrl option to connect via the native app instead of web popup.
  */
-export const INTEAR_NATIVE_WALLET_URL = "intear://";
+const INTEAR_NATIVE_WALLET_URL = "intear://";
 /**
  * Use a selector iframe to let the user choose which way to connect. This is the
  * preferred way for most dapps, since the user can be using staging or native app,
- * so you don't have to implement the selector yourself.
+ * so you don"t have to implement the selector yourself.
  * @param walletUrl - Origin of the iframe (where the iframe .html is loaded from).
  * @returns The valid walletUrl parameter that you can use in requestConnection call.
  */
-export function iframe(walletUrl = "https://wallet.intear.tech") {
+function iframe(walletUrl = "https://wallet.intear.tech") {
     return `iframe:${walletUrl}`;
 }
 /**
@@ -19,23 +19,15 @@ export function iframe(walletUrl = "https://wallet.intear.tech") {
  * @returns The decoded byte array
  */
 function base64Decode(str) {
-    const binaryString = atob(str.replace(/-/g, '+').replace(/_/g, '/'));
+    const binaryString = atob(str.replace(/-/g, "+").replace(/_/g, "/"));
     return Uint8Array.from(binaryString, char => char.charCodeAt(0));
-}
-/**
- * Encodes a byte array to base64 string
- * @param bytes - The byte array to encode
- * @returns The base64 encoded string
- */
-function base64Encode(bytes) {
-    return btoa(String.fromCharCode(...bytes));
 }
 /**
  * Encodes a byte array to base58 string
  * @param bytes - The byte array to encode
  * @returns The base58 encoded string
  */
-export function base58Encode(bytes) {
+function base58Encode(bytes) {
     const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
     let bytesArray;
     if (!(bytes instanceof Uint8Array)) {
@@ -71,73 +63,47 @@ export function base58Encode(bytes) {
     return result;
 }
 /**
- * Decodes a base58 string to byte array
- * @param str - The base58 encoded string
- * @returns The decoded byte array
- */
-export function base58Decode(str) {
-    const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-    const ALPHABET_MAP = {};
-    for (let i = 0; i < ALPHABET.length; i++) {
-        ALPHABET_MAP[ALPHABET[i]] = i;
-    }
-    let zeroCount = 0;
-    while (zeroCount < str.length && str[zeroCount] === ALPHABET[0]) {
-        zeroCount++;
-    }
-    const bytes = [];
-    for (let i = zeroCount; i < str.length; i++) {
-        const char = str[i];
-        if (!(char in ALPHABET_MAP)) {
-            throw new Error(`Invalid base58 character: ${char}`);
-        }
-        let carry = ALPHABET_MAP[char];
-        for (let j = 0; j < bytes.length; j++) {
-            carry += bytes[j] * 58;
-            bytes[j] = carry & 0xff;
-            carry >>= 8;
-        }
-        while (carry > 0) {
-            bytes.push(carry & 0xff);
-            carry >>= 8;
-        }
-    }
-    const result = new Uint8Array(zeroCount + bytes.length);
-    for (let i = 0; i < zeroCount; i++) {
-        result[i] = 0;
-    }
-    for (let i = 0; i < bytes.length; i++) {
-        result[zeroCount + bytes.length - 1 - i] = bytes[i];
-    }
-    return result;
-}
-/**
  * Opens a popup and handles the message flow with the wallet (web popup flow)
  * @param config - Configuration for the popup flow
  * @returns A promise that resolves with the response, or null if user rejected/closed
  * @throws Error if popup fails to open or wallet returns an error
  */
 async function openPopupFlow(config) {
-    let popup = window.selector.open(`${config.walletUrl}/${config.method}`, "dontcare", 'width=400,height=700,scrollbars=yes,resizable=yes');
-    if (await popup.id() === null || popup.closed) {
-        await window.selector.ui.whenApprove({ title: `App asks you to ${config.description}`, button: config.button });
-        popup = window.selector.open(`${config.walletUrl}/${config.method}`, "dontcare", 'width=400,height=700,scrollbars=yes,resizable=yes');
+    let popup = null;
+    {
+        // @ts-ignore
+        popup = window.selector.open(`${config.walletUrl}/${config.method}`, "dontcare", "width=400,height=700,scrollbars=yes,resizable=yes");
+        // @ts-ignore
         if (await popup.id() === null || popup.closed) {
-            throw new Error('Popup blocked');
+            // @ts-ignore
+            await window.selector.ui.whenApprove({
+                title: `App asks you to ${config.description}`,
+                button: config.button
+            });
+            // @ts-ignore
+            popup = window.selector.open(`${config.walletUrl}/${config.method}`, "dontcare", "width=400,height=700,scrollbars=yes,resizable=yes");
+            // @ts-ignore
+            if (await popup.id() === null || popup.closed) {
+                throw new Error("Popup blocked");
+            }
         }
+    }
+    if (!popup) {
+        throw new Error("Failed to open wallet popup.");
     }
     return new Promise((resolve, reject) => {
         let resultReceived = false;
         const cleanup = () => {
-            window.removeEventListener('message', messageHandler);
+            window.removeEventListener("message", messageHandler);
             if (checkClosed) {
                 clearInterval(checkClosed);
             }
         };
         const messageHandler = async (event) => {
+            console.log(true, event.origin, config.walletUrl);
             try {
                 const data = event.data;
-                if (data.type === 'ready') {
+                if (data.type === "ready") {
                     popup.postMessage({
                         type: config.sendMessageType,
                         data: config.sendData
@@ -154,7 +120,7 @@ async function openPopupFlow(config) {
                         reject(err);
                     }
                 }
-                else if (data.type === 'error' && !resultReceived) {
+                else if (data.type === "error" && !resultReceived) {
                     resultReceived = true;
                     cleanup();
                     popup.close();
@@ -162,7 +128,7 @@ async function openPopupFlow(config) {
                         resolve(null);
                     }
                     else {
-                        reject(new Error(data.message || 'Operation failed'));
+                        reject(new Error(data.message || "Operation failed"));
                     }
                 }
             }
@@ -170,7 +136,7 @@ async function openPopupFlow(config) {
                 // Ignore JSON parse errors from other messages
             }
         };
-        window.addEventListener('message', messageHandler);
+        window.addEventListener("message", messageHandler);
         const checkClosed = setInterval(() => {
             if (popup.closed && !resultReceived) {
                 cleanup();
@@ -216,8 +182,15 @@ async function openNativeAppFlow(config) {
                         data: config.sendData
                     }));
                     const intearUrl = `${INTEAR_NATIVE_WALLET_URL}${config.method}?session_id=${encodeURIComponent(sessionId)}`;
-                    await window.selector.ui.whenApprove({ title: `App asks you to ${config.description}`, button: config.button });
-                    const result = await window.selector.openNativeApp(intearUrl);
+                    if (true) {
+                        // @ts-ignore
+                        await window.selector.ui.whenApprove({
+                            title: `App asks you to ${config.description}`,
+                            button: config.button
+                        });
+                        // @ts-ignore
+                        const result = await window.selector.openNativeApp(intearUrl);
+                    }
                 }
                 else if (data.type === config.successMessageType && !resultReceived) {
                     resultReceived = true;
@@ -229,14 +202,14 @@ async function openNativeAppFlow(config) {
                         reject(err);
                     }
                 }
-                else if (data.type === 'error' && !resultReceived) {
+                else if (data.type === "error" && !resultReceived) {
                     resultReceived = true;
                     cleanup();
                     if (config.isUserRejection?.(data.message)) {
                         resolve(null);
                     }
                     else {
-                        reject(new Error(data.message || 'Operation failed'));
+                        reject(new Error(data.message || "Operation failed"));
                     }
                 }
             }
@@ -247,7 +220,7 @@ async function openNativeAppFlow(config) {
         ws.onerror = (error) => {
             if (!resultReceived) {
                 cleanup();
-                reject(new Error('WebSocket connection error to logout bridge'));
+                reject(new Error("WebSocket connection error to logout bridge"));
             }
         };
         ws.onclose = () => {
@@ -280,7 +253,7 @@ class ConnectedAccount {
     disconnected;
     #connector;
     /**
-     * @deprecated Don't use this constructor directly, this class should only be instantiated by the connector
+     * @deprecated Don"t use this constructor directly, this class should only be instantiated by the connector
      */
     constructor(accountId, connector) {
         this.accountId = accountId;
@@ -301,19 +274,19 @@ class ConnectedAccount {
      */
     async signMessage(messageToSign) {
         if (this.disconnected) {
-            throw new Error('Account is disconnected');
+            throw new Error("Account is disconnected");
         }
         if (messageToSign.nonce.length !== 32) {
-            throw new Error('Nonce must be 32 bytes');
+            throw new Error("Nonce must be 32 bytes");
         }
         if (!this.#connector.walletUrl || !this.#connector.logoutBridgeUrl) {
-            throw new Error('Wallet URL not available');
+            throw new Error("Wallet URL not available");
         }
         const privateKeyJwk = await this.#connector.storage.get(STORAGE_KEY_APP_PRIVATE_KEY);
         if (!privateKeyJwk) {
-            throw new Error('Private key not found in storage');
+            throw new Error("Private key not found in storage");
         }
-        const privateKey = await crypto.subtle.importKey('jwk', privateKeyJwk, { name: 'Ed25519' }, true, ['sign']);
+        const privateKey = await crypto.subtle.importKey("jwk", privateKeyJwk, { name: "Ed25519" }, true, ["sign"]);
         const publicKeyBytes = base64Decode(privateKeyJwk.x);
         const publicKeyBase58 = base58Encode(publicKeyBytes);
         const publicKey = `ed25519:${publicKeyBase58}`;
@@ -326,8 +299,8 @@ class ConnectedAccount {
         });
         const nonce = Date.now();
         const messageToHash = `${nonce}|${nep413Payload}`;
-        const hashedMessage = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(messageToHash));
-        const signatureBuffer = await crypto.subtle.sign({ name: 'Ed25519' }, privateKey, hashedMessage);
+        const hashedMessage = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(messageToHash));
+        const signatureBuffer = await crypto.subtle.sign({ name: "Ed25519" }, privateKey, hashedMessage);
         const signatureBytes = new Uint8Array(signatureBuffer);
         const signatureBase58 = base58Encode(signatureBytes);
         const signature = `ed25519:${signatureBase58}`;
@@ -341,12 +314,12 @@ class ConnectedAccount {
         const walletUrl = this.#connector.walletUrl;
         const logoutBridgeUrl = this.#connector.logoutBridgeUrl;
         return openWalletFlow({
-            method: 'sign-message',
+            method: "sign-message",
             walletUrl,
             logoutBridgeUrl,
-            sendMessageType: 'signMessage',
+            sendMessageType: "signMessage",
             sendData: signMessageData,
-            successMessageType: 'signed',
+            successMessageType: "signed",
             onSuccess: async (data) => {
                 return {
                     accountId: data.signature.accountId,
@@ -368,16 +341,16 @@ class ConnectedAccount {
      */
     async sendTransactions(transactions, onlySignDelegate = false) {
         if (this.disconnected) {
-            throw new Error('Account is disconnected');
+            throw new Error("Account is disconnected");
         }
         if (!this.#connector.walletUrl || !this.#connector.logoutBridgeUrl) {
-            throw new Error('Wallet URL not available');
+            throw new Error("Wallet URL not available");
         }
         const privateKeyJwk = await this.#connector.storage.get(STORAGE_KEY_APP_PRIVATE_KEY);
         if (!privateKeyJwk) {
-            throw new Error('Private key not found in storage');
+            throw new Error("Private key not found in storage");
         }
-        const privateKey = await crypto.subtle.importKey('jwk', privateKeyJwk, { name: 'Ed25519' }, true, ['sign']);
+        const privateKey = await crypto.subtle.importKey("jwk", privateKeyJwk, { name: "Ed25519" }, true, ["sign"]);
         const publicKeyBytes = base64Decode(privateKeyJwk.x);
         const publicKeyBase58 = base58Encode(publicKeyBytes);
         const publicKey = `ed25519:${publicKeyBase58}`;
@@ -389,8 +362,8 @@ class ConnectedAccount {
         const transactionsJson = JSON.stringify(serializableTransactions);
         const nonce = Date.now();
         const messageToHash = `${nonce}|${transactionsJson}`;
-        const hashedMessage = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(messageToHash));
-        const signatureBuffer = await crypto.subtle.sign({ name: 'Ed25519' }, privateKey, hashedMessage);
+        const hashedMessage = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(messageToHash));
+        const signatureBuffer = await crypto.subtle.sign({ name: "Ed25519" }, privateKey, hashedMessage);
         const signatureBytes = new Uint8Array(signatureBuffer);
         const signatureBase58 = base58Encode(signatureBytes);
         const signature = `ed25519:${signatureBase58}`;
@@ -400,17 +373,17 @@ class ConnectedAccount {
             nonce,
             signature,
             transactions: transactionsJson,
-            mode: onlySignDelegate ? 'SignDelegateActions' : 'Send'
+            mode: onlySignDelegate ? "SignDelegateActions" : "Send"
         };
         const walletUrl = this.#connector.walletUrl;
         const logoutBridgeUrl = this.#connector.logoutBridgeUrl;
         return openWalletFlow({
-            method: 'send-transactions',
+            method: "send-transactions",
             walletUrl,
             logoutBridgeUrl,
-            sendMessageType: 'signAndSendTransactions',
+            sendMessageType: "signAndSendTransactions",
             sendData: sendTransactionsData,
-            successMessageType: 'sent',
+            successMessageType: "sent",
             onSuccess: async (data) => {
                 if (data.outcomes) {
                     return {
@@ -422,7 +395,7 @@ class ConnectedAccount {
                         signedDelegateActions: data.signedDelegateActions
                     };
                 }
-                throw new Error('No outcomes or signedDelegateActions returned from wallet, this should never happen, a bug on wallet side');
+                throw new Error("No outcomes or signedDelegateActions returned from wallet, this should never happen, a bug on wallet side");
             },
             isUserRejection: (msg) => msg === "User rejected the transactions",
             description: "send a transaction",
@@ -430,14 +403,14 @@ class ConnectedAccount {
         });
     }
 }
-const STORAGE_KEY_ACCOUNT_ID = 'accountId';
-const STORAGE_KEY_APP_PRIVATE_KEY = 'appPrivateKey';
-const STORAGE_KEY_WALLET_URL = 'walletUrl';
-const STORAGE_KEY_LOGOUT_BRIDGE_URL = 'logoutBridgeUrl';
+const STORAGE_KEY_ACCOUNT_ID = "accountId";
+const STORAGE_KEY_APP_PRIVATE_KEY = "appPrivateKey";
+const STORAGE_KEY_WALLET_URL = "walletUrl";
+const STORAGE_KEY_LOGOUT_BRIDGE_URL = "logoutBridgeUrl";
 /**
  * IntearWalletConnector - A lightweight connector for Intear Wallet
  */
-export class IntearWalletConnector {
+class IntearWalletConnector {
     #connectedAccount;
     walletUrl;
     logoutBridgeUrl;
@@ -449,7 +422,7 @@ export class IntearWalletConnector {
      */
     static async loadFrom(storage) {
         if (!storage) {
-            throw new Error('loadFrom: Invalid arguments');
+            throw new Error("loadFrom: Invalid arguments");
         }
         const accountId = await storage.get(STORAGE_KEY_ACCOUNT_ID);
         const walletUrl = await storage.get(STORAGE_KEY_WALLET_URL);
@@ -480,17 +453,17 @@ export class IntearWalletConnector {
      */
     async requestConnection(options = {}) {
         if (this.#connectedAccount !== null) {
-            throw new Error('Already connected');
+            throw new Error("Already connected");
         }
-        const { networkId = 'mainnet', walletUrl = 'iframe:https://wallet.intear.tech', logoutBridgeUrl = "wss://logout-bridge-service.intear.tech", messageToSign: nep413MessageToSign, relayerId = null, } = options;
+        const { networkId = "mainnet", walletUrl = "iframe:https://wallet.intear.tech", logoutBridgeUrl = "wss://logout-bridge-service.intear.tech", messageToSign: nep413MessageToSign, relayerId = null, } = options;
         if (nep413MessageToSign && nep413MessageToSign.nonce.length !== 32) {
-            throw new Error('Nonce must be 32 bytes');
+            throw new Error("Nonce must be 32 bytes");
         }
         const keyPair = await crypto.subtle.generateKey({
-            name: 'Ed25519'
+            name: "Ed25519"
         }, true, // extractable
-            ['sign']);
-        const publicKeyRaw = await crypto.subtle.exportKey('raw', keyPair.publicKey);
+        ["sign"]);
+        const publicKeyRaw = await crypto.subtle.exportKey("raw", keyPair.publicKey);
         const publicKeyBytes = new Uint8Array(publicKeyRaw);
         const publicKeyBase58 = base58Encode(publicKeyBytes);
         const publicKey = `ed25519:${publicKeyBase58}`;
@@ -511,80 +484,91 @@ export class IntearWalletConnector {
         const message = JSON.stringify(messagePayload);
         const nonce = Date.now();
         const messageToHash = `${nonce}|${message}`;
-        const hashedMessage = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(messageToHash));
+        const hashedMessage = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(messageToHash));
         const signatureBuffer = await crypto.subtle.sign({
-            name: 'Ed25519'
+            name: "Ed25519"
         }, keyPair.privateKey, hashedMessage);
         const signatureBytes = new Uint8Array(signatureBuffer);
         const signatureBase58 = base58Encode(signatureBytes);
         const signature = `ed25519:${signatureBase58}`;
+        const signInData = {
+            publicKey,
+            networkId,
+            nonce,
+            message,
+            signature,
+            version: "V3",
+            relayerId,
+        } ;
         if (walletUrl.startsWith("iframe:")) {
-            const hotConnectorOrigin = new Promise((resolve) => {
-                let origin = null;
-                const interval = setInterval(() => {
-                    if (origin) {
-                        clearInterval(interval);
-                        resolve(origin);
-                    }
-                }, 100);
-                const listener = (event) => {
-                    // Could be a wrong origin, but there's no way to know if it's the right one
-                    if (event.data.origin) {
-                        origin = event.data.origin;
-                        window.removeEventListener("message", listener);
-                    }
-                };
-                window.addEventListener("message", listener);
-            });
             const iframeOriginUrl = walletUrl.substring("iframe:".length);
+            const hotConnectorOrigin = new Promise((resolve) => {
+                    let origin = null;
+                    const interval = setInterval(() => {
+                        if (origin) {
+                            clearInterval(interval);
+                            resolve(origin);
+                        }
+                    }, 100);
+                    const listener = (event) => {
+                        // Could be a wrong origin, but there"s no way to know if it"s the right one
+                        if (event.data.origin) {
+                            origin = event.data.origin;
+                            window.removeEventListener("message", listener);
+                        }
+                    };
+                    window.addEventListener("message", listener);
+                })
+                ;
             const iframe = document.createElement("iframe");
-            iframe.src = `${iframeOriginUrl}/hot-wallet-connector-iframe.html`; // for hot connector
+            iframe.src = `${iframeOriginUrl}/hot-wallet-connector-iframe.html`
+                ;
             iframe.style.position = "fixed";
             iframe.style.inset = "0";
             iframe.style.width = "100vw";
             iframe.style.height = "100vh";
             iframe.style.border = "none";
             iframe.style.zIndex = "100000";
-            // for hot connector
-            iframe.onload = () => {
-                window.selector.ui.showIframe();
-                hotConnectorOrigin.then((origin) => {
-                    iframe.contentWindow?.postMessage(
-                        {
+            {
+                iframe.onload = () => {
+                    // @ts-ignore
+                    window.selector.ui.showIframe();
+                    hotConnectorOrigin?.then((origin) => {
+                        iframe.contentWindow?.postMessage({
                             type: "hotConnectorData",
                             origin,
+                            // @ts-ignore
                             location: window.selector.location,
-                        },
-                        "*"
-                    );
-                });
-            };
+                        }, "*");
+                    });
+                };
+            }
             document.body.appendChild(iframe);
             return new Promise((resolve, reject) => {
                 let response = {};
                 const listener = async (event) => {
-                    if (event.data.status) {
-                        // Probably a hot connector result
-                        iframe.contentWindow?.postMessage(
-                            event.data,
-                            "*"
-                        );
-                        return;
+                    {
+                        if (event.data.status) {
+                            // Probably a hot connector result
+                            iframe.contentWindow?.postMessage(event.data, "*");
+                            return;
+                        }
                     }
                     switch (event.data.type) {
                         case "ready":
-                            const signInData = {
-                                publicKey,
-                                networkId,
-                                nonce,
-                                message,
-                                signature,
-                                version: 'V3',
-                                relayerId,
-                            };
+                            const data = {
+                                    publicKey,
+                                    networkId,
+                                    nonce,
+                                    message,
+                                    signature,
+                                    version: "V3",
+                                    relayerId,
+                                }
+                                ;
                             iframe.contentWindow?.postMessage({
                                 type: "signIn",
-                                data: signInData,
+                                data,
                             }, "*");
                             break;
                         case "connected":
@@ -592,7 +576,7 @@ export class IntearWalletConnector {
                             const responseWalletUrl = walletUrl === event.data.useBridge ? INTEAR_NATIVE_WALLET_URL : event.data.walletUrl;
                             this.walletUrl = responseWalletUrl;
                             this.logoutBridgeUrl = logoutBridgeUrl;
-                            const privateKeyJwk = await crypto.subtle.exportKey('jwk', keyPair.privateKey);
+                            const privateKeyJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
                             response = {
                                 privateKeyJwk: privateKeyJwk,
                                 walletUrl: responseWalletUrl,
@@ -611,7 +595,6 @@ export class IntearWalletConnector {
                             }, "*");
                             break;
                         case "close":
-                            console.log("Closing with", response);
                             iframe.remove();
                             window.removeEventListener("message", listener);
                             if (event.data.message) {
@@ -621,7 +604,8 @@ export class IntearWalletConnector {
                                 else {
                                     reject(new Error(event.data.message));
                                 }
-                            } else {
+                            }
+                            else {
                                 this.#connectedAccount = new ConnectedAccount(response.accountId, this);
                                 await this.storage.set(STORAGE_KEY_APP_PRIVATE_KEY, response.privateKeyJwk);
                                 await this.storage.set(STORAGE_KEY_WALLET_URL, response.walletUrl);
@@ -629,8 +613,8 @@ export class IntearWalletConnector {
                                 await this.storage.set(STORAGE_KEY_ACCOUNT_ID, response.accountId);
                                 const result = { account: this.#connectedAccount };
                                 if (nep413MessageToSign) {
-                                    if (!event.data.signedMessage) {
-                                        throw new Error('No signed message returned from wallet, this should never happen, a bug on wallet side');
+                                    if (!response.signedMessage) {
+                                        throw new Error("No signed message returned from wallet, this should never happen, a bug on wallet side");
                                     }
                                     result.signedMessage = {
                                         accountId: response.signedMessage.accountId,
@@ -649,19 +633,19 @@ export class IntearWalletConnector {
         }
         else {
             return openWalletFlow({
-                method: 'connect',
+                method: "connect",
                 walletUrl,
                 logoutBridgeUrl,
-                sendMessageType: 'signIn',
+                sendMessageType: "signIn",
                 sendData: signInData,
-                successMessageType: 'connected',
+                successMessageType: "connected",
                 onSuccess: async (data) => {
                     const accountId = data.accountId;
                     this.#connectedAccount = new ConnectedAccount(accountId, this);
                     const responseWalletUrl = walletUrl === data.useBridge ? INTEAR_NATIVE_WALLET_URL : data.walletUrl;
                     this.walletUrl = responseWalletUrl;
                     this.logoutBridgeUrl = logoutBridgeUrl;
-                    const privateKeyJwk = await crypto.subtle.exportKey('jwk', keyPair.privateKey);
+                    const privateKeyJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
                     await this.storage.set(STORAGE_KEY_APP_PRIVATE_KEY, privateKeyJwk);
                     await this.storage.set(STORAGE_KEY_WALLET_URL, responseWalletUrl);
                     await this.storage.set(STORAGE_KEY_LOGOUT_BRIDGE_URL, logoutBridgeUrl);
@@ -669,7 +653,7 @@ export class IntearWalletConnector {
                     const result = { account: this.#connectedAccount };
                     if (nep413MessageToSign) {
                         if (!data.signedMessage) {
-                            throw new Error('No signed message returned from wallet, this should never happen, a bug on wallet side');
+                            throw new Error("No signed message returned from wallet, this should never happen, a bug on wallet side");
                         }
                         result.signedMessage = {
                             accountId: data.signedMessage.accountId,
@@ -702,14 +686,14 @@ export class IntearWalletConnector {
             await this.storage.remove(STORAGE_KEY_LOGOUT_BRIDGE_URL);
         }
         else {
-            throw new Error('Account is not connected');
+            throw new Error("Account is not connected");
         }
     }
 }
 /**
  * InMemoryStorage - An in-memory storage implementation that is not persisted
  */
-export class InMemoryStorage {
+class InMemoryStorage {
     data;
     /**
      * Creates a new, empty InMemoryStorage instance
@@ -752,7 +736,7 @@ export class InMemoryStorage {
 /**
  * LocalStorageStorage - A localStorage-backed storage implementation
  */
-export class LocalStorageStorage {
+class LocalStorageStorage {
     prefix;
     storage;
     /**
@@ -790,4 +774,5 @@ export class LocalStorageStorage {
         return previousValue;
     }
 }
-export default IntearWalletConnector;
+
+export { INTEAR_NATIVE_WALLET_URL, InMemoryStorage, IntearWalletConnector, LocalStorageStorage, IntearWalletConnector as default, iframe };

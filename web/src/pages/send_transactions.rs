@@ -103,8 +103,16 @@ pub enum ResultToSend {
     },
     #[serde(rename_all = "camelCase")]
     SignDelegateActions {
-        signed_delegate_actions: Vec<SignedDelegateAction>,
+        signed_delegate_actions: Vec<SignedDelegateActionToSend>,
     },
+}
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SignedDelegateActionToSend {
+    pub borsh_serialized_base64: String,
+    #[serde(flatten)]
+    pub delegate_action: SignedDelegateAction,
 }
 
 #[component]
@@ -1081,7 +1089,14 @@ pub fn SendTransactions() -> impl IntoView {
                                 Ok(actions) => {
                                     let message = SendMessage::Sent {
                                         result: ResultToSend::SignDelegateActions {
-                                            signed_delegate_actions: actions,
+                                            signed_delegate_actions: actions
+                                                .into_iter()
+                                                .map(|action| SignedDelegateActionToSend {
+                                                    borsh_serialized_base64: BASE64_STANDARD
+                                                        .encode(borsh::to_vec(&action).unwrap()),
+                                                    delegate_action: action,
+                                                })
+                                                .collect(),
                                         },
                                     };
                                     post_to_opener(message, true);

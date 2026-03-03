@@ -157,7 +157,10 @@ Success:
     ...
   ], // this field only exists if mode is "Send"
   "signedDelegateActions": [
-    { /* SignedDelegateAction in Rust */ },
+    {
+      "borshSerializedBase64": "<base64>",
+      /* ...fields of SignedDelegateAction type in Rust */
+    },
     ...
   ] // this field only exists if mode is "SignDelegateActions"
 }

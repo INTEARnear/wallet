@@ -1,4 +1,4 @@
-import IntearWalletConnector, { base58Decode } from "./intearwallet-connect.js";
+import IntearWalletConnector from "./intearwallet-connect.js";
 
 const selectorStorage = {
     get: async (key) => {
@@ -24,9 +24,6 @@ class IntearWalletAdapter {
     async signIn({ network, contractId, methodNames }) {
         if (this.near.connectedAccount) {
             await this.signOut({ network });
-        }
-        if (contractId || methodNames) {
-            console.warn("[Intear Adapter] Contract ID and method names are not supported in near selector afaik. If you believe this is a mistake, or it's already supported, please write to intear wallet support or in telegram and it will be fixed asap.");
         }
         const result = await this.near.requestConnection({ networkId: network })
             .catch(error => {
@@ -97,6 +94,54 @@ class IntearWalletAdapter {
         } else {
             throw new Error("User rejected the transactions");
         }
+    }
+    async signDelegateActions({ network, signerId, delegateActions }) {
+        if (!this.near.connectedAccount) {
+            throw new Error("Account is not connected");
+        }
+        let transactions = delegateActions.map(da => {
+            return {
+                signerId,
+                receiverId: da.delegateAction.receiverId,
+                actions: da.delegateAction.actions,
+            };
+        });
+        transactions = transactions.map(t => {
+            t.actions.forEach(fixAction);
+            return {
+                signerId: t.signerId ?? this.near.connectedAccount.accountId,
+                receiverId: t.receiverId,
+                actions: t.actions,
+            };
+        });
+        const result = await this.near.connectedAccount.sendTransactions(transactions, true);
+        if (result !== null) {
+            return {
+                signedDelegateActions: result.signedDelegateActions.map(sda => sda.borshSerializedBase64)
+            };
+        } else {
+            throw new Error("User rejected the transactions");
+        }
+    }
+    async signInAndSignMessage({ network, contractId, methodNames, messageParams: { message, recipient, nonce } }) {
+        if (this.near.connectedAccount) {
+            await this.signOut({ network });
+        }
+        const result = await this.near.requestConnection({
+            networkId: network,
+            messageToSign: { message, nonce, recipient },
+        }).catch(error => {
+            console.error("Error in signIn", error);
+            return null;
+        });
+        if (result === null) {
+            return [];
+        }
+        return [{
+            accountId: result.account.accountId,
+            signedMessage: result.signedMessage,
+            // TODO: public key?
+        }];
     }
 }
 
