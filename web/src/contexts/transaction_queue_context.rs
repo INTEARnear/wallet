@@ -210,6 +210,7 @@ impl TransactionType {
         accounts_context: AccountsContext,
         ledger_mode: impl Fn() -> LedgerMode,
         tokens: ReadSignal<Vec<TokenData>>,
+        current_index_in_queue: usize,
     ) -> Result<TransactionResult<'a>, String> {
         match self {
             TransactionType::NearTransaction {
@@ -490,7 +491,7 @@ impl TransactionType {
                         .map_err(|e| {
                             format!("Failed to convert action to non-delegate action: {e}")
                         })?,
-                    nonce: access_key.nonce + 1,
+                    nonce: access_key.nonce + 1 + current_index_in_queue as u64,
                     max_block_height: recent_block_header.height + 100,
                     public_key: signer.secret_key.public_key(),
                 };
@@ -825,6 +826,7 @@ pub fn provide_transaction_queue_context() {
                                 accounts_context,
                                 move || config.get_untracked().ledger_mode,
                                 tokens,
+                                tx_current_index,
                             )
                             .await
                         {
