@@ -881,6 +881,8 @@ pub fn provide_transaction_queue_context() {
                             Err(e) => {
                                 if matches!(pending_tx, TransactionResult::SignedDelegateAction) {
                                     // get_tx_details is supposed to return an error because it hasn't been sent yet
+                                    set_is_processing.set(false);
+                                    set_current_index.update(|i| *i += 1);
                                     return;
                                 }
                                 let error = format!("Transaction failed to execute: {e}");

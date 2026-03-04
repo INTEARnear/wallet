@@ -5,7 +5,6 @@ site-pkg-dir = "pkg"
 site-addr = "127.0.0.1:3000"
 reload-port = 5678
 browserquery = "defaults"
-env = "DEV"
 bin-package = "server"
 lib-package = "web"
 tailwind-input-file = "style/styles.css"
