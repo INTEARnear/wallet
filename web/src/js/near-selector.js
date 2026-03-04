@@ -102,8 +102,8 @@ class IntearWalletAdapter {
         let transactions = delegateActions.map(da => {
             return {
                 signerId,
-                receiverId: da.delegateAction.receiverId,
-                actions: da.delegateAction.actions,
+                receiverId: da.receiverId,
+                actions: da.actions,
             };
         });
         transactions = transactions.map(t => {
