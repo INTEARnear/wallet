@@ -4,7 +4,7 @@ import { polyfillNode } from 'esbuild-plugin-polyfill-node';
 const isWatch = process.argv.includes('--watch') || process.argv.includes('-w');
 
 const indexBuildOptions = {
-    entryPoints: ['web/src/js/index.tsx'],
+    entryPoints: ['web/src/js/index.ts'],
     bundle: true,
     outdir: 'web/public/js',
     format: 'esm',

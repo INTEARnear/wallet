@@ -100,7 +100,6 @@ async function openPopupFlow(config) {
             }
         };
         const messageHandler = async (event) => {
-            console.log(true, event.origin, config.walletUrl);
             try {
                 const data = event.data;
                 if (data.type === "ready") {

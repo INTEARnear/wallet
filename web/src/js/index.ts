@@ -11,6 +11,7 @@ if (!posthog_api_key.startsWith("{{{")) {
         const { posthog } = await import("posthog-js");
         posthog.init(posthog_api_key,
             {
+                cookieless_mode: 'always',
                 api_host: "https://eu.i.posthog.com",
                 person_profiles: "identified_only",
             }

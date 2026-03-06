@@ -4,7 +4,7 @@
     "@ledgerhq/hw-transport-web-ble": "6.29.7",
     "@ledgerhq/hw-transport-webhid": "6.30.3",
     "@ledgerhq/hw-transport-webusb": "6.29.7",
-    "posthog-js": "1.254.0",
+    "posthog-js": "1.359.1",
     "qr-code-styling": "1.9.2",
     "tailwindcss": "4.2.1"
   },
