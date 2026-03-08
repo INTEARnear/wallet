@@ -21,11 +21,17 @@ class IntearWalletAdapter {
         this.near = near;
     }
 
-    async signIn({ network, contractId, methodNames }) {
+    async signIn({ network, addFunctionCallKey }) {
         if (this.near.connectedAccount) {
             await this.signOut({ network });
         }
-        const result = await this.near.requestConnection({ networkId: network })
+        const functionCallKey = addFunctionCallKey ? {
+            contractId: addFunctionCallKey.contractId,
+            publicKey: addFunctionCallKey.publicKey,
+            methodNames: addFunctionCallKey.allowMethods.anyMethod ? "any" : addFunctionCallKey.allowMethods.methodNames,
+            gasAllowance: addFunctionCallKey.gasAllowance.kind === "unlimited" ? "unlimited" : addFunctionCallKey.gasAllowance.amount,
+        } : undefined;
+        const result = await this.near.requestConnection({ networkId: network, functionCallKey })
             .catch(error => {
                 console.error("Error in signIn", error);
                 return null;
@@ -35,6 +41,33 @@ class IntearWalletAdapter {
         }
         return [{
             accountId: result.account.accountId,
+            // TODO: public key?
+        }];
+    }
+    async signInAndSignMessage({ network, contractId, methodNames, messageParams, addFunctionCallKey }) {
+        if (this.near.connectedAccount) {
+            await this.signOut({ network });
+        }
+        const functionCallKey = addFunctionCallKey ? {
+            contractId: addFunctionCallKey.contractId,
+            publicKey: addFunctionCallKey.publicKey,
+            methodNames: addFunctionCallKey.allowMethods.anyMethod ? "any" : addFunctionCallKey.allowMethods.methodNames,
+            gasAllowance: addFunctionCallKey.gasAllowance.kind === "unlimited" ? "unlimited" : addFunctionCallKey.gasAllowance.amount,
+        } : undefined;
+        const result = await this.near.requestConnection({
+            networkId: network,
+            messageToSign: messageParams,
+            functionCallKey,
+        }).catch(error => {
+            console.error("Error in signIn", error);
+            return null;
+        });
+        if (result === null) {
+            return [];
+        }
+        return [{
+            accountId: result.account.accountId,
+            signedMessage: result.signedMessage,
             // TODO: public key?
         }];
     }
@@ -122,26 +155,6 @@ class IntearWalletAdapter {
         } else {
             throw new Error("User rejected the transactions");
         }
-    }
-    async signInAndSignMessage({ network, contractId, methodNames, messageParams: { message, recipient, nonce } }) {
-        if (this.near.connectedAccount) {
-            await this.signOut({ network });
-        }
-        const result = await this.near.requestConnection({
-            networkId: network,
-            messageToSign: { message, nonce, recipient },
-        }).catch(error => {
-            console.error("Error in signIn", error);
-            return null;
-        });
-        if (result === null) {
-            return [];
-        }
-        return [{
-            accountId: result.account.accountId,
-            signedMessage: result.signedMessage,
-            // TODO: public key?
-        }];
     }
 }
 

@@ -23,6 +23,14 @@ function base64Decode(str) {
     return Uint8Array.from(binaryString, char => char.charCodeAt(0));
 }
 /**
+ * Encodes a byte array to base64 string
+ * @param bytes - The byte array to encode
+ * @returns The base64 encoded string
+ */
+function base64Encode(bytes) {
+    return btoa(String.fromCharCode(...bytes));
+}
+/**
  * Encodes a byte array to base58 string
  * @param bytes - The byte array to encode
  * @returns The base58 encoded string
@@ -59,6 +67,47 @@ function base58Encode(bytes) {
     }
     for (let i = digits.length - 1; i >= 0; i--) {
         result += ALPHABET[digits[i]];
+    }
+    return result;
+}
+/**
+ * Decodes a base58 string to byte array
+ * @param str - The base58 encoded string
+ * @returns The decoded byte array
+ */
+function base58Decode(str) {
+    const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    const ALPHABET_MAP = {};
+    for (let i = 0; i < ALPHABET.length; i++) {
+        ALPHABET_MAP[ALPHABET[i]] = i;
+    }
+    let zeroCount = 0;
+    while (zeroCount < str.length && str[zeroCount] === ALPHABET[0]) {
+        zeroCount++;
+    }
+    const bytes = [];
+    for (let i = zeroCount; i < str.length; i++) {
+        const char = str[i];
+        if (!(char in ALPHABET_MAP)) {
+            throw new Error(`Invalid base58 character: ${char}`);
+        }
+        let carry = ALPHABET_MAP[char];
+        for (let j = 0; j < bytes.length; j++) {
+            carry += bytes[j] * 58;
+            bytes[j] = carry & 0xff;
+            carry >>= 8;
+        }
+        while (carry > 0) {
+            bytes.push(carry & 0xff);
+            carry >>= 8;
+        }
+    }
+    const result = new Uint8Array(zeroCount + bytes.length);
+    for (let i = 0; i < zeroCount; i++) {
+        result[i] = 0;
+    }
+    for (let i = 0; i < bytes.length; i++) {
+        result[zeroCount + bytes.length - 1 - i] = bytes[i];
     }
     return result;
 }
@@ -454,7 +503,7 @@ class IntearWalletConnector {
         if (this.#connectedAccount !== null) {
             throw new Error("Already connected");
         }
-        const { networkId = "mainnet", walletUrl = "iframe:https://wallet.intear.tech", logoutBridgeUrl = "wss://logout-bridge-service.intear.tech", messageToSign: nep413MessageToSign, relayerId = null, } = options;
+        const { networkId = "mainnet", walletUrl = "iframe:https://wallet.intear.tech", logoutBridgeUrl = "wss://logout-bridge-service.intear.tech", messageToSign: nep413MessageToSign, relayerId = null, functionCallKey, } = options;
         if (nep413MessageToSign && nep413MessageToSign.nonce.length !== 32) {
             throw new Error("Nonce must be 32 bytes");
         }
@@ -498,6 +547,9 @@ class IntearWalletConnector {
             signature,
             version: "V3",
             relayerId,
+            contractId: functionCallKey?.contractId,
+            methodNames: functionCallKey ? (functionCallKey.methodNames === "any" ? undefined : functionCallKey.methodNames) : undefined,
+            gasAllowance: functionCallKey ? (functionCallKey.gasAllowance === "unlimited" ? "Unlimited" : { Amount: functionCallKey.gasAllowance }) : undefined,
         } ;
         if (walletUrl.startsWith("iframe:")) {
             const iframeOriginUrl = walletUrl.substring("iframe:".length);
@@ -555,19 +607,9 @@ class IntearWalletConnector {
                     }
                     switch (event.data.type) {
                         case "ready":
-                            const data = {
-                                    publicKey,
-                                    networkId,
-                                    nonce,
-                                    message,
-                                    signature,
-                                    version: "V3",
-                                    relayerId,
-                                }
-                                ;
                             iframe.contentWindow?.postMessage({
                                 type: "signIn",
-                                data,
+                                data: signInData,
                             }, "*");
                             break;
                         case "connected":
@@ -774,4 +816,4 @@ class LocalStorageStorage {
     }
 }
 
-export { INTEAR_NATIVE_WALLET_URL, InMemoryStorage, IntearWalletConnector, LocalStorageStorage, IntearWalletConnector as default, iframe };
+export { INTEAR_NATIVE_WALLET_URL, InMemoryStorage, IntearWalletConnector, LocalStorageStorage, base58Decode, base58Encode, base64Decode, base64Encode, IntearWalletConnector as default, iframe };
