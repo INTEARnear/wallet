@@ -15,15 +15,15 @@ use leptos_router::{components::A, hooks::use_location, location::Location};
 use near_min_api::{
     QueryFinality, RpcClient,
     types::{
-        AccountId, AccountIdRef, Action, Balance, CryptoHash, Finality, FunctionCallAction,
-        NearGas, NearToken, U128, near_crypto::PublicKey,
+        AccountId, AccountIdRef, Action, Balance, Finality, FunctionCallAction, NearGas, NearToken,
+        U128, near_crypto::PublicKey,
     },
     utils::dec_format,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    components::token_selector::TokenSelector,
+    components::{danger_confirm_input::DangerConfirmInput, token_selector::TokenSelector},
     contexts::{
         accounts_context::{Account, AccountsContext},
         config_context::ConfigContext,
@@ -31,9 +31,7 @@ use crate::{
         network_context::{Network, NetworkContext},
         rpc_context::RpcContext,
         tokens_context::{Token, TokenBalanceSource, TokenData, TokenInfo, TokensContext},
-        transaction_queue_context::{
-            EnqueuedTransaction, OverlayMode, TransactionQueueContext, TransactionType,
-        },
+        transaction_queue_context::{EnqueuedTransaction, OverlayMode, TransactionQueueContext},
     },
     pages::settings::SLIPPAGE_PRESETS,
     utils::{
@@ -128,10 +126,8 @@ pub fn Swap() -> impl IntoView {
     let ModalContext { modal } = expect_context::<ModalContext>();
     let (show_advanced_options, set_show_advanced_options) = signal(false);
 
-    // DEX selection state - all except NearIntents enabled by default
     let (selected_dexes, set_selected_dexes) = signal(vec![
         DexId::Rhea,
-        // DexId::NearIntents,
         DexId::Aidols,
         DexId::Wrap,
         DexId::RheaDcl,
@@ -340,26 +336,24 @@ pub fn Swap() -> impl IntoView {
 
     let (_routes_action_handle, set_routes_action_handle) =
         signal::<Option<ActionAbortHandle>>(None);
-    let get_routes_action = leptos::prelude::Action::new(
-        move |(swap_request, wait_mode, router_url): &(SwapRequest, WaitMode, String)| {
+    let get_routes_action =
+        leptos::prelude::Action::new(move |(swap_request, router_url): &(SwapRequest, String)| {
             let swap_request = swap_request.clone();
             // This should always run before set_routes_action_handle.set(get_routes_action.dispatch(...)),
             // so we have time to abort the previous request
             if let Some(handle) = set_routes_action_handle.write().take() {
                 handle.abort();
             }
-            let wait_mode = *wait_mode;
             let router_url = router_url.clone();
             async move {
                 let (oneshot_tx, oneshot_rx) = futures_channel::oneshot::channel();
                 spawn_local(async move {
-                    let routes = get_routes(swap_request, wait_mode, router_url).await;
+                    let routes = get_routes(swap_request, router_url).await;
                     let _ = oneshot_tx.send(routes);
                 });
                 oneshot_rx.await.unwrap()
             }
-        },
-    );
+        });
 
     Effect::new(move || {
         validated_amount_entered.track();
@@ -486,7 +480,7 @@ pub fn Swap() -> impl IntoView {
             token_in: token_in_id,
             token_out: token_out_id,
             amount,
-            max_wait_ms: 0, // will be set by WaitMode
+            max_wait_ms: 1000,
             slippage: config.get().slippage,
             dexes: Some(selected_dexes.get()), // Use selected DEXes
             trader_account_id: Some(current_account.account_id),
@@ -505,47 +499,13 @@ pub fn Swap() -> impl IntoView {
             && let Some(swap_request) =
                 create_swap_request(token_in, token_out, validated_amount, current_mode)
         {
-            // Request 1: Fast, skip intents. When skipping intents,
-            // usually the best quote is found in less than 2 seconds.
             get_routes_action.dispatch((
                 swap_request.clone(),
-                WaitMode::Fast {
-                    skip_intents: true,
-                    duration: Duration::from_millis(2000),
-                },
                 config
                     .get()
                     .custom_router_url
                     .unwrap_or_else(|| dotenvy_macro::dotenv!("ROUTER_URL").to_string()),
             ));
-            if selected_dexes.get().contains(&DexId::NearIntents) {
-                // Request 2: Fast, include intents. When including intents,
-                // usually takes nearly 2 seconds.
-                get_routes_action.dispatch((
-                    swap_request.clone(),
-                    WaitMode::Fast {
-                        skip_intents: false,
-                        duration: Duration::from_millis(2000),
-                    },
-                    config
-                        .get()
-                        .custom_router_url
-                        .unwrap_or_else(|| dotenvy_macro::dotenv!("ROUTER_URL").to_string()),
-                ));
-                // Request 3: Full, include intents. Takes nearly 3 seconds.
-                set_routes_action_handle.set(Some(
-                    get_routes_action.dispatch((
-                        swap_request,
-                        WaitMode::Full {
-                            duration: Duration::from_millis(3000),
-                        },
-                        config
-                            .get()
-                            .custom_router_url
-                            .unwrap_or_else(|| dotenvy_macro::dotenv!("ROUTER_URL").to_string()),
-                    )),
-                ));
-            }
         }
     });
 
@@ -630,9 +590,6 @@ pub fn Swap() -> impl IntoView {
                         set_last_dispatched_at.set(Some(Utc::now()));
                         set_routes_action_handle.set(Some(get_routes_action.dispatch((
                             swap_request,
-                            WaitMode::Full {
-                                duration: Duration::from_millis(3000),
-                            },
                             config.get_untracked().custom_router_url.unwrap_or_else(|| {
                                 dotenvy_macro::dotenv!("ROUTER_URL").to_string()
                             }),
@@ -742,7 +699,7 @@ pub fn Swap() -> impl IntoView {
                                                             {
                                                                 slippage
                                                                     == BigDecimal::from_f64(percentage).unwrap()
-                                                                        / BigDecimal::from(100)
+                                                                        / 100
                                                             } else {
                                                                 false
                                                             }
@@ -764,7 +721,7 @@ pub fn Swap() -> impl IntoView {
                                                                         .update(|config| {
                                                                             config.slippage = Slippage::Fixed {
                                                                                 slippage: BigDecimal::from_f64(percentage).unwrap()
-                                                                                    / BigDecimal::from(100),
+                                                                                    / 100,
                                                                             };
                                                                         });
                                                                     set_custom_slippage_input.set("".to_string());
@@ -796,7 +753,7 @@ pub fn Swap() -> impl IntoView {
                                                                 set_config
                                                                     .update(|config| {
                                                                         config.slippage = Slippage::Fixed {
-                                                                            slippage: percentage / BigDecimal::from(100),
+                                                                            slippage: percentage / 100,
                                                                         };
                                                                     });
                                                             }
@@ -1082,16 +1039,6 @@ pub fn Swap() -> impl IntoView {
                                                         }
                                                             .into_any()
                                                     }
-                                                    DexId::NearIntents => {
-                                                        view! {
-                                                            <img
-                                                                src="/near-intents.svg"
-                                                                alt="Near Intents"
-                                                                class="w-auto h-8"
-                                                            />
-                                                        }
-                                                            .into_any()
-                                                    }
                                                     DexId::Rhea => {
                                                         view! {
                                                             <img src="/rhea.svg" alt="Rhea" class="w-auto h-8" />
@@ -1177,15 +1124,6 @@ pub fn Swap() -> impl IntoView {
                                             </div>
                                         }
                                             .into_any()
-                                    } else if matches!(routes.wait_mode, WaitMode::Fast { .. }) {
-                                        view! {
-                                            <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-center gap-3 w-full min-h-[56px]">
-                                                <span class="text-white font-medium text-sm">
-                                                    "Fetching more routes"
-                                                </span>
-                                            </div>
-                                        }
-                                            .into_any()
                                     } else {
                                         view! {
                                             <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-center gap-3 w-full min-h-[56px]">
@@ -1265,58 +1203,96 @@ pub fn Swap() -> impl IntoView {
                                             log::error!("No token out selected, yet clicked swap");
                                             return;
                                         };
-                                        if config.get().swap_confirmation_enabled {
-                                            let (
-                                                amount_in,
-                                                estimated_amount_out,
-                                                worst_case_amount_in,
-                                                worst_case_amount_out,
-                                            ) = match swap_mode_memo.get() {
-                                                SwapMode::ExactIn => {
-                                                    match (
-                                                        best_route.estimated_amount,
-                                                        best_route.worst_case_amount,
-                                                    ) {
+                                        let (
+                                            amount_in,
+                                            estimated_amount_out,
+                                            worst_case_amount_in,
+                                            worst_case_amount_out,
+                                        ) = match swap_mode_memo.get() {
+                                            SwapMode::ExactIn => {
+                                                match (
+                                                    best_route.estimated_amount,
+                                                    best_route.worst_case_amount,
+                                                ) {
+                                                    (
+                                                        Amount::AmountOut(estimated),
+                                                        Amount::AmountOut(worst_case),
+                                                    ) => {
                                                         (
-                                                            Amount::AmountOut(estimated),
-                                                            Amount::AmountOut(worst_case),
-                                                        ) => {
-                                                            (
-                                                                validated_amount_entered,
-                                                                estimated,
-                                                                validated_amount_entered,
-                                                                worst_case,
-                                                            )
-                                                        }
-                                                        _ => {
-                                                            log::error!("Invalid route amounts for ExactIn mode");
-                                                            return;
-                                                        }
+                                                            validated_amount_entered,
+                                                            estimated,
+                                                            validated_amount_entered,
+                                                            worst_case,
+                                                        )
+                                                    }
+                                                    _ => {
+                                                        log::error!("Invalid route amounts for ExactIn mode");
+                                                        return;
                                                     }
                                                 }
-                                                SwapMode::ExactOut => {
-                                                    match (
-                                                        best_route.estimated_amount,
-                                                        best_route.worst_case_amount,
-                                                    ) {
+                                            }
+                                            SwapMode::ExactOut => {
+                                                match (
+                                                    best_route.estimated_amount,
+                                                    best_route.worst_case_amount,
+                                                ) {
+                                                    (
+                                                        Amount::AmountIn(estimated_in),
+                                                        Amount::AmountIn(worst_case_in),
+                                                    ) => {
                                                         (
-                                                            Amount::AmountIn(estimated_in),
-                                                            Amount::AmountIn(worst_case_in),
-                                                        ) => {
-                                                            (
-                                                                estimated_in,
-                                                                validated_amount_entered,
-                                                                worst_case_in,
-                                                                validated_amount_entered,
-                                                            )
-                                                        }
-                                                        _ => {
-                                                            log::error!("Invalid route amounts for ExactOut mode");
-                                                            return;
-                                                        }
+                                                            estimated_in,
+                                                            validated_amount_entered,
+                                                            worst_case_in,
+                                                            validated_amount_entered,
+                                                        )
+                                                    }
+                                                    _ => {
+                                                        log::error!("Invalid route amounts for ExactOut mode");
+                                                        return;
                                                     }
                                                 }
-                                            };
+                                            }
+                                        };
+                                        let requires_impact_confirmation = {
+                                            let token_in_info = &token_in.token;
+                                            let token_out_info = &token_out.token;
+                                            if !token_in_info.price_usd_hardcoded.is_zero()
+                                                && !token_out_info.price_usd_hardcoded.is_zero()
+                                            {
+                                                let amount_in_decimal = balance_to_decimal(
+                                                    amount_in,
+                                                    token_in_info.metadata.decimals,
+                                                );
+                                                let estimated_amount_out_decimal = balance_to_decimal(
+                                                    estimated_amount_out,
+                                                    token_out_info.metadata.decimals,
+                                                );
+                                                let input_usd_value =
+                                                    &amount_in_decimal * &token_in_info.price_usd_hardcoded;
+                                                let output_usd_value = &estimated_amount_out_decimal
+                                                    * &token_out_info.price_usd_hardcoded;
+                                                if !input_usd_value.is_zero()
+                                                    && !output_usd_value.is_zero()
+                                                {
+                                                    let difference = &input_usd_value - &output_usd_value;
+                                                    if difference.sign() == Sign::Plus {
+                                                        ((difference / &input_usd_value)
+                                                            * 100)
+                                                            > 10
+                                                    } else {
+                                                        false
+                                                    }
+                                                } else {
+                                                    false
+                                                }
+                                            } else {
+                                                false
+                                            }
+                                        };
+                                        if config.get().swap_confirmation_enabled
+                                            || requires_impact_confirmation
+                                        {
                                             let confirmation = SwapConfirmation {
                                                 token_in: token_in.token.clone(),
                                                 token_out: token_out.token.clone(),
@@ -1388,10 +1364,7 @@ pub fn Swap() -> impl IntoView {
                                             .value()
                                             .get()
                                             .and_then(|routes| routes.ok())
-                                            .map(|routes| {
-                                                routes.routes.is_empty()
-                                                    && matches!(routes.wait_mode, WaitMode::Fast { .. })
-                                            })
+                                            .map(|routes| { routes.routes.is_empty() })
                                             .unwrap_or(false)
                                     {
                                         view! {
@@ -1552,7 +1525,6 @@ pub fn Swap() -> impl IntoView {
                                                     let all_dexes = vec![
                                                         DexId::Rhea,
                                                         DexId::RheaDcl,
-                                                        DexId::NearIntents,
                                                         DexId::Aidols,
                                                         DexId::Wrap,
                                                         DexId::MetaPool,
@@ -1653,9 +1625,9 @@ pub fn Swap() -> impl IntoView {
                                             return ().into_any();
                                         }
                                         let percentage_diff = (&difference / &input_usd_val)
-                                            * BigDecimal::from(100);
-                                        let five_percent = BigDecimal::from(5);
-                                        let two_percent = BigDecimal::from(2);
+                                            * 100;
+                                        let five_percent = 5;
+                                        let two_percent = 2;
                                         if percentage_diff > five_percent {
                                             view! {
                                                 <div class="bg-red-900/20 border border-red-500/30 rounded-lg px-4 py-3 text-center">
@@ -1790,30 +1762,6 @@ async fn execute_route(
                 });
                 last_rx = Some(rx);
             }
-            ExecutionInstruction::IntentsQuote {
-                message_to_sign,
-                quote_hash,
-            } => {
-                let (rx, pending_tx) = EnqueuedTransaction::create_with_type(
-                    format!(
-                        "{description}{}",
-                        if steps > 1 {
-                            format!(" {}/{steps}", i + 1)
-                        } else {
-                            String::new()
-                        }
-                    ),
-                    account.account_id.clone(),
-                    TransactionType::NearIntents {
-                        message_to_sign,
-                        quote_hash,
-                    },
-                );
-                add_transaction.update(|txs| {
-                    txs.push(pending_tx);
-                });
-                last_rx = Some(rx);
-            }
         }
     }
 
@@ -1925,37 +1873,9 @@ async fn get_ft_balance(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum WaitMode {
-    /// Fast fetch, don't use intents
-    Fast {
-        skip_intents: bool,
-        duration: Duration,
-    },
-    /// Include slow dexes like near intents, wait for better quote
-    Full { duration: Duration },
-}
-
-async fn get_routes(
-    swap_request: SwapRequest,
-    wait_mode: WaitMode,
-    router_url: String,
-) -> Result<Routes, String> {
-    let mut filtered_dexes = swap_request.dexes.clone().unwrap_or_default();
-
-    // Filter out NearIntents for fast mode when skip_intents is true
-    if let WaitMode::Fast {
-        skip_intents: true, ..
-    } = wait_mode
-    {
-        filtered_dexes.retain(|dex| *dex != DexId::NearIntents);
-    }
-
+async fn get_routes(swap_request: SwapRequest, router_url: String) -> Result<Routes, String> {
+    let filtered_dexes = swap_request.dexes.clone().unwrap_or_default();
     let swap_request = SwapRequest {
-        max_wait_ms: match wait_mode {
-            WaitMode::Fast { duration, .. } => duration.as_millis() as u64,
-            WaitMode::Full { duration } => duration.as_millis() as u64,
-        },
         dexes: if filtered_dexes.is_empty() {
             None
         } else {
@@ -1972,13 +1892,12 @@ async fn get_routes(
         .json::<Vec<Route>>()
         .await
         .map_err(|e| e.to_string())?;
-    Ok(Routes { routes, wait_mode })
+    Ok(Routes { routes })
 }
 
 #[derive(Debug, Clone)]
 struct Routes {
     routes: Vec<Route>,
-    wait_mode: WaitMode,
 }
 
 impl Default for Slippage {
@@ -1995,7 +1914,7 @@ impl Display for Slippage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Slippage::Auto { .. } => write!(f, "Auto"),
-            Slippage::Fixed { slippage } => write!(f, "{:.2}%", slippage * BigDecimal::from(100)),
+            Slippage::Fixed { slippage } => write!(f, "{:.2}%", slippage * 100),
         }
     }
 }
@@ -2178,14 +2097,6 @@ pub enum ExecutionInstruction {
         receiver_id: AccountId,
         actions: Vec<Action>,
     },
-    /// A quote from Near Intents. You should sign the message and send it to
-    /// POST https://solver-relay-v2.chaindefuser.com/rpc with method
-    /// `publish_intent`. More details on how to publish a signed intent:
-    /// https://docs.near-intents.org/near-intents/market-makers/bus/solver-relay
-    IntentsQuote {
-        message_to_sign: String,
-        quote_hash: CryptoHash,
-    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
@@ -2195,11 +2106,6 @@ pub enum DexId {
     ///
     /// Supports AmountIn, doesn't support AmountOut
     Rhea,
-    /// https://app.near-intents.org/
-    /// guaranteed-quote DEX & Bridge
-    ///
-    /// Supports both AmountIn and AmountOut
-    NearIntents,
     /// https://aidols.bot/
     /// bonding-curve launchpad
     ///
@@ -2241,7 +2147,6 @@ pub enum DexId {
 }
 
 const RHEA_STR: &str = "Rhea";
-const NEAR_INTENTS_STR: &str = "NearIntents";
 const AIDOLS_STR: &str = "Aidols";
 const WRAP_STR: &str = "Wrap";
 const RHEA_DCL_STR: &str = "RheaDcl";
@@ -2255,7 +2160,6 @@ impl Display for DexId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DexId::Rhea => f.write_str(RHEA_STR),
-            DexId::NearIntents => f.write_str(NEAR_INTENTS_STR),
             DexId::Aidols => f.write_str(AIDOLS_STR),
             DexId::Wrap => f.write_str(WRAP_STR),
             DexId::RheaDcl => f.write_str(RHEA_DCL_STR),
@@ -2274,7 +2178,6 @@ impl FromStr for DexId {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s {
             RHEA_STR => DexId::Rhea,
-            NEAR_INTENTS_STR => DexId::NearIntents,
             AIDOLS_STR => DexId::Aidols,
             WRAP_STR => DexId::Wrap,
             RHEA_DCL_STR => DexId::RheaDcl,
@@ -2491,14 +2394,14 @@ fn SwapConfirmationModal(
     );
 
     // Calculate price impact if possible
-    let price_impact =
+    let price_impact: Option<BigDecimal> =
         if !token_in.price_usd_hardcoded.is_zero() && !token_out.price_usd_hardcoded.is_zero() {
             let input_usd_value = &amount_in_decimal * &token_in.price_usd_hardcoded;
             let output_usd_value = &estimated_amount_out_decimal * &token_out.price_usd_hardcoded;
             if !input_usd_value.is_zero() && !output_usd_value.is_zero() {
                 let difference = &input_usd_value - &output_usd_value;
                 if difference.sign() == bigdecimal::num_bigint::Sign::Plus {
-                    Some((difference / &input_usd_value) * BigDecimal::from(100))
+                    Some((difference / &input_usd_value) * 100)
                 } else {
                     None
                 }
@@ -2508,6 +2411,37 @@ fn SwapConfirmationModal(
         } else {
             None
         };
+    let danger_confirmation = if let Some(impact) = price_impact.as_ref() {
+        if impact > 90 {
+            Some((
+                "I WILL LOSE OVER 90%",
+                "Type 'I WILL LOSE OVER 90%' to proceed:",
+                "I WILL LOSE OVER 90%",
+                "Extreme Price Impact".to_string(),
+                format!(
+                    "Price impact is {:.2}%. You may lose over 90% of value in this swap.",
+                    impact
+                ),
+            ))
+        } else if impact > 10 {
+            Some((
+                "CONFIRM",
+                "Type 'CONFIRM' to proceed:",
+                "CONFIRM",
+                "High Price Impact".to_string(),
+                format!(
+                    "Price impact is {:.2}%. This swap can result in significant losses.",
+                    impact
+                ),
+            ))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let requires_danger_confirmation = danger_confirmation.is_some();
+    let (is_danger_confirmed, set_is_danger_confirmed) = signal(!requires_danger_confirmation);
 
     view! {
         <div
@@ -2633,16 +2567,6 @@ fn SwapConfirmationModal(
                                             }
                                                 .into_any()
                                         }
-                                        DexId::NearIntents => {
-                                            view! {
-                                                <img
-                                                    src="/near-intents.svg"
-                                                    alt="Near Intents"
-                                                    class="w-auto h-5"
-                                                />
-                                            }
-                                                .into_any()
-                                        }
                                         DexId::Rhea => {
                                             view! {
                                                 <img src="/rhea.svg" alt="Rhea" class="w-auto h-5" />
@@ -2729,7 +2653,7 @@ fn SwapConfirmationModal(
                                 let price_impact_clone = price_impact.clone();
                                 move || {
                                     if let Some(impact) = price_impact_clone.as_ref() {
-                                        if impact >= &BigDecimal::from(5) {
+                                        if impact >= 5 {
                                             let impact_clone = impact.clone();
                                             view! {
                                                 <div class="flex justify-between items-center">
@@ -2756,6 +2680,28 @@ fn SwapConfirmationModal(
                                 }
                             }
                         </div>
+                        {match danger_confirmation.clone() {
+                            Some((
+                                expected_text,
+                                label_text,
+                                placeholder_text,
+                                warning_title,
+                                warning_message,
+                            )) => {
+                                view! {
+                                    <DangerConfirmInput
+                                        set_is_confirmed=set_is_danger_confirmed
+                                        expected_text=expected_text
+                                        label_text=label_text
+                                        placeholder_text=placeholder_text
+                                        warning_title=warning_title
+                                        warning_message=warning_message
+                                    />
+                                }
+                                    .into_any()
+                            }
+                            None => ().into_any(),
+                        }}
                     </div>
 
                     // Action buttons
@@ -2767,10 +2713,18 @@ fn SwapConfirmationModal(
                             "Cancel"
                         </button>
                         <button
-                            class="flex-1 bg-linear-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-xl px-4 py-3 font-medium transition-all cursor-pointer"
+                            class="flex-1 bg-linear-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-xl px-4 py-3 font-medium transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-blue-500 disabled:hover:to-purple-500"
+                            disabled=move || {
+                                requires_danger_confirmation && !is_danger_confirmed.get()
+                            }
                             on:click={
                                 let confirmation_clone = confirmation.clone();
                                 move |_| {
+                                    if requires_danger_confirmation
+                                        && !is_danger_confirmed.get_untracked()
+                                    {
+                                        return;
+                                    }
                                     let Some(selected_account_id) = accounts
                                         .get_untracked()
                                         .selected_account_id else {
