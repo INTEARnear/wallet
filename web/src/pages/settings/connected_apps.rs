@@ -63,94 +63,98 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
             })
             .cloned();
 
-        if let Some(app) = app {
-            add_security_log(
-                format!(
-                    "Logged out of {app:?} on /logout (NOTE: some logouts made on dapp side might not be displayed on this page)"
-                ),
-                app.account_id.clone(),
-                accounts_context,
+        let Some(app) = app else {
+            return;
+        };
+        let Some(function_call_public_key) = app.function_call_public_key.clone() else {
+            return;
+        };
+        add_security_log(
+            format!(
+                "Logged out of {app:?} on /logout (NOTE: some logouts made on dapp side might not be displayed on this page)"
+            ),
+            app.account_id.clone(),
+            accounts_context,
+        );
+        let action = Action::DeleteKey(Box::new(DeleteKeyAction {
+            public_key: function_call_public_key.clone(),
+        }));
+
+        // If app has a function call key, delete it. Don't accidentally delete the
+        // account's own full access key (even though the app technically needs a
+        // signature from this key in order to add it).
+        let details_receiver = if app.requested_contract_id.is_some()
+            && function_call_public_key
+                != accounts_context
+                    .accounts
+                    .get()
+                    .accounts
+                    .into_iter()
+                    .find(|account| account.account_id == *account_id)
+                    .unwrap()
+                    .secret_key
+                    .public_key()
+        {
+            let (details_receiver, transaction) = EnqueuedTransaction::create(
+                format!("Remove function call key for {}", app.origin),
+                account_id.clone(),
+                account_id.clone(),
+                vec![action],
+                true,
             );
-            let action = Action::DeleteKey(Box::new(DeleteKeyAction {
-                public_key: public_key.clone(),
-            }));
 
-            // If app has a function call key, delete it. Don't accidentally delete the
-            // account's own full access key (even though the app technically needs a
-            // signature from this key in order to add it).
-            let details_receiver = if app.requested_contract_id.is_some()
-                && app.auth_public_key
-                    != accounts_context
-                        .accounts
-                        .get()
-                        .accounts
-                        .into_iter()
-                        .find(|account| account.account_id == *account_id)
-                        .unwrap()
-                        .secret_key
-                        .public_key()
-            {
-                let (details_receiver, transaction) = EnqueuedTransaction::create(
-                    format!("Remove function call key for {}", app.origin),
-                    account_id.clone(),
-                    account_id.clone(),
-                    vec![action],
-                    true,
-                );
+            add_transaction.update(|queue| queue.push(transaction));
+            details_receiver
+        } else {
+            let (_tx, rx) = oneshot::channel();
+            // Awaiting rx will immediately error out, as tx is dropped, but we don't handle
+            // transaction errors anyway
+            rx
+        };
 
-                add_transaction.update(|queue| queue.push(transaction));
-                details_receiver
-            } else {
-                let (_tx, rx) = oneshot::channel();
-                // Awaiting rx will immediately error out, as tx is dropped, but we don't handle
-                // transaction errors anyway
-                rx
-            };
-
-            // Wait for transaction and logout request to complete before marking app as logged out
-            spawn_local({
-                let account_id = account_id.clone();
-                let public_key = public_key.clone();
-                async move {
-                    let account = accounts_context
-                        .accounts
-                        .get_untracked()
-                        .accounts
-                        .into_iter()
-                        .find(|account| account.account_id == *account_id)
-                        .unwrap();
-                    let url = dotenvy_macro::dotenv!("SHARED_LOGOUT_BRIDGE_SERVICE_ADDR");
-                    let nonce = Date::now() as u64;
-                    let request = reqwest::Client::new().post(format!(
-                        "{url}/api/logout_user/{network}",
-                        network = match &account.network {
-                            Network::Mainnet => "mainnet".to_string(),
-                            Network::Testnet => "testnet".to_string(),
-                            Network::Localnet(network) => network.id.clone(),
-                        }
-                    ))
-                    .json(&serde_json::json!({
-                        "account_id": account_id,
-                        "user_logout_public_key": account.secret_key.public_key(),
-                        "app_public_key": public_key,
-                        "nonce": nonce,
-                        "signature": app.logout_key.sign(format!("logout|{nonce}|{account_id}|{public_key}").as_bytes())
-                    }))
-                    .send();
-                    let (_tx_details, _logout_response) =
-                        futures_util::join!(details_receiver, request);
-                    set_apps.update(|state| {
-                        if let Some(app) = state.apps.iter_mut().find(|app| {
-                            app.account_id == account_id && app.auth_public_key == public_key
-                        }) {
-                            app.logged_out_at = Some(Utc::now());
-                        } else {
-                            log::error!("App not found, couldn't mark as logged out");
-                        }
-                    });
-                }
-            });
-        }
+        // Wait for transaction and logout request to complete before marking app as logged out
+        spawn_local({
+            let account_id = account_id.clone();
+            let public_key = public_key.clone();
+            async move {
+                let account = accounts_context
+                    .accounts
+                    .get_untracked()
+                    .accounts
+                    .into_iter()
+                    .find(|account| account.account_id == *account_id)
+                    .unwrap();
+                let url = dotenvy_macro::dotenv!("SHARED_LOGOUT_BRIDGE_SERVICE_ADDR");
+                let nonce = Date::now() as u64;
+                let request = reqwest::Client::new().post(format!(
+                    "{url}/api/logout_user/{network}",
+                    network = match &account.network {
+                        Network::Mainnet => "mainnet".to_string(),
+                        Network::Testnet => "testnet".to_string(),
+                        Network::Localnet(network) => network.id.clone(),
+                    }
+                ))
+                .json(&serde_json::json!({
+                    "account_id": account_id,
+                    "user_logout_public_key": account.secret_key.public_key(),
+                    "app_public_key": public_key,
+                    "nonce": nonce,
+                    "signature": app.logout_key.sign(format!("logout|{nonce}|{account_id}|{public_key}").as_bytes())
+                }))
+                .send();
+                let (_tx_details, _logout_response) =
+                    futures_util::join!(details_receiver, request);
+                set_apps.update(|state| {
+                    if let Some(app) = state.apps.iter_mut().find(|app| {
+                        app.account_id == account_id && app.auth_public_key == public_key
+                    }) {
+                        app.logged_out_at = Some(Utc::now());
+                    } else {
+                        log::error!("App not found, couldn't mark as logged out");
+                    }
+                });
+            }
+        });
     };
 
     // Check status of active connections on mount
@@ -342,7 +346,7 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                                     }
                                 };
                                 let account_id = app.account_id.clone();
-                                let public_key = app.auth_public_key.clone();
+                                let auth_public_key = app.auth_public_key.clone();
                                 let requested_contract_id = app.requested_contract_id.clone();
                                 let requested_method_names = app.requested_method_names.clone();
                                 let app = app.clone();
@@ -390,7 +394,7 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                                                 </div>
                                             </div>
                                             <button
-                                                on:click=move |_| log_out(&account_id, &public_key)
+                                                on:click=move |_| log_out(&account_id, &auth_public_key)
                                                 class="px-3 py-1.5 text-sm text-red-500 rounded hover:bg-neutral-800 transition-colors min-w-24 cursor-pointer"
                                             >
                                                 "Log out"
