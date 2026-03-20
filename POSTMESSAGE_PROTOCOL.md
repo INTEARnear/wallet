@@ -45,7 +45,7 @@ The same JSON payloads are also used when Intear Wallet runs in a desktop / mobi
     "gasAllowance": { "Amount": "100000000000000000000000" }, // or "Unlimited" instead of the object
     "networkId": "mainnet" | "testnet" | string, // (can be any string for a custom localnet)
     "nonce": 0, // must be a recent timestamp in milliseconds since unix epoch
-    "message": "{\"messageToSign\":\"{\\\"message\\\":\\\"Hello\\\",\\\"nonce\\\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\\\"recipient\\\":\\\"app.near\\\",\\\"callback_url\\\":null,\\\"state\\\":\\\"optional string\\\"}\"}", // messageToSign is an optional stringified NEP-413 message to sign during connection, same structure as in sign-message request. If you don't need it, it should be "{}"
+    "message": "{\"messageToSign\":\"{\\\"message\\\":\\\"Hello\\\",\\\"nonce\\\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\\\"recipient\\\":\\\"app.near\\\",\\\"callback_url\\\":null,\\\"state\\\":\\\"optional string\\\"}\",\"functionCallPublicKey\":\"ed25519:...\"}", // messageToSign is an optional stringified NEP-413 message to sign during connection, same structure as in sign-message request. functionCallPublicKey is optional, for the function call key. If you don't need any of the optional fields in message, send an empty object (`{}`)
     "signature": "ed25519:...", // of sha256("${nonce}|${message}")
     "version": "V3", // only the V3 version is documented here, please refer to git history of this file to see previous documentation
     "actualOrigin": "https://dapp.com", // If you use wallet-connector-iframe.html, the iframe injects this value. This is the value displayed to the user

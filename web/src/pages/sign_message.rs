@@ -816,7 +816,9 @@ fn IntentItem(intent: intents::Intent, index: usize) -> impl IntoView {
                 <div>
                     <p class="text-white text-sm font-medium break-all">{title}</p>
                     {if !details.is_empty() {
-                        view! { <p class="text-neutral-400 text-xs mt-1 wrap-break-word">{details}</p> }
+                        view! {
+                            <p class="text-neutral-400 text-xs mt-1 wrap-break-word">{details}</p>
+                        }
                             .into_any()
                     } else {
                         ().into_any()
@@ -1421,7 +1423,7 @@ pub fn SignMessage() -> impl IntoView {
                             .apps
                             .iter()
                             .find(|app| {
-                                app.public_key == request_data.public_key
+                                app.auth_public_key == request_data.public_key
                                     && app.account_id == request_data.account_id
                                     && app.logged_out_at.is_none()
                             })

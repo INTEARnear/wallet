@@ -647,7 +647,7 @@ pub fn SendTransactions() -> impl IntoView {
                             .apps
                             .iter()
                             .find(|app| {
-                                app.public_key == request_data.public_key
+                                app.auth_public_key == request_data.public_key
                                     && app.account_id == request_data.account_id
                                     && app.logged_out_at.is_none()
                             })
@@ -889,7 +889,7 @@ pub fn SendTransactions() -> impl IntoView {
             set_apps.update(|state| {
                 if let Some(app_to_update) = state.apps.iter_mut().find(|a| {
                     a.account_id == app.account_id
-                        && a.public_key == app.public_key
+                        && a.auth_public_key == app.auth_public_key
                         && a.logged_out_at.is_none()
                 }) && remember_contract.get()
                 {

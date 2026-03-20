@@ -65,7 +65,8 @@ pub struct SignInRequest {
     contract_id: Option<String>,
     #[serde(default)]
     method_names: Option<Vec<String>>,
-    public_key: PublicKey,
+    #[serde(alias = "publicKey")]
+    auth_public_key: PublicKey,
     network_id: NetworkLowercase,
     nonce: u64,
     signature: Signature,
@@ -98,6 +99,8 @@ pub struct ConnectMessage {
     origin: Option<String>,
     #[serde(default)]
     message_to_sign: Option<String>,
+    #[serde(default)]
+    function_call_public_key: Option<PublicKey>,
 }
 
 #[derive(Debug, Clone)]
@@ -410,7 +413,7 @@ pub fn Connect() -> impl IntoView {
                 let to_prove = CryptoHash::hash_bytes(to_prove); // sha256
                 let is_valid = request_data
                     .signature
-                    .verify(to_prove.as_bytes(), &request_data.public_key)
+                    .verify(to_prove.as_bytes(), &request_data.auth_public_key)
                     && request_data.nonce > Date::now() as u64 - 1000 * 60 * 5
                     && request_data.nonce <= Date::now() as u64;
 
@@ -525,7 +528,7 @@ pub fn Connect() -> impl IntoView {
             .read_untracked()
             .apps
             .iter()
-            .any(|app| app.public_key == request_data.public_key)
+            .any(|app| app.auth_public_key == request_data.auth_public_key)
         {
             // Now it's safe to reveal this, no one can identify whether a certain
             // app is connected by just having the public key, they would also need a
@@ -543,7 +546,7 @@ pub fn Connect() -> impl IntoView {
         let nonce = Date::now() as u64;
         let message = format!(
             "login|{nonce}|{selected_account_id}|{}",
-            request_data.public_key,
+            request_data.auth_public_key,
         );
 
         spawn_local({
@@ -618,7 +621,7 @@ pub fn Connect() -> impl IntoView {
 
                 let login_request = LoginBridgeRequest {
                     account_id: selected_account_id.clone(),
-                    app_public_key: request_data.public_key.clone(),
+                    app_public_key: request_data.auth_public_key.clone(),
                     user_logout_public_key: logout_key.public_key(),
                     nonce,
                     signature,
@@ -646,10 +649,14 @@ pub fn Connect() -> impl IntoView {
                         log::error!("Failed to connect to bridge service: {err:?}");
                     }
                 }
+                let Ok(message) = serde_json::from_str::<ConnectMessage>(&request_data.message)
+                else {
+                    return;
+                };
                 set_apps.update(|apps| {
                     let app = ConnectedApp {
                         account_id: selected_account.clone(),
-                        public_key: request_data.public_key.clone(),
+                        auth_public_key: request_data.auth_public_key.clone(),
                         requested_contract_id: match request_data.contract_id.as_deref() {
                             None | Some("") => None,
                             Some(contract_id) => {
@@ -689,6 +696,7 @@ pub fn Connect() -> impl IntoView {
                         logged_out_at: None,
                         logout_key: logout_key.clone(),
                         connector_version: request_data.version,
+                        function_call_public_key: message.function_call_public_key.clone(),
                     };
                     add_security_log(
                         format!("Connected to {app:?} on /connect"),
@@ -706,7 +714,10 @@ pub fn Connect() -> impl IntoView {
                     let method_names = request_data.method_names.clone().unwrap_or_default();
 
                     let action = Action::AddKey(Box::new(AddKeyAction {
-                        public_key: request_data.public_key.clone(),
+                        public_key: message
+                            .function_call_public_key
+                            .clone()
+                            .unwrap_or(request_data.auth_public_key.clone()),
                         access_key: AccessKey {
                             nonce: 0,
                             permission: AccessKeyPermission::FunctionCall(FunctionCallPermission {

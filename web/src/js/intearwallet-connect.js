@@ -515,7 +515,7 @@ class IntearWalletConnector {
         const publicKeyBytes = new Uint8Array(publicKeyRaw);
         const publicKeyBase58 = base58Encode(publicKeyBytes);
         const publicKey = `ed25519:${publicKeyBase58}`;
-        let messagePayload;
+        let messagePayload = {};
         if (nep413MessageToSign) {
             const nep413Payload = JSON.stringify({
                 message: nep413MessageToSign.message,
@@ -524,10 +524,10 @@ class IntearWalletConnector {
                 callback_url: nep413MessageToSign.callbackUrl ?? null,
                 state: nep413MessageToSign.state ?? null
             });
-            messagePayload = { messageToSign: nep413Payload };
+            messagePayload.messageToSign = nep413Payload;
         }
-        else {
-            messagePayload = {};
+        if (functionCallKey) {
+            messagePayload.functionCallPublicKey = functionCallKey.publicKey;
         }
         const message = JSON.stringify(messagePayload);
         const nonce = Date.now();

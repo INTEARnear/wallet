@@ -58,7 +58,7 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
             .iter()
             .find(|app| {
                 app.account_id == *account_id
-                    && app.public_key == *public_key
+                    && app.auth_public_key == *public_key
                     && app.logged_out_at.is_none()
             })
             .cloned();
@@ -79,7 +79,7 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
             // account's own full access key (even though the app technically needs a
             // signature from this key in order to add it).
             let details_receiver = if app.requested_contract_id.is_some()
-                && app.public_key
+                && app.auth_public_key
                     != accounts_context
                         .accounts
                         .get()
@@ -141,7 +141,7 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                         futures_util::join!(details_receiver, request);
                     set_apps.update(|state| {
                         if let Some(app) = state.apps.iter_mut().find(|app| {
-                            app.account_id == account_id && app.public_key == public_key
+                            app.account_id == account_id && app.auth_public_key == public_key
                         }) {
                             app.logged_out_at = Some(Utc::now());
                         } else {
@@ -200,7 +200,7 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                     match reqwest::Client::new()
                         .post(format!(
                             "{url}/api/check_logout/{network}/{}/{}",
-                            app.account_id, app.public_key
+                            app.account_id, app.auth_public_key
                         ))
                         .json(&serde_json::json!({
                             "nonce": nonce,
@@ -221,12 +221,12 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                                 if let SessionStatus::LoggedOut(logout_info) = status {
                                     let message = format!(
                                         "logout|{}|{}|{}",
-                                        logout_info.nonce, app.account_id, app.public_key
+                                        logout_info.nonce, app.account_id, app.auth_public_key
                                     );
 
                                     let verify_key = match logout_info.caused_by {
                                         LogoutCause::User => app.logout_key.public_key(),
-                                        LogoutCause::App => app.public_key.clone(),
+                                        LogoutCause::App => app.auth_public_key.clone(),
                                     };
 
                                     if !logout_info
@@ -237,7 +237,7 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                                         continue;
                                     }
 
-                                    log_out(&app.account_id, &app.public_key);
+                                    log_out(&app.account_id, &app.auth_public_key);
                                 }
                             }
                             Err(e) => {
@@ -269,7 +269,7 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                 let mut apps = state.apps.clone();
                 if let Some(app) = apps
                     .iter_mut()
-                    .find(|app| app.account_id == *account_id && app.public_key == *public_key)
+                    .find(|app| app.account_id == *account_id && app.auth_public_key == *public_key)
                 {
                     match setting {
                         AutoconfirmSetting::All => app.autoconfirm_all = false,
@@ -324,7 +324,7 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                                     app: &ConnectedApp|
                                 {
                                     let account_id = app.account_id.clone();
-                                    let public_key = app.public_key.clone();
+                                    let public_key = app.auth_public_key.clone();
                                     view! {
                                         <div class="flex items-center justify-between p-2 rounded bg-neutral-800">
                                             <span>{label}</span>
@@ -342,7 +342,7 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                                     }
                                 };
                                 let account_id = app.account_id.clone();
-                                let public_key = app.public_key.clone();
+                                let public_key = app.auth_public_key.clone();
                                 let requested_contract_id = app.requested_contract_id.clone();
                                 let requested_method_names = app.requested_method_names.clone();
                                 let app = app.clone();
@@ -429,7 +429,7 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                                                     }
                                                     for receiver in app.autoconfirm_contracts {
                                                         let receiver = receiver.clone();
-                                                        let public_key = app.public_key.clone();
+                                                        let public_key = app.auth_public_key.clone();
                                                         let account_id = app.account_id.clone();
                                                         settings
                                                             .push(

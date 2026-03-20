@@ -27,7 +27,8 @@ pub struct ConnectedApp {
     pub account_id: AccountId,
     /// The app's public key, used to differentiate between sessions and
     /// verify the app's identity
-    pub public_key: PublicKey,
+    #[serde(rename = "public_key")]
+    pub auth_public_key: PublicKey,
     /// If Some, the app's key is an actual access key on blockchain that
     /// can interact with this contract without user's confirmation
     pub requested_contract_id: Option<AccountId>,
@@ -56,6 +57,10 @@ pub struct ConnectedApp {
     /// The version of the connector that was used to connect to this app
     #[serde(default)]
     pub connector_version: ConnectorVersion,
+    /// The public key that was used to add the function call key. If None,
+    /// there was no function call key added.
+    #[serde(default)]
+    pub function_call_public_key: Option<PublicKey>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]

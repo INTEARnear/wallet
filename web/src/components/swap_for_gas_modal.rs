@@ -218,8 +218,12 @@ pub fn SwapForGasModal() -> impl IntoView {
         if let Some(selected_account_id) = selected_account {
             let (rx, transaction) = EnqueuedTransaction::create(
                 format!(
-                    "Unwrap {} wNEAR",
-                    balance_to_decimal(token_data.balance, token_data.token.metadata.decimals)
+                    "Unwrap {}",
+                    format_token_amount(
+                        token_data.balance,
+                        token_data.token.metadata.decimals,
+                        "wNEAR"
+                    )
                 ),
                 selected_account_id.clone(),
                 token_contract_id.clone(),
