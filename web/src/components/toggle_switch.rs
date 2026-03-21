@@ -2,7 +2,7 @@ use leptos::prelude::*;
 
 #[component]
 pub fn ToggleSwitch(
-    label: &'static str,
+    #[prop(into)] label: Signal<String>,
     #[prop(into)] value: Signal<bool>,
     #[prop(into)] disabled: Signal<bool>,
     on_toggle: impl Fn() + 'static,

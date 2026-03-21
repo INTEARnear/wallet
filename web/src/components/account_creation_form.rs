@@ -2,6 +2,8 @@ use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
 
+use crate::translations::TranslationKey;
+
 use futures_channel::oneshot::Canceled;
 use futures_timer::Delay;
 use leptos::{prelude::*, task::spawn_local};
@@ -322,7 +324,8 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                     })),
                 ];
 
-                let transaction_description = format!("Create account {account_id}");
+                let transaction_description = TranslationKey::MiscTransactionCreateAccount
+                    .format(&[("account_id", account_id.as_ref())]);
                 let (tx_details_rx, tx) = EnqueuedTransaction::create(
                     transaction_description,
                     account_to_sign_with.account_id.clone(),

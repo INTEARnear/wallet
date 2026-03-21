@@ -6,6 +6,7 @@ use reqwest::Url;
 use std::collections::HashMap;
 
 use crate::contexts::config_context::{ConfigContext, CustomNetwork};
+use crate::translations::TranslationKey;
 
 #[derive(Clone, Debug, PartialEq)]
 enum EditorState {
@@ -81,7 +82,7 @@ impl From<NetworkForm> for CustomNetwork {
 
 #[component]
 pub fn DeveloperSettings() -> impl IntoView {
-    let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
+    let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     let (editor_state, set_editor_state) = signal(EditorState::None);
     let (form_data, set_form_data) = signal(NetworkForm::default());
     let (is_validating, set_is_validating) = signal(false);
@@ -131,7 +132,9 @@ pub fn DeveloperSettings() -> impl IntoView {
 
     let validate_rpc_url = move |url: &str| {
         if url.is_empty() {
-            set_validation_error(Some("RPC URL is required".to_string()));
+            set_validation_error(Some(
+                TranslationKey::PagesSettingsDeveloperLocalnetErrRpcRequired.format(&[]),
+            ));
             return;
         }
 
@@ -142,7 +145,9 @@ pub fn DeveloperSettings() -> impl IntoView {
 
             let Ok(url) = url.parse::<Url>() else {
                 set_is_validating(false);
-                set_validation_error(Some("Invalid URL".to_string()));
+                set_validation_error(Some(
+                    TranslationKey::PagesSettingsDeveloperLocalnetErrInvalidUrl.format(&[]),
+                ));
                 return;
             };
 
@@ -155,12 +160,17 @@ pub fn DeveloperSettings() -> impl IntoView {
                     }
                     Err(_) => {
                         set_is_validating(false);
-                        set_validation_error(Some("This network is not a sandbox. Try running target/release/near-sandbox instead of target/release/neard".to_string()));
+                        set_validation_error(Some(
+                            TranslationKey::PagesSettingsDeveloperLocalnetErrNotSandbox.format(&[]),
+                        ));
                     }
                 },
                 Err(e) => {
                     set_is_validating(false);
-                    set_validation_error(Some(format!("RPC validation failed: {}", e)));
+                    set_validation_error(Some(
+                        TranslationKey::PagesSettingsDeveloperLocalnetErrRpcFailed
+                            .format(&[("error", &e.to_string())]),
+                    ));
                 }
             }
         });
@@ -206,7 +216,7 @@ pub fn DeveloperSettings() -> impl IntoView {
             EditorState::None => return,
         }
 
-        set_config(config_data);
+        config.set(config_data);
         set_editor_state(EditorState::None);
         set_form_data(NetworkForm::default());
         set_validation_error(None);
@@ -215,13 +225,15 @@ pub fn DeveloperSettings() -> impl IntoView {
     let delete_network = move |index: usize| {
         let mut config_data = config.get();
         config_data.custom_networks.remove(index);
-        set_config(config_data);
+        config.set(config_data);
         set_editor_state(EditorState::None);
     };
 
     let validate_network_id = move |id: &str| -> Option<String> {
         if id.is_empty() {
-            return Some("Network ID is required".to_string());
+            return Some(
+                TranslationKey::PagesSettingsDeveloperLocalnetErrNetworkIdRequired.format(&[]),
+            );
         }
 
         let networks = config.get().custom_networks;
@@ -236,7 +248,10 @@ pub fn DeveloperSettings() -> impl IntoView {
                         continue;
                     }
                     _ => {
-                        return Some("Network ID must be unique".to_string());
+                        return Some(
+                            TranslationKey::PagesSettingsDeveloperLocalnetErrNetworkIdUnique
+                                .format(&[]),
+                        );
                     }
                 }
             }
@@ -251,7 +266,9 @@ pub fn DeveloperSettings() -> impl IntoView {
         }
 
         if url.parse::<Url>().is_err() {
-            return Some("Invalid URL".to_string());
+            return Some(
+                TranslationKey::PagesSettingsDeveloperApiOverridesErrInvalidUrl.format(&[]),
+            );
         }
 
         None
@@ -264,7 +281,7 @@ pub fn DeveloperSettings() -> impl IntoView {
         }
 
         set_router_url_error(None);
-        set_config.update(|config_data| {
+        config.update(|config_data| {
             config_data.custom_router_url = if s.is_empty() {
                 None
             } else {
@@ -285,20 +302,21 @@ pub fn DeveloperSettings() -> impl IntoView {
 
     view! {
         <div class="flex flex-col gap-4 p-4">
-            <div class="text-xl font-semibold">"Developer Settings"</div>
+            <div class="text-xl font-semibold">
+                {move || TranslationKey::PagesSettingsDeveloperTitle.format(&[])}
+            </div>
 
             // Testnet tip
             <div class="flex items-center gap-3 text-sm text-sky-100 bg-neutral-900 p-4 rounded-lg border border-sky-700 shadow-lg">
                 <Icon icon=icondata::LuInfo attr:class="min-w-5 min-h-5 text-sky-300" />
-                <span>
-                    "To create an account on testnet, tap \".near\"
-                    and select \".testnet\" in the dropdown on account creation page."
-                </span>
+                <span>{move || TranslationKey::PagesSettingsDeveloperTestnetTip.format(&[])}</span>
             </div>
 
             // Create Token
             <div class="flex flex-col gap-4">
-                <div class="text-lg font-semibold">"Token Factory"</div>
+                <div class="text-lg font-semibold">
+                    {move || TranslationKey::PagesSettingsDeveloperTokenFactoryTitle.format(&[])}
+                </div>
                 <A
                     href="/settings/developer/create_token"
                     attr:class="flex items-center justify-between p-3 bg-neutral-800 rounded-lg border border-neutral-700 hover:bg-neutral-700 cursor-pointer"
@@ -306,9 +324,11 @@ pub fn DeveloperSettings() -> impl IntoView {
                     <div class="flex items-center gap-3">
                         <Icon icon=icondata::LuPlus attr:class="min-w-5 min-h-5" />
                         <div class="flex flex-col gap-1">
-                            <div class="font-medium">"Create Token"</div>
+                            <div class="font-medium">
+                                {move || TranslationKey::PagesSettingsDeveloperTokenFactoryLinkLabel.format(&[])}
+                            </div>
                             <div class="text-sm text-gray-400">
-                                "Create your own fungible token"
+                                {move || TranslationKey::PagesSettingsDeveloperTokenFactoryLinkDescription.format(&[])}
                             </div>
                         </div>
                     </div>
@@ -321,22 +341,28 @@ pub fn DeveloperSettings() -> impl IntoView {
 
             // API overrides
             <div class="flex flex-col gap-3">
-                <div class="text-lg font-semibold">"API overrides"</div>
+                <div class="text-lg font-semibold">
+                    {move || TranslationKey::PagesSettingsDeveloperApiOverridesTitle.format(&[])}
+                </div>
                 <div class="p-4 bg-neutral-800 rounded-lg border border-neutral-700">
                     <div class="flex flex-col gap-3">
                         <div>
                             <label class="block text-sm font-medium mb-1">
-                                "DEX Aggregator"
+                                {move || TranslationKey::PagesSettingsDeveloperApiOverridesDexAggregator.format(&[])}
                             </label>
                             <input
                                 type="text"
-                                prop:value=move || config.get().custom_router_url.unwrap_or_default()
+                                prop:value=move || {
+                                    config.get().custom_router_url.unwrap_or_default()
+                                }
                                 on:input=move |ev| { save_router_url(&event_target_value(&ev)) }
                                 class="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded text-base text-white"
                                 placeholder=default_router_url
                             />
                             <div class="text-xs text-gray-500 mt-1">
-                                "Leave empty to use default"
+                                {move || {
+                                    TranslationKey::PagesSettingsDeveloperApiOverridesLeaveEmptyDefault.format(&[])
+                                }}
                             </div>
                             {move || {
                                 router_url_error
@@ -355,12 +381,14 @@ pub fn DeveloperSettings() -> impl IntoView {
             // Localnet section
             <div class="flex flex-col gap-4">
                 <div class="flex items-center justify-between">
-                    <div class="text-lg font-semibold">"Localnet"</div>
+                    <div class="text-lg font-semibold">
+                        {move || TranslationKey::PagesSettingsDeveloperLocalnetTitle.format(&[])}
+                    </div>
                     <button
                         on:click=move |_| start_add()
                         class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded cursor-pointer"
                     >
-                        "Add"
+                        {move || TranslationKey::PagesSettingsDeveloperLocalnetAdd.format(&[])}
                     </button>
                 </div>
 
@@ -371,7 +399,7 @@ pub fn DeveloperSettings() -> impl IntoView {
                         if networks.is_empty() {
                             view! {
                                 <div class="text-gray-400 text-sm p-4 bg-neutral-800 rounded-lg">
-                                    "No local networks configured"
+                                    {move || TranslationKey::PagesSettingsDeveloperLocalnetNoNetworks.format(&[])}
                                 </div>
                             }
                                 .into_any()
@@ -389,12 +417,18 @@ pub fn DeveloperSettings() -> impl IntoView {
                                                 view! {
                                                     <div class="p-4 bg-neutral-800 rounded-lg border border-neutral-700">
                                                         <div class="flex flex-col gap-4">
-                                                            <div class="text-lg font-semibold">"Edit Network"</div>
+                                                            <div class="text-lg font-semibold">
+                                                                {move || {
+                                                                    TranslationKey::PagesSettingsDeveloperLocalnetEditNetwork.format(&[])
+                                                                }}
+                                                            </div>
 
                                                             <div class="flex flex-col gap-3">
                                                                 <div>
                                                                     <label class="block text-sm font-medium mb-1">
-                                                                        "Network ID"
+                                                                        {move || {
+                                                                            TranslationKey::PagesSettingsDeveloperLocalnetNetworkId.format(&[])
+                                                                        }}
                                                                     </label>
                                                                     <input
                                                                         type="text"
@@ -407,7 +441,7 @@ pub fn DeveloperSettings() -> impl IntoView {
 
                                                                 <div>
                                                                     <label class="block text-sm font-medium mb-1">
-                                                                        "RPC URL"
+                                                                        {move || TranslationKey::PagesSettingsDeveloperLocalnetRpcUrl.format(&[])}
                                                                     </label>
                                                                     <input
                                                                         type="text"
@@ -421,12 +455,16 @@ pub fn DeveloperSettings() -> impl IntoView {
                                                                         placeholder="http://localhost:3030"
                                                                     />
                                                                     <div class="text-xs text-gray-500 mt-1">
-                                                                        "Note: Only http://localhost:* URLs are accepted due to Content Security Policy of Intear Wallet"
+                                                                        {move || {
+                                                                            TranslationKey::PagesSettingsDeveloperLocalnetRpcCspNote.format(&[])
+                                                                        }}
                                                                     </div>
                                                                     {move || {
                                                                         if is_validating.get() {
                                                                             view! {
-                                                                                <div class="text-sm text-blue-400 mt-1">"Checking..."</div>
+                                                                                <div class="text-sm text-blue-400 mt-1">
+                                                                                    {move || TranslationKey::PagesSettingsDeveloperLocalnetChecking.format(&[])}
+                                                                                </div>
                                                                             }
                                                                                 .into_any()
                                                                         } else if let Some(error) = validation_error.get() {
@@ -447,19 +485,19 @@ pub fn DeveloperSettings() -> impl IntoView {
                                                                     disabled=move || !is_form_valid()
                                                                     class="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm rounded cursor-pointer"
                                                                 >
-                                                                    "Save"
+                                                                    {move || TranslationKey::PagesSettingsDeveloperLocalnetSave.format(&[])}
                                                                 </button>
                                                                 <button
                                                                     on:click=move |_| cancel_edit()
                                                                     class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm rounded cursor-pointer"
                                                                 >
-                                                                    "Cancel"
+                                                                    {move || TranslationKey::PagesSettingsDeveloperLocalnetCancel.format(&[])}
                                                                 </button>
                                                                 <button
                                                                     on:click=move |_| delete_network(index)
                                                                     class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded cursor-pointer"
                                                                 >
-                                                                    "Delete"
+                                                                    {move || TranslationKey::PagesSettingsDeveloperLocalnetDelete.format(&[])}
                                                                 </button>
                                                             </div>
                                                         </div>
@@ -487,7 +525,11 @@ pub fn DeveloperSettings() -> impl IntoView {
                                                                                 view! {
                                                                                     <div class="flex items-center gap-1">
                                                                                         <div class="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
-                                                                                        <span class="text-sm text-blue-400">"Checking"</span>
+                                                                                        <span class="text-sm text-blue-400">
+                                                                                            {move || {
+                                                                                                TranslationKey::PagesSettingsDeveloperLocalnetCheckingStatus.format(&[])
+                                                                                            }}
+                                                                                        </span>
                                                                                     </div>
                                                                                 }
                                                                                     .into_any()
@@ -496,7 +538,9 @@ pub fn DeveloperSettings() -> impl IntoView {
                                                                                 view! {
                                                                                     <div class="flex items-center gap-1">
                                                                                         <div class="w-2 h-2 bg-green-400 rounded-full"></div>
-                                                                                        <span class="text-sm text-green-400">"Online"</span>
+                                                                                        <span class="text-sm text-green-400">
+                                                                                            {move || TranslationKey::PagesSettingsDeveloperLocalnetOnline.format(&[])}
+                                                                                        </span>
                                                                                     </div>
                                                                                 }
                                                                                     .into_any()
@@ -505,7 +549,9 @@ pub fn DeveloperSettings() -> impl IntoView {
                                                                                 view! {
                                                                                     <div class="flex items-center gap-1">
                                                                                         <div class="w-2 h-2 bg-red-400 rounded-full"></div>
-                                                                                        <span class="text-sm text-red-400">"Offline"</span>
+                                                                                        <span class="text-sm text-red-400">
+                                                                                            {move || TranslationKey::PagesSettingsDeveloperLocalnetOffline.format(&[])}
+                                                                                        </span>
                                                                                     </div>
                                                                                 }
                                                                                     .into_any()
@@ -536,7 +582,7 @@ pub fn DeveloperSettings() -> impl IntoView {
                                                                             }
                                                                             class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded cursor-pointer"
                                                                         >
-                                                                            "Control"
+                                                                            {move || TranslationKey::PagesSettingsDeveloperLocalnetControl.format(&[])}
                                                                         </button>
                                                                     }
                                                                         .into_any()
@@ -574,12 +620,18 @@ pub fn DeveloperSettings() -> impl IntoView {
                             view! {
                                 <div class="p-4 bg-neutral-800 rounded-lg border border-neutral-700">
                                     <div class="flex flex-col gap-4">
-                                        <div class="text-lg font-semibold">"Add Network"</div>
+                                        <div class="text-lg font-semibold">
+                                            {move || {
+                                                TranslationKey::PagesSettingsDeveloperLocalnetAddNetwork.format(&[])
+                                            }}
+                                        </div>
 
                                         <div class="flex flex-col gap-3">
                                             <div>
                                                 <label class="block text-sm font-medium mb-1">
-                                                    "Network ID"
+                                                    {move || {
+                                                        TranslationKey::PagesSettingsDeveloperLocalnetNetworkId.format(&[])
+                                                    }}
                                                 </label>
                                                 <input
                                                     type="text"
@@ -610,7 +662,7 @@ pub fn DeveloperSettings() -> impl IntoView {
 
                                             <div>
                                                 <label class="block text-sm font-medium mb-1">
-                                                    "RPC URL"
+                                                    {move || TranslationKey::PagesSettingsDeveloperLocalnetRpcUrl.format(&[])}
                                                 </label>
                                                 <input
                                                     type="text"
@@ -624,12 +676,16 @@ pub fn DeveloperSettings() -> impl IntoView {
                                                     placeholder="http://localhost:3030"
                                                 />
                                                 <div class="text-xs text-gray-500 mt-1">
-                                                    "Note: Only http://localhost:* URLs are accepted due to Content Security Policy of Intear Wallet"
+                                                    {move || {
+                                                        TranslationKey::PagesSettingsDeveloperLocalnetRpcCspNote.format(&[])
+                                                    }}
                                                 </div>
                                                 {move || {
                                                     if is_validating.get() {
                                                         view! {
-                                                            <div class="text-sm text-blue-400 mt-1">"Checking..."</div>
+                                                            <div class="text-sm text-blue-400 mt-1">
+                                                                {move || TranslationKey::PagesSettingsDeveloperLocalnetChecking.format(&[])}
+                                                            </div>
                                                         }
                                                             .into_any()
                                                     } else if let Some(error) = validation_error.get() {
@@ -650,13 +706,13 @@ pub fn DeveloperSettings() -> impl IntoView {
                                                 disabled=move || !is_form_valid()
                                                 class="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm rounded cursor-pointer"
                                             >
-                                                "Save"
+                                                {move || TranslationKey::PagesSettingsDeveloperLocalnetSave.format(&[])}
                                             </button>
                                             <button
                                                 on:click=move |_| cancel_edit()
                                                 class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm rounded cursor-pointer"
                                             >
-                                                "Cancel"
+                                                {move || TranslationKey::PagesSettingsDeveloperLocalnetCancel.format(&[])}
                                             </button>
                                         </div>
                                     </div>
@@ -667,6 +723,29 @@ pub fn DeveloperSettings() -> impl IntoView {
                         _ => ().into_any(),
                     }
                 }}
+            </div>
+
+            // Language Editor
+            <div class="flex flex-col gap-4">
+                <div class="text-lg font-semibold">{move || TranslationKey::PagesSettingsDeveloperLanguageEditorLinkLabel.format(&[])}</div>
+                <A
+                    href="/settings/developer/language_editor"
+                    attr:class="flex items-center justify-between p-3 bg-neutral-800 rounded-lg border border-neutral-700 hover:bg-neutral-700 cursor-pointer"
+                >
+                    <div class="flex items-center gap-3">
+                        <Icon icon=icondata::LuLanguages attr:class="min-w-5 min-h-5" />
+                        <div class="flex flex-col gap-1">
+                            <div class="font-medium">{move || TranslationKey::PagesSettingsDeveloperLanguageEditorLinkLabel.format(&[])}</div>
+                            <div class="text-sm text-gray-400">
+                                {move || TranslationKey::PagesSettingsDeveloperLanguageEditorLinkDescription.format(&[])}
+                            </div>
+                        </div>
+                    </div>
+                    <Icon
+                        icon=icondata::LuChevronRight
+                        attr:class="min-w-5 min-h-5 text-gray-400"
+                    />
+                </A>
             </div>
         </div>
     }

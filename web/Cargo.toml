@@ -21,6 +21,7 @@ icondata = { version = "0.6.0", features = [
 ], default-features = false }
 wasm-bindgen = "=0.2.104"
 web-sys = { version = "0.3.77", features = [
+    "BroadcastChannel",
     "Document",
     "Window",
     "Navigator",
@@ -29,6 +30,7 @@ web-sys = { version = "0.3.77", features = [
     "DataTransfer",
     "DataTransferItemList",
     "DataTransferItem",
+    "MessageEvent",
     "Storage",
     "StorageEvent",
     "Performance",
@@ -42,6 +44,7 @@ web-sys = { version = "0.3.77", features = [
     "FileReader",
     "Blob",
     "ProgressEvent",
+    "BlobPropertyBag",
 ] }
 serde = { version = "1.0.219", features = ["derive"] }
 reqwest = { version = "0.12.15", features = ["json", "multipart"] }
@@ -83,6 +86,7 @@ percent-encoding = "2.3.1"
 wasm-bindgen-futures = "0.4.35"
 serde_with = "3.14"
 itertools = "0.13"
+translation-macros = { path = "../translation-macros" }
 
 [dev-dependencies]
 tokio = { version = "1.40.0", features = ["full"] }

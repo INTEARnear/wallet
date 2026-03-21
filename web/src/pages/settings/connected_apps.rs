@@ -1,3 +1,4 @@
+use crate::translations::TranslationKey;
 use chrono::Utc;
 use futures_channel::oneshot;
 use leptos::{prelude::*, task::spawn_local};
@@ -96,7 +97,8 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                     .public_key()
         {
             let (details_receiver, transaction) = EnqueuedTransaction::create(
-                format!("Remove function call key for {}", app.origin),
+                TranslationKey::MiscTransactionRemoveFunctionCallKey
+                    .format(&[("app", &app.origin)]),
                 account_id.clone(),
                 account_id.clone(),
                 vec![action],

@@ -2,6 +2,8 @@ use base64::prelude::*;
 use itertools::Itertools;
 use std::time::Duration;
 
+use crate::translations::TranslationKey;
+
 use crate::{
     components::progressive_image::ProgressiveImage,
     contexts::{
@@ -990,7 +992,7 @@ fn create_gift(
             deposit: NearToken::from_yoctonear(gift_data.near_amount),
         }));
         transactions.push(EnqueuedTransaction::create(
-            "Create gift".to_string(),
+            TranslationKey::MiscTransactionCreateGift.format(&[]),
             selected_account_id.clone(),
             SLIMEDROP_CONTRACT_MAINNET.parse().unwrap(),
             vec![near_action],
@@ -1077,7 +1079,8 @@ fn create_gift(
             actions.push(token_action);
 
             let (details_tx, transaction) = EnqueuedTransaction::create(
-                format!("Add {} to gift", token_symbol),
+                TranslationKey::MiscTransactionAddTokenToGift
+                    .format(&[("token_symbol", &token_symbol)]),
                 selected_account_id.clone(),
                 token_contract.clone(),
                 actions,
@@ -1167,7 +1170,8 @@ fn create_gift(
             actions.push(nft_action);
 
             let (details_tx, transaction) = EnqueuedTransaction::create(
-                format!("Add {} #{} to gift", nft_name, token_id),
+                TranslationKey::MiscTransactionAddNftToGift
+                    .format(&[("nft_name", &nft_name), ("token_id", token_id)]),
                 selected_account_id.clone(),
                 contract_id.clone(),
                 actions,
@@ -1468,7 +1472,7 @@ fn execute_cancel_drop(
             format_gift_tokens_for_message(&GiftToken::from_drop(&confirmation.drop), rpc_client)
                 .await;
         let (details_receiver, transaction) = EnqueuedTransaction::create(
-            format!("Cancel gift of {}", gift_contents),
+            TranslationKey::MiscTransactionCancelGift.format(&[("contents", &gift_contents)]),
             selected_account_id.clone(),
             SLIMEDROP_CONTRACT_MAINNET.parse().unwrap(),
             vec![action],

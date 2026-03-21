@@ -19,6 +19,7 @@ use contexts::network_context::provide_network_context;
 use contexts::nft_cache_context::provide_nft_cache_context;
 use contexts::tokens_context::provide_token_context;
 use contexts::transaction_queue_context::provide_transaction_queue_context;
+use contexts::translation_context::provide_translation_context;
 use leptos::prelude::*;
 use leptos_router::{components::*, path};
 use thaw::{ConfigProvider, Theme};
@@ -28,6 +29,7 @@ pub mod components;
 pub mod contexts;
 pub mod data;
 pub mod pages;
+pub mod translations;
 pub mod utils;
 
 #[wasm_bindgen::prelude::wasm_bindgen]
@@ -62,7 +64,7 @@ use crate::pages::sendbridge::SendBridge;
 use crate::pages::settings::Settings;
 use crate::pages::settings::{
     AccountSettings, ConnectedAppsSettings, DeveloperCreateToken, DeveloperSandbox,
-    DeveloperSettings, PreferencesSettings, SecurityLogPage, SecuritySettings,
+    DeveloperSettings, LanguageEditorPage, PreferencesSettings, SecurityLogPage, SecuritySettings,
 };
 use crate::pages::sign_message::SignMessage;
 use crate::pages::stake::{Stake, StakeValidator, UnstakeValidator};
@@ -143,7 +145,8 @@ pub fn App() -> impl IntoView {
 
     provide_modal_context();
     provide_config_context();
-    provide_accounts_context();
+    provide_translation_context(); // depends on config
+    provide_accounts_context(); // depends on config
     provide_legal_consents_context(); // depends on accounts and modal
     provide_network_context(); // depends on accounts for selecting the network for the selected account
     provide_rpc_context(); // depends on config for rpc configuration and network for default rpc
@@ -210,6 +213,14 @@ pub fn App() -> impl IntoView {
                                 <Route
                                     path=path!("/developer/sandbox/:network_id")
                                     view=DeveloperSandbox
+                                />
+                                <Route
+                                    path=path!("/developer/language_editor")
+                                    view=LanguageEditorPage
+                                />
+                                <Route
+                                    path=path!("/developer/language_editor/*path")
+                                    view=LanguageEditorPage
                                 />
                             </ParentRoute>
                         </Routes>

@@ -17,6 +17,7 @@ use crate::{
     },
     data::bridge_networks::{BRIDGEABLE_TOKENS, ChainInfo, USDC_ON_NEAR, USDT_ON_NEAR},
     pages::settings::open_live_chat,
+    translations::TranslationKey,
     utils::{
         StorageBalance, balance_to_decimal, decimal_to_balance, format_number_for_input,
         format_token_amount, format_token_amount_full_precision,
@@ -502,16 +503,19 @@ pub fn SendBridge() -> impl IntoView {
                             deposit: NearToken::from_yoctonear(1),
                         })));
 
-                        let description = format!(
-                            "Bridge {} to {} on {}",
-                            format_token_amount_full_precision(
-                                amount,
-                                current_metadata.decimals,
-                                &current_metadata.symbol
+                        let description = TranslationKey::MiscTransactionBridge.format(&[
+                            (
+                                "amount",
+                                format_token_amount_full_precision(
+                                    amount,
+                                    current_metadata.decimals,
+                                    &current_metadata.symbol,
+                                )
+                                .as_str(),
                             ),
-                            current_recipient_address,
-                            current_network.display_name,
-                        );
+                            ("recipient", &current_recipient_address),
+                            ("network", current_network.display_name),
+                        ]);
 
                         let (rx, pending_tx) = EnqueuedTransaction::create(
                             description,

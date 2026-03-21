@@ -21,6 +21,7 @@ use crate::{
         security_log_context::add_security_log,
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
+    translations::TranslationKey,
     utils::get_ft_metadata,
 };
 
@@ -40,9 +41,7 @@ pub fn DeveloperSandbox() -> impl IntoView {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
 
-    let ConfigContext {
-        config, set_config, ..
-    } = expect_context::<ConfigContext>();
+    let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     let accounts_context = expect_context::<AccountsContext>();
     let accounts = accounts_context.accounts;
     let set_accounts = accounts_context.set_accounts;
@@ -209,7 +208,11 @@ pub fn DeveloperSandbox() -> impl IntoView {
     let validate_account_name = move || {
         let name = new_account_name.get().trim().to_string();
         if name.is_empty() {
-            return (false, false, "Enter an account name. You can't create an account on localnet as you do on mainnet, you can only do it on this page.".to_string());
+            return (
+                false,
+                false,
+                TranslationKey::PagesSettingsDeveloperSandboxAccountHelpText.format(&[]),
+            );
         }
 
         let account_id_result = name.parse::<AccountId>();
@@ -219,24 +222,46 @@ pub fn DeveloperSandbox() -> impl IntoView {
                 match account_existence_resource.get() {
                     Some(Ok(Some((checked_id, exists)))) if checked_id == account_id => {
                         if exists {
-                            (true, true, format!("Account {} already exists", account_id))
+                            (
+                                true,
+                                true,
+                                TranslationKey::PagesSettingsDeveloperSandboxAccountExists
+                                    .format(&[("account_id", account_id.as_str())]),
+                            )
                         // (can_create, is_warning, message)
                         } else {
-                            (true, false, format!("Will create: {}", account_id))
+                            (
+                                true,
+                                false,
+                                TranslationKey::PagesSettingsDeveloperSandboxWillCreate
+                                    .format(&[("account_id", account_id.as_str())]),
+                            )
                         }
                     }
                     Some(Err(err)) => (false, false, err),
-                    _ => (false, false, "Checking account...".to_string()),
+                    _ => (
+                        false,
+                        false,
+                        TranslationKey::PagesSettingsDeveloperSandboxCheckingAccount.format(&[]),
+                    ),
                 }
             }
-            Err(_) => (false, false, "Invalid account name format".to_string()),
+            Err(_) => (
+                false,
+                false,
+                TranslationKey::PagesSettingsDeveloperSandboxInvalidAccountName.format(&[]),
+            ),
         }
     };
 
     let validate_token_input = move || {
         let token_input = new_token_input.get().trim().to_string();
         if token_input.is_empty() {
-            return (false, false, "Enter a token contract address".to_string());
+            return (
+                false,
+                false,
+                TranslationKey::PagesSettingsDeveloperSandboxEnterTokenAddress.format(&[]),
+            );
         }
 
         let account_id_result = token_input.parse::<AccountId>();
@@ -247,7 +272,12 @@ pub fn DeveloperSandbox() -> impl IntoView {
                 let current_tokens = network().map(|n| n.tokens.clone()).unwrap_or_default();
 
                 if current_tokens.contains(&account_id) {
-                    return (false, true, format!("Token {} already in list", account_id));
+                    return (
+                        false,
+                        true,
+                        TranslationKey::PagesSettingsDeveloperSandboxTokenAlreadyInList
+                            .format(&[("token_id", account_id.as_str())]),
+                    );
                 }
 
                 match token_validation_resource.get() {
@@ -257,10 +287,18 @@ pub fn DeveloperSandbox() -> impl IntoView {
                         format!("{} ({})", metadata.name, metadata.symbol),
                     ),
                     Some(Err(err)) => (false, false, err),
-                    _ => (false, false, "Validating token...".to_string()),
+                    _ => (
+                        false,
+                        false,
+                        TranslationKey::PagesSettingsDeveloperSandboxValidatingToken.format(&[]),
+                    ),
                 }
             }
-            Err(_) => (false, false, "Invalid contract address format".to_string()),
+            Err(_) => (
+                false,
+                false,
+                TranslationKey::PagesSettingsDeveloperSandboxInvalidContractAddress.format(&[]),
+            ),
         }
     };
 
@@ -273,7 +311,7 @@ pub fn DeveloperSandbox() -> impl IntoView {
             return;
         };
 
-        set_config.update(|config| {
+        config.update(|config| {
             if let Some(net) = config
                 .custom_networks
                 .iter_mut()
@@ -290,7 +328,7 @@ pub fn DeveloperSandbox() -> impl IntoView {
             return;
         };
 
-        set_config.update(|config| {
+        config.update(|config| {
             if let Some(net) = config
                 .custom_networks
                 .iter_mut()
@@ -344,16 +382,23 @@ pub fn DeveloperSandbox() -> impl IntoView {
                     <div class="flex flex-col gap-6 mt-6">
                         <div class="flex items-center gap-3">
                             <div class="text-xl font-semibold">
-                                {move || format!("Sandbox: {}", network_id())}
+                                {move || {
+                                    TranslationKey::PagesSettingsDeveloperSandboxTitle
+                                        .format(&[("network_id", network_id().as_str())])
+                                }}
                             </div>
                         </div>
 
                         // Block height section
                         <div class="bg-neutral-800 rounded-lg p-4 border border-neutral-700">
-                            <div class="text-lg font-semibold mb-3">"Network Status"</div>
+                            <div class="text-lg font-semibold mb-3">
+                                {move || TranslationKey::PagesSettingsDeveloperSandboxNetworkStatus.format(&[])}
+                            </div>
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center gap-2">
-                                    <span class="text-sm text-gray-400">"Block Height:"</span>
+                                    <span class="text-sm text-gray-400">
+                                        {move || TranslationKey::PagesSettingsDeveloperSandboxBlockHeight.format(&[])}
+                                    </span>
                                     {move || {
                                         match block_height_resource.get() {
                                             Some(Ok(height)) => {
@@ -376,7 +421,10 @@ pub fn DeveloperSandbox() -> impl IntoView {
                                                                 );
                                                             }
                                                             class="p-1 rounded hover:bg-neutral-700 transition-colors cursor-pointer"
-                                                            title="Copy block height"
+                                                            title=move || {
+                                                                TranslationKey::PagesSettingsDeveloperSandboxCopyBlockHeight
+                                                                    .format(&[])
+                                                            }
                                                         >
                                                             {move || {
                                                                 if is_height_copied.get() {
@@ -406,13 +454,17 @@ pub fn DeveloperSandbox() -> impl IntoView {
                                             }
                                             Some(Err(_)) => {
                                                 view! {
-                                                    <span class="text-sm text-red-400">"Offline"</span>
+                                                    <span class="text-sm text-red-400">
+                                                        {move || TranslationKey::PagesSettingsDeveloperSandboxOffline.format(&[])}
+                                                    </span>
                                                 }
                                                     .into_any()
                                             }
                                             None => {
                                                 view! {
-                                                    <span class="text-sm text-blue-400">"Loading..."</span>
+                                                    <span class="text-sm text-blue-400">
+                                                        {move || TranslationKey::PagesSettingsDeveloperSandboxLoading.format(&[])}
+                                                    </span>
                                                 }
                                                     .into_any()
                                             }
@@ -484,9 +536,9 @@ pub fn DeveloperSandbox() -> impl IntoView {
                                     >
                                         {move || {
                                             if is_fast_forwarding.get() {
-                                                "Fast-forwarding..."
+                                                TranslationKey::PagesSettingsDeveloperSandboxFastForwarding.format(&[])
                                             } else {
-                                                "Fast-forward"
+                                                TranslationKey::PagesSettingsDeveloperSandboxFastForward.format(&[])
                                             }
                                         }}
                                     </button>
@@ -496,7 +548,9 @@ pub fn DeveloperSandbox() -> impl IntoView {
 
                         // Contracts section
                         <div class="bg-neutral-800 rounded-lg p-4 border border-neutral-700">
-                            <div class="text-lg font-semibold mb-3">"Smart Contracts"</div>
+                            <div class="text-lg font-semibold mb-3">
+                                {move || TranslationKey::PagesSettingsDeveloperSandboxSmartContracts.format(&[])}
+                            </div>
 
                             <div class="flex flex-col gap-3">
                                 // Wrapped NEAR contract
@@ -549,11 +603,22 @@ pub fn DeveloperSandbox() -> impl IntoView {
                                             {move || {
                                                 match wrap_status_resource.get() {
                                                     Some(Ok(true)) => {
-                                                        format!("Wrapped NEAR: {}", WRAP_CONTRACT_ID)
+                                                        TranslationKey::PagesSettingsDeveloperSandboxWrappedNearDeployed.format(&[(
+                                                            "contract_id",
+                                                            WRAP_CONTRACT_ID,
+                                                        )])
                                                     }
-                                                    Some(Ok(false)) => "Wrapped NEAR: not deployed".to_string(),
-                                                    Some(Err(_)) => "Wrapped NEAR: error checking".to_string(),
-                                                    None => "Wrapped NEAR: checking...".to_string(),
+                                                    Some(Ok(false)) => {
+                                                        TranslationKey::PagesSettingsDeveloperSandboxWrappedNearNotDeployed
+                                                            .format(&[])
+                                                    }
+                                                    Some(Err(_)) => {
+                                                        TranslationKey::PagesSettingsDeveloperSandboxWrappedNearError.format(&[])
+                                                    }
+                                                    None => {
+                                                        TranslationKey::PagesSettingsDeveloperSandboxWrappedNearChecking
+                                                            .format(&[])
+                                                    }
                                                 }
                                             }}
                                         </span>
@@ -622,7 +687,8 @@ pub fn DeveloperSandbox() -> impl IntoView {
                                                                     });
                                                             });
                                                         let (details_receiver, transaction) = EnqueuedTransaction::create(
-                                                            "Initialize wrapped near contract".to_string(),
+                                                            TranslationKey::PagesSettingsDeveloperSandboxInitWrapContract
+                                                                .format(&[]),
                                                             account_id.clone(),
                                                             account_id.clone(),
                                                             vec![
@@ -640,9 +706,9 @@ pub fn DeveloperSandbox() -> impl IntoView {
                                                         add_transaction.update(|queue| queue.push(transaction));
                                                         match details_receiver.await {
                                                             Ok(_) => {
-                                                                set_config
-                                                                    .update(|config| {
-                                                                        config
+                                                                config
+                                                                    .update(|c| {
+                                                                        c
                                                                             .custom_networks
                                                                             .iter_mut()
                                                                             .find(|n| n.id == network.id)
@@ -676,11 +742,13 @@ pub fn DeveloperSandbox() -> impl IntoView {
                                     >
                                         {move || {
                                             if is_deploying_wrap.get() {
-                                                "Deploying..."
+                                                TranslationKey::PagesSettingsDeveloperSandboxDeploying.format(&[])
                                             } else {
                                                 match wrap_status_resource.get() {
-                                                    Some(Ok(true)) => "Redeploy",
-                                                    _ => "Deploy",
+                                                    Some(Ok(true)) => {
+                                                        TranslationKey::PagesSettingsDeveloperSandboxRedeploy.format(&[])
+                                                    }
+                                                    _ => TranslationKey::PagesSettingsDeveloperSandboxDeploy.format(&[]),
                                                 }
                                             }
                                         }}
@@ -691,11 +759,15 @@ pub fn DeveloperSandbox() -> impl IntoView {
 
                         // Accounts section
                         <div class="bg-neutral-800 rounded-lg p-4 border border-neutral-700">
-                            <div class="text-lg font-semibold mb-3">"Accounts"</div>
+                            <div class="text-lg font-semibold mb-3">
+                                {move || TranslationKey::PagesSettingsDeveloperSandboxAccounts.format(&[])}
+                            </div>
 
                             // Account creation form
                             <div class="flex flex-col gap-3 mb-4 p-3 bg-neutral-900 rounded-lg">
-                                <div class="text-sm font-medium">"Create New Account"</div>
+                                <div class="text-sm font-medium">
+                                    {move || TranslationKey::PagesSettingsDeveloperSandboxCreateNewAccount.format(&[])}
+                                </div>
                                 <div class="flex gap-2">
                                     <input
                                         type="text"
@@ -799,13 +871,13 @@ pub fn DeveloperSandbox() -> impl IntoView {
                                     >
                                         {move || {
                                             if is_creating_account.get() {
-                                                "Creating..."
+                                                TranslationKey::PagesSettingsDeveloperSandboxCreating.format(&[])
                                             } else {
                                                 let (can_create, is_warning, _) = validate_account_name();
                                                 if can_create && is_warning {
-                                                    "Create anyway"
+                                                    TranslationKey::PagesSettingsDeveloperSandboxCreateAnyway.format(&[])
                                                 } else {
-                                                    "Create"
+                                                    TranslationKey::PagesSettingsDeveloperSandboxCreate.format(&[])
                                                 }
                                             }
                                         }}
@@ -834,7 +906,7 @@ pub fn DeveloperSandbox() -> impl IntoView {
                                 if accounts.is_empty() {
                                     view! {
                                         <div class="text-gray-400 text-sm p-4 bg-neutral-900 rounded-lg">
-                                            "No accounts on this network"
+                                            {move || TranslationKey::PagesSettingsDeveloperSandboxNoAccounts.format(&[])}
                                         </div>
                                     }
                                         .into_any()
@@ -852,7 +924,13 @@ pub fn DeveloperSandbox() -> impl IntoView {
                                                                     {account.account_id.to_string()}
                                                                 </div>
                                                                 <div class="text-xs text-gray-400">
-                                                                    {move || format!("Network: {}", network_id())}
+                                                                    {move || {
+                                                                        TranslationKey::PagesSettingsDeveloperSandboxNetworkLabel
+                                                                            .format(&[(
+                                                                                "network_id",
+                                                                                network_id().as_str(),
+                                                                            )])
+                                                                    }}
                                                                 </div>
                                                             </div>
                                                             <button
@@ -861,7 +939,7 @@ pub fn DeveloperSandbox() -> impl IntoView {
                                                                 }
                                                                 class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded cursor-pointer transition-colors min-w-20 text-center"
                                                             >
-                                                                "Delete"
+                                                                {move || TranslationKey::PagesSettingsDeveloperSandboxDelete.format(&[])}
                                                             </button>
                                                         </div>
                                                     }
@@ -876,15 +954,19 @@ pub fn DeveloperSandbox() -> impl IntoView {
 
                         // Token list editor section
                         <div class="bg-neutral-800 rounded-lg p-4 border border-neutral-700">
-                            <div class="text-lg font-semibold mb-3">"Token List"</div>
+                            <div class="text-lg font-semibold mb-3">
+                                {move || TranslationKey::PagesSettingsDeveloperSandboxTokenList.format(&[])}
+                            </div>
 
                             <div class="text-sm text-gray-400 mb-3">
-                                "Since there is no token detection API on localnet, you need to add each token contract address manually."
+                                {move || TranslationKey::PagesSettingsDeveloperSandboxTokenListDescription.format(&[])}
                             </div>
 
                             // Token addition form
                             <div class="flex flex-col gap-3 mb-4 p-3 bg-neutral-900 rounded-lg">
-                                <div class="text-sm font-medium">"Add Token Contract"</div>
+                                <div class="text-sm font-medium">
+                                    {move || TranslationKey::PagesSettingsDeveloperSandboxAddTokenContract.format(&[])}
+                                </div>
                                 <div class="flex gap-2">
                                     <input
                                         type="text"
@@ -923,7 +1005,7 @@ pub fn DeveloperSandbox() -> impl IntoView {
                                         }
                                         class:text-white=move || true
                                     >
-                                        "Add Token"
+                                        {move || TranslationKey::PagesSettingsDeveloperSandboxAddToken.format(&[])}
                                     </button>
                                 </div>
                                 <div class="text-xs">
@@ -952,7 +1034,7 @@ pub fn DeveloperSandbox() -> impl IntoView {
                                 if current_tokens.is_empty() {
                                     view! {
                                         <div class="text-gray-400 text-sm p-4 bg-neutral-900 rounded-lg">
-                                            "No tokens configured for this network"
+                                            {move || TranslationKey::PagesSettingsDeveloperSandboxNoTokens.format(&[])}
                                         </div>
                                     }
                                         .into_any()
@@ -982,7 +1064,11 @@ pub fn DeveloperSandbox() -> impl IntoView {
                     .into_any()
             }
             None => {
-                view! { <div class="text-red-400 text-center p-8">"Network not found"</div> }
+                view! {
+                    <div class="text-red-400 text-center p-8">
+                        {move || TranslationKey::PagesSettingsDeveloperSandboxNetworkNotFound.format(&[])}
+                    </div>
+                }
                     .into_any()
             }
         }}
@@ -1024,15 +1110,16 @@ fn TokenListItem(
                     {move || {
                         match metadata_resource.get() {
                             Some(Ok(metadata)) => {
-                                format!(
-                                    "{} ({}) - {} decimals",
-                                    metadata.name,
-                                    metadata.symbol,
-                                    metadata.decimals,
-                                )
+                                let decimals = metadata.decimals.to_string();
+                                TranslationKey::PagesSettingsDeveloperSandboxTokenMetadata.format(&[
+                                    ("name", metadata.name.as_str()),
+                                    ("symbol", metadata.symbol.as_str()),
+                                    ("decimals", decimals.as_str()),
+                                ])
                             }
-                            Some(Err(e)) => format!("Error: {}", e),
-                            None => "Loading metadata...".to_string(),
+                            Some(Err(e)) => TranslationKey::PagesSettingsDeveloperSandboxTokenError
+                                .format(&[("error", e.as_str())]),
+                            None => TranslationKey::PagesSettingsDeveloperSandboxLoadingMetadata.format(&[]),
                         }
                     }}
                 </div>
@@ -1043,7 +1130,7 @@ fn TokenListItem(
                 }
                 class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded cursor-pointer transition-colors min-w-20 text-center"
             >
-                "Remove"
+                {move || TranslationKey::PagesSettingsDeveloperSandboxRemove.format(&[])}
             </button>
         </div>
     }

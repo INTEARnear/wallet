@@ -21,9 +21,7 @@ pub fn TotalPortfolioValue() -> impl IntoView {
         loading_tokens,
         ..
     } = expect_context::<TokensContext>();
-    let ConfigContext {
-        config, set_config, ..
-    } = expect_context::<ConfigContext>();
+    let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     let ModalContext { modal } = expect_context::<ModalContext>();
     let network = expect_context::<NetworkContext>().network;
     let (last_tap, set_last_tap) = signal(0u64);
@@ -73,8 +71,8 @@ pub fn TotalPortfolioValue() -> impl IntoView {
 
         if time_since_last_tap_ms < 500 {
             // 500ms threshold for double tap
-            set_config.update(|config| {
-                config.amounts_hidden = !config.amounts_hidden;
+            config.update(|c| {
+                c.amounts_hidden = !c.amounts_hidden;
             });
             set_last_tap.set(0);
         } else {

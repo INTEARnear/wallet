@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+use crate::translations::TranslationKey;
 use crate::{
     contexts::{
         accounts_context::AccountsContext,
@@ -225,7 +226,7 @@ fn RheaBalanceModal(rhea_tokens: Vec<TokenData>) -> impl IntoView {
                                                         let mut transactions = Vec::new();
                                                         if needs_storage_deposit {
                                                             let (_rx, storage_tx) = EnqueuedTransaction::create(
-                                                                format!("Storage deposit on {}", token_symbol),
+                                                                TranslationKey::MiscTransactionStorageDeposit.format(&[("token_symbol", &token_symbol)]),
                                                                 signer_clone.clone(),
                                                                 token_id_clone.clone(),
                                                                 vec![
@@ -250,7 +251,7 @@ fn RheaBalanceModal(rhea_tokens: Vec<TokenData>) -> impl IntoView {
                                                             transactions.push(storage_tx);
                                                         }
                                                         let (_rx, withdraw_tx) = EnqueuedTransaction::create(
-                                                            format!("Withdraw {} from Rhea", token_symbol),
+                                                            TranslationKey::MiscTransactionWithdrawFromRhea.format(&[("token_symbol", &token_symbol)]),
                                                             signer_clone,
                                                             "v2.ref-finance.near".parse().unwrap(),
                                                             vec![
@@ -309,13 +310,13 @@ pub fn TokenBalanceList() -> impl IntoView {
         loading_tokens,
         ..
     } = expect_context::<TokensContext>();
-    let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
+    let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     let SearchContext { query, .. } = expect_context::<SearchContext>();
     let NetworkContext { network } = expect_context::<NetworkContext>();
 
     let toggle_low_balance = move |_| {
-        set_config.update(|config| {
-            config.show_low_balance_tokens = !config.show_low_balance_tokens;
+        config.update(|c| {
+            c.show_low_balance_tokens = !c.show_low_balance_tokens;
         });
     };
 

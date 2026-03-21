@@ -15,6 +15,7 @@ use crate::{
         modal_context::ModalContext,
         network_context::{Network, NetworkContext},
     },
+    translations::TranslationKey,
     utils::decimal_to_balance,
 };
 
@@ -442,14 +443,18 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                 >
                     <Icon icon=icondata::LuArrowLeft width="20" height="20" />
                 </button>
-                <div class="text-xl font-semibold">"Create Token"</div>
+                <div class="text-xl font-semibold">
+                    {move || TranslationKey::PagesSettingsDeveloperCreateTokenTitle.format(&[])}
+                </div>
             </div>
 
             <div class="flex flex-col gap-4 p-4 bg-neutral-800 rounded-lg border border-neutral-700">
                 // Symbol
                 <div>
                     <label class="block text-sm font-medium mb-1">
-                        "Token Symbol " <span class="text-red-400">"*"</span>
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenTokenSymbol.format(&[])}
+                        " "
+                        <span class="text-red-400">"*"</span>
                     </label>
                     <input
                         type="text"
@@ -462,14 +467,16 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                         placeholder="MYTOKEN"
                     />
                     <div class="text-xs text-gray-500 mt-1">
-                        "The ticker symbol for your token (e.g., BTC, ETH, NEAR)"
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenTokenSymbolDescription.format(&[])}
                     </div>
                 </div>
 
                 // Name
                 <div>
                     <label class="block text-sm font-medium mb-1">
-                        "Token Name " <span class="text-red-400">"*"</span>
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenTokenName.format(&[])}
+                        " "
+                        <span class="text-red-400">"*"</span>
                     </label>
                     <input
                         type="text"
@@ -482,14 +489,16 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                         placeholder="My Token"
                     />
                     <div class="text-xs text-gray-500 mt-1">
-                        "The full name of your token (e.g., Bitcoin, Ethereum, NEAR)"
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenTokenNameDescription.format(&[])}
                     </div>
                 </div>
 
                 // Supply
                 <div>
                     <label class="block text-sm font-medium mb-1">
-                        "Total Supply " <span class="text-red-400">"*"</span>
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenTotalSupply.format(&[])}
+                        " "
+                        <span class="text-red-400">"*"</span>
                     </label>
                     <input
                         type="text"
@@ -502,14 +511,16 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                         placeholder="1000000000"
                     />
                     <div class="text-xs text-gray-500 mt-1">
-                        "Total number of tokens (default: 1,000,000,000)"
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenTotalSupplyDescription.format(&[])}
                     </div>
                 </div>
 
                 // Decimals
                 <div>
                     <label class="block text-sm font-medium mb-1">
-                        "Decimals " <span class="text-red-400">"*"</span>
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenDecimals.format(&[])}
+                        " "
+                        <span class="text-red-400">"*"</span>
                     </label>
                     <input
                         type="text"
@@ -523,7 +534,7 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                         placeholder="24"
                     />
                     <div class="text-xs text-gray-500 mt-1">
-                        "Number of decimal places (default: 24)"
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenDecimalsDescription.format(&[])}
                     </div>
                 </div>
 
@@ -535,10 +546,12 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                         view! {
                             <div class="flex flex-col gap-2">
                                 <div class="text-sm text-yellow-400 bg-yellow-950 p-3 rounded border border-yellow-700">
-                                    "⚠️ We recommend decimals between 6 and 24"
+                                    "⚠️ "
+                                    {move || TranslationKey::PagesSettingsDeveloperCreateTokenRecommendDecimals.format(&[])}
                                 </div>
                                 <div class="text-sm text-yellow-400 bg-yellow-950 p-3 rounded border border-yellow-700">
-                                    "⚠️ We recommend supply between 1,000,000 and 1,000,000,000,000"
+                                    "⚠️ "
+                                    {move || TranslationKey::PagesSettingsDeveloperCreateTokenRecommendSupply.format(&[])}
                                 </div>
                             </div>
                         }
@@ -551,7 +564,11 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                 // Image Upload
                 <div>
                     <label class="block text-sm font-medium mb-1">
-                        "Token Image " <span class="text-gray-500">"(optional)"</span>
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenTokenImage.format(&[])}
+                        " "
+                        <span class="text-gray-500">
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenOptional.format(&[])}
+                        </span>
                     </label>
                     <input
                         type="file"
@@ -559,7 +576,9 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                         on:change=handle_image_upload
                         class="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded text-base text-white file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 file:cursor-pointer"
                     />
-                    <div class="text-xs text-gray-500 mt-1">"Upload an image for your token"</div>
+                    <div class="text-xs text-gray-500 mt-1">
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenUploadImageDescription.format(&[])}
+                    </div>
                     {move || {
                         let form = form_data.get();
                         if let Some(image_data_url) = form.image {
@@ -567,7 +586,7 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                                 <div class="mt-3 flex flex-col gap-2">
                                     <div class="text-sm text-green-400 flex items-center gap-2">
                                         <Icon icon=icondata::LuCheck width="16" height="16" />
-                                        "Image:"
+                                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenImage.format(&[])}
                                     </div>
                                     <div class="flex flex-col gap-2">
                                         <div class="flex items-start gap-3">
@@ -586,14 +605,15 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                                                 }
                                                 class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded cursor-pointer"
                                             >
-                                                "Remove"
+                                                {move || TranslationKey::PagesSettingsDeveloperCreateTokenRemove.format(&[])}
                                             </button>
                                         </div>
 
                                         // Quality slider
                                         <div class="flex flex-col gap-2">
                                             <label class="text-sm font-medium">
-                                                "On-chain Image Quality: "
+                                                {move || TranslationKey::PagesSettingsDeveloperCreateTokenOnChainQuality.format(&[])}
+                                                " "
                                                 {move || {
                                                     let q = form_data.get().image_quality;
                                                     format!("{q}%")
@@ -631,7 +651,7 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                                                 class="w-full h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer"
                                             />
                                             <div class="text-xs text-gray-500">
-                                                "100% = lossless, below 100% = compressed"
+                                                {move || TranslationKey::PagesSettingsDeveloperCreateTokenLossless.format(&[])}
                                             </div>
                                         </div>
 
@@ -649,7 +669,10 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                                                 let size_near = size_bd / divisor;
                                                 let size_yoctonear = decimal_to_balance(size_near, 24);
                                                 let size_near = NearToken::from_yoctonear(size_yoctonear);
-                                                format!("This image will cost ~{size_near}")
+                                                TranslationKey::PagesSettingsDeveloperCreateTokenImageCost.format(&[(
+                                                    "cost",
+                                                    &size_near.to_string(),
+                                                )])
                                             }}
                                         </div>
                                     </div>
@@ -664,23 +687,28 @@ pub fn DeveloperCreateToken() -> impl IntoView {
 
                 // Launch Buttons
                 <div class="flex flex-col gap-3 mt-4">
-                    <div class="text-sm font-medium text-gray-300">"Choose Launch Method:"</div>
+                    <div class="text-sm font-medium text-gray-300">
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenChooseLaunchMethod.format(&[])}
+                    </div>
 
                     <button
                         on:click=move |_| open_intear_launch_modal()
                         disabled=move || !is_mainnet() || !is_form_valid()
                         class="w-full px-4 py-3 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm rounded cursor-pointer text-left"
                     >
-                        <div class="font-semibold">"Launch on Intear Launch"</div>
+                        <div class="font-semibold">
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenLaunchIntearLaunch.format(&[])}
+                        </div>
                         <div class="text-xs text-amber-100 mt-1">
-                            "Official Intear launchpad, bonding curve-like (immediately deployed on Intear DEX)"
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchDescription.format(&[])}
                         </div>
                     </button>
                     {move || {
                         if !is_mainnet() {
                             view! {
                                 <div class="text-xs text-yellow-400 bg-yellow-950 p-2 rounded border border-yellow-700 mt-1">
-                                    "⚠️ Intear Launch is only available on mainnet"
+                                    "⚠️ "
+                                    {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearMainnetOnly.format(&[])}
                                 </div>
                             }
                                 .into_any()
@@ -698,9 +726,11 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                         }
                         class="w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm rounded cursor-pointer text-left"
                     >
-                        <div class="font-semibold">"Launch on Meme Cooking"</div>
+                        <div class="font-semibold">
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenLaunchMemeCooking.format(&[])}
+                        </div>
                         <div class="text-xs text-purple-200 mt-1">
-                            "Fair launch platform. Best for flexible, professional launches"
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingDescription.format(&[])}
                         </div>
                     </button>
                     {move || {
@@ -708,7 +738,8 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                         if !is_mainnet() {
                             view! {
                                 <div class="text-xs text-yellow-400 bg-yellow-950 p-2 rounded border border-yellow-700 mt-1">
-                                    "⚠️ Meme Cooking is only available on mainnet"
+                                    "⚠️ "
+                                    {move || TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingMainnet.format(&[])}
                                 </div>
                             }
                                 .into_any()
@@ -717,7 +748,8 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                         {
                             view! {
                                 <div class="text-xs text-yellow-400 bg-yellow-950 p-2 rounded border border-yellow-700 mt-1">
-                                    "⚠️ For Meme Cooking launches, symbol must be alphanumeric and not too long"
+                                    "⚠️ "
+                                    {move || TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingSymbol.format(&[])}
                                 </div>
                             }
                                 .into_any()
@@ -734,9 +766,11 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                         }
                         class="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm rounded cursor-pointer text-left"
                     >
-                        <div class="font-semibold">"Launch on Aidols"</div>
+                        <div class="font-semibold">
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenLaunchAidols.format(&[])}
+                        </div>
                         <div class="text-xs text-blue-200 mt-1">
-                            "Bonding curve launchpad for AI agents"
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsDescription.format(&[])}
                         </div>
                     </button>
                     {move || {
@@ -744,14 +778,16 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                         if !is_mainnet() {
                             view! {
                                 <div class="text-xs text-yellow-400 bg-yellow-950 p-2 rounded border border-yellow-700 mt-1">
-                                    "⚠️ Aidols is only available on mainnet"
+                                    "⚠️ "
+                                    {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsMainnet.format(&[])}
                                 </div>
                             }
                                 .into_any()
                         } else if !form.symbol.is_empty() && !form.is_symbol_valid_for_aidols() {
                             view! {
                                 <div class="text-xs text-yellow-400 bg-yellow-950 p-2 rounded border border-yellow-700 mt-1">
-                                    "⚠️ For Aidols launches, symbol must be alphanumeric and not too long"
+                                    "⚠️ "
+                                    {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsSymbol.format(&[])}
                                 </div>
                             }
                                 .into_any()
@@ -765,9 +801,11 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                         disabled=move || !is_form_valid()
                         class="w-full px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm rounded cursor-pointer text-left"
                     >
-                        <div class="font-semibold">"Create Without Launchpad"</div>
+                        <div class="font-semibold">
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenCreateWithoutLaunchpad.format(&[])}
+                        </div>
                         <div class="text-xs text-green-200 mt-1">
-                            "Launch a custom token contract"
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadDescription.format(&[])}
                         </div>
                     </button>
 
@@ -777,7 +815,7 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                         }
                         class="w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm rounded cursor-pointer mt-2"
                     >
-                        "Cancel"
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenCancel.format(&[])}
                     </button>
                 </div>
             </div>

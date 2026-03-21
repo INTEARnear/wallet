@@ -10111,6 +10111,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "translation-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde_json",
+ "syn 2.0.114",
+]
+
+[[package]]
 name = "tray-icon"
 version = "0.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10741,6 +10751,7 @@ dependencies = [
  "slipped10",
  "thaw",
  "tokio",
+ "translation-macros",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

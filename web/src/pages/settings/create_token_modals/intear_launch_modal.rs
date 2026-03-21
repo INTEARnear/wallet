@@ -19,6 +19,7 @@ use crate::{
         rpc_context::RpcContext,
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
+    translations::TranslationKey,
     utils::decimal_to_balance,
 };
 
@@ -34,7 +35,13 @@ const MAX_DESCRIPTION_LENGTH: usize = 200;
 fn validate_max_length(value: &str, field_name: &str, max_len: usize) -> Option<String> {
     let char_count = value.chars().count();
     if char_count > max_len {
-        Some(format!("{field_name} must be at most {max_len} characters"))
+        let max_len_str = max_len.to_string();
+        Some(
+            TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchMaxLengthError.format(&[
+                ("field_name", field_name),
+                ("max_len", max_len_str.as_str()),
+            ]),
+        )
     } else {
         None
     }
@@ -126,15 +133,19 @@ where
     };
     let fee_preset_options = Signal::derive(|| {
         vec![
-            SelectOption::new("no_fee".to_string(), || view! { "No fee" }.into_any()),
+            SelectOption::new("no_fee".to_string(), || {
+                view! { {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchNoFee.format(&[])} }.into_any()
+            }),
             SelectOption::new("fixed_0_1".to_string(), || view! { "0.1%" }.into_any()),
             SelectOption::new("fixed_0_5".to_string(), || view! { "0.5%" }.into_any()),
             SelectOption::new("fixed_1_0".to_string(), || view! { "1%" }.into_any()),
             SelectOption::new("scheduled_20_to_0_1_1h".to_string(), || {
-                view! { "20% -> 0.1% over 1 hour" }.into_any()
+                view! { {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchFeeScheduled20.format(&[])} }
+                    .into_any()
             }),
             SelectOption::new("scheduled_40_to_0_5_4h".to_string(), || {
-                view! { "40% -> 0.5% over 4 hours" }.into_any()
+                view! { {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchFeeScheduled40.format(&[])} }
+                    .into_any()
             }),
         ]
     });
@@ -156,13 +167,22 @@ where
         }
         let prefix = "https://t.me/";
         let Some(handle) = telegram.strip_prefix(prefix) else {
-            return Some(format!("Must start with {prefix}"));
+            return Some(
+                TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchMustStartWith
+                    .format(&[("prefix", prefix)]),
+            );
         };
         if handle.is_empty() {
-            return Some(format!("Must include a handle after {prefix}"));
+            return Some(
+                TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchMustIncludeHandle
+                    .format(&[("prefix", prefix)]),
+            );
         }
         if handle.contains('/') {
-            return Some(format!("Cannot contain '/' after {prefix}"));
+            return Some(
+                TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchCannotContainSlash
+                    .format(&[("prefix", prefix)]),
+            );
         }
         None
     };
@@ -175,13 +195,22 @@ where
         }
         let prefix = "https://x.com/";
         let Some(handle) = x.strip_prefix(prefix) else {
-            return Some(format!("Must start with {prefix}"));
+            return Some(
+                TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchMustStartWith
+                    .format(&[("prefix", prefix)]),
+            );
         };
         if handle.is_empty() {
-            return Some(format!("Must include a handle after {prefix}"));
+            return Some(
+                TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchMustIncludeHandle
+                    .format(&[("prefix", prefix)]),
+            );
         }
         if handle.contains('/') {
-            return Some(format!("Cannot contain '/' after {prefix}"));
+            return Some(
+                TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchCannotContainSlash
+                    .format(&[("prefix", prefix)]),
+            );
         }
         None
     };
@@ -193,10 +222,16 @@ where
             return Some(error);
         }
         if !website.starts_with("https://") {
-            return Some("Must start with https://".to_string());
+            return Some(
+                TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchMustStartHttps
+                    .format(&[]),
+            );
         }
         if reqwest::Url::parse(website).is_err() {
-            return Some("Must be a valid URL".to_string());
+            return Some(
+                TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchMustBeValidUrl
+                    .format(&[]),
+            );
         }
         None
     };
@@ -211,12 +246,18 @@ where
         match buy_str.parse::<BigDecimal>() {
             Ok(amount) => {
                 if amount <= 0 {
-                    Some("Amount must be greater than 0".to_string())
+                    Some(
+                        TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchAmountGt0
+                            .format(&[]),
+                    )
                 } else {
                     None
                 }
             }
-            Err(_) => Some("Invalid number".to_string()),
+            Err(_) => Some(
+                TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchInvalidNumber
+                    .format(&[]),
+            ),
         }
     };
     let preview_id_resource = LocalResource::new({
@@ -246,9 +287,11 @@ where
                         if let CallError::ExecutionError(e) = &e
                             && e.contains("Short account ID for this symbol is already taken.")
                         {
-                            "Short account ID for this symbol is already taken".to_string()
+                            TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchShortIdTaken.format(&[])
                         } else {
-                            format!("Failed to preview ID: {e}")
+                            let err = e.to_string();
+                            TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchErrPreviewFailed
+                                .format(&[("error", err.as_str())])
                         }
                     })
             }
@@ -442,7 +485,8 @@ where
 
             let launch_account: AccountId = INTEAR_LAUNCH_ACCOUNT.parse().unwrap();
             let (rx, transaction) = EnqueuedTransaction::create(
-                format!("Launch {token_symbol} on Intear Launch"),
+                TranslationKey::MiscTransactionLaunchIntearLaunch
+                    .format(&[("token_symbol", &token_symbol)]),
                 signer_id.clone(),
                 launch_account,
                 vec![action],
@@ -457,7 +501,8 @@ where
                             view! {
                                 <IntearLaunchErrorModal
                                     tx_hash=None
-                                    error_message="Transaction outcome not found".to_string()
+                                    error_message=Signal::derive(move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchErrTxOutcome
+                                        .format(&[]))
                                 />
                             }
                             .into_any()
@@ -481,13 +526,14 @@ where
                                     })));
                                 }
                                 Err(e) => {
+                                    let err_msg = e.to_string();
                                     modal_context.modal.set(Some(Box::new(move || {
+                                        let err_msg = err_msg.clone();
                                         view! {
                                             <IntearLaunchErrorModal
                                                 tx_hash=Some(tx_hash)
-                                                error_message=format!(
-                                                    "Launch succeeded, but failed to parse returned token ID: {e}",
-                                                )
+                                                error_message=Signal::derive(move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchErrParseFailed
+                                                    .format(&[("error", err_msg.as_str())]))
                                             />
                                         }
                                         .into_any()
@@ -500,8 +546,8 @@ where
                                 view! {
                                     <IntearLaunchErrorModal
                                         tx_hash=Some(tx_hash)
-                                        error_message="There was an error launching your token on Intear Launch."
-                                            .to_string()
+                                        error_message=Signal::derive(move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchErrLaunchFailed
+                                            .format(&[]))
                                     />
                                 }
                                 .into_any()
@@ -512,7 +558,8 @@ where
                                 view! {
                                     <IntearLaunchErrorModal
                                         tx_hash=Some(tx_hash)
-                                        error_message="Unexpected transaction status".to_string()
+                                        error_message=Signal::derive(move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchErrUnexpectedStatus
+                                            .format(&[]))
                                     />
                                 }
                                 .into_any()
@@ -521,14 +568,28 @@ where
                     }
                 }
                 Ok(Err(e)) => {
+                    let err_msg = e.to_string();
                     modal_context.modal.set(Some(Box::new(move || {
-                        view! { <IntearLaunchErrorModal tx_hash=None error_message=format!("Transaction failed: {e}") /> }
+                        let err_msg = err_msg.clone();
+                        view! {
+                            <IntearLaunchErrorModal
+                                tx_hash=None
+                                error_message=Signal::derive(move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchErrTxFailed
+                                    .format(&[("error", err_msg.as_str())]))
+                            />
+                        }
                         .into_any()
                     })));
                 }
                 Err(_) => {
                     modal_context.modal.set(Some(Box::new(move || {
-                        view! { <IntearLaunchErrorModal tx_hash=None error_message="Transaction cancelled".to_string() /> }
+                        view! {
+                            <IntearLaunchErrorModal
+                                tx_hash=None
+                                error_message=Signal::derive(move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchErrTxCancelled
+                                    .format(&[]))
+                            />
+                        }
                         .into_any()
                     })));
                 }
@@ -548,7 +609,9 @@ where
                 on:click=move |e| e.stop_propagation()
             >
                 <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-xl font-semibold">"Launch on Intear Launch"</h2>
+                    <h2 class="text-xl font-semibold">
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchTitle.format(&[])}
+                    </h2>
                     <button
                         on:click=move |_| close_modal()
                         class="p-1 hover:bg-neutral-800 rounded cursor-pointer"
@@ -558,7 +621,7 @@ where
                 </div>
 
                 <div class="text-sm text-gray-400 mb-4">
-                    "Official Intear launchpad, bonding curve-like (immediately deployed on Intear DEX)"
+                    {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchDescription.format(&[])}
                 </div>
 
                 <div class="flex flex-col gap-4 p-4 bg-neutral-800 rounded-lg border border-neutral-700">
@@ -573,20 +636,27 @@ where
                                 }
                                 class="w-4 h-4 cursor-pointer"
                             />
-                            <span class="text-sm font-medium">"Short CA without numbers"</span>
+                            <span class="text-sm font-medium">
+                                {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchShortCa.format(&[])}
+                            </span>
                         </label>
-                        <div class="text-xs text-gray-500 mt-1">"Costs 1 NEAR"</div>
+                        <div class="text-xs text-gray-500 mt-1">
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchCostsOneNear.format(&[])}
+                        </div>
                     </div>
 
                     // Preview
                     <div class="border border-neutral-700 rounded p-4 bg-neutral-900">
-                        <div class="text-sm font-medium mb-2">"CA Preview"</div>
+                        <div class="text-sm font-medium mb-2">
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchCaPreview.format(&[])}
+                        </div>
                         {move || {
                             match preview_id_resource.get() {
                                 None => {
                                     view! {
                                         <div class="text-xs text-yellow-300">
-                                            "Loading preview..."
+                                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchLoadingPreview
+                                                .format(&[])}
                                         </div>
                                     }
                                         .into_any()
@@ -610,8 +680,11 @@ where
                     <div>
                         <label class="flex text-sm font-medium mb-1 items-center gap-2">
                             <Icon icon=icondata::SiTelegram width="16" height="16" />
-                            "Telegram "
-                            <span class="text-gray-500">"(optional)"</span>
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchTelegram.format(&[])}
+                            " "
+                            <span class="text-gray-500">
+                                {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchOptional.format(&[])}
+                            </span>
                         </label>
                         <input
                             type="text"
@@ -637,8 +710,11 @@ where
                     <div>
                         <label class="flex text-sm font-medium mb-1 items-center gap-2">
                             <Icon icon=icondata::SiX width="16" height="16" />
-                            "X "
-                            <span class="text-gray-500">"(optional)"</span>
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchX.format(&[])}
+                            " "
+                            <span class="text-gray-500">
+                                {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchOptional.format(&[])}
+                            </span>
                         </label>
                         <input
                             type="text"
@@ -663,7 +739,11 @@ where
                     // Website
                     <div>
                         <label class="block text-sm font-medium mb-1">
-                            "Website " <span class="text-gray-500">"(optional)"</span>
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchWebsite.format(&[])}
+                            " "
+                            <span class="text-gray-500">
+                                {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchOptional.format(&[])}
+                            </span>
                         </label>
                         <input
                             type="text"
@@ -688,7 +768,11 @@ where
                     // Description
                     <div>
                         <label class="block text-sm font-medium mb-1">
-                            "Description " <span class="text-gray-500">"(optional)"</span>
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchTokenDescription.format(&[])}
+                            " "
+                            <span class="text-gray-500">
+                                {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchOptional.format(&[])}
+                            </span>
                         </label>
                         <textarea
                             prop:value=move || form.get().description
@@ -697,7 +781,7 @@ where
                                 set_form.update(|f| f.description = value);
                             }
                             class="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded text-base text-white min-h-24"
-                            placeholder="Write a short description for your token launch"
+                            placeholder=move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchDescriptionPlaceholder.format(&[])
                         />
                         {move || {
                             if let Some(error_msg) = validate_description(&form.get().description) {
@@ -712,7 +796,11 @@ where
                     // First Buy
                     <div>
                         <label class="block text-sm font-medium mb-1">
-                            "First Buy (NEAR) " <span class="text-gray-500">"(optional)"</span>
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchFirstBuy.format(&[])}
+                            " "
+                            <span class="text-gray-500">
+                                {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchOptional.format(&[])}
+                            </span>
                         </label>
                         <input
                             type="text"
@@ -725,7 +813,7 @@ where
                             placeholder="1.0"
                         />
                         <div class="text-xs text-gray-500 mt-1">
-                            "If you want to be guaranteed to buy first, enter the amount here"
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchBuyFirstDescription.format(&[])}
                         </div>
                         {move || {
                             if let Some(error_msg) = validate_first_buy(&first_buy.get()) {
@@ -739,7 +827,9 @@ where
 
                     // Fee Preset
                     <div>
-                        <label class="block text-sm font-medium mb-1">"Fees"</label>
+                        <label class="block text-sm font-medium mb-1">
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchFees.format(&[])}
+                        </label>
                         <Select
                             options=fee_preset_options
                             on_change=Callback::new(move |value: String| {
@@ -756,16 +846,22 @@ where
                             {move || {
                                 selected_account()
                                     .map(|account_id| {
-                                        format!("Receiver for fees: {account_id}")
+                                        TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchFeeReceiver.format(&[
+                                            ("account_id", account_id.as_str()),
+                                        ])
                                     })
-                                    .unwrap_or_else(|| "Select an account first".to_string())
+                                    .unwrap_or_else(|| {
+                                        TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchSelectAccountFirst.format(&[])
+                                    })
                             }}
                         </div>
                     </div>
 
                     // Review Section
                     <div class="border-t border-neutral-700 pt-4 mt-2">
-                        <div class="text-sm font-medium mb-3">"Token Details"</div>
+                        <div class="text-sm font-medium mb-3">
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchTokenDetails.format(&[])}
+                        </div>
                         <div class="bg-neutral-900 p-4 rounded border border-neutral-600 space-y-3">
                             <div class="flex items-center gap-3 pb-3 border-b border-neutral-700">
                                 <img
@@ -782,13 +878,17 @@ where
                             </div>
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
-                                    <div class="text-xs text-neutral-400">"Supply"</div>
+                                    <div class="text-xs text-neutral-400">
+                                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchSupply.format(&[])}
+                                    </div>
                                     <div class="text-sm text-white">
                                         {token_supply.to_plain_string()}
                                     </div>
                                 </div>
                                 <div>
-                                    <div class="text-xs text-neutral-400">"Decimals"</div>
+                                    <div class="text-xs text-neutral-400">
+                                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchDecimals.format(&[])}
+                                    </div>
                                     <div class="text-sm text-white">{token_decimals}</div>
                                 </div>
                             </div>
@@ -802,13 +902,17 @@ where
                             disabled=move || !is_valid()
                             class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded cursor-pointer"
                         >
-                            {move || format!("Create ({})", calculate_total_deposit_label())}
+                            {move || {
+                                let deposit = calculate_total_deposit_label().to_string();
+                                TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchCreateButton
+                                    .format(&[("deposit", deposit.as_str())])
+                            }}
                         </button>
                         <button
                             on:click=move |_| close_modal()
                             class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded cursor-pointer"
                         >
-                            "Cancel"
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchCancel.format(&[])}
                         </button>
                     </div>
                 </div>
@@ -839,13 +943,14 @@ fn IntearLaunchSuccessModal(token_symbol: String, token_account_id: AccountId) -
                     <div class="w-16 h-16 rounded-full bg-green-900/30 border border-green-700 flex items-center justify-center text-green-400">
                         <Icon icon=icondata::LuCheck width="32" height="32" />
                     </div>
-                    <h2 class="text-xl font-semibold">"Token Launched!"</h2>
+                    <h2 class="text-xl font-semibold">
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchTokenLaunched.format(&[])}
+                    </h2>
                     <p class="text-center text-gray-400">
-                        "Your token " <span class="font-semibold text-white">{token_symbol}</span>
-                        " was launched with CA "
-                        <span class="font-mono text-white break-all">
-                            {token_account_id.to_string()}
-                        </span>
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchSuccessDescription.format_view(vec![
+                            ("token", view! { <span class="font-semibold text-white">{token_symbol.clone()}</span> }.into_any()),
+                            ("address", view! { <span class="font-mono text-white break-all">{token_account_id.to_string()}</span> }.into_any()),
+                        ])}
                     </p>
                     <a
                         href=launch_url
@@ -853,13 +958,13 @@ fn IntearLaunchSuccessModal(token_symbol: String, token_account_id: AccountId) -
                         rel="noopener noreferrer"
                         class="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-center cursor-pointer"
                     >
-                        "Open on Intear Launch"
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchOpenOnIntearLaunch.format(&[])}
                     </a>
                     <button
                         on:click=move |_| close_modal()
                         class="w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded cursor-pointer"
                     >
-                        "Close"
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchClose.format(&[])}
                     </button>
                 </div>
             </div>
@@ -868,7 +973,10 @@ fn IntearLaunchSuccessModal(token_symbol: String, token_account_id: AccountId) -
 }
 
 #[component]
-fn IntearLaunchErrorModal(tx_hash: Option<CryptoHash>, error_message: String) -> impl IntoView {
+fn IntearLaunchErrorModal(
+    tx_hash: Option<CryptoHash>,
+    #[prop(into)] error_message: Signal<String>,
+) -> impl IntoView {
     let modal_context = expect_context::<ModalContext>();
     let network_context = expect_context::<NetworkContext>();
     let close_modal = move || {
@@ -899,8 +1007,10 @@ fn IntearLaunchErrorModal(tx_hash: Option<CryptoHash>, error_message: String) ->
                     <div class="w-16 h-16 rounded-full bg-red-900/30 border border-red-700 flex items-center justify-center text-red-400">
                         <Icon icon=icondata::LuX width="32" height="32" />
                     </div>
-                    <h2 class="text-xl font-semibold">"Launch Failed"</h2>
-                    <p class="text-center text-gray-400">{error_message}</p>
+                    <h2 class="text-xl font-semibold">
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchLaunchFailed.format(&[])}
+                    </h2>
+                    <p class="text-center text-gray-400">{move || error_message.get()}</p>
                     {move || {
                         if let Some(url) = nearblocks_url() {
                             view! {
@@ -910,7 +1020,7 @@ fn IntearLaunchErrorModal(tx_hash: Option<CryptoHash>, error_message: String) ->
                                     rel="noopener noreferrer"
                                     class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-center cursor-pointer"
                                 >
-                                    "View Transaction Details"
+                                    {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchViewTxDetails.format(&[])}
                                 </a>
                             }
                                 .into_any()
@@ -922,7 +1032,7 @@ fn IntearLaunchErrorModal(tx_hash: Option<CryptoHash>, error_message: String) ->
                         on:click=move |_| close_modal()
                         class="w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded cursor-pointer"
                     >
-                        "Close"
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchClose.format(&[])}
                     </button>
                 </div>
             </div>

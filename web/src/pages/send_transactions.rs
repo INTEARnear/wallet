@@ -1,3 +1,4 @@
+use crate::translations::TranslationKey;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use futures_channel::oneshot;
 use icondata::*;
@@ -914,7 +915,7 @@ pub fn SendTransactions() -> impl IntoView {
                 .into_iter()
                 .map(|transaction| match &mode {
                     SendTransactionsMode::Send => EnqueuedTransaction::create(
-                        "App Interaction".to_string(),
+                        TranslationKey::MiscTransactionAppInteraction.format(&[]),
                         transaction.signer_id,
                         transaction.receiver_id,
                         transaction
@@ -928,7 +929,7 @@ pub fn SendTransactions() -> impl IntoView {
                         let (signed_delegate_tx, signed_delegate_rx) = oneshot::channel();
                         signed_delegate_receivers.push(signed_delegate_rx);
                         EnqueuedTransaction::create_with_type(
-                            "App Interaction".to_string(),
+                            TranslationKey::MiscTransactionAppInteraction.format(&[]),
                             transaction.signer_id,
                             TransactionType::SignDelegateAction {
                                 actions: transaction

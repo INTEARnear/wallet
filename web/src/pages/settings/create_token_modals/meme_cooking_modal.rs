@@ -7,6 +7,7 @@ use near_min_api::types::{
 };
 use serde::Deserialize;
 
+use crate::translations::TranslationKey;
 use crate::{
     contexts::{
         accounts_context::AccountsContext,
@@ -71,24 +72,6 @@ const DURATION_VALUES: [u32; DURATION_VALUES_LEN] = [
     7 * 24 * 60,
 ];
 
-const DURATION_LABELS: [&str; DURATION_VALUES_LEN] = [
-    "5 minutes",
-    "15 minutes",
-    "30 minutes",
-    "1 hour",
-    "2 hours",
-    "3 hours",
-    "6 hours",
-    "12 hours",
-    "1 day",
-    "2 days",
-    "3 days",
-    "4 days",
-    "5 days",
-    "6 days",
-    "7 days",
-];
-
 fn minutes_to_slider_index(minutes: u32) -> usize {
     DURATION_VALUES
         .iter()
@@ -102,15 +85,6 @@ fn slider_index_to_minutes(index: usize) -> u32 {
     } else {
         1440 // Default to 1 day
     }
-}
-
-fn get_duration_label(minutes: u32) -> String {
-    DURATION_VALUES
-        .iter()
-        .position(|&v| v == minutes)
-        .and_then(|idx| DURATION_LABELS.get(idx))
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| format!("{minutes} minutes"))
 }
 
 fn parse_near_amount(s: &str) -> Option<NearToken> {
@@ -129,7 +103,12 @@ fn validate_soft_cap(soft_cap_str: &str) -> Option<String> {
     let soft_cap = parse_near_amount(soft_cap_str)?;
 
     if soft_cap < MIN_CAP || soft_cap > MAX_CAP {
-        Some(format!("Soft Cap must be between {MIN_CAP} and {MAX_CAP}"))
+        Some(
+            TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingErrSoftCapRange.format(&[
+                ("min_cap", &MIN_CAP.to_string()),
+                ("max_cap", &MAX_CAP.to_string()),
+            ]),
+        )
     } else {
         None
     }
@@ -139,13 +118,21 @@ fn validate_hard_cap(hard_cap_str: &str, soft_cap_str: &str) -> Option<String> {
     let hard_cap = parse_near_amount(hard_cap_str)?;
 
     if hard_cap < MIN_CAP || hard_cap > MAX_CAP {
-        return Some(format!("Hard Cap must be between {MIN_CAP} and {MAX_CAP}"));
+        return Some(
+            TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingErrHardCapRange.format(&[
+                ("min_cap", &MIN_CAP.to_string()),
+                ("max_cap", &MAX_CAP.to_string()),
+            ]),
+        );
     }
 
     if let Some(soft_cap) = parse_near_amount(soft_cap_str)
         && hard_cap < soft_cap
     {
-        return Some("Hard Cap must be greater than or equal to Soft Cap".to_string());
+        return Some(
+            TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingErrHardCapGeSoftCap
+                .format(&[]),
+        );
     }
 
     None
@@ -153,7 +140,7 @@ fn validate_hard_cap(hard_cap_str: &str, soft_cap_str: &str) -> Option<String> {
 
 fn validate_x_link(x_link: &str) -> Option<String> {
     if !x_link.is_empty() && !x_link.starts_with("https://x.com/") {
-        Some("Must start with https://x.com/".to_string())
+        Some(TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingErrMustStartX.format(&[]))
     } else {
         None
     }
@@ -161,7 +148,10 @@ fn validate_x_link(x_link: &str) -> Option<String> {
 
 fn validate_telegram_link(telegram_link: &str) -> Option<String> {
     if !telegram_link.is_empty() && !telegram_link.starts_with("https://t.me/") {
-        Some("Must start with https://t.me/".to_string())
+        Some(
+            TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingErrMustStartTelegram
+                .format(&[]),
+        )
     } else {
         None
     }
@@ -169,7 +159,10 @@ fn validate_telegram_link(telegram_link: &str) -> Option<String> {
 
 fn validate_website(website: &str) -> Option<String> {
     if !website.is_empty() && !website.starts_with("https://") {
-        Some("Must start with https://".to_string())
+        Some(
+            TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingErrMustStartHttps
+                .format(&[]),
+        )
     } else {
         None
     }
@@ -178,24 +171,37 @@ fn validate_website(website: &str) -> Option<String> {
 fn validate_team_allocation_percent(percent_str: &str) -> Option<String> {
     match percent_str.parse::<u32>() {
         Ok(percent) if (1..=90).contains(&percent) => None,
-        Ok(_) => Some("Allocation must be between 1% and 90%".to_string()),
-        Err(_) => Some("Invalid number".to_string()),
+        Ok(_) => Some(
+            TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingErrAllocationRange
+                .format(&[]),
+        ),
+        Err(_) => Some(
+            TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingInvalidNumber.format(&[]),
+        ),
     }
 }
 
 fn validate_team_cliff_days(days_str: &str) -> Option<String> {
     match days_str.parse::<u32>() {
         Ok(days) if (2..=1825).contains(&days) => None,
-        Ok(_) => Some("Cliff must be between 2 and 1825 days".to_string()),
-        Err(_) => Some("Invalid number".to_string()),
+        Ok(_) => Some(
+            TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingErrCliffRange.format(&[]),
+        ),
+        Err(_) => Some(
+            TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingInvalidNumber.format(&[]),
+        ),
     }
 }
 
 fn validate_team_vesting_days(days_str: &str) -> Option<String> {
     match days_str.parse::<u32>() {
         Ok(days) if (5..=1825).contains(&days) => None,
-        Ok(_) => Some("Vesting must be between 5 and 1825 days".to_string()),
-        Err(_) => Some("Invalid number".to_string()),
+        Ok(_) => Some(
+            TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingErrVestingRange.format(&[]),
+        ),
+        Err(_) => Some(
+            TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingInvalidNumber.format(&[]),
+        ),
     }
 }
 
@@ -420,7 +426,8 @@ where
                                             "meme-cooking.near".parse().unwrap();
 
                                         let (rx, transaction) = EnqueuedTransaction::create(
-                                            format!("Launch {token_symbol} on Meme Cooking"),
+                                            TranslationKey::MiscTransactionLaunchMemeCooking
+                                                .format(&[("token_symbol", &token_symbol)]),
                                             signer_id.clone(),
                                             meme_cooking_account,
                                             vec![action],
@@ -497,7 +504,9 @@ where
                 on:click=move |e| e.stop_propagation()
             >
                 <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-xl font-semibold">"Launch on Meme Cooking"</h2>
+                    <h2 class="text-xl font-semibold">
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingTitle.format(&[])}
+                    </h2>
                     <button
                         on:click=move |_| close_modal()
                         class="p-1 hover:bg-neutral-800 rounded cursor-pointer"
@@ -507,15 +516,56 @@ where
                 </div>
 
                 <div class="text-sm text-gray-400 mb-4">
-                    "Fair launch platform. Best for flexible, professional launches."
+                    {move || TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingDescription.format(&[])}
                 </div>
 
                 <div class="flex flex-col gap-4 p-4 bg-neutral-800 rounded-lg border border-neutral-700">
                     // Duration
                     <div>
                         <label class="block text-sm font-medium mb-1">
-                            "Duration: " <span class="text-red-400">"*"</span> " " <br />
-                            {move || get_duration_label(form.get().duration_minutes)}
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingDuration.format(&[])}
+                            " " <span class="text-red-400">"*"</span> " " <br />
+                            {move || match form.get().duration_minutes {
+                                5 => TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingDur5Min.format(&[]),
+                                15 => TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingDur15Min.format(&[]),
+                                30 => TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingDur30Min.format(&[]),
+                                60 => TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingDur1Hour.format(&[]),
+                                120 => {
+                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingDur2Hours.format(&[])
+                                }
+                                180 => {
+                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingDur3Hours.format(&[])
+                                }
+                                360 => {
+                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingDur6Hours.format(&[])
+                                }
+                                720 => {
+                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingDur12Hours.format(&[])
+                                }
+                                1440 => TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingDur1Day.format(&[]),
+                                2880 => {
+                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingDur2Days.format(&[])
+                                }
+                                4320 => {
+                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingDur3Days.format(&[])
+                                }
+                                5760 => {
+                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingDur4Days.format(&[])
+                                }
+                                7200 => {
+                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingDur5Days.format(&[])
+                                }
+                                8640 => {
+                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingDur6Days.format(&[])
+                                }
+                                10080 => {
+                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingDur7Days.format(&[])
+                                }
+                                _ => {
+                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingDurMinutes
+                                        .format(&[("minutes", &form.get().duration_minutes.to_string())])
+                                }
+                            }}
                         </label>
                         <input
                             type="range"
@@ -535,14 +585,15 @@ where
                             class="w-full h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer"
                         />
                         <div class="text-xs text-gray-500 mt-1">
-                            "Time for people to join the fair sale"
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingSaleDescription.format(&[])}
                         </div>
                     </div>
 
                     // Soft Cap
                     <div>
                         <label class="block text-sm font-medium mb-1">
-                            "Soft Cap (NEAR) " <span class="text-red-400">"*"</span>
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingSoftCap.format(&[])}
+                            " " <span class="text-red-400">"*"</span>
                         </label>
                         <input
                             type="text"
@@ -558,11 +609,11 @@ where
                             {move || {
                                 let soft_cap_str = form.get().soft_cap_near;
                                 if let Some(soft_cap) = parse_near_amount(&soft_cap_str) {
-                                    format!(
-                                        "The Soft Cap of {soft_cap} is the minimum required to launch once the duration is over. Otherwise, the launch is failed and everyone is refunded.",
-                                    )
+                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingSoftCapDescription
+                                        .format(&[("soft_cap", &soft_cap.to_string())])
                                 } else {
-                                    "Enter a valid amount".to_string()
+                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingEnterValidAmount
+                                        .format(&[])
                                 }
                             }}
                         </div>
@@ -579,7 +630,8 @@ where
                     // Hard Cap
                     <div>
                         <label class="block text-sm font-medium mb-1">
-                            "Hard Cap (NEAR) " <span class="text-red-400">"*"</span>
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingHardCap.format(&[])}
+                            " " <span class="text-red-400">"*"</span>
                         </label>
                         <input
                             type="text"
@@ -595,11 +647,11 @@ where
                             {move || {
                                 let hard_cap_str = form.get().hard_cap_near;
                                 if let Some(hard_cap) = parse_near_amount(&hard_cap_str) {
-                                    format!(
-                                        "If the Hard Cap of {hard_cap} is reached, it will trigger an immediate launch without waiting full duration.",
-                                    )
+                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingHardCapDescription
+                                        .format(&[("hard_cap", &hard_cap.to_string())])
                                 } else {
-                                    "Enter a valid amount".to_string()
+                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingEnterValidAmount
+                                        .format(&[])
                                 }
                             }}
                         </div>
@@ -621,8 +673,11 @@ where
                     <div>
                         <label class="flex text-sm font-medium mb-1 items-center gap-2">
                             <Icon icon=icondata::SiX width="16" height="16" />
-                            "X Link "
-                            <span class="text-gray-500">"(optional)"</span>
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingXLink.format(&[])}
+                            " "
+                            <span class="text-gray-500">
+                                {move || TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingOptional.format(&[])}
+                            </span>
                         </label>
                         <input
                             type="text"
@@ -648,8 +703,13 @@ where
                     <div>
                         <label class="flex text-sm font-medium mb-1 items-center gap-2">
                             <Icon icon=icondata::SiTelegram width="16" height="16" />
-                            "Telegram Link "
-                            <span class="text-gray-500">"(optional)"</span>
+                            {move || {
+                                TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingTelegramLink.format(&[])
+                            }}
+                            " "
+                            <span class="text-gray-500">
+                                {move || TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingOptional.format(&[])}
+                            </span>
                         </label>
                         <input
                             type="text"
@@ -676,7 +736,10 @@ where
                     // Website
                     <div>
                         <label class="block text-sm font-medium mb-1">
-                            "Website " <span class="text-gray-500">"(optional)"</span>
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingWebsite.format(&[])} " "
+                            <span class="text-gray-500">
+                                {move || TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingOptional.format(&[])}
+                            </span>
                         </label>
                         <input
                             type="text"
@@ -710,7 +773,12 @@ where
                                 }
                                 class="w-4 h-4 cursor-pointer"
                             />
-                            <span class="text-sm font-medium">"Enable Team Allocation"</span>
+                            <span class="text-sm font-medium">
+                                {move || {
+                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingEnableTeamAlloc
+                                        .format(&[])
+                                }}
+                            </span>
                         </label>
 
                         {move || {
@@ -719,7 +787,10 @@ where
                                     <div class="flex flex-col gap-3 mt-3">
                                         <div>
                                             <label class="block text-sm font-medium mb-1">
-                                                "Allocation (%)"
+                                                {move || {
+                                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingAllocationPercent
+                                                        .format(&[])
+                                                }}
                                             </label>
                                             <input
                                                 type="text"
@@ -732,7 +803,10 @@ where
                                                 placeholder="10"
                                             />
                                             <div class="text-xs text-gray-500 mt-1">
-                                                "From 1% to 90%"
+                                                {move || {
+                                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingAllocationPercentDescription
+                                                        .format(&[])
+                                                }}
                                             </div>
                                             {move || {
                                                 if let Some(error_msg) = validate_team_allocation_percent(
@@ -750,7 +824,10 @@ where
 
                                         <div>
                                             <label class="block text-sm font-medium mb-1">
-                                                "Cliff (days)"
+                                                {move || {
+                                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingCliffDays
+                                                        .format(&[])
+                                                }}
                                             </label>
                                             <input
                                                 type="text"
@@ -762,7 +839,12 @@ where
                                                 class="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded text-base text-white"
                                                 placeholder="30"
                                             />
-                                            <div class="text-xs text-gray-500 mt-1">"Min: 2 days"</div>
+                                            <div class="text-xs text-gray-500 mt-1">
+                                                {move || {
+                                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingCliffDaysMin
+                                                        .format(&[])
+                                                }}
+                                            </div>
                                             {move || {
                                                 if let Some(error_msg) = validate_team_cliff_days(
                                                     &form.get().team_cliff_days,
@@ -779,7 +861,10 @@ where
 
                                         <div>
                                             <label class="block text-sm font-medium mb-1">
-                                                "Vesting Duration (days)"
+                                                {move || {
+                                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingVestingDays
+                                                        .format(&[])
+                                                }}
                                             </label>
                                             <input
                                                 type="text"
@@ -791,7 +876,12 @@ where
                                                 class="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded text-base text-white"
                                                 placeholder="180"
                                             />
-                                            <div class="text-xs text-gray-500 mt-1">"Min: 5 days"</div>
+                                            <div class="text-xs text-gray-500 mt-1">
+                                                {move || {
+                                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingVestingDaysMin
+                                                        .format(&[])
+                                                }}
+                                            </div>
                                             {move || {
                                                 if let Some(error_msg) = validate_team_vesting_days(
                                                     &form.get().team_vesting_days,
@@ -816,7 +906,9 @@ where
 
                     // Review Section
                     <div class="border-t border-neutral-700 pt-4 mt-2">
-                        <div class="text-sm font-medium mb-3">"Token Details"</div>
+                        <div class="text-sm font-medium mb-3">
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingTokenDetails.format(&[])}
+                        </div>
                         <div class="bg-neutral-900 p-4 rounded border border-neutral-600 space-y-3">
                             <div class="flex items-center gap-3 pb-3 border-b border-neutral-700">
                                 <img
@@ -833,13 +925,21 @@ where
                             </div>
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
-                                    <div class="text-xs text-neutral-400">"Supply"</div>
+                                    <div class="text-xs text-neutral-400">
+                                        {move || {
+                                            TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingSupply.format(&[])
+                                        }}
+                                    </div>
                                     <div class="text-sm text-white">
                                         {token_supply.to_plain_string()}
                                     </div>
                                 </div>
                                 <div>
-                                    <div class="text-xs text-neutral-400">"Decimals"</div>
+                                    <div class="text-xs text-neutral-400">
+                                        {move || {
+                                            TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingDecimals.format(&[])
+                                        }}
+                                    </div>
                                     <div class="text-sm text-white">{token_decimals}</div>
                                 </div>
                             </div>
@@ -859,7 +959,10 @@ where
                                                 />
                                             </div>
                                             <span>
-                                                "Total supply or decimals is too low for meme.cooking."
+                                                {move || {
+                                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingSupplyTooLow
+                                                        .format(&[])
+                                                }}
                                             </span>
                                         </div>
                                     }
@@ -880,7 +983,10 @@ where
                                                 />
                                             </div>
                                             <span>
-                                                "Icon is too large. Please decrease image quality. It will not affect the image displayed on meme.cooking."
+                                                {move || {
+                                                    TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingIconTooLarge
+                                                        .format(&[])
+                                                }}
                                             </span>
                                         </div>
                                     }
@@ -899,13 +1005,16 @@ where
                             disabled=move || !is_valid()
                             class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded cursor-pointer"
                         >
-                            {move || format!("Confirm ({})", calculate_deposit_clone())}
+                            {move || {
+                                TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingConfirm
+                                    .format(&[("deposit", &calculate_deposit_clone().to_string())])
+                            }}
                         </button>
                         <button
                             on:click=move |_| close_modal()
                             class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded cursor-pointer"
                         >
-                            "Cancel"
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingCancel.format(&[])}
                         </button>
                     </div>
                 </div>
@@ -935,10 +1044,28 @@ fn MemeCookingSuccessModal(token_symbol: String) -> impl IntoView {
                     <div class="w-16 h-16 rounded-full bg-green-900/30 border border-green-700 flex items-center justify-center text-green-400">
                         <Icon icon=icondata::LuCheck width="32" height="32" />
                     </div>
-                    <h2 class="text-xl font-semibold">"Token Launched Successfully!"</h2>
+                    <h2 class="text-xl font-semibold">
+                        {move || {
+                            TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingTokenLaunchedSuccess.format(&[])
+                        }}
+                    </h2>
                     <p class="text-center text-gray-400">
-                        "Your token " <span class="font-semibold text-white">{token_symbol}</span>
-                        " has been launched on Meme Cooking."
+                        {move || {
+                            TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingSuccessDescription
+                                .format_view(
+                                    vec![
+                                        (
+                                            "token",
+                                            view! {
+                                                <span class="font-semibold text-white">
+                                                    {token_symbol.clone()}
+                                                </span>
+                                            }
+                                                .into_any(),
+                                        ),
+                                    ],
+                                )
+                        }}
                     </p>
                     <a
                         href="https://meme.cooking"
@@ -946,13 +1073,15 @@ fn MemeCookingSuccessModal(token_symbol: String) -> impl IntoView {
                         rel="noopener noreferrer"
                         class="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-center cursor-pointer"
                     >
-                        "View on Meme Cooking"
+                        {move || {
+                            TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingViewOnMemeCooking.format(&[])
+                        }}
                     </a>
                     <button
                         on:click=move |_| close_modal()
                         class="w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded cursor-pointer"
                     >
-                        "Close"
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingClose.format(&[])}
                     </button>
                 </div>
             </div>
@@ -983,9 +1112,13 @@ fn MemeCookingErrorModal(tx_hash: CryptoHash) -> impl IntoView {
                     <div class="w-16 h-16 rounded-full bg-red-900/30 border border-red-700 flex items-center justify-center text-red-400">
                         <Icon icon=icondata::LuX width="32" height="32" />
                     </div>
-                    <h2 class="text-xl font-semibold">"Launch Failed"</h2>
+                    <h2 class="text-xl font-semibold">
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingLaunchFailed.format(&[])}
+                    </h2>
                     <p class="text-center text-gray-400">
-                        "There was an error launching your token on Meme Cooking."
+                        {move || {
+                            TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingErrLaunchFailed.format(&[])
+                        }}
                     </p>
                     <a
                         href=nearblocks_url
@@ -993,13 +1126,13 @@ fn MemeCookingErrorModal(tx_hash: CryptoHash) -> impl IntoView {
                         rel="noopener noreferrer"
                         class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-center cursor-pointer"
                     >
-                        "View Transaction Details"
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingViewTxDetails.format(&[])}
                     </a>
                     <button
                         on:click=move |_| close_modal()
                         class="w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded cursor-pointer"
                     >
-                        "Close"
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenMemeCookingClose.format(&[])}
                     </button>
                 </div>
             </div>

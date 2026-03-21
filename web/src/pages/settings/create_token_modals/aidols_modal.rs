@@ -14,6 +14,7 @@ use crate::{
         tokens_context::{Token, TokensContext},
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
+    translations::TranslationKey,
     utils::decimal_to_balance,
 };
 
@@ -62,12 +63,20 @@ where
             match buy_str.parse::<BigDecimal>() {
                 Ok(amount) => {
                     if amount <= 0 {
-                        return Some("Amount must be greater than 0".to_string());
+                        return Some(
+                            TranslationKey::PagesSettingsDeveloperCreateTokenAidolsAmountGt0
+                                .format(&[]),
+                        );
                     }
                     let yoctonear = decimal_to_balance(amount, 24);
                     NearToken::from_yoctonear(yoctonear)
                 }
-                Err(_) => return Some("Invalid number".to_string()),
+                Err(_) => {
+                    return Some(
+                        TranslationKey::PagesSettingsDeveloperCreateTokenAidolsInvalidNumber
+                            .format(&[]),
+                    );
+                }
             }
         };
 
@@ -76,13 +85,21 @@ where
 
         if current_balance < required_balance {
             if initial_buy_token.as_yoctonear() > 0 {
-                return Some(format!(
-                    "Insufficient balance. Need {required_balance} (initial buy + {AIDOLS_DEPOSIT} for deposit)",
-                ));
+                let required_balance_str = required_balance.to_string();
+                let deposit_str = AIDOLS_DEPOSIT.to_string();
+                return Some(
+                    TranslationKey::PagesSettingsDeveloperCreateTokenAidolsErrInsuffBalWithBuy
+                        .format(&[
+                            ("required_balance", required_balance_str.as_str()),
+                            ("deposit", deposit_str.as_str()),
+                        ]),
+                );
             } else {
-                return Some(format!(
-                    "Insufficient balance. Need at least {AIDOLS_DEPOSIT} for deposit"
-                ));
+                let deposit_str = AIDOLS_DEPOSIT.to_string();
+                return Some(
+                    TranslationKey::PagesSettingsDeveloperCreateTokenAidolsErrInsuffBal
+                        .format(&[("deposit", deposit_str.as_str())]),
+                );
             }
         }
 
@@ -201,7 +218,8 @@ where
                                                     "aidols.near".parse().unwrap();
 
                                                 let (rx, transaction) = EnqueuedTransaction::create(
-                                                    format!("Launch {token_symbol} on Aidols"),
+                                                    TranslationKey::MiscTransactionLaunchAidols
+                                                        .format(&[("token_symbol", &token_symbol)]),
                                                     signer_id.clone(),
                                                     aidols_account,
                                                     vec![action],
@@ -281,7 +299,9 @@ where
                 on:click=move |e| e.stop_propagation()
             >
                 <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-xl font-semibold">"Launch on Aidols"</h2>
+                    <h2 class="text-xl font-semibold">
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsTitle.format(&[])}
+                    </h2>
                     <button
                         on:click=move |_| close_modal()
                         class="p-1 hover:bg-neutral-800 rounded cursor-pointer"
@@ -290,17 +310,23 @@ where
                     </button>
                 </div>
 
-                <div class="text-sm text-gray-400 mb-4">"Bonding curve launch"</div>
+                <div class="text-sm text-gray-400 mb-4">
+                    {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsDescription.format(&[])}
+                </div>
 
                 <div class="flex flex-col gap-4 p-4 bg-neutral-800 rounded-lg border border-neutral-700">
                     <div class="text-sm text-gray-500">
-                        "This will launch your token on Aidols using a bonding curve mechanism. Confirm to proceed."
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsConfirmDescription.format(&[])}
                     </div>
 
                     // Initial Buy Field
                     <div>
                         <label class="block text-sm font-medium mb-1">
-                            "Initial Buy (NEAR) " <span class="text-gray-500">"(optional)"</span>
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsInitialBuy.format(&[])}
+                            " "
+                            <span class="text-gray-500">
+                                {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsOptional.format(&[])}
+                            </span>
                         </label>
                         <input
                             type="text"
@@ -313,7 +339,7 @@ where
                             placeholder="1.0"
                         />
                         <div class="text-xs text-gray-500 mt-1">
-                            "If you want to be guaranteed to buy first, enter the amount here"
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsBuyFirstDescription.format(&[])}
                         </div>
                         {move || {
                             if let Some(error_msg) = validate_initial_buy(&initial_buy.get()) {
@@ -327,7 +353,9 @@ where
 
                     // Review Section
                     <div class="border-t border-neutral-700 pt-4 mt-2">
-                        <div class="text-sm font-medium mb-3">"Token Details"</div>
+                        <div class="text-sm font-medium mb-3">
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsTokenDetails.format(&[])}
+                        </div>
                         <div class="bg-neutral-900 p-4 rounded border border-neutral-600 space-y-3">
                             <div class="flex items-center gap-3 pb-3 border-b border-neutral-700">
                                 <img
@@ -344,11 +372,15 @@ where
                             </div>
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
-                                    <div class="text-xs text-neutral-400">"Supply"</div>
+                                    <div class="text-xs text-neutral-400">
+                                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsSupply.format(&[])}
+                                    </div>
                                     <div class="text-sm text-white">{AIDOLS_SUPPLY}</div>
                                 </div>
                                 <div>
-                                    <div class="text-xs text-neutral-400">"Decimals"</div>
+                                    <div class="text-xs text-neutral-400">
+                                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsDecimals.format(&[])}
+                                    </div>
                                     <div class="text-sm text-white">{AIDOLS_DECIMALS}</div>
                                 </div>
                             </div>
@@ -363,7 +395,8 @@ where
                                                 <Icon icon=icondata::LuInfo width="16" height="16" />
                                             </div>
                                             <span>
-                                                "Aidols doesn't support custom supply and decimals. Your token will use the values shown above."
+                                                {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsSupplyDecimalsNote
+                                                    .format(&[])}
                                             </span>
                                         </div>
                                     }
@@ -384,7 +417,8 @@ where
                                                 />
                                             </div>
                                             <span>
-                                                "The on-chain image is too large. Please decrease image quality. It will not affect the image displayed on Aidols."
+                                                {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsImageTooLarge
+                                                    .format(&[])}
                                             </span>
                                         </div>
                                     }
@@ -403,13 +437,17 @@ where
                             disabled=move || !is_valid()
                             class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded cursor-pointer"
                         >
-                            {format!("Confirm ({AIDOLS_DEPOSIT})")}
+                            {move || {
+                                let deposit = AIDOLS_DEPOSIT.to_string();
+                                TranslationKey::PagesSettingsDeveloperCreateTokenAidolsConfirm
+                                    .format(&[("deposit", deposit.as_str())])
+                            }}
                         </button>
                         <button
                             on:click=move |_| close_modal()
                             class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded cursor-pointer"
                         >
-                            "Cancel"
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsCancel.format(&[])}
                         </button>
                     </div>
                 </div>
@@ -441,10 +479,13 @@ fn AidolsSuccessModal(token_symbol: String, signer_id: AccountId) -> impl IntoVi
                     <div class="w-16 h-16 rounded-full bg-green-900/30 border border-green-700 flex items-center justify-center text-green-400">
                         <Icon icon=icondata::LuCheck width="32" height="32" />
                     </div>
-                    <h2 class="text-xl font-semibold">"Token Launched Successfully!"</h2>
+                    <h2 class="text-xl font-semibold">
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsTokenLaunchedSuccess.format(&[])}
+                    </h2>
                     <p class="text-center text-gray-400">
-                        "Your token " <span class="font-semibold text-white">{token_symbol}</span>
-                        " has been launched on Aidols."
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsSuccessDescription.format_view(vec![
+                            ("token", view! { <span class="font-semibold text-white">{token_symbol.clone()}</span> }.into_any()),
+                        ])}
                     </p>
                     <a
                         href=aidols_url
@@ -452,13 +493,13 @@ fn AidolsSuccessModal(token_symbol: String, signer_id: AccountId) -> impl IntoVi
                         rel="noopener noreferrer"
                         class="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-center cursor-pointer"
                     >
-                        "View on Aidols.bot"
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsViewOnAidols.format(&[])}
                     </a>
                     <button
                         on:click=move |_| close_modal()
                         class="w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded cursor-pointer"
                     >
-                        "Close"
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsClose.format(&[])}
                     </button>
                 </div>
             </div>
@@ -489,9 +530,11 @@ fn AidolsErrorModal(tx_hash: CryptoHash) -> impl IntoView {
                     <div class="w-16 h-16 rounded-full bg-red-900/30 border border-red-700 flex items-center justify-center text-red-400">
                         <Icon icon=icondata::LuX width="32" height="32" />
                     </div>
-                    <h2 class="text-xl font-semibold">"Launch Failed"</h2>
+                    <h2 class="text-xl font-semibold">
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsLaunchFailed.format(&[])}
+                    </h2>
                     <p class="text-center text-gray-400">
-                        "There was an error launching your token on Aidols."
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsErrLaunchFailed.format(&[])}
                     </p>
                     <a
                         href=nearblocks_url
@@ -499,13 +542,13 @@ fn AidolsErrorModal(tx_hash: CryptoHash) -> impl IntoView {
                         rel="noopener noreferrer"
                         class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-center cursor-pointer"
                     >
-                        "View Transaction Details"
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsViewTxDetails.format(&[])}
                     </a>
                     <button
                         on:click=move |_| close_modal()
                         class="w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded cursor-pointer"
                     >
-                        "Close"
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenAidolsClose.format(&[])}
                     </button>
                 </div>
             </div>

@@ -91,7 +91,7 @@ async fn fetch_transactions() -> Vec<TransactionResponse> {
 #[component]
 pub fn History() -> impl IntoView {
     let transactions = LocalResource::new(fetch_transactions);
-    let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
+    let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     let timestamp_format = move || config.get().timestamp_format;
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     Effect::new(move || {
@@ -105,7 +105,7 @@ pub fn History() -> impl IntoView {
                 <h1 class="text-white text-2xl font-bold pt-4 sm:pt-0">"Transaction History"</h1>
                 <button
                     on:click=move |_| {
-                        set_config
+                        config
                             .update(|c| {
                                 c.timestamp_format = match c.timestamp_format {
                                     TimestampFormat::TimeAgo => TimestampFormat::DateTime,

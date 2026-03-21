@@ -4,17 +4,29 @@ use crate::contexts::config_context::{
     NumberConfig, RoundingIncrement, RoundingMode, RoundingPriority, TrailingZeroDisplay,
     UseGrouping,
 };
+use crate::translations::TranslationKey;
 use crate::utils::{format_number_with_config, sanitize_custom_format};
 use bigdecimal::{BigDecimal, FromPrimitive};
 use leptos::prelude::*;
 
 const NUMBER_PREVIEW_VALUES: [f64; 6] = [0.0, 0.004321, 0.5, 12.3456, 1234.567, -98765.4321];
 
-const ROUNDING_PRIORITY_OPTIONS: [(&str, &str); 3] = [
-    ("auto", "Auto"),
-    ("morePrecision", "More precision"),
-    ("lessPrecision", "Less precision"),
-];
+fn rounding_priority_options() -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "auto",
+            TranslationKey::PagesSettingsPreferencesNumberFormatRoundingPriorityAuto.format(&[]),
+        ),
+        (
+            "morePrecision",
+            TranslationKey::PagesSettingsPreferencesNumberFormatRoundingPriorityMore.format(&[]),
+        ),
+        (
+            "lessPrecision",
+            TranslationKey::PagesSettingsPreferencesNumberFormatRoundingPriorityLess.format(&[]),
+        ),
+    ]
+}
 const ROUNDING_INCREMENT_OPTIONS: [(&str, &str); 15] = [
     ("1", "1"),
     ("2", "2"),
@@ -32,39 +44,118 @@ const ROUNDING_INCREMENT_OPTIONS: [(&str, &str); 15] = [
     ("2500", "2500"),
     ("5000", "5000"),
 ];
-const ROUNDING_MODE_OPTIONS: [(&str, &str); 9] = [
-    ("ceil", "Ceil"),
-    ("floor", "Floor"),
-    ("expand", "Expand"),
-    ("trunc", "Truncate"),
-    ("halfCeil", "Half ceiling"),
-    ("halfFloor", "Half floor"),
-    ("halfExpand", "Half expand"),
-    ("halfTrunc", "Half truncate"),
-    ("halfEven", "Half even"),
-];
-const TRAILING_ZERO_DISPLAY_OPTIONS: [(&str, &str); 2] =
-    [("auto", "Auto"), ("stripIfInteger", "Strip if integer")];
-const NOTATION_OPTIONS: [(&str, &str); 4] = [
-    ("standard", "Standard"),
-    ("scientific", "Scientific"),
-    ("engineering", "Engineering"),
-    ("compact", "Compact"),
-];
-const COMPACT_DISPLAY_OPTIONS: [(&str, &str); 2] = [("short", "Short"), ("long", "Long")];
-const USE_GROUPING_OPTIONS: [(&str, &str); 4] = [
-    ("auto", "Auto"),
-    ("always", "Always"),
-    ("min2", "Minimum 2 digits"),
-    ("false", "Off"),
-];
+fn rounding_mode_options() -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "ceil",
+            TranslationKey::PagesSettingsPreferencesNumberFormatRoundingModeCeil.format(&[]),
+        ),
+        (
+            "floor",
+            TranslationKey::PagesSettingsPreferencesNumberFormatRoundingModeFloor.format(&[]),
+        ),
+        (
+            "expand",
+            TranslationKey::PagesSettingsPreferencesNumberFormatRoundingModeExpand.format(&[]),
+        ),
+        (
+            "trunc",
+            TranslationKey::PagesSettingsPreferencesNumberFormatRoundingModeTrunc.format(&[]),
+        ),
+        (
+            "halfCeil",
+            TranslationKey::PagesSettingsPreferencesNumberFormatRoundingModeHalfCeil.format(&[]),
+        ),
+        (
+            "halfFloor",
+            TranslationKey::PagesSettingsPreferencesNumberFormatRoundingModeHalfFloor.format(&[]),
+        ),
+        (
+            "halfExpand",
+            TranslationKey::PagesSettingsPreferencesNumberFormatRoundingModeHalfExpand.format(&[]),
+        ),
+        (
+            "halfTrunc",
+            TranslationKey::PagesSettingsPreferencesNumberFormatRoundingModeHalfTrunc.format(&[]),
+        ),
+        (
+            "halfEven",
+            TranslationKey::PagesSettingsPreferencesNumberFormatRoundingModeHalfEven.format(&[]),
+        ),
+    ]
+}
+fn trailing_zero_display_options() -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "auto",
+            TranslationKey::PagesSettingsPreferencesNumberFormatTrailingZeroAuto.format(&[]),
+        ),
+        (
+            "stripIfInteger",
+            TranslationKey::PagesSettingsPreferencesNumberFormatTrailingZeroStripIfInteger
+                .format(&[]),
+        ),
+    ]
+}
+fn notation_options() -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "standard",
+            TranslationKey::PagesSettingsPreferencesNumberFormatNotationStandard.format(&[]),
+        ),
+        (
+            "scientific",
+            TranslationKey::PagesSettingsPreferencesNumberFormatNotationScientific.format(&[]),
+        ),
+        (
+            "engineering",
+            TranslationKey::PagesSettingsPreferencesNumberFormatNotationEngineering.format(&[]),
+        ),
+        (
+            "compact",
+            TranslationKey::PagesSettingsPreferencesNumberFormatNotationCompact.format(&[]),
+        ),
+    ]
+}
+fn compact_display_options() -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "short",
+            TranslationKey::PagesSettingsPreferencesNumberFormatCompactDisplayShort.format(&[]),
+        ),
+        (
+            "long",
+            TranslationKey::PagesSettingsPreferencesNumberFormatCompactDisplayLong.format(&[]),
+        ),
+    ]
+}
+fn use_grouping_options() -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "auto",
+            TranslationKey::PagesSettingsPreferencesNumberFormatGroupingAuto.format(&[]),
+        ),
+        (
+            "always",
+            TranslationKey::PagesSettingsPreferencesNumberFormatGroupingAlways.format(&[]),
+        ),
+        (
+            "min2",
+            TranslationKey::PagesSettingsPreferencesNumberFormatGroupingMin2.format(&[]),
+        ),
+        (
+            "false",
+            TranslationKey::PagesSettingsPreferencesNumberFormatGroupingOff.format(&[]),
+        ),
+    ]
+}
 
-fn build_select_options(options: &[(&'static str, &'static str)]) -> Vec<SelectOption> {
+fn build_select_options(options: &[(&'static str, String)]) -> Vec<SelectOption> {
     options
         .iter()
         .map(|(value, label)| {
-            let label = *label;
-            SelectOption::new((*value).to_string(), move || label.to_string().into_any())
+            let label = label.clone();
+            SelectOption::new((*value).to_string(), move || label.clone().into_any())
         })
         .collect()
 }
@@ -97,7 +188,7 @@ pub fn NumberFormatSettings() -> impl IntoView {
     if matches!(&initial_number_config, NumberConfig::Customizable { .. })
         && raw_custom_format != initial_custom_format
     {
-        config_context.set_config.update(|config| {
+        config_context.config.update(|config| {
             config.number_config = NumberConfig::Customizable {
                 amount_format: initial_custom_format,
             };
@@ -144,7 +235,7 @@ pub fn NumberFormatSettings() -> impl IntoView {
     let apply_custom_format_update = {
         Callback::new(move |format: InsanelyCustomizableAmountFormat| {
             let sanitized = sanitize_custom_format(format);
-            config_context.set_config.update(|config| {
+            config_context.config.update(|config| {
                 config.number_config = NumberConfig::Customizable {
                     amount_format: sanitized,
                 };
@@ -196,22 +287,27 @@ pub fn NumberFormatSettings() -> impl IntoView {
         )
     });
 
-    let rounding_priority_options =
-        Signal::derive(|| build_select_options(&ROUNDING_PRIORITY_OPTIONS));
-    let rounding_increment_options =
-        Signal::derive(|| build_select_options(&ROUNDING_INCREMENT_OPTIONS));
-    let rounding_mode_options = Signal::derive(|| build_select_options(&ROUNDING_MODE_OPTIONS));
-    let trailing_zero_display_options =
-        Signal::derive(|| build_select_options(&TRAILING_ZERO_DISPLAY_OPTIONS));
-    let notation_options = Signal::derive(|| build_select_options(&NOTATION_OPTIONS));
-    let compact_display_options = Signal::derive(|| build_select_options(&COMPACT_DISPLAY_OPTIONS));
-    let use_grouping_options = Signal::derive(|| build_select_options(&USE_GROUPING_OPTIONS));
+    let rounding_priority_opts =
+        Signal::derive(|| build_select_options(&rounding_priority_options()));
+    let rounding_increment_opts = Signal::derive(|| {
+        let opts: Vec<(&'static str, String)> = ROUNDING_INCREMENT_OPTIONS
+            .iter()
+            .map(|(v, l)| (*v, l.to_string()))
+            .collect();
+        build_select_options(&opts)
+    });
+    let rounding_mode_opts = Signal::derive(|| build_select_options(&rounding_mode_options()));
+    let trailing_zero_display_opts =
+        Signal::derive(|| build_select_options(&trailing_zero_display_options()));
+    let notation_opts = Signal::derive(|| build_select_options(&notation_options()));
+    let compact_display_opts = Signal::derive(|| build_select_options(&compact_display_options()));
+    let use_grouping_opts = Signal::derive(|| build_select_options(&use_grouping_options()));
 
     let select_class = "w-full border rounded-lg border-neutral-700 bg-neutral-900";
 
     view! {
         <div class="flex items-center justify-between py-3">
-            <span class="text-sm font-medium text-gray-400">"Number format"</span>
+            <span class="text-sm font-medium text-gray-400">{move || TranslationKey::PagesSettingsPreferencesNumberFormatTitle.format(&[])}</span>
             <div class="flex gap-2">
                 <button
                     class="px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer"
@@ -224,7 +320,7 @@ pub fn NumberFormatSettings() -> impl IntoView {
                     }
                     on:click=move |_| {
                         config_context
-                            .set_config
+                            .config
                             .update(|config| {
                                 config.number_config = NumberConfig::Simple {
                                     short_amounts: true,
@@ -232,7 +328,7 @@ pub fn NumberFormatSettings() -> impl IntoView {
                             });
                     }
                 >
-                    "Short"
+                    {move || TranslationKey::PagesSettingsPreferencesNumberFormatPresetShort.format(&[])}
                 </button>
                 <button
                     class="px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer"
@@ -245,7 +341,7 @@ pub fn NumberFormatSettings() -> impl IntoView {
                     }
                     on:click=move |_| {
                         config_context
-                            .set_config
+                            .config
                             .update(|config| {
                                 config.number_config = NumberConfig::Simple {
                                     short_amounts: false,
@@ -253,7 +349,7 @@ pub fn NumberFormatSettings() -> impl IntoView {
                             });
                     }
                 >
-                    "Full"
+                    {move || TranslationKey::PagesSettingsPreferencesNumberFormatPresetFull.format(&[])}
                 </button>
                 <button
                     class="px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer"
@@ -269,22 +365,22 @@ pub fn NumberFormatSettings() -> impl IntoView {
                         apply_custom_format_update_mode.run(format);
                     }
                 >
-                    "Custom"
+                    {move || TranslationKey::PagesSettingsPreferencesNumberFormatPresetCustom.format(&[])}
                 </button>
             </div>
         </div>
 
         <Show when=is_custom>
             <div class="mt-6">
-                <div class="text-lg font-medium text-gray-300 mb-4">"Number formatting"</div>
+                <div class="text-lg font-medium text-gray-300 mb-4">{move || TranslationKey::PagesSettingsPreferencesNumberFormatHeaderFormatting.format(&[])}</div>
                 <div class="bg-neutral-800 rounded-xl p-4 space-y-4">
-                    <div class="text-sm text-gray-400">"Customize how numbers are displayed."</div>
+                    <div class="text-sm text-gray-400">{move || TranslationKey::PagesSettingsPreferencesNumberFormatFormattingDescription.format(&[])}</div>
 
                     <div class="space-y-4">
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div class="space-y-2">
                                 <label class="text-gray-400 text-sm">
-                                    "Minimum integer digits"
+                                    {move || TranslationKey::PagesSettingsPreferencesNumberFormatLabelMinIntegerDigits.format(&[])}
                                 </label>
                                 <input
                                     type="number"
@@ -314,7 +410,7 @@ pub fn NumberFormatSettings() -> impl IntoView {
                             </div>
                             <div class="space-y-2">
                                 <label class="text-gray-400 text-sm">
-                                    "Minimum fraction digits"
+                                    {move || TranslationKey::PagesSettingsPreferencesNumberFormatLabelMinFractionDigits.format(&[])}
                                 </label>
                                 <input
                                     type="number"
@@ -352,7 +448,7 @@ pub fn NumberFormatSettings() -> impl IntoView {
                             </div>
                             <div class="space-y-2">
                                 <label class="text-gray-400 text-sm">
-                                    "Maximum fraction digits"
+                                    {move || TranslationKey::PagesSettingsPreferencesNumberFormatLabelMaxFractionDigits.format(&[])}
                                 </label>
                                 <input
                                     type="number"
@@ -390,7 +486,7 @@ pub fn NumberFormatSettings() -> impl IntoView {
                             </div>
                             <div class="space-y-2">
                                 <label class="text-gray-400 text-sm">
-                                    "Minimum significant digits"
+                                    {move || TranslationKey::PagesSettingsPreferencesNumberFormatLabelMinSignificantDigits.format(&[])}
                                 </label>
                                 <input
                                     type="number"
@@ -428,7 +524,7 @@ pub fn NumberFormatSettings() -> impl IntoView {
                             </div>
                             <div class="space-y-2">
                                 <label class="text-gray-400 text-sm">
-                                    "Maximum significant digits"
+                                    {move || TranslationKey::PagesSettingsPreferencesNumberFormatLabelMaxSignificantDigits.format(&[])}
                                 </label>
                                 <input
                                     type="number"
@@ -468,9 +564,9 @@ pub fn NumberFormatSettings() -> impl IntoView {
 
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div class="space-y-2">
-                                <label class="text-gray-400 text-sm">"Rounding priority"</label>
+                                <label class="text-gray-400 text-sm">{move || TranslationKey::PagesSettingsPreferencesNumberFormatLabelRoundingPriority.format(&[])}</label>
                                 <Select
-                                    options=rounding_priority_options
+                                    options=rounding_priority_opts
                                     on_change=Callback::new(move |value: String| {
                                         if let Some(priority) = RoundingPriority::parse(&value) {
                                             let format = custom_format_state
@@ -493,10 +589,10 @@ pub fn NumberFormatSettings() -> impl IntoView {
                             }>
                                 <div class="space-y-2">
                                     <label class="text-gray-400 text-sm">
-                                        "Rounding increment"
+                                        {move || TranslationKey::PagesSettingsPreferencesNumberFormatLabelRoundingIncrement.format(&[])}
                                     </label>
                                     <Select
-                                        options=rounding_increment_options
+                                        options=rounding_increment_opts
                                         on_change=Callback::new(move |value: String| {
                                             if let Some(increment) = RoundingIncrement::parse(&value) {
                                                 let format = custom_format_state
@@ -515,9 +611,9 @@ pub fn NumberFormatSettings() -> impl IntoView {
                                 </div>
                             </Show>
                             <div class="space-y-2">
-                                <label class="text-gray-400 text-sm">"Rounding mode"</label>
+                                <label class="text-gray-400 text-sm">{move || TranslationKey::PagesSettingsPreferencesNumberFormatLabelRoundingMode.format(&[])}</label>
                                 <Select
-                                    options=rounding_mode_options
+                                    options=rounding_mode_opts
                                     on_change=Callback::new(move |value: String| {
                                         if let Some(mode) = RoundingMode::parse(&value) {
                                             let format = custom_format_state
@@ -535,9 +631,9 @@ pub fn NumberFormatSettings() -> impl IntoView {
                                 />
                             </div>
                             <div class="space-y-2">
-                                <label class="text-gray-400 text-sm">"Trailing zero display"</label>
+                                <label class="text-gray-400 text-sm">{move || TranslationKey::PagesSettingsPreferencesNumberFormatLabelTrailingZeroDisplay.format(&[])}</label>
                                 <Select
-                                    options=trailing_zero_display_options
+                                    options=trailing_zero_display_opts
                                     on_change=Callback::new(move |value: String| {
                                         if let Some(display) = TrailingZeroDisplay::parse(&value) {
                                             let format = custom_format_state
@@ -555,9 +651,9 @@ pub fn NumberFormatSettings() -> impl IntoView {
                                 />
                             </div>
                             <div class="space-y-2">
-                                <label class="text-gray-400 text-sm">"Notation"</label>
+                                <label class="text-gray-400 text-sm">{move || TranslationKey::PagesSettingsPreferencesNumberFormatLabelNotation.format(&[])}</label>
                                 <Select
-                                    options=notation_options
+                                    options=notation_opts
                                     on_change=Callback::new(move |value: String| {
                                         if let Some(notation) = Notation::parse(&value) {
                                             let format = custom_format_state
@@ -575,9 +671,9 @@ pub fn NumberFormatSettings() -> impl IntoView {
                                 />
                             </div>
                             <div class="space-y-2">
-                                <label class="text-gray-400 text-sm">"Grouping"</label>
+                                <label class="text-gray-400 text-sm">{move || TranslationKey::PagesSettingsPreferencesNumberFormatLabelGrouping.format(&[])}</label>
                                 <Select
-                                    options=use_grouping_options
+                                    options=use_grouping_opts
                                     on_change=Callback::new(move |value: String| {
                                         if let Some(grouping) = UseGrouping::parse(&value) {
                                             let format = custom_format_state
@@ -600,9 +696,9 @@ pub fn NumberFormatSettings() -> impl IntoView {
                             current_custom_format.get().notation() == Notation::Compact
                         }>
                             <div class="space-y-2">
-                                <label class="text-gray-400 text-sm">"Compact display"</label>
+                                <label class="text-gray-400 text-sm">{move || TranslationKey::PagesSettingsPreferencesNumberFormatLabelCompactDisplay.format(&[])}</label>
                                 <Select
-                                    options=compact_display_options
+                                    options=compact_display_opts
                                     on_change=Callback::new(move |value: String| {
                                         if let Some(display) = CompactDisplay::parse(&value) {
                                             let format = custom_format_state
@@ -623,11 +719,11 @@ pub fn NumberFormatSettings() -> impl IntoView {
                         </Show>
 
                         <div class="text-xs text-gray-400">
-                            "Significant digits apply when rounding priority is not auto. Rounding increment requires rounding priority set to auto and matching fraction digits."
+                            {move || TranslationKey::PagesSettingsPreferencesNumberFormatAdvancedNote.format(&[])}
                         </div>
                     </div>
                     <div class="pt-2 border-t border-neutral-700">
-                        <div class="text-sm text-gray-400 mb-3">"Preview"</div>
+                        <div class="text-sm text-gray-400 mb-3">{move || TranslationKey::PagesSettingsPreferencesNumberFormatPreview.format(&[])}</div>
                         <div class="grid gap-2 sm:grid-cols-2">
                             {NUMBER_PREVIEW_VALUES
                                 .iter()

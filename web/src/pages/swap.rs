@@ -34,6 +34,7 @@ use crate::{
         transaction_queue_context::{EnqueuedTransaction, OverlayMode, TransactionQueueContext},
     },
     pages::settings::SLIPPAGE_PRESETS,
+    translations::TranslationKey,
     utils::{
         balance_to_decimal, decimal_to_balance, fetch_token_info, format_token_amount,
         format_token_amount_no_hide, format_usd_value_no_hide,
@@ -110,7 +111,7 @@ pub fn Swap() -> impl IntoView {
         tokens, set_tokens, ..
     } = expect_context::<TokensContext>();
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
-    let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
+    let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     let Location { query, .. } = use_location();
 
     let (token_in, set_token_in) = signal::<Option<TokenData>>(None);
@@ -680,9 +681,9 @@ pub fn Swap() -> impl IntoView {
                                                         )
                                                     }
                                                     on:click=move |_| {
-                                                        set_config
-                                                            .update(|config| {
-                                                                config.slippage = Slippage::default();
+                                                        config
+                                                            .update(|c| {
+                                                                c.slippage = Slippage::default();
                                                             });
                                                         set_custom_slippage_input.set("".to_string());
                                                     }
@@ -717,9 +718,9 @@ pub fn Swap() -> impl IntoView {
                                                                     )
                                                                 }
                                                                 on:click=move |_| {
-                                                                    set_config
-                                                                        .update(|config| {
-                                                                            config.slippage = Slippage::Fixed {
+                                                                    config
+                                                                        .update(|c| {
+                                                                            c.slippage = Slippage::Fixed {
                                                                                 slippage: BigDecimal::from_f64(percentage).unwrap()
                                                                                     / 100,
                                                                             };
@@ -750,9 +751,9 @@ pub fn Swap() -> impl IntoView {
                                                                         BigDecimal::from_str("0.01").unwrap(),
                                                                         BigDecimal::from(100),
                                                                     );
-                                                                set_config
-                                                                    .update(|config| {
-                                                                        config.slippage = Slippage::Fixed {
+                                                                config
+                                                                    .update(|c| {
+                                                                        c.slippage = Slippage::Fixed {
                                                                             slippage: percentage / 100,
                                                                         };
                                                                     });
@@ -1416,9 +1417,9 @@ pub fn Swap() -> impl IntoView {
                                                     prop:checked=move || config.get().swap_confirmation_enabled
                                                     on:change=move |ev| {
                                                         let checked = event_target_checked(&ev);
-                                                        set_config
-                                                            .update(|config| {
-                                                                config.swap_confirmation_enabled = checked;
+                                                        config
+                                                            .update(|c| {
+                                                                c.swap_confirmation_enabled = checked;
                                                             });
                                                     }
                                                 />
@@ -1717,25 +1718,30 @@ async fn execute_route(
 
     let steps = route.execution_instructions.len() + if route.needs_unwrap { 1 } else { 0 };
     let mut last_rx = None;
-    let description = format!(
-        "Swap {} for {}",
-        match swap_mode {
-            SwapMode::ExactIn => format_token_amount_no_hide(
-                amount,
-                token_in.metadata.decimals,
-                &token_in.metadata.symbol
-            ),
-            SwapMode::ExactOut => token_in.metadata.symbol.clone(),
-        },
-        match swap_mode {
-            SwapMode::ExactIn => token_out.metadata.symbol.clone(),
-            SwapMode::ExactOut => format_token_amount_no_hide(
-                amount,
-                token_out.metadata.decimals,
-                &token_out.metadata.symbol
-            ),
-        }
-    );
+    let description = TranslationKey::MiscTransactionSwap.format(&[
+        (
+            "token_in",
+            &match swap_mode {
+                SwapMode::ExactIn => format_token_amount_no_hide(
+                    amount,
+                    token_in.metadata.decimals,
+                    &token_in.metadata.symbol,
+                ),
+                SwapMode::ExactOut => token_in.metadata.symbol.clone(),
+            },
+        ),
+        (
+            "token_out",
+            &match swap_mode {
+                SwapMode::ExactIn => token_out.metadata.symbol.clone(),
+                SwapMode::ExactOut => format_token_amount_no_hide(
+                    amount,
+                    token_out.metadata.decimals,
+                    &token_out.metadata.symbol,
+                ),
+            },
+        ),
+    ]);
 
     for (i, step) in route.execution_instructions.into_iter().enumerate() {
         match step {
@@ -1744,14 +1750,15 @@ async fn execute_route(
                 actions,
             } => {
                 let (rx, pending_tx) = EnqueuedTransaction::create(
-                    format!(
-                        "{description}{}",
-                        if steps > 1 {
-                            format!(" {}/{steps}", i + 1)
-                        } else {
-                            String::new()
-                        }
-                    ),
+                    if steps > 1 {
+                        TranslationKey::MiscTransactionSwapStep.format(&[
+                            ("description", &description),
+                            ("step", &(i + 1).to_string()),
+                            ("steps", &steps.to_string()),
+                        ])
+                    } else {
+                        description.clone()
+                    },
                     account.account_id.clone(),
                     receiver_id.clone(),
                     actions,
@@ -1788,7 +1795,11 @@ async fn execute_route(
     {
         set_tx_overlay_mode.set(OverlayMode::Background);
         let (rx, enqueued_tx) = EnqueuedTransaction::create(
-            format!("{description} ({steps}/{steps})"),
+            TranslationKey::MiscTransactionSwap.format(&[
+                ("description", &description),
+                ("step", &steps.to_string()),
+                ("steps", &steps.to_string()),
+            ]),
             account.account_id.clone(),
             "wrap.near".parse().unwrap(),
             vec![Action::FunctionCall(Box::new(FunctionCallAction {

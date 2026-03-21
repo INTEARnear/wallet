@@ -17,6 +17,7 @@ use crate::contexts::{
     security_log_context::add_security_log,
     transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
 };
+use crate::translations::TranslationKey;
 use crate::utils::serialize_to_js_value;
 use bip39::Mnemonic;
 use chrono::NaiveDate;
@@ -733,7 +734,7 @@ pub fn AccountSettings() -> impl IntoView {
             }
 
             let (details_receiver, replace_key_transaction) = EnqueuedTransaction::create(
-                "Terminate other sessions".to_string(),
+                TranslationKey::MiscTransactionTerminateOtherSessions.format(&[]),
                 account_id.clone(),
                 account_id.clone(),
                 actions,
@@ -745,7 +746,7 @@ pub fn AccountSettings() -> impl IntoView {
                     .map(|intents_actions| {
                         let (_intents_details_receiver, intents_transaction) =
                             EnqueuedTransaction::create(
-                                "Remove Near Intents keys".to_string(),
+                                TranslationKey::MiscTransactionRemoveIntentsKeys.format(&[]),
                                 account_id.clone(),
                                 "intents.near".parse().unwrap(),
                                 intents_actions,
@@ -1090,7 +1091,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                     ),
                                                 );
                                             let (receiver, transaction) = EnqueuedTransaction::create(
-                                                "Disconnect Ledger".to_string(),
+                                                TranslationKey::MiscTransactionDisconnectLedger.format(&[]),
                                                 selected_account_id.clone(),
                                                 selected_account_id.clone(),
                                                 actions,
@@ -1302,7 +1303,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                     ),
                                                                 );
                                                             let (receiver, transaction) = EnqueuedTransaction::create(
-                                                                "Connect Ledger".to_string(),
+                                                                TranslationKey::MiscTransactionConnectLedger.format(&[]),
                                                                 selected_account_id.clone(),
                                                                 selected_account_id.clone(),
                                                                 actions,
@@ -1414,7 +1415,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                     }),
                                                                 );
                                                                 let (receiver, transaction) = EnqueuedTransaction::create(
-                                                                    "Deploy Smart Wallet".to_string(),
+                                                                    TranslationKey::MiscTransactionDeploySmartWallet.format(&[]),
                                                                     selected_account_id.clone(),
                                                                     selected_account_id,
                                                                     vec![action],
@@ -1534,7 +1535,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                             }),
                                                                         );
                                                                         let (receiver, transaction) = EnqueuedTransaction::create(
-                                                                            "Update Smart Wallet".to_string(),
+                                                                            TranslationKey::MiscTransactionUpdateSmartWallet.format(&[]),
                                                                             selected_account_id.clone(),
                                                                             selected_account_id,
                                                                             if supports_feature(
@@ -1702,9 +1703,9 @@ pub fn AccountSettings() -> impl IntoView {
                                                     };
                                                     let (receiver, transaction) = EnqueuedTransaction::create(
                                                         if has_key {
-                                                            "Unlink Bettear Bot".to_string()
+                                                            TranslationKey::MiscTransactionUnlinkBettearBot.format(&[])
                                                         } else {
-                                                            "Link Bettear Bot".to_string()
+                                                            TranslationKey::MiscTransactionLinkBettearBot.format(&[])
                                                         },
                                                         selected_account_id.clone(),
                                                         selected_account_id.clone(),

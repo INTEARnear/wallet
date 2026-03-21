@@ -27,6 +27,7 @@ use crate::{
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
     pages::gifts::{Drop, DropStatus},
+    translations::TranslationKey,
     utils::{NEP413Payload, format_token_amount, sign_nep413},
 };
 
@@ -194,10 +195,10 @@ pub fn GiftClaim() -> impl IntoView {
             }));
 
             let (details_rx, transaction) = EnqueuedTransaction::create(
-                format!(
-                    "Claim gift of {}",
-                    format_gift_tokens_for_message(&GiftToken::from_drop(&drop), rpc_client).await
-                ),
+                TranslationKey::MiscTransactionClaimGift.format(&[(
+                    "tokens",
+                    &format_gift_tokens_for_message(&GiftToken::from_drop(&drop), rpc_client).await,
+                )]),
                 selected_account_id.clone(),
                 SLIMEDROP_CONTRACT_MAINNET.parse().unwrap(),
                 vec![action],

@@ -37,6 +37,7 @@ use crate::components::projected_revenue::{ProjectedRevenue, ProjectedRevenueMod
 use crate::components::transaction_modals::{TransactionErrorModal, TransactionSuccessModal};
 use crate::contexts::config_context::ConfigContext;
 use crate::contexts::tokens_context::TokenInfo;
+use crate::translations::TranslationKey;
 use crate::utils::{
     Resolution, StorageBalance, USDT_DECIMALS, fetch_token_info, format_number_for_input,
     format_usd_value, power_of_10, proxify_url,
@@ -493,10 +494,9 @@ fn ValidatorCard(
                                                                                                     }),
                                                                                                 ),
                                                                                             ];
-                                                                                            let description = format!(
-                                                                                                "Deposit storage for {}",
-                                                                                                reward.token.metadata.symbol,
-                                                                                            );
+                                                                                            let description = TranslationKey::MiscTransactionDepositStorageStaking.format(&[
+                                                                                                ("symbol", &reward.token.metadata.symbol),
+                                                                                            ]);
                                                                                             let (_rx, tx) = EnqueuedTransaction::create(
                                                                                                 description,
                                                                                                 signer_id.clone(),
@@ -521,11 +521,10 @@ fn ValidatorCard(
                                                                                                 }),
                                                                                             ),
                                                                                         ];
-                                                                                        let description = format!(
-                                                                                            "Claim {} from {}",
-                                                                                            reward.token.metadata.symbol,
-                                                                                            validator_account_id,
-                                                                                        );
+                                                                                        let description = TranslationKey::MiscTransactionClaimStakingReward.format(&[
+                                                                                            ("symbol", &reward.token.metadata.symbol),
+                                                                                            ("validator", validator_account_id.as_ref()),
+                                                                                        ]);
                                                                                         let (rx, tx) = EnqueuedTransaction::create(
                                                                                             description,
                                                                                             signer_id.clone(),
@@ -737,10 +736,9 @@ fn ValidatorCard(
                                                             }),
                                                         ),
                                                     ];
-                                                    let description = format!(
-                                                        "Withdraw all from {}",
-                                                        pool_account_id,
-                                                    );
+                                                    let description = TranslationKey::MiscTransactionWithdrawFromPool.format(&[
+                                                        ("pool", pool_account_id.as_ref()),
+                                                    ]);
                                                     let (rx, tx) = EnqueuedTransaction::create(
                                                         description,
                                                         signer_id,
@@ -2080,7 +2078,10 @@ pub fn StakeValidator() -> impl IntoView {
         };
         let amount = decimal_to_balance(amount, 24);
         let amount = NearToken::from_yoctonear(amount);
-        let transaction_description = format!("Stake {} with {}", amount, validator_pool);
+        let transaction_description = TranslationKey::MiscTransactionStake.format(&[
+            ("amount", &amount.to_string()),
+            ("validator", validator_pool.as_ref()),
+        ]);
         let Some(signer_id) = accounts_context
             .accounts
             .get_untracked()
@@ -2554,7 +2555,10 @@ pub fn UnstakeValidator() -> impl IntoView {
             return;
         };
 
-        let description = format!("Unstake {} from {}", amount, validator_pool);
+        let description = TranslationKey::MiscTransactionUnstake.format(&[
+            ("amount", &amount.to_string()),
+            ("validator", validator_pool.as_ref()),
+        ]);
 
         spawn_local(async move {
             let (rx, tx) = EnqueuedTransaction::create(

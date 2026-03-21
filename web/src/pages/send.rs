@@ -13,6 +13,7 @@ use crate::{
     },
     data::bridge_networks::BRIDGEABLE_TOKENS,
     pages::stake::is_validator_supported,
+    translations::TranslationKey,
     utils::{
         StorageBalance, balance_to_decimal, decimal_to_balance, format_account_id_no_hide,
         format_number_for_input, format_token_amount, format_token_amount_full_precision,
@@ -1896,11 +1897,13 @@ pub async fn execute_send(
             .transfers
             .iter()
             .map(|transfer| {
-                let description = format!(
-                    "Send {} to {}",
-                    format_token_amount_full_precision(transfer.amount, decimals, &symbol),
-                    transfer.recipient
-                );
+                let description = TranslationKey::MiscTransactionSendNear.format(&[
+                    (
+                        "amount",
+                        &format_token_amount_full_precision(transfer.amount, decimals, &symbol),
+                    ),
+                    ("recipient", transfer.recipient.as_ref()),
+                ]);
 
                 EnqueuedTransaction::create(
                     description,
@@ -2001,19 +2004,24 @@ pub async fn execute_send(
                 })
                 .map(|(pending_transfers, actions)| {
                     EnqueuedTransaction::create(
-                        format!(
-                            "Send {} to {}",
-                            format_token_amount_full_precision(
-                                pending_transfers.iter().map(|t| t.amount).sum(),
-                                decimals,
-                                &symbol
+                        TranslationKey::MiscTransactionSendTokens.format(&[
+                            (
+                                "amount",
+                                &format_token_amount_full_precision(
+                                    pending_transfers.iter().map(|t| t.amount).sum(),
+                                    decimals,
+                                    &symbol,
+                                ),
                             ),
-                            pending_transfers
-                                .iter()
-                                .map(|t| t.recipient.to_string())
-                                .collect::<Vec<_>>()
-                                .join(", "),
-                        ),
+                            (
+                                "recipients",
+                                &pending_transfers
+                                    .iter()
+                                    .map(|t| t.recipient.to_string())
+                                    .collect::<Vec<_>>()
+                                    .join(", "),
+                            ),
+                        ]),
                         signer_id.clone(),
                         token_id.clone(),
                         actions,

@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use crate::translations::TranslationKey;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::Utc;
 use ed25519_dalek::SECRET_KEY_LENGTH;
@@ -732,7 +733,8 @@ pub fn Connect() -> impl IntoView {
                     }));
 
                     let (details_receiver, transaction) = EnqueuedTransaction::create(
-                        format!("Grant permission to call {contract_id} without confirmation"),
+                        TranslationKey::MiscTransactionGrantPermission
+                            .format(&[("contract_id", &contract_id.to_string())]),
                         selected_account.clone(),
                         selected_account.clone(),
                         vec![action],

@@ -3,6 +3,7 @@ use crate::contexts::modal_context::ModalContext;
 use crate::contexts::network_context::{Network, NetworkContext};
 use crate::contexts::tokens_context::{Token, TokensContext};
 use crate::contexts::transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext};
+use crate::translations::TranslationKey;
 use crate::utils::{balance_to_decimal, format_token_amount, format_usd_value};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
@@ -217,14 +218,14 @@ pub fn SwapForGasModal() -> impl IntoView {
 
         if let Some(selected_account_id) = selected_account {
             let (rx, transaction) = EnqueuedTransaction::create(
-                format!(
-                    "Unwrap {}",
-                    format_token_amount(
+                TranslationKey::MiscTransactionUnwrap.format(&[(
+                    "amount",
+                    &format_token_amount(
                         token_data.balance,
                         token_data.token.metadata.decimals,
-                        "wNEAR"
-                    )
-                ),
+                        "wNEAR",
+                    ),
+                )]),
                 selected_account_id.clone(),
                 token_contract_id.clone(),
                 vec![Action::FunctionCall(Box::new(FunctionCallAction {
@@ -362,7 +363,7 @@ pub fn SwapForGasModal() -> impl IntoView {
                                 counter_trade_intent
                             );
                             let (rx, transaction) = EnqueuedTransaction::create(
-                                format!("Swap {symbol} for 0.3 NEAR"),
+                                TranslationKey::MiscTransactionSwapForGas.format(&[("symbol", &symbol)]),
                                 selected_account_id.clone(),
                                 token_contract_id.clone(),
                                 vec![Action::FunctionCall(Box::new(FunctionCallAction {

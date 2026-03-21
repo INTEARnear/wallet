@@ -9,6 +9,7 @@ use wasm_bindgen_futures::JsFuture;
 
 use crate::{
     pages::swap::Slippage,
+    translations::{BuiltInLanguage, CURRENT_LANGUAGE, Language, TranslationKey},
     utils::{is_tauri, serialize_to_js_value, tauri_invoke, tauri_invoke_no_args},
 };
 
@@ -29,12 +30,12 @@ pub enum PasswordRememberDuration {
 }
 
 impl PasswordRememberDuration {
-    pub fn display_name(&self) -> &'static str {
+    pub fn display_name(&self) -> String {
         match self {
-            Self::Never => "Don't Remember",
-            Self::Minutes5 => "5 minutes",
-            Self::Minutes15 => "15 minutes",
-            Self::Minutes60 => "60 minutes",
+            Self::Never => TranslationKey::PagesSettingsSecurityRememberNever.format(&[]),
+            Self::Minutes5 => TranslationKey::PagesSettingsSecurityRemember5Min.format(&[]),
+            Self::Minutes15 => TranslationKey::PagesSettingsSecurityRemember15Min.format(&[]),
+            Self::Minutes60 => TranslationKey::PagesSettingsSecurityRemember60Min.format(&[]),
         }
     }
 
@@ -92,11 +93,11 @@ pub enum BackgroundGroup {
 }
 
 impl BackgroundGroup {
-    pub fn display_name(&self) -> &'static str {
+    pub fn display_name(&self) -> String {
         match self {
-            Self::Group0 => "Teardrops",
-            Self::Group1 => "Betty",
-            Self::Group2 => "Triangles",
+            Self::Group0 => TranslationKey::PagesSettingsPreferencesBackgroundTeardrops.format(&[]),
+            Self::Group1 => TranslationKey::PagesSettingsPreferencesBackgroundBetty.format(&[]),
+            Self::Group2 => TranslationKey::PagesSettingsPreferencesBackgroundTriangles.format(&[]),
         }
     }
 
@@ -131,12 +132,12 @@ pub enum LedgerMode {
 }
 
 impl LedgerMode {
-    pub fn display_name(&self) -> &str {
+    pub fn display_name(&self) -> String {
         match &self {
-            Self::Disabled => "None",
-            Self::WebUSB => "USB",
-            Self::WebBLE => "Bluetooth",
-            Self::TauriDevice(device_name) => device_name.as_str(),
+            Self::Disabled => TranslationKey::PagesSettingsPreferencesLedgerModeNone.format(&[]),
+            Self::WebUSB => TranslationKey::PagesSettingsPreferencesLedgerModeUsb.format(&[]),
+            Self::WebBLE => TranslationKey::PagesSettingsPreferencesLedgerModeBluetooth.format(&[]),
+            Self::TauriDevice(device_name) => device_name.clone(),
         }
     }
 
@@ -209,6 +210,8 @@ pub struct WalletConfig {
     pub number_config: NumberConfig,
     #[serde(default)]
     pub custom_router_url: Option<String>,
+    #[serde(default)]
+    pub language: Language,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -727,14 +730,15 @@ impl Default for WalletConfig {
             storage_persistence_warning_dismissed: false,
             ledger_mode: LedgerMode::default(),
             number_config: NumberConfig::default(),
+            language: Language::default(),
         }
     }
 }
 
 #[derive(Clone, Copy)]
 pub struct ConfigContext {
-    pub config: ReadSignal<WalletConfig>,
-    pub set_config: WriteSignal<WalletConfig>,
+    pub config: RwSignal<WalletConfig>,
+    pub language: Memo<Language>,
 }
 
 const CONFIG_KEY: &str = "wallet_config";
@@ -767,8 +771,32 @@ fn emit_config_change_event(config: &WalletConfig) {
     }
 }
 
+fn detect_browser_language() -> Option<BuiltInLanguage> {
+    let languages = window().navigator().languages();
+    for i in 0..languages.length() {
+        if let Some(tag) = languages.get(i).as_string()
+            && let Some(built_in) = BuiltInLanguage::from_browser_language(&tag)
+        {
+            return Some(built_in);
+        }
+    }
+    None
+}
+
+fn has_saved_config() -> bool {
+    get_local_storage()
+        .and_then(|s| s.get_item(CONFIG_KEY).ok())
+        .flatten()
+        .is_some()
+}
+
 pub fn provide_config_context() {
-    let (config, set_config) = signal(load_config());
+    let first_load = !has_saved_config();
+    let mut initial_config = load_config();
+    if first_load && let Some(detected) = detect_browser_language() {
+        initial_config.language = Language::BuiltIn(detected);
+    }
+    let config = RwSignal::new(initial_config);
 
     // Save to localStorage whenever config changes
     Effect::new(move |_| {
@@ -779,5 +807,13 @@ pub fn provide_config_context() {
         }
     });
 
-    provide_context(ConfigContext { config, set_config });
+    let language = Memo::new(move |_| config.get().language);
+
+    // Switch global CURRENT_LANGUAGE
+    Effect::new(move || {
+        let language = language.get();
+        *CURRENT_LANGUAGE.lock().unwrap() = language;
+    });
+
+    provide_context(ConfigContext { config, language });
 }

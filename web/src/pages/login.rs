@@ -1,3 +1,4 @@
+use crate::translations::TranslationKey;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_router::hooks::{use_location, use_navigate};
@@ -134,7 +135,7 @@ pub fn Login() -> impl IntoView {
                                         }),
                                     );
                                     let (details_rx, transaction) = EnqueuedTransaction::create(
-                                        "Add Full Access Key".to_string(),
+                                        TranslationKey::MiscTransactionAddFullAccessKey.format(&[]),
                                         account_id.clone(),
                                         account_id.clone(),
                                         vec![action],

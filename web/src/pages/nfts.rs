@@ -1,3 +1,4 @@
+use crate::translations::TranslationKey;
 use cached::proc_macro::cached;
 use futures_util::join;
 use leptos::prelude::*;
@@ -425,11 +426,11 @@ pub fn NftCollection() -> impl IntoView {
 
     let navigate = use_navigate();
 
-    let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
+    let ConfigContext { config, .. } = expect_context::<ConfigContext>();
 
     let toggle_hide_collection = move |_| {
         if let Ok(cid) = contract_id().parse::<AccountId>() {
-            set_config.update(move |cfg| {
+            config.update(move |cfg| {
                 if let Some(idx) = cfg
                     .hidden_nfts
                     .iter()
@@ -696,7 +697,7 @@ pub fn NftCollection() -> impl IntoView {
 
 #[component]
 pub fn Nfts() -> impl IntoView {
-    let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
+    let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let NftCacheContext { cache } = expect_context::<NftCacheContext>();
     let nfts = LocalResource::new(move || {
@@ -1027,7 +1028,7 @@ pub fn Nfts() -> impl IntoView {
                                 <button
                                     class="text-neutral-400 hover:text-white transition-colors cursor-pointer"
                                     on:click=move |_| {
-                                        set_config
+                                        config
                                             .update(|c| c.nfts_view_state = NftsViewState::AllNfts);
                                     }
                                 >
@@ -1238,7 +1239,7 @@ pub fn Nfts() -> impl IntoView {
                                 <button
                                     class="text-neutral-400 hover:text-white transition-colors cursor-pointer"
                                     on:click=move |_| {
-                                        set_config
+                                        config
                                             .update(|c| c.nfts_view_state = NftsViewState::Collections);
                                     }
                                 >
@@ -1678,14 +1679,16 @@ pub fn SendNft() -> impl IntoView {
             return;
         }
 
-        let transaction_description = format!(
-            "Send {} to {}",
-            nft_token
-                .get()
-                .and_then(|m| m?.metadata.title.clone())
-                .unwrap_or_default(),
-            recipient.get()
-        );
+        let transaction_description = TranslationKey::MiscTransactionSendNft.format(&[
+            (
+                "nft_title",
+                &nft_token
+                    .get()
+                    .and_then(|m| m?.metadata.title.clone())
+                    .unwrap_or_default(),
+            ),
+            ("recipient", &*recipient.read()),
+        ]);
         let Ok(recipient) = recipient.get().parse::<AccountId>() else {
             panic!(
                 "Recipient '{}' cannot be parsed as AccountId, yet recipient_balance is Some",
@@ -2033,7 +2036,7 @@ pub fn NftTokenDetails() -> impl IntoView {
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let RpcContext { client, .. } = expect_context::<RpcContext>();
     let NftCacheContext { cache } = expect_context::<NftCacheContext>();
-    let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
+    let ConfigContext { config, .. } = expect_context::<ConfigContext>();
 
     let collection_metadata = LocalResource::new(move || {
         let rpc_client = client.get();
@@ -2081,7 +2084,7 @@ pub fn NftTokenDetails() -> impl IntoView {
     let toggle_hide_token =
         move |_| {
             if let (Ok(cid), tid) = (contract_id().parse::<AccountId>(), token_id()) {
-                set_config.update(move |cfg| {
+                config.update(move |cfg| {
                     if let Some(idx) = cfg.hidden_nfts.iter().position(
                         |h| matches!(h, HiddenNft::Token(id, t) if id == &cid && t == &tid),
                     ) {

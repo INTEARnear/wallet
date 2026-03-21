@@ -1,3 +1,4 @@
+use crate::translations::TranslationKey;
 use crate::utils::serialize_to_js_value;
 use crate::{
     components::bridge_history::DepositAddress, contexts::accounts_context::AccountsContext,
@@ -16,6 +17,7 @@ mod create_token_modals;
 mod developer;
 mod developer_create_token;
 mod developer_sandbox;
+mod language_editor;
 mod preferences;
 mod security;
 mod security_log;
@@ -26,6 +28,7 @@ pub use connected_apps::ConnectedAppsSettings;
 pub use developer::DeveloperSettings;
 pub use developer_create_token::DeveloperCreateToken;
 pub use developer_sandbox::DeveloperSandbox;
+pub use language_editor::LanguageEditorPage;
 use near_min_api::types::AccountId;
 pub use preferences::{LedgerSelector, PreferencesSettings, SLIPPAGE_PRESETS};
 pub use security::SecuritySettings;
@@ -94,7 +97,7 @@ pub fn Settings() -> impl IntoView {
                     />
                     <span style=move || {
                         if is_active("/settings/security") { "font-weight: bold;" } else { "" }
-                    }>"Security"</span>
+                    }>{move || TranslationKey::PagesSettingsSecurityTab.format(&[])}</span>
                 </A>
                 <A
                     href="/settings/preferences"
@@ -116,7 +119,7 @@ pub fn Settings() -> impl IntoView {
                     />
                     <span style=move || {
                         if is_active("/settings/preferences") { "font-weight: bold;" } else { "" }
-                    }>"Preferences"</span>
+                    }>{move || TranslationKey::PagesSettingsPreferencesTab.format(&[])}</span>
                 </A>
                 <A
                     href="/settings/developer"
@@ -138,7 +141,7 @@ pub fn Settings() -> impl IntoView {
                     />
                     <span style=move || {
                         if is_active("/settings/developer") { "font-weight: bold;" } else { "" }
-                    }>"Developer"</span>
+                    }>{move || TranslationKey::PagesSettingsDeveloperSettingsTab.format(&[])}</span>
                 </A>
             </div>
             <div class="flex-1">
@@ -146,7 +149,7 @@ pub fn Settings() -> impl IntoView {
             </div>
             <div>
                 <div class="flex flex-col items-center gap-4 p-4 border-t border-neutral-800">
-                    <div class="text-sm font-semibold">"Support & Resources"</div>
+                    <div class="text-sm font-semibold">{move || TranslationKey::PagesSettingsSupportResources.format(&[])}</div>
                     <button
                         class="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-colors cursor-pointer text-sm font-medium"
                         on:click=move |_| open_live_chat(
@@ -155,7 +158,7 @@ pub fn Settings() -> impl IntoView {
                         )
                     >
                         <Icon icon=icondata::LuMessageCircle width="16" height="16" />
-                        <span>"Live Chat"</span>
+                        <span>{move || TranslationKey::PagesSettingsLiveChat.format(&[])}</span>
                     </button>
                     <div class="flex flex-row justify-center gap-6">
                         <a

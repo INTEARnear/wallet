@@ -8,6 +8,7 @@ use crate::{
         security_log_context::add_security_log,
     },
     pages::settings::ToggleSwitch,
+    translations::TranslationKey,
     utils::{is_tauri, tauri_invoke_no_args},
 };
 use argon2::{Argon2, ParamsBuilder};
@@ -121,7 +122,7 @@ async fn benchmark_argon2() -> (u32, f64) {
 #[component]
 pub fn SecuritySettings() -> impl IntoView {
     let accounts_context = expect_context::<AccountsContext>();
-    let ConfigContext { config, set_config } = expect_context::<ConfigContext>();
+    let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     let (benchmarking_password, set_benchmarking_password) = signal(false);
     let (password_input, set_password_input) = signal(String::new());
     let (benchmark_result, set_benchmark_result) = signal::<Option<(u32, f64)>>(None);
@@ -243,7 +244,7 @@ pub fn SecuritySettings() -> impl IntoView {
     };
 
     let dismiss_storage_warning = move || {
-        set_config.update(|c| c.storage_persistence_warning_dismissed = true);
+        config.update(|c| c.storage_persistence_warning_dismissed = true);
 
         if let Some(account) = accounts_context
             .accounts
@@ -337,7 +338,7 @@ pub fn SecuritySettings() -> impl IntoView {
 
     view! {
         <div class="flex flex-col gap-4 p-4">
-            <div class="text-xl font-semibold">"Security"</div>
+            <div class="text-xl font-semibold">{move || TranslationKey::PagesSettingsSecurityTitle.format(&[])}</div>
 
             <div class="flex flex-col gap-4">
                 <A
@@ -346,7 +347,7 @@ pub fn SecuritySettings() -> impl IntoView {
                 >
                     <div class="flex items-center gap-3">
                         <Icon icon=icondata::LuUser width="20" height="20" />
-                        <span>"Account"</span>
+                        <span>{move || TranslationKey::PagesSettingsSecurityTabAccount.format(&[])}</span>
                     </div>
                     <Icon icon=icondata::LuChevronRight width="20" height="20" />
                 </A>
@@ -357,7 +358,7 @@ pub fn SecuritySettings() -> impl IntoView {
                 >
                     <div class="flex items-center gap-3">
                         <Icon icon=icondata::LuAppWindow width="20" height="20" />
-                        <span>"Connected Apps"</span>
+                        <span>{move || TranslationKey::PagesSettingsSecurityTabConnectedApps.format(&[])}</span>
                     </div>
                     <Icon icon=icondata::LuChevronRight width="20" height="20" />
                 </A>
@@ -368,25 +369,24 @@ pub fn SecuritySettings() -> impl IntoView {
                 >
                     <div class="flex items-center gap-3">
                         <Icon icon=icondata::LuShieldCheck width="20" height="20" />
-                        <span>"Security Log"</span>
+                        <span>{move || TranslationKey::PagesSettingsSecurityTabSecurityLog.format(&[])}</span>
                     </div>
                     <Icon icon=icondata::LuChevronRight width="20" height="20" />
                 </A>
 
                 <Show when=move || supports_biometry.get()>
                     <div class="flex flex-col gap-2">
-                        <div class="text-lg font-medium">"Biometric Authentication"</div>
+                        <div class="text-lg font-medium">{move || TranslationKey::PagesSettingsSecurityHeaderBiometric.format(&[])}</div>
                         <div class="text-sm text-neutral-400">
-                            "Use biometric authentication to unlock your wallet."
+                            {move || TranslationKey::PagesSettingsSecurityBiometricDescription.format(&[])}
                         </div>
                         <div class="p-4 rounded-lg bg-neutral-900 border border-neutral-700">
                             <ToggleSwitch
-                                label="Biometric authentication"
+                                label=Signal::derive(move || TranslationKey::PagesSettingsSecurityToggleBiometric.format(&[]))
                                 value=Signal::derive(move || config.get().biometric_enabled)
                                 disabled=Signal::derive(|| false)
                                 on_toggle=move || {
-                                    set_config
-                                        .update(|c| c.biometric_enabled = !c.biometric_enabled);
+                                    config.update(|c| c.biometric_enabled = !c.biometric_enabled);
                                 }
                             />
                         </div>
@@ -394,15 +394,15 @@ pub fn SecuritySettings() -> impl IntoView {
                 </Show>
 
                 <div class="flex flex-col gap-2">
-                    <div class="text-lg font-medium">"Password"</div>
+                    <div class="text-lg font-medium">{move || TranslationKey::PagesSettingsSecurityHeaderPassword.format(&[])}</div>
                     <div class="text-sm text-neutral-400">
-                        "Encrypt your wallet keys, so that even if your device is compromised (for example, if you get malware, or someone steals your device), it will be much harder for the attacker to access your accounts."
+                        {move || TranslationKey::PagesSettingsSecurityPasswordDescription.format(&[])}
                     </div>
 
                     <div class="flex flex-col gap-3">
                         <input
                             type="password"
-                            placeholder="Enter password"
+                            placeholder=move || TranslationKey::PagesSettingsSecurityPasswordPlaceholder.format(&[])
                             prop:value=move || password_input.get()
                             on:input=move |ev| {
                                 let password = event_target_value(&ev);
@@ -470,16 +470,16 @@ pub fn SecuritySettings() -> impl IntoView {
                                 <span>
                                     {move || {
                                         if accounts_context.is_encrypted.get() {
-                                            "Change Password"
+                                            TranslationKey::PagesSettingsSecurityPasswordChangeButton.format(&[])
                                         } else {
-                                            "Set Password"
+                                            TranslationKey::PagesSettingsSecurityPasswordSetButton.format(&[])
                                         }
                                     }}
                                 </span>
                             </Show>
                             <Show when=move || benchmarking_password.get()>
                                 <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500"></div>
-                                <span>"Benchmarking your device..."</span>
+                                <span>{move || TranslationKey::PagesSettingsSecurityPasswordBenchmarking.format(&[])}</span>
                             </Show>
                             <Show when=move || {
                                 encrypting_accounts.get() && encryption_result.get().is_none()
@@ -488,22 +488,22 @@ pub fn SecuritySettings() -> impl IntoView {
                                 <span>
                                     {move || {
                                         if accounts_context.is_encrypted.get() {
-                                            "Changing password..."
+                                            TranslationKey::PagesSettingsSecurityPasswordChanging.format(&[])
                                         } else {
-                                            "Setting password..."
+                                            TranslationKey::PagesSettingsSecurityPasswordSetting.format(&[])
                                         }
                                     }}
                                 </span>
                             </Show>
                             <Show when=move || encryption_result.get().is_some()>
                                 <Icon icon=icondata::LuCheck width="20" height="20" />
-                                <span>"Done"</span>
+                                <span>{move || TranslationKey::PagesSettingsSecurityPasswordDone.format(&[])}</span>
                             </Show>
                         </button>
 
                         <Show when=move || accounts_context.is_encrypted.get()>
                             <div class="flex flex-col gap-3">
-                                <div class="text-lg font-medium">"Remember Password"</div>
+                                <div class="text-lg font-medium">{move || TranslationKey::PagesSettingsSecurityHeaderRememberPassword.format(&[])}</div>
                                 <Select
                                     options=Signal::derive(move || {
                                         PasswordRememberDuration::all_variants()
@@ -520,8 +520,7 @@ pub fn SecuritySettings() -> impl IntoView {
                                         let duration = PasswordRememberDuration::from_option_value(
                                             &value,
                                         );
-                                        set_config
-                                            .update(|c| c.password_remember_duration = duration);
+                                        config.update(|c| c.password_remember_duration = duration);
                                     })
                                     class="w-full border rounded-lg border-neutral-700 bg-neutral-900"
                                     initial_value=config
@@ -551,15 +550,15 @@ pub fn SecuritySettings() -> impl IntoView {
                                         && remove_password_result.get().is_none()
                                 }>
                                     <Icon icon=icondata::LuShieldOff width="20" height="20" />
-                                    <span>"Remove Password"</span>
+                                    <span>{move || TranslationKey::PagesSettingsSecurityPasswordRemoveButton.format(&[])}</span>
                                 </Show>
                                 <Show when=move || removing_password.get()>
                                     <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-red-500"></div>
-                                    <span>"Removing password..."</span>
+                                    <span>{move || TranslationKey::PagesSettingsSecurityPasswordRemoving.format(&[])}</span>
                                 </Show>
                                 <Show when=move || remove_password_result.get().is_some()>
                                     <Icon icon=icondata::LuCheck width="20" height="20" />
-                                    <span>"Password Removed"</span>
+                                    <span>{move || TranslationKey::PagesSettingsSecurityPasswordRemoved.format(&[])}</span>
                                 </Show>
                             </button>
                         </Show>
@@ -572,16 +571,16 @@ pub fn SecuritySettings() -> impl IntoView {
                     class:hidden=move || is_tauri()
                 >
                     <Show when=move || storage_persisted.get().is_some()>
-                        <div class="text-lg font-medium">"Storage Persistence"</div>
+                        <div class="text-lg font-medium">{move || TranslationKey::PagesSettingsSecurityHeaderStoragePersistence.format(&[])}</div>
                         <div class="text-sm text-neutral-400">
-                            "Protect your wallet data from being automatically cleared by your browser when storage space is low."
+                            {move || TranslationKey::PagesSettingsSecurityPersistenceDescription.format(&[])}
                         </div>
 
                         <div class="p-3 rounded-lg bg-neutral-900 border border-neutral-700">
                             <div class="flex flex-col gap-2 text-sm">
                                 <div class="flex justify-between">
                                     <span class="text-neutral-400">
-                                        "Usage (by entire browser, not just this wallet):"
+                                        {move || TranslationKey::PagesSettingsSecurityPersistenceUsageLabel.format(&[])}
                                     </span>
                                     <span class="text-white">
                                         {move || {
@@ -595,7 +594,7 @@ pub fn SecuritySettings() -> impl IntoView {
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-neutral-400">
-                                        "Available (for the wallet):"
+                                        {move || TranslationKey::PagesSettingsSecurityPersistenceAvailableLabel.format(&[])}
                                     </span>
                                     <span class="text-white">
                                         {move || {
@@ -609,7 +608,7 @@ pub fn SecuritySettings() -> impl IntoView {
                                 </div>
                                 <div class="flex justify-between items-center">
                                     <span class="text-neutral-400">
-                                        "Safe from browser auto-clearing when running low on disk:"
+                                        {move || TranslationKey::PagesSettingsSecurityPersistenceSafeFromClearing.format(&[])}
                                     </span>
                                     <div class="flex items-center gap-2">
                                         <Show when=move || storage_persisted.get() == Some(true)>
@@ -619,7 +618,7 @@ pub fn SecuritySettings() -> impl IntoView {
                                                 height="16"
                                                 attr:class="text-green-400"
                                             />
-                                            <span class="text-green-400 text-sm">"yes"</span>
+                                            <span class="text-green-400 text-sm">{move || TranslationKey::PagesSettingsSecurityPersistenceYes.format(&[])}</span>
                                         </Show>
                                         <Show when=move || storage_persisted.get() == Some(false)>
                                             <Icon
@@ -628,7 +627,7 @@ pub fn SecuritySettings() -> impl IntoView {
                                                 height="16"
                                                 attr:class="text-red-400"
                                             />
-                                            <span class="text-red-400 text-sm">"no"</span>
+                                            <span class="text-red-400 text-sm">{move || TranslationKey::PagesSettingsSecurityPersistenceNo.format(&[])}</span>
                                             {move || {
                                                 if requesting_persistence.get() {
                                                     view! {
@@ -638,7 +637,7 @@ pub fn SecuritySettings() -> impl IntoView {
                                                         >
                                                             <div class="flex items-center justify-center gap-1 p-1">
                                                                 <Icon icon=icondata::LuDatabase width="12" height="12" />
-                                                                <span>"Approve"</span>
+                                                                <span>{move || TranslationKey::PagesSettingsSecurityPersistenceApproveButton.format(&[])}</span>
                                                             </div>
                                                         </button>
                                                     }
@@ -652,7 +651,7 @@ pub fn SecuritySettings() -> impl IntoView {
                                                         >
                                                             <div class="flex items-center justify-center gap-1 p-1">
                                                                 <Icon icon=icondata::LuDatabase width="12" height="12" />
-                                                                <span>"Enable"</span>
+                                                                <span>{move || TranslationKey::PagesSettingsSecurityPersistenceEnableButton.format(&[])}</span>
                                                             </div>
                                                         </button>
                                                     }
@@ -662,7 +661,7 @@ pub fn SecuritySettings() -> impl IntoView {
                                         </Show>
                                         <Show when=move || storage_persisted.get().is_none()>
                                             <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-neutral-500"></div>
-                                            <span class="text-neutral-400 text-sm">"checking..."</span>
+                                            <span class="text-neutral-400 text-sm">{move || TranslationKey::PagesSettingsSecurityPersistenceChecking.format(&[])}</span>
                                         </Show>
                                     </div>
                                 </div>
@@ -678,7 +677,7 @@ pub fn SecuritySettings() -> impl IntoView {
                                     class="px-4 py-2 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm"
                                     on:click=move |_| dismiss_storage_warning()
                                 >
-                                    "Don't show this warning again"
+                                    {move || TranslationKey::PagesSettingsSecurityPersistenceDontShowWarning.format(&[])}
                                 </button>
                             </div>
                         </Show>
@@ -697,23 +696,23 @@ pub fn SecuritySettings() -> impl IntoView {
                                     />
                                     <div class="flex-1">
                                         <h4 class="font-medium text-yellow-200 mb-2">
-                                            "Storage Persistence Request Denied"
+                                            {move || TranslationKey::PagesSettingsSecurityPersistenceDeniedTitle.format(&[])}
                                         </h4>
                                         <div class="text-sm space-y-3">
                                             <p>
-                                                "Your browser denied the storage persistence request. This means your wallet data could be cleared when storage space is low."
+                                                {move || TranslationKey::PagesSettingsSecurityPersistenceDeniedDescription.format(&[])}
                                             </p>
 
                                             <div class="space-y-2">
                                                 <p class="font-medium text-yellow-200">
-                                                    "To enable storage persistence:"
+                                                    {move || TranslationKey::PagesSettingsSecurityPersistenceToEnable.format(&[])}
                                                 </p>
                                                 <ul class="list-disc list-inside space-y-1 text-xs">
                                                     <li>
-                                                        "Add this site to your bookmarks (you can remove it later after clicking the button)"
+                                                        {move || TranslationKey::PagesSettingsSecurityPersistenceAddBookmarks.format(&[])}
                                                     </li>
                                                     <li>
-                                                        "Install this wallet as a PWA (Progressive Web App) by clicking the install button in the address bar on PC, or by adding it to your home screen on mobile"
+                                                        {move || TranslationKey::PagesSettingsSecurityPersistenceInstallPwa.format(&[])}
                                                     </li>
                                                 </ul>
                                             </div>
@@ -725,7 +724,7 @@ pub fn SecuritySettings() -> impl IntoView {
                     </Show>
 
                     <div class="space-y-3 flex flex-col items-center text-center">
-                        <div class="text-sm text-neutral-400">"Pages not loading?"</div>
+                        <div class="text-sm text-neutral-400">{move || TranslationKey::PagesSettingsSecurityHeaderPagesNotLoading.format(&[])}</div>
                         <div class="flex items-center gap-3">
                             <button
                                 class="px-4 py-2 rounded-md bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border border-yellow-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm"
@@ -737,13 +736,13 @@ pub fn SecuritySettings() -> impl IntoView {
                                         if clearing_cache.get() {
                                             view! {
                                                 <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-400"></div>
-                                                <span>"Clearing..."</span>
+                                                <span>{move || TranslationKey::PagesSettingsSecurityCacheClearing.format(&[])}</span>
                                             }
                                                 .into_any()
                                         } else {
                                             view! {
                                                 <Icon icon=icondata::LuRotateCcw width="16" height="16" />
-                                                <span>"Reset cache"</span>
+                                                <span>{move || TranslationKey::PagesSettingsSecurityCacheResetButton.format(&[])}</span>
                                             }
                                                 .into_any()
                                         }
@@ -758,7 +757,7 @@ pub fn SecuritySettings() -> impl IntoView {
                                             view! {
                                                 <div class="flex items-center gap-1 text-green-400 text-sm">
                                                     <Icon icon=icondata::LuCheck width="16" height="16" />
-                                                    <span>"Cache cleared successfully"</span>
+                                                    <span>{move || TranslationKey::PagesSettingsSecurityCacheCleared.format(&[])}</span>
                                                 </div>
                                             }
                                                 .into_any()

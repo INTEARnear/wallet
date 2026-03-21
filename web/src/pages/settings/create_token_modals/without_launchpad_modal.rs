@@ -12,6 +12,7 @@ use near_min_api::{
     },
 };
 
+use crate::translations::TranslationKey;
 use crate::{
     contexts::{
         account_selector_context::AccountSelectorContext,
@@ -316,7 +317,8 @@ where
                                     deposit: NearToken::from_yoctonear(0),
                                 }))];
                             let (rx, transaction) = EnqueuedTransaction::create(
-                                format!("Deploy {token_symbol_clone} contract"),
+                                TranslationKey::MiscTransactionDeployTokenContract
+                                    .format(&[("token_symbol", &token_symbol_clone)]),
                                 selected_account.clone(),
                                 contract_id.clone(),
                                 actions,
@@ -399,7 +401,8 @@ where
             })));
 
             let (rx, transaction) = EnqueuedTransaction::create(
-                format!("Deploy {token_symbol_clone} contract"),
+                TranslationKey::MiscTransactionDeployTokenContract
+                    .format(&[("token_symbol", &token_symbol_clone)]),
                 selected_account.clone(),
                 contract_id.clone(),
                 actions,
@@ -483,7 +486,9 @@ where
                 on:click=move |e| e.stop_propagation()
             >
                 <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-xl font-semibold">"Launch Without Launchpad"</h2>
+                    <h2 class="text-xl font-semibold">
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadTitle.format(&[])}
+                    </h2>
                     <button
                         on:click=move |_| close_modal()
                         class="p-1 hover:bg-neutral-800 rounded cursor-pointer"
@@ -492,13 +497,18 @@ where
                     </button>
                 </div>
 
-                <div class="text-sm text-gray-400 mb-4">"Launch a custom token contract"</div>
+                <div class="text-sm text-gray-400 mb-4">
+                    {move || TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadDescription.format(&[])}
+                </div>
 
                 <div class="flex flex-col gap-4 p-4 bg-neutral-800 rounded-lg border border-neutral-700">
                     // Contract Address
                     <div>
                         <label class="block text-sm font-medium mb-1">
-                            "Contract Address " <span class="text-red-400">"*"</span>
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadContractAddress.format(
+                                &[],
+                            )}
+                            " " <span class="text-red-400">"*"</span>
                         </label>
                         <input
                             type="text"
@@ -513,11 +523,11 @@ where
                         <div class="text-xs text-gray-500 mt-1">
                             {move || {
                                 if let Some(account) = selected_account() {
-                                    format!(
-                                        "Can be a subaccount of {account} (e.g., token.{account}) or {account} itself",
+                                    TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadContractAddressDescription.format(
+                                        &[("account", account.as_ref())],
                                     )
                                 } else {
-                                    "Select an account first".to_string()
+                                    TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadSelectAccountFirst.format(&[])
                                 }
                             }}
                         </div>
@@ -533,18 +543,27 @@ where
                                         if is_self {
                                             view! {
                                                 <div class="text-xs text-yellow-400 bg-yellow-950 p-2 rounded border border-yellow-700 mt-1">
-                                                    "⚠️ This will deploy the contract on your current account. We recommend using a subaccount unless you know what you are doing."
+                                                    "⚠️ "
+                                                    {move || {
+                                                        TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadDeployWarning
+                                                            .format(&[])
+                                                    }}
                                                 </div>
                                             }
                                                 .into_any()
                                         } else if !is_subaccount {
-                                            view! {
-                                                <div class="text-xs text-red-400 mt-1">
-                                                    "Must be a subaccount (e.g., token." {parent.to_string()}
-                                                    ") or " {parent.to_string()} " itself"
-                                                </div>
+                                            {
+                                                let parent_str = parent.to_string();
+                                                view! {
+                                                    <div class="text-xs text-red-400 mt-1">
+                                                        {move || {
+                                                            TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadMustBeSubaccount
+                                                                .format(&[("parent", &parent_str)])
+                                                        }}
+                                                    </div>
+                                                }
+                                                    .into_any()
                                             }
-                                                .into_any()
                                         } else {
                                             ().into_any()
                                         }
@@ -554,7 +573,10 @@ where
                                 } else {
                                     view! {
                                         <div class="text-xs text-red-400 mt-1">
-                                            "Invalid account ID format"
+                                            {move || {
+                                                TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadInvalidAccountId
+                                                    .format(&[])
+                                            }}
                                         </div>
                                     }
                                         .into_any()
@@ -568,7 +590,11 @@ where
                                 AccountCheckState::Exists => {
                                     view! {
                                         <div class="text-xs text-red-400 bg-red-950 p-2 rounded border border-red-700 mt-1">
-                                            "❌ This subaccount already exists. Maybe you have already created it?"
+                                            "❌ "
+                                            {move || {
+                                                TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadSubaccountExists
+                                                    .format(&[])
+                                            }}
                                         </div>
                                     }
                                         .into_any()
@@ -580,7 +606,9 @@ where
 
                     // Account Selector
                     <div>
-                        <label class="block text-sm font-medium mb-1">"Deploy As"</label>
+                        <label class="block text-sm font-medium mb-1">
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadDeployAs.format(&[])}
+                        </label>
                         {move || {
                             if let Some(selected_account_id) = selected_account() {
                                 view! {
@@ -599,7 +627,10 @@ where
                                             </div>
                                             <div class="flex flex-col items-start min-w-0 flex-1">
                                                 <span class="text-neutral-400 text-xs">
-                                                    "Selected Account"
+                                                    {move || {
+                                                        TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadSelectedAccount
+                                                            .format(&[])
+                                                    }}
                                                 </span>
                                                 <div class="text-white text-sm font-medium wrap-anywhere">
                                                     {format_account_id(&selected_account_id)}
@@ -617,20 +648,26 @@ where
                                     .into_any()
                             } else {
                                 view! {
-                                    <div class="text-sm text-red-400">"No account selected"</div>
+                                    <div class="text-sm text-red-400">
+                                        {move || {
+                                            TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadNoAccountSelected
+                                                .format(&[])
+                                        }}
+                                    </div>
                                 }
                                     .into_any()
                             }
                         }}
                         <div class="text-xs text-gray-500 mt-1">
-                            "The account that will deploy the token contract"
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadDeployerDescription.format(&[])}
                         </div>
                     </div>
 
                     // Mint Tokens To
                     <div>
                         <label class="block text-sm font-medium mb-1">
-                            "Mint Tokens To " <span class="text-red-400">"*"</span>
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadMintTokensTo.format(&[])}
+                            " " <span class="text-red-400">"*"</span>
                         </label>
                         <input
                             type="text"
@@ -643,7 +680,9 @@ where
                             placeholder=default_mint_to
                         />
                         <div class="text-xs text-gray-500 mt-1">
-                            "Account that will receive the entire supply of tokens"
+                            {move || {
+                                TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadMintTokensToDescription.format(&[])
+                            }}
                         </div>
                         {move || {
                             let f = form.get();
@@ -652,7 +691,10 @@ where
                             {
                                 view! {
                                     <div class="text-xs text-red-400 mt-1">
-                                        "Invalid account ID format"
+                                        {move || {
+                                            TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadInvalidAccountId
+                                                .format(&[])
+                                        }}
                                     </div>
                                 }
                                     .into_any()
@@ -664,7 +706,9 @@ where
 
                     // Review Section
                     <div class="border-t border-neutral-700 pt-4 mt-2">
-                        <div class="text-sm font-medium mb-3">"Token Details"</div>
+                        <div class="text-sm font-medium mb-3">
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadTokenDetails.format(&[])}
+                        </div>
                         <div class="bg-neutral-900 p-4 rounded border border-neutral-600 space-y-3">
                             <div class="flex items-center gap-3 pb-3 border-b border-neutral-700">
                                 <img
@@ -681,13 +725,17 @@ where
                             </div>
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
-                                    <div class="text-xs text-neutral-400">"Supply"</div>
+                                    <div class="text-xs text-neutral-400">
+                                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadSupply.format(&[])}
+                                    </div>
                                     <div class="text-sm text-white">
                                         {token_supply.to_plain_string()}
                                     </div>
                                 </div>
                                 <div>
-                                    <div class="text-xs text-neutral-400">"Decimals"</div>
+                                    <div class="text-xs text-neutral-400">
+                                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadDecimals.format(&[])}
+                                    </div>
                                     <div class="text-sm text-white">{token_decimals}</div>
                                 </div>
                             </div>
@@ -701,13 +749,18 @@ where
                             disabled=move || !is_valid()
                             class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded cursor-pointer"
                         >
-                            {move || format!("Confirm ({})", calculate_deposit_clone())}
+                            {move || {
+                                TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadConfirm.format(&[(
+                                    "deposit",
+                                    &calculate_deposit_clone().to_string(),
+                                )])
+                            }}
                         </button>
                         <button
                             on:click=move |_| close_modal()
                             class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded cursor-pointer"
                         >
-                            "Cancel"
+                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadCancel.format(&[])}
                         </button>
                     </div>
                 </div>
@@ -718,6 +771,7 @@ where
 
 #[component]
 fn WithoutLaunchpadSuccessModal(token_symbol: String, contract_id: AccountId) -> impl IntoView {
+    let contract_id_clone = contract_id.clone();
     let modal_context = expect_context::<ModalContext>();
 
     let close_modal = move || {
@@ -737,23 +791,26 @@ fn WithoutLaunchpadSuccessModal(token_symbol: String, contract_id: AccountId) ->
                     <div class="w-16 h-16 rounded-full bg-green-900/30 border border-green-700 flex items-center justify-center text-green-400">
                         <Icon icon=icondata::LuCheck width="32" height="32" />
                     </div>
-                    <h2 class="text-xl font-semibold">"Token Deployed Successfully!"</h2>
+                    <h2 class="text-xl font-semibold">
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadTokenDeployed.format(&[])}
+                    </h2>
                     <p class="text-center text-gray-400">
-                        "Your token " <span class="font-semibold text-white">{token_symbol}</span>
-                        " has been deployed to "
-                        <span class="font-mono text-white">{contract_id.to_string()}</span>
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadSuccessDescription.format_view(vec![
+                            ("token", view! { <span class="font-semibold text-white">{token_symbol.clone()}</span> }.into_any()),
+                            ("address", view! { <span class="font-mono text-white">{contract_id.as_str()}</span> }.into_any()),
+                        ])}
                     </p>
                     <A
-                        href=format!("/token/{contract_id}")
+                        href=format!("/token/{contract_id_clone}")
                         attr:class="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-center cursor-pointer"
                     >
-                        "View"
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadView.format(&[])}
                     </A>
                     <button
                         on:click=move |_| close_modal()
                         class="w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded cursor-pointer"
                     >
-                        "Close"
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadClose.format(&[])}
                     </button>
                 </div>
             </div>
@@ -789,9 +846,11 @@ fn WithoutLaunchpadErrorModal(tx_hash: CryptoHash) -> impl IntoView {
                     <div class="w-16 h-16 rounded-full bg-red-900/30 border border-red-700 flex items-center justify-center text-red-400">
                         <Icon icon=icondata::LuX width="32" height="32" />
                     </div>
-                    <h2 class="text-xl font-semibold">"Deployment Failed"</h2>
+                    <h2 class="text-xl font-semibold">
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadDeploymentFailed.format(&[])}
+                    </h2>
                     <p class="text-center text-gray-400">
-                        "There was an error deploying your token contract."
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadErrDeployFailed.format(&[])}
                     </p>
                     {move || {
                         if let Some(url) = nearblocks_url() {
@@ -802,7 +861,7 @@ fn WithoutLaunchpadErrorModal(tx_hash: CryptoHash) -> impl IntoView {
                                     rel="noopener noreferrer"
                                     class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-center cursor-pointer"
                                 >
-                                    "View Transaction Details"
+                                    {move || TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadViewTxDetails.format(&[])}
                                 </a>
                             }
                                 .into_any()
@@ -814,7 +873,7 @@ fn WithoutLaunchpadErrorModal(tx_hash: CryptoHash) -> impl IntoView {
                         on:click=move |_| close_modal()
                         class="w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded cursor-pointer"
                     >
-                        "Close"
+                        {move || TranslationKey::PagesSettingsDeveloperCreateTokenWithoutLaunchpadClose.format(&[])}
                     </button>
                 </div>
             </div>
