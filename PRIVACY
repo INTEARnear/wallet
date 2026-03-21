@@ -1,0 +1,46 @@
+Last updated: March 21, 2026
+
+1. Overview
+
+This Privacy Policy explains how we collect, use, and handle information when you use Intear Wallet (referred to as "Wallet").
+
+2. Information We Collect
+
+We collect only limited information necessary to operate the Wallet, which may include:
+
+- Public blockchain data including account IDs, transactions
+- User-provided inputs (account ID you provided when creating a wallet, or other data submitted through use of the - Wallet)
+- Technical data (IP address, device/browser type, other request data). This data comes transiently with every web request, and is not stored or logged
+- Temporary encrypted session data to support application functionality, such as migration to a different device, cross-device connection to dApps, connection of dApps to the native Wallet app, your password (if you enabled "Remember Password" feature). This data is immediately disposed of when it's been used and no longer necessary for work of the app
+
+We do not collect or store private keys, seed phrases, or unencrypted passwords.
+
+3. How We Use Information
+
+We use collected information solely to:
+
+- Provide and operate Wallet features
+- Process and relay blockchain transactions
+- Retrieve and display account data
+- Prevent abuse and ensure security
+
+4. Third-Party Services
+
+The Wallet may rely on third-party infrastructure and services:
+- RPC fallbacks: near.org, fastnear.com. Unless our own Intear RPC has technical issues, it will be used first, before fallbacks. Intear RPC does not store any logs beyond necessary information to run an RPC node on NEAR Protocol
+- Indexers: Token balances and account lookup by public key (during account import) are provided by fastnear.com
+- Live support chat: chatwoot.com
+
+These providers may process limited technical data as required to perform their functions. We don't control the third-party service providers and their privacy practices.
+
+5. Data Sharing
+
+We do not sell or share personal data.
+
+6. Your Responsibilities
+
+You are responsible for safeguarding your devices, access credentials, and any locally stored data related to the Wallet.
+
+7. Contact
+
+For questions about this Privacy Policy, contact: slime@intea.rs

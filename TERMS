@@ -1,0 +1,37 @@
+Last updated: March 21, 2026
+
+1. Overview
+
+This application (“Intear Wallet”, referred to as "Wallet") is a non-custodial software interface that enables users to interact with blockchain networks.
+
+2. Non-Custodial Nature
+
+You retain full control over your private keys, seed phrases, and digital assets at all times. We do not store, access, recover, or manage your keys or funds.
+
+3. User Responsibility
+
+You are solely responsible for:
+
+Securing your private keys and recovery phrases
+Verifying all transaction details before submission
+Any loss resulting from errors, device compromise, or misuse
+
+Transactions on blockchain networks are irreversible.
+
+4. Limitation of Liability
+
+To the maximum extent permitted by law, we are not liable for any loss, damages, or claims arising from:
+
+- Use of the Wallet
+- Loss of private keys or funds
+- Smart contract interactions
+- Third-party services or integrations
+- Bugs, errors, or security vulnerabilities
+
+5. Third-Party Services
+
+The Wallet may enable access to third-party networks, protocols, or services. We do not control or endorse these and are not responsible for their operation or risks.
+
+6. Governing Law
+
+These Terms are governed by the laws of Ukraine, without regard to conflict of law principles.

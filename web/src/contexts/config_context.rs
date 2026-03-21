@@ -184,8 +184,6 @@ pub struct WalletConfig {
     #[serde(default)]
     pub slippage: Slippage,
     #[serde(default)]
-    pub analytics_disabled: bool,
-    #[serde(default)]
     pub nfts_view_state: NftsViewState,
     #[serde(default)]
     pub hidden_nfts: Vec<HiddenNft>,
@@ -716,7 +714,6 @@ impl Default for WalletConfig {
             realtime_price_updates: true,
             password_remember_duration: PasswordRememberDuration::default(),
             slippage: Slippage::default(),
-            analytics_disabled: false,
             nfts_view_state: NftsViewState::default(),
             hidden_nfts: vec![],
             background_group: BackgroundGroup::default(),

@@ -839,7 +839,6 @@ async fn main() {
                 vec![
                     "https://rpc.intea.rs".to_string(),
                     "https://rpc.near.org".to_string(),
-                    "https://rpc.shitzuapes.xyz".to_string(),
                     "https://archival-rpc.mainnet.near.org".to_string(),
                 ]
             }),

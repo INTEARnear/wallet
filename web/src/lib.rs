@@ -3,10 +3,14 @@
     stmt_expr_attributes,
     mpmc_channel,
     iter_intersperse,
-    box_patterns
+    box_patterns,
+    const_trait_impl,
+    const_index,
+    const_slice_make_iter
 )]
 #![deny(clippy::float_arithmetic)]
 
+use components::legal_consents::provide_legal_consents_context;
 use contexts::account_selector_context::provide_account_selector_context;
 use contexts::accounts_context::provide_accounts_context;
 use contexts::config_context::provide_config_context;
@@ -140,6 +144,7 @@ pub fn App() -> impl IntoView {
     provide_modal_context();
     provide_config_context();
     provide_accounts_context();
+    provide_legal_consents_context(); // depends on accounts and modal
     provide_network_context(); // depends on accounts for selecting the network for the selected account
     provide_rpc_context(); // depends on config for rpc configuration and network for default rpc
     provide_token_context(); // depends on rpc for fetching near balance

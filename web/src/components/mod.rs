@@ -11,6 +11,7 @@ pub mod gift_amount_display;
 pub mod gift_modals;
 pub mod header;
 pub mod layout;
+pub mod legal_consents;
 pub mod login_form;
 pub mod number_format_settings;
 pub mod password_unlock;

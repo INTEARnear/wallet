@@ -21,12 +21,14 @@ use crate::components::account_selector::{
 };
 use crate::components::derivation_path_input::DerivationPathInput;
 use crate::components::gift_amount_display::GiftAmountDisplay;
+use crate::components::legal_consents::LegalConsentsSection;
 use crate::components::select::{Select, SelectOption};
 use crate::contexts::account_selector_context::AccountSelectorContext;
 use crate::contexts::accounts_context::{
     Account, AccountsContext, SecretKeyHolder, format_ledger_error,
 };
 use crate::contexts::config_context::ConfigContext;
+use crate::contexts::legal_consents_context::{LEGAL_CONSENTS_BLOCKING_MESSAGE, LegalConsents};
 use crate::contexts::network_context::Network;
 use crate::contexts::security_log_context::add_security_log;
 use crate::contexts::transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext};
@@ -123,6 +125,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
     let (ledger_getting_public_key, set_ledger_getting_public_key) = signal(false);
     let (ledger_current_key_data, set_ledger_current_key_data) =
         signal::<Option<(String, near_min_api::types::near_crypto::PublicKey)>>(None);
+    let legal_consents = expect_context::<LegalConsents>();
 
     let (ledger_account_number, set_ledger_account_number) = signal(0u32);
     let (ledger_change_number, set_ledger_change_number) = signal(0u32);
@@ -250,6 +253,10 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
     };
 
     let do_create_account = move || {
+        if !legal_consents.all_accepted_untracked() {
+            set_error.set(Some(LEGAL_CONSENTS_BLOCKING_MESSAGE.to_string()));
+            return;
+        }
         let Some(account_id) = is_valid.get() else {
             return;
         };
@@ -466,6 +473,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
     let handle_keydown = move |ev: KeyboardEvent| {
         if ev.key() == "Enter"
             && is_valid.get().is_some()
+            && legal_consents.all_accepted()
             && !is_creating.get()
             && !is_loading.get()
         {
@@ -1079,11 +1087,11 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                         } else {
                             ().into_any()
                         }
-                    }} <div class="flex gap-2 mt-2">
+                    }} <LegalConsentsSection short=true /> <div class="flex gap-2 mt-2">
                         <button
                             class="flex-1 text-white rounded-xl px-4 py-3 transition-all cursor-pointer duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden"
                             style=move || {
-                                if is_valid.get().is_some()
+                                if is_valid.get().is_some() && legal_consents.all_accepted()
                                     && ((recovery_method()
                                         == AccountCreateRecoveryMethod::RecoveryPhrase)
                                         || (recovery_method() == AccountCreateRecoveryMethod::Ledger
@@ -1096,6 +1104,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                             }
                             disabled=move || {
                                 is_valid.get().is_none() || is_creating.get() || is_loading.get()
+                                    || !legal_consents.all_accepted()
                                     || match recovery_method() {
                                         AccountCreateRecoveryMethod::RecoveryPhrase => false,
                                         AccountCreateRecoveryMethod::Ledger => {
@@ -1103,7 +1112,14 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                         }
                                     }
                             }
-                            on:click=move |_| do_create_account()
+                            on:click=move |_| {
+                                if !legal_consents.all_accepted_untracked() {
+                                    set_error
+                                        .set(Some(LEGAL_CONSENTS_BLOCKING_MESSAGE.to_string()));
+                                    return;
+                                }
+                                do_create_account();
+                            }
                             on:mouseenter=move |_| set_is_hovered.set(true)
                             on:mouseleave=move |_| set_is_hovered.set(false)
                         >
@@ -1111,7 +1127,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                 class="absolute inset-0 transition-opacity duration-200"
                                 style=move || {
                                     if is_valid.get().is_some() && !is_loading.get()
-                                        && is_hovered.get()
+                                        && is_hovered.get() && legal_consents.all_accepted()
                                         && ((recovery_method()
                                             == AccountCreateRecoveryMethod::RecoveryPhrase)
                                             || (recovery_method() == AccountCreateRecoveryMethod::Ledger

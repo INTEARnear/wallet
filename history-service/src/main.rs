@@ -136,7 +136,6 @@ async fn main() {
                     Network::Mainnet => vec![
                         "https://rpc.intea.rs".to_string(),
                         "https://rpc.near.org".to_string(),
-                        "https://rpc.shitzuapes.xyz".to_string(),
                         "https://archival-rpc.mainnet.near.org".to_string(),
                     ],
                     Network::Testnet => vec!["https://rpc.testnet.near.org".to_string()],

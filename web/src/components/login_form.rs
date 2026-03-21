@@ -7,12 +7,14 @@ use crate::components::account_selector::{
     AccountCreateParent, AccountCreateRecoveryMethod, LoginMethod, ModalState, seed_phrase_to_key,
 };
 use crate::components::derivation_path_input::DerivationPathInput;
+use crate::components::legal_consents::LegalConsentsSection;
 use crate::components::seed_phrase_input::SeedPhraseInput;
 use crate::contexts::account_selector_context::AccountSelectorContext;
 use crate::contexts::accounts_context::{
     Account, AccountsContext, SecretKeyHolder, format_ledger_error,
 };
 use crate::contexts::config_context::ConfigContext;
+use crate::contexts::legal_consents_context::{LEGAL_CONSENTS_BLOCKING_MESSAGE, LegalConsents};
 use crate::contexts::network_context::Network;
 use crate::contexts::security_log_context::add_security_log;
 use crate::pages::settings::LedgerSelector;
@@ -87,6 +89,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
     let (ledger_getting_public_key, set_ledger_getting_public_key) = signal(false);
     let (ledger_current_key_data, set_ledger_current_key_data) =
         signal::<Option<(String, near_min_api::types::near_crypto::PublicKey)>>(None);
+    let legal_consents = expect_context::<LegalConsents>();
 
     let (ledger_account_number, set_ledger_account_number) = signal(0u32);
     let (ledger_change_number, set_ledger_change_number) = signal(0u32);
@@ -125,6 +128,12 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
 
                         if path != ledger_input_hd_path_input.get_untracked() {
                             // User changed the path during the request, ignore the result
+                            return;
+                        }
+                        if !legal_consents.all_accepted_untracked() {
+                            set_available_accounts.set(vec![]);
+                            set_selected_accounts.set(vec![]);
+                            set_error.set(Some(LEGAL_CONSENTS_BLOCKING_MESSAGE.to_string()));
                             return;
                         }
 
@@ -190,6 +199,13 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
             set_is_valid.set(None);
             return;
         }
+        if !legal_consents.all_accepted_untracked() {
+            set_error.set(Some(LEGAL_CONSENTS_BLOCKING_MESSAGE.to_string()));
+            set_available_accounts.set(vec![]);
+            set_selected_accounts.set(vec![]);
+            set_is_valid.set(None);
+            return;
+        }
 
         let secret_key = if let Some(secret_key) = seed_phrase_to_key(&seed_phrase) {
             secret_key
@@ -228,6 +244,13 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
             set_is_valid.set(None);
             return;
         }
+        if !legal_consents.all_accepted_untracked() {
+            set_error.set(Some(LEGAL_CONSENTS_BLOCKING_MESSAGE.to_string()));
+            set_available_accounts.set(vec![]);
+            set_selected_accounts.set(vec![]);
+            set_is_valid.set(None);
+            return;
+        }
 
         let secret_key = if let Ok(secret_key) = private_key.parse::<SecretKey>() {
             secret_key
@@ -261,6 +284,10 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
     };
 
     let import_account = move || {
+        if !legal_consents.all_accepted_untracked() {
+            set_error.set(Some(LEGAL_CONSENTS_BLOCKING_MESSAGE.to_string()));
+            return;
+        }
         let selected_list = selected_accounts.get();
         if !selected_list.is_empty() {
             set_import_in_progress(true);
@@ -568,6 +595,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                             style=move || {
                                                 if is_valid.get().is_some()
                                                     && !selected_accounts.get().is_empty()
+                                                    && legal_consents.all_accepted()
                                                     && !import_in_progress.get()
                                                 {
                                                     "background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%); cursor: pointer;"
@@ -578,6 +606,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                             disabled=move || {
                                                 is_valid.get().is_none()
                                                     || selected_accounts.get().is_empty()
+                                                    || !legal_consents.all_accepted()
                                                     || import_in_progress.get()
                                             }
                                             on:click=move |_| import_account()
@@ -589,6 +618,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                 style=move || {
                                                     if is_valid.get().is_some()
                                                         && !selected_accounts.get().is_empty() && is_hovered.get()
+                                                        && legal_consents.all_accepted()
                                                         && !import_in_progress.get()
                                                     {
                                                         "background: linear-gradient(90deg, #2563eb 0%, #7c3aed 100%); opacity: 1"
@@ -748,6 +778,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                             style=move || {
                                                 if is_valid.get().is_some()
                                                     && !selected_accounts.get().is_empty()
+                                                    && legal_consents.all_accepted()
                                                     && !import_in_progress.get()
                                                 {
                                                     "background: linear-gradient(90deg, #16a34a 0%, #15803d 100%); cursor: pointer;"
@@ -758,6 +789,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                             disabled=move || {
                                                 is_valid.get().is_none()
                                                     || selected_accounts.get().is_empty()
+                                                    || !legal_consents.all_accepted()
                                                     || import_in_progress.get()
                                             }
                                             on:click=move |_| import_account()
@@ -769,6 +801,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                 style=move || {
                                                     if is_valid.get().is_some()
                                                         && !selected_accounts.get().is_empty() && is_hovered.get()
+                                                        && legal_consents.all_accepted()
                                                         && !import_in_progress.get()
                                                     {
                                                         "background: linear-gradient(90deg, #15803d 0%, #14532d 100%); opacity: 1"
@@ -828,14 +861,24 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                         <button
                                                             class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden cursor-pointer"
                                                             style=move || {
-                                                                if ledger_getting_public_key.get() {
+                                                                if ledger_getting_public_key.get()
+                                                                    || !legal_consents.all_accepted()
+                                                                {
                                                                     "background: rgb(55 65 81); cursor: not-allowed;"
                                                                 } else {
                                                                     "background: linear-gradient(90deg, #8b5cf6 0%, #a855f7 100%);"
                                                                 }
                                                             }
-                                                            disabled=move || ledger_getting_public_key.get()
+                                                            disabled=move || {
+                                                                ledger_getting_public_key.get()
+                                                                    || !legal_consents.all_accepted()
+                                                            }
                                                             on:click=move |_| {
+                                                                if !legal_consents.all_accepted_untracked() {
+                                                                    set_error
+                                                                        .set(Some(LEGAL_CONSENTS_BLOCKING_MESSAGE.to_string()));
+                                                                    return;
+                                                                }
                                                                 set_error.set(None);
                                                                 set_ledger_getting_public_key(true);
                                                                 set_available_accounts.set(vec![]);
@@ -996,6 +1039,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                             class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden"
                                                             style=move || {
                                                                 if !selected_accounts.get().is_empty()
+                                                                    && legal_consents.all_accepted()
                                                                     && !import_in_progress.get()
                                                                 {
                                                                     "background: linear-gradient(90deg, #8b5cf6 0%, #a855f7 100%); cursor: pointer;"
@@ -1005,9 +1049,15 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                             }
                                                             disabled=move || {
                                                                 selected_accounts.get().is_empty()
+                                                                    || !legal_consents.all_accepted()
                                                                     || import_in_progress.get()
                                                             }
                                                             on:click=move |_| {
+                                                                if !legal_consents.all_accepted_untracked() {
+                                                                    set_error
+                                                                        .set(Some(LEGAL_CONSENTS_BLOCKING_MESSAGE.to_string()));
+                                                                    return;
+                                                                }
                                                                 if let Some((path, public_key)) = ledger_current_key_data
                                                                     .get()
                                                                 {
@@ -1094,6 +1144,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                 .into_any()
                         }
                     }}
+                    <LegalConsentsSection />
 
                     <div class="relative mt-6">
                         <div class="absolute inset-0 flex items-center">
@@ -1105,8 +1156,13 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                     </div>
 
                     <button
-                        class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden border border-neutral-800 hover:border-neutral-700 cursor-pointer mt-6"
+                        class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden border border-neutral-800 hover:border-neutral-700 cursor-pointer mt-6 disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled=move || !legal_consents.all_accepted()
                         on:click=move |_| {
+                            if !legal_consents.all_accepted_untracked() {
+                                set_error.set(Some(LEGAL_CONSENTS_BLOCKING_MESSAGE.to_string()));
+                                return;
+                            }
                             set_modal_state
                                 .set(ModalState::Creating {
                                     parent: AccountCreateParent::Mainnet,
