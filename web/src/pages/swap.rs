@@ -481,7 +481,7 @@ pub fn Swap() -> impl IntoView {
             token_in: token_in_id,
             token_out: token_out_id,
             amount,
-            max_wait_ms: 1000,
+            max_wait_ms: 2000,
             slippage: config.get().slippage,
             dexes: Some(selected_dexes.get()), // Use selected DEXes
             trader_account_id: Some(current_account.account_id),
