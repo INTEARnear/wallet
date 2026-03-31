@@ -104,7 +104,6 @@ impl ConnectedApp {
 
                 false
             }
-            TransactionType::NearIntents { .. } => self.autoconfirm_all,
         }
     }
 }

@@ -1,9 +1,6 @@
-use base64::Engine;
-use base64::prelude::BASE64_STANDARD;
 use futures_channel::oneshot;
 use futures_timer::Delay;
 use futures_util::TryFutureExt;
-use futures_util::future::Either;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use near_min_api::types::{
@@ -14,10 +11,9 @@ use near_min_api::types::{
     TxExecutionStatus,
 };
 use near_min_api::{ExperimentalTxDetails, PendingTransaction, QueryFinality, RpcClient};
+use rand::Rng;
 use rand::rngs::OsRng;
-use rand::{Rng, RngCore};
 use serde::Deserialize;
-use std::cell::OnceCell;
 use std::collections::VecDeque;
 use std::time::Duration;
 
@@ -25,7 +21,7 @@ use crate::contexts::accounts_context::Account;
 use crate::contexts::config_context::{ConfigContext, LedgerMode};
 use crate::contexts::network_context::Network;
 use crate::contexts::tokens_context::{Token, TokenData, TokensContext};
-use crate::utils::{NEP413Payload, sign_nep366, sign_nep413};
+use crate::utils::sign_nep366;
 
 use super::accounts_context::AccountsContext;
 use super::rpc_context::RpcContext;
@@ -47,10 +43,6 @@ pub enum TransactionType {
         receiver_id: AccountId,
         can_be_sponsored: bool,
     },
-    NearIntents {
-        message_to_sign: String,
-        quote_hash: CryptoHash,
-    },
     SignDelegateAction {
         actions: Vec<Action>,
         receiver_id: AccountId,
@@ -60,11 +52,6 @@ pub enum TransactionType {
 
 enum TransactionResult<'a> {
     PendingTransaction(PendingTransaction<'a>),
-    PublishedIntent {
-        intent_hash: CryptoHash,
-        rpc_client: &'a RpcClient,
-        tx_hash: OnceCell<CryptoHash>,
-    },
     SignedDelegateAction,
 }
 
@@ -75,72 +62,6 @@ impl<'a> TransactionResult<'a> {
                 .wait_for(status, timeout)
                 .await
                 .map_err(|e| format!("Failed to wait for transaction: {e}")),
-            TransactionResult::PublishedIntent {
-                intent_hash,
-                tx_hash,
-                ..
-            } => {
-                if tx_hash.get().is_some() {
-                    return Ok(());
-                }
-                match futures_util::future::select(
-                    Box::pin(async {
-                        loop {
-                            let Ok(response) = reqwest::Client::new()
-                                .post("https://solver-relay-v2.chaindefuser.com/rpc")
-                                .json(&serde_json::json!({
-                                    "jsonrpc": "2.0",
-                                    "id": "dontcare",
-                                    "method": "get_status",
-                                    "params": [{
-                                        "intent_hash": intent_hash
-                                    }]
-                                }))
-                                .send()
-                                .await
-                            else {
-                                return Err("Failed to get intent status".to_string());
-                            };
-
-                            let Ok(status) = response.json::<serde_json::Value>().await else {
-                                return Err("Failed to parse intent status".to_string());
-                            };
-
-                            if let Some(result) = status.get("result")
-                                && let Some(status_str) =
-                                    result.get("status").and_then(|s| s.as_str())
-                            {
-                                if status_str == "SETTLED" {
-                                    if let Some(hash) = result
-                                        .get("data")
-                                        .and_then(|d| d.get("hash").and_then(|h| h.as_str()))
-                                        .and_then(|h| h.parse::<CryptoHash>().ok())
-                                    {
-                                        tx_hash.set(hash).unwrap();
-                                    }
-                                    return Ok(());
-                                } else if status_str != "PENDING" && status_str != "TX_BROADCASTED"
-                                {
-                                    return Err(format!(
-                                        "Intent failed with status: {}",
-                                        status_str
-                                    ));
-                                }
-                            }
-
-                            Delay::new(Duration::from_secs(1)).await;
-                        }
-                    }),
-                    Box::pin(async {
-                        Delay::new(timeout).await;
-                    }),
-                )
-                .await
-                {
-                    Either::Left((res, _)) => res,
-                    Either::Right((_, _)) => Err("Intent polling timed out".to_string()),
-                }
-            }
             TransactionResult::SignedDelegateAction => Ok(()),
         }
     }
@@ -151,20 +72,6 @@ impl<'a> TransactionResult<'a> {
                 .EXPERIMENTAL_fetch_details()
                 .await
                 .map_err(|e| format!("Failed to fetch transaction details: {e}")),
-            TransactionResult::PublishedIntent {
-                rpc_client,
-                tx_hash,
-                ..
-            } => {
-                if let Some(tx_hash) = tx_hash.get() {
-                    rpc_client
-                        .EXPERIMENTAL_tx_status(*tx_hash)
-                        .await
-                        .map_err(|e| format!("Failed to fetch intent status: {e}"))
-                } else {
-                    Err("Intent was not waited for".to_string())
-                }
-            }
             TransactionResult::SignedDelegateAction => {
                 Err("Signed delegate action does not have details".to_string())
             }
@@ -183,13 +90,6 @@ impl TransactionType {
                 actions: actions.clone(),
                 receiver_id: receiver_id.clone(),
                 can_be_sponsored: *can_be_sponsored,
-            },
-            TransactionType::NearIntents {
-                message_to_sign,
-                quote_hash,
-            } => TransactionType::NearIntents {
-                message_to_sign: message_to_sign.clone(),
-                quote_hash: *quote_hash,
             },
             TransactionType::SignDelegateAction {
                 actions,
@@ -379,75 +279,6 @@ impl TransactionType {
                             Err(error)
                         }
                     }
-                }
-            }
-            TransactionType::NearIntents {
-                message_to_sign,
-                quote_hash,
-            } => {
-                let mut nonce = [0u8; 32];
-                OsRng.fill_bytes(&mut nonce);
-
-                let Ok(signature) = sign_nep413(
-                    signer.secret_key.clone(),
-                    &NEP413Payload {
-                        message: message_to_sign.clone(),
-                        nonce,
-                        recipient: "intents.near".parse().unwrap(),
-                        callback_url: None,
-                    },
-                    accounts_context,
-                    ledger_mode,
-                )
-                .await
-                else {
-                    return Err("User cancelled signing".to_string());
-                };
-                let params = serde_json::json!([{
-                    "quote_hashes": [quote_hash],
-                    "signed_data": {
-                        "standard": "nep413",
-                        "payload": {
-                            "message": message_to_sign,
-                            "nonce": BASE64_STANDARD.encode(nonce),
-                            "recipient": "intents.near",
-                        },
-                        "signature": signature,
-                        "public_key": signer.secret_key.public_key(),
-                    }
-                }]);
-                let Ok(response) = reqwest::Client::new()
-                    .post("https://solver-relay-v2.chaindefuser.com/rpc")
-                    .json(&serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "id": "dontcare",
-                        "method": "publish_intent",
-                        "params": params,
-                    }))
-                    .send()
-                    .await
-                else {
-                    return Err("Failed to publish intent".to_string());
-                };
-                let Ok(response_value) = response.json::<serde_json::Value>().await else {
-                    return Err("Failed to parse publish intent response".to_string());
-                };
-
-                if let Some(result) = response_value.get("result") {
-                    if let Some(intent_hash) = result.get("intent_hash").and_then(|h| h.as_str()) {
-                        match intent_hash.parse::<CryptoHash>() {
-                            Ok(intent_hash) => Ok(TransactionResult::PublishedIntent {
-                                intent_hash,
-                                rpc_client,
-                                tx_hash: OnceCell::new(),
-                            }),
-                            _ => Err("Invalid intent hash".to_string()),
-                        }
-                    } else {
-                        Err("Intent hash not found in response".to_string())
-                    }
-                } else {
-                    Err("Result not found in response".to_string())
                 }
             }
             TransactionType::SignDelegateAction {
