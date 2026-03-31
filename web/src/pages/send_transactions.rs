@@ -1302,7 +1302,7 @@ pub fn SendTransactions() -> impl IntoView {
                                                             </p>
                                                         </div>
                                                     </div>
-                                                },
+                                                }.into_any(),
                                             );
                                     }
                                     if has_high_gas_function_call.get() {
@@ -1325,7 +1325,7 @@ pub fn SendTransactions() -> impl IntoView {
                                                             </p>
                                                         </div>
                                                     </div>
-                                                },
+                                                }.into_any(),
                                             );
                                     }
                                     if let Some(app) = connected_app() {
