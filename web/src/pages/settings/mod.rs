@@ -1,8 +1,6 @@
+use crate::contexts::accounts_context::AccountsContext;
 use crate::translations::TranslationKey;
 use crate::utils::serialize_to_js_value;
-use crate::{
-    components::bridge_history::DepositAddress, contexts::accounts_context::AccountsContext,
-};
 use leptos::{html::Div, prelude::*};
 use leptos_icons::*;
 use leptos_router::{
@@ -35,13 +33,9 @@ pub use security::SecuritySettings;
 pub use security_log::SecurityLogPage;
 use web_sys::{ScrollBehavior, ScrollToOptions};
 
-pub fn open_live_chat(
-    selected_account_id: AccountId,
-    bridge_deposit_address: Option<DepositAddress>,
-) {
+pub fn open_live_chat(selected_account_id: AccountId) {
     let message = JsWalletRequest::ChatwootOpen {
         account_id: selected_account_id,
-        bridge_deposit_address,
     };
 
     if let Ok(location_origin) = window().location().origin() {
@@ -152,10 +146,11 @@ pub fn Settings() -> impl IntoView {
                     <div class="text-sm font-semibold">{move || TranslationKey::PagesSettingsSupportResources.format(&[])}</div>
                     <button
                         class="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-colors cursor-pointer text-sm font-medium"
-                        on:click=move |_| open_live_chat(
-                            accounts_context.accounts.get_untracked().selected_account_id.unwrap(),
-                            None,
-                        )
+                        on:click=move |_| {
+                            open_live_chat(
+                                accounts_context.accounts.get_untracked().selected_account_id.unwrap(),
+                            )
+                        }
                     >
                         <Icon icon=icondata::LuMessageCircle width="16" height="16" />
                         <span>{move || TranslationKey::PagesSettingsLiveChat.format(&[])}</span>

@@ -149,14 +149,6 @@ pub fn Receive() -> impl IntoView {
                 }}
 
                 <div class="flex flex-col gap-3 w-full max-w-md mt-16">
-                    <Show when=move || network.get() == Network::Mainnet>
-                        <A
-                            href="/receive/bridge"
-                            attr:class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-center text-base"
-                        >
-                            "Bridge"
-                        </A>
-                    </Show>
                     <Show when=move || {
                         network.get() == Network::Mainnet
                             && window()

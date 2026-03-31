@@ -1,7 +1,5 @@
 pub mod account_creation_form;
 pub mod account_selector;
-pub mod bridge_history;
-pub mod bridge_termination_screen;
 pub mod copy_button;
 pub mod copyable_address;
 pub mod danger_confirm_input;

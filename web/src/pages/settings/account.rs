@@ -3,7 +3,6 @@ use std::time::Duration;
 use crate::components::account_selector::{
     AccountCreateParent, AccountCreateRecoveryMethod, ModalState, mnemonic_to_key,
 };
-use crate::components::bridge_history::DepositAddress;
 use crate::components::danger_confirm_input::DangerConfirmInput;
 use crate::components::derivation_path_input::DerivationPathInput;
 use crate::contexts::{
@@ -140,7 +139,6 @@ pub enum JsWalletRequest {
     },
     ChatwootOpen {
         account_id: AccountId,
-        bridge_deposit_address: Option<DepositAddress>,
     },
 }
 

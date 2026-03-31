@@ -56,11 +56,9 @@ use crate::pages::invoices::Invoices;
 use crate::pages::login::Login;
 use crate::pages::nfts::{NftCollection, NftTokenDetails, Nfts, SendNft};
 use crate::pages::receive::Receive;
-use crate::pages::receivebridge::Bridge;
 use crate::pages::send::SendMultiToken;
 use crate::pages::send::SendToken;
 use crate::pages::send_transactions::SendTransactions;
-use crate::pages::sendbridge::SendBridge;
 use crate::pages::settings::Settings;
 use crate::pages::settings::{
     AccountSettings, ConnectedAppsSettings, DeveloperCreateToken, DeveloperSandbox,
@@ -186,14 +184,12 @@ pub fn App() -> impl IntoView {
                             <Route path=path!("/gifts") view=Gifts />
                             <Route path=path!("/gifts/*private_key") view=GiftClaim />
                             <Route path=path!("/receive") view=Receive />
-                            <Route path=path!("/receive/bridge") view=Bridge />
                             <Route path=path!("/receive/invoices") view=Invoices />
                             <Route path=path!("/history") view=History />
                             <Route path=path!("/explore") view=Explore />
                             <Route path=path!("/token/:token_id") view=TokenDetails />
                             <Route path=path!("/send/:token_id") view=SendToken />
                             <Route path=path!("/multi-send/:token_id") view=SendMultiToken />
-                            <Route path=path!("/send/:token_id/bridge") view=SendBridge />
                             <Route path=path!("/connect") view=Connect />
                             <Route path=path!("/send-transactions") view=SendTransactions />
                             <Route path=path!("/sign-message") view=SignMessage />

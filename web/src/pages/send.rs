@@ -11,7 +11,6 @@ use crate::{
         tokens_context::{Token, TokenData, TokenMetadata, TokensContext},
         transaction_queue_context::EnqueuedTransaction,
     },
-    data::bridge_networks::BRIDGEABLE_TOKENS,
     pages::stake::is_validator_supported,
     translations::TranslationKey,
     utils::{
@@ -713,25 +712,6 @@ pub fn SendToken() -> impl IntoView {
                     <span>{move || TranslationKey::PagesSendBack.format(&[])}</span>
                 </A>
                 <div class="flex gap-2">
-                    {move || {
-                        if BRIDGEABLE_TOKENS
-                            .iter()
-                            .any(|(bridgeable_token_id, _)| *bridgeable_token_id == token_id())
-                        {
-                            view! {
-                                <A
-                                    href=move || format!("/send/{}/bridge", token_id())
-                                    attr:class="flex items-center gap-2 bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
-                                >
-                                    <Icon icon=icondata::LuArrowRightLeft width="16" height="16" />
-                                    <span>"Bridge"</span>
-                                </A>
-                            }
-                                .into_any()
-                        } else {
-                            ().into_any()
-                        }
-                    }}
                     <A
                         href=move || format!("/multi-send/{}", token_id())
                         attr:class="flex items-center gap-2 bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
