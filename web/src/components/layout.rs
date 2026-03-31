@@ -11,6 +11,7 @@ use web_sys::TouchEvent;
 use crate::{
     components::header::WalletHeader,
     contexts::network_context::{Network, NetworkContext},
+    translations::TranslationKey,
 };
 use crate::{
     components::password_unlock::PasswordUnlockOverlay,
@@ -238,8 +239,8 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
     view! {
         <ErrorBoundary fallback=|errors| {
             view! {
-                <h1>"Something went wrong!"</h1>
-                <p>"Errors: "</p>
+                <h1>{move || TranslationKey::ComponentsLayoutErrorBoundaryTitle.format(&[])}</h1>
+                <p>{move || TranslationKey::ComponentsLayoutErrorBoundaryErrorsLabel.format(&[])}</p>
                 <ul>
                     {move || {
                         errors
@@ -291,7 +292,8 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                                     view! {
                                         <div class="flex items-center justify-center h-full">
                                             <div class="text-white text-2xl font-bold">
-                                                "No account selected"
+                                                {move || TranslationKey::ComponentsLayoutEmptyNoAccountSelected
+                                                    .format(&[])}
                                             </div>
                                         </div>
                                     }

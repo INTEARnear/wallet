@@ -104,12 +104,16 @@ pub fn GiftClaim() -> impl IntoView {
         };
 
         let Some(private_key_b58) = private_key_param() else {
-            set_claim_state.set(ClaimState::Error("Invalid private key".to_string()));
+            set_claim_state.set(ClaimState::Error(
+                TranslationKey::PagesGiftsClaimErrorInvalidPrivateKey.format(&[]),
+            ));
             return;
         };
 
         let Some(public_key) = public_key() else {
-            set_claim_state.set(ClaimState::Error("Invalid private key format".to_string()));
+            set_claim_state.set(ClaimState::Error(
+                TranslationKey::PagesGiftsClaimErrorInvalidPrivateKeyFormat.format(&[]),
+            ));
             return;
         };
 
@@ -133,7 +137,7 @@ pub fn GiftClaim() -> impl IntoView {
                 Err(e) => {
                     log::error!("Failed to fetch gift info: {:?}", e);
                     set_claim_state.set(ClaimState::Error(
-                        "Failed to fetch gift information".to_string(),
+                        TranslationKey::PagesGiftsClaimErrorFetchGiftInfo.format(&[]),
                     ));
                     return;
                 }
@@ -141,13 +145,15 @@ pub fn GiftClaim() -> impl IntoView {
 
             if !drop.claims.is_empty() {
                 set_claim_state.set(ClaimState::Error(
-                    "Gift already claimed while you were on this page".to_string(),
+                    TranslationKey::PagesGiftsClaimErrorAlreadyClaimedRace.format(&[]),
                 ));
                 return;
             }
 
             let Some(secret_key) = parse_gift_private_key_to_secret(&private_key_b58) else {
-                set_claim_state.set(ClaimState::Error("Invalid private key format".to_string()));
+                set_claim_state.set(ClaimState::Error(
+                    TranslationKey::PagesGiftsClaimErrorInvalidPrivateKeyFormat.format(&[]),
+                ));
                 return;
             };
 
@@ -217,7 +223,9 @@ pub fn GiftClaim() -> impl IntoView {
                 }
                 Err(e) => {
                     log::error!("Claim failed: {:?}", e);
-                    set_claim_state.set(ClaimState::Error("Transaction failed".to_string()));
+                    set_claim_state.set(ClaimState::Error(
+                        TranslationKey::PagesGiftsClaimErrorTransactionFailed.format(&[]),
+                    ));
                 }
             }
         });
@@ -226,8 +234,12 @@ pub fn GiftClaim() -> impl IntoView {
     view! {
         <div class="flex flex-col gap-6 p-4 max-w-md mx-auto w-full">
             <div class="text-center">
-                <h1 class="text-2xl font-bold text-white mb-2">"Claim Your Gift"</h1>
-                <p class="text-gray-400">"You've received a gift!"</p>
+                <h1 class="text-2xl font-bold text-white mb-2">
+                    {move || TranslationKey::PagesGiftsClaimTitle.format(&[])}
+                </h1>
+                <p class="text-gray-400">
+                    {move || TranslationKey::PagesGiftsClaimSubtitle.format(&[])}
+                </p>
             </div>
 
             <GiftAmountDisplay />
@@ -254,7 +266,7 @@ pub fn GiftClaim() -> impl IntoView {
                                                         href="/"
                                                     >
                                                         <Icon icon=icondata::LuWallet attr:class="w-5 h-5" />
-                                                        "Go to Wallet"
+                                                        {move || TranslationKey::PagesGiftsGoToWallet.format(&[])}
                                                     </A>
                                                 }
                                                     .into_any()
@@ -267,7 +279,9 @@ pub fn GiftClaim() -> impl IntoView {
                                                     >
                                                         <div class="flex items-center justify-center gap-3">
                                                             <Icon icon=icondata::LuGift attr:class="w-5 h-5" />
-                                                            "Claim Gift"
+                                                            {move || {
+                                                                TranslationKey::PagesGiftsClaimButtonClaim.format(&[])
+                                                            }}
                                                         </div>
                                                     </button>
                                                 }
@@ -285,10 +299,14 @@ pub fn GiftClaim() -> impl IntoView {
                                 <div class="bg-neutral-900/50 rounded-2xl p-8 text-center">
                                     <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto mb-4"></div>
                                     <h3 class="text-white font-bold text-lg mb-2">
-                                        "Claiming Gift..."
+                                        {move || {
+                                            TranslationKey::PagesGiftsClaimClaimingTitle.format(&[])
+                                        }}
                                     </h3>
                                     <p class="text-gray-400 text-sm">
-                                        "Please wait while we process your claim transaction."
+                                        {move || {
+                                            TranslationKey::PagesGiftsClaimClaimingBody.format(&[])
+                                        }}
                                     </p>
                                 </div>
                             }
@@ -309,19 +327,21 @@ pub fn GiftClaim() -> impl IntoView {
                                         />
                                     </div>
                                     <h3 class="text-white font-bold text-xl mb-2">
-                                        "Gift Claimed Successfully!"
+                                        {move || {
+                                            TranslationKey::PagesGiftsClaimSuccessTitle.format(&[])
+                                        }}
                                     </h3>
                                     <p class="text-gray-400 text-sm mb-4">
-                                        "You've successfully claimed "
-                                        <span class="text-green-400 font-semibold">
-                                            {amount_formatted}
-                                        </span>
+                                        {move || {
+                                            TranslationKey::PagesGiftsClaimSuccessBody
+                                                .format(&[("amount", amount_formatted.as_str())])
+                                        }}
                                     </p>
                                     <A
                                         attr:class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl transition-colors duration-200 cursor-pointer text-base"
                                         href="/"
                                     >
-                                        "Go to Wallet"
+                                        {move || TranslationKey::PagesGiftsGoToWallet.format(&[])}
                                     </A>
                                 </div>
                             }
@@ -337,7 +357,9 @@ pub fn GiftClaim() -> impl IntoView {
                                         />
                                     </div>
                                     <h3 class="text-white font-bold text-lg mb-2">
-                                        "Claim Failed"
+                                        {move || {
+                                            TranslationKey::PagesGiftsClaimFailedTitle.format(&[])
+                                        }}
                                     </h3>
                                     <p class="text-gray-400 text-sm mb-4">{error_msg}</p>
                                     <button
@@ -346,7 +368,9 @@ pub fn GiftClaim() -> impl IntoView {
                                             set_claim_state.set(ClaimState::Idle);
                                         }
                                     >
-                                        "Try Again"
+                                        {move || {
+                                            TranslationKey::PagesGiftsClaimTryAgain.format(&[])
+                                        }}
                                     </button>
                                 </div>
                             }

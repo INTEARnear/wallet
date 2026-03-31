@@ -31,6 +31,7 @@ use web_sys::js_sys::Reflect;
 use crate::contexts::config_context::LedgerMode;
 use crate::contexts::security_log_context::reencrypt_security_logs;
 use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
+use crate::translations::TranslationKey;
 use crate::utils::{is_debug_enabled, is_tauri, serialize_to_js_value, tauri_invoke_no_args};
 
 use super::{
@@ -90,57 +91,60 @@ pub enum LedgerSigningState {
 pub fn format_ledger_error(error: &serde_json::Value) -> String {
     match error {
         serde_json::Value::String(s) if s == "TransportOpenUserCancelled" => {
-            "You cancelled the connection".to_string()
+            TranslationKey::MiscLedgerErrorTransportOpenUserCancelled.format(&[])
         }
         serde_json::Value::Number(n) if n.as_u64() == Some(0x6e01) => {
-            "Are you in the NEAR app on your Ledger?".to_string()
+            TranslationKey::MiscLedgerErrorNearAppQuestion.format(&[])
         }
         serde_json::Value::Number(n) if n.as_u64() == Some(0x6985) => {
-            "You denied the action in your Ledger".to_string()
+            TranslationKey::MiscLedgerErrorDeniedOnDevice.format(&[])
         }
         serde_json::Value::Number(n) if n.as_u64() == Some(0x5515) => {
-            "Your Ledger is locked".to_string()
+            TranslationKey::MiscLedgerErrorLedgerLocked.format(&[])
         }
         serde_json::Value::String(s) if s == "DisconnectedDeviceDuringOperation" => {
-            "Your Ledger was disconnected during the operation".to_string()
+            TranslationKey::MiscLedgerErrorDisconnectedDuringOperation.format(&[])
         }
         serde_json::Value::String(s) if s == "InvalidStateError" => {
-            "Please refresh the or reconnect the Ledger device.".to_string()
+            TranslationKey::MiscLedgerErrorInvalidState.format(&[])
         }
         serde_json::Value::String(s) if s == "LedgerDisabled" => {
-            "Please choose the Ledger device.".to_string()
+            TranslationKey::MiscLedgerErrorLedgerDisabled.format(&[])
         }
         serde_json::Value::String(s) if s == "WebBLENotSupported" => {
-            "Bluetooth is not supported in this browser.".to_string()
+            TranslationKey::MiscLedgerErrorWebBleNotSupported.format(&[])
         }
         serde_json::Value::String(s) if s == "WebBLENotSupportedIOS" => {
-            "Bluetooth is not supported on iOS devices. Please wait for our iOS app to be released in February 2026. Hint: You can always connect or disconnect Ledger from your account later, without having to create a new account.".to_string()
+            TranslationKey::MiscLedgerErrorWebBleNotSupportedIos.format(&[])
         }
         serde_json::Value::String(s) if s == "WebBLENotSupportedFirefox" => {
-            "Bluetooth is not supported in Firefox. Please switch to a Chrome-based browser to use Bluetooth with your Ledger, or wait for our app to be released in February 2026. Hint: You can always connect or disconnect Ledger from your account later, without having to create a new account.".to_string()
+            TranslationKey::MiscLedgerErrorWebBleNotSupportedFirefox.format(&[])
         }
         serde_json::Value::String(s) if s == "WebBLENotSupportedSafari" => {
-            "Bluetooth is not supported in Safari. Please switch to a Chrome-based browser to use Bluetooth with your Ledger, or wait for our app to be released in February 2026. Hint: You can always connect or disconnect Ledger from your account later, without having to create a new account.".to_string()
+            TranslationKey::MiscLedgerErrorWebBleNotSupportedSafari.format(&[])
         }
         serde_json::Value::String(s) if s == "WebUSBNotSupported" => {
-            "USB is not supported in this browser.".to_string()
+            TranslationKey::MiscLedgerErrorWebUsbNotSupported.format(&[])
         }
         serde_json::Value::String(s) if s == "WebUSBNotSupportedIOS" => {
-            "USB is not supported on iOS devices. Please wait for our iOS app to be released in February 2026. Hint: You can always connect or disconnect Ledger from your account later, without having to create a new account.".to_string()
+            TranslationKey::MiscLedgerErrorWebUsbNotSupportedIos.format(&[])
         }
         serde_json::Value::String(s) if s == "WebUSBNotSupportedFirefox" => {
-            "USB is not supported in Firefox. Please switch to a Chrome-based browser to use USB with your Ledger, or wait for our app to be released in February 2026. Hint: You can always connect or disconnect Ledger from your account later, without having to create a new account.".to_string()
+            TranslationKey::MiscLedgerErrorWebUsbNotSupportedFirefox.format(&[])
         }
         serde_json::Value::String(s) if s == "WebUSBNotSupportedSafari" => {
-            "USB is not supported in Safari. Please switch to a Chrome-based browser to use USB with your Ledger, or wait for our app to be released in February 2026. Hint: You can always connect or disconnect Ledger from your account later, without having to create a new account.".to_string()
+            TranslationKey::MiscLedgerErrorWebUsbNotSupportedSafari.format(&[])
         }
         serde_json::Value::String(s) if s == "TransportRaceCondition" => {
-            "Please make sure your Ledger is currently not already signing another request. It should be saying 'Near app is ready'".to_string()
+            TranslationKey::MiscLedgerErrorTransportRaceCondition.format(&[])
         }
         serde_json::Value::String(s) if s == "NotSupportedError" => {
-            "Something went wrong. Please try again, or refresh the page.".to_string()
+            TranslationKey::MiscLedgerErrorNotSupportedError.format(&[])
         }
-        _ => format!("Error: {}", error),
+        _ => {
+            let err = error.to_string();
+            TranslationKey::MiscLedgerErrorFallback.format(&[("error", &err)])
+        }
     }
 }
 
@@ -343,10 +347,10 @@ async fn save_accounts(accounts: &AccountsState, cipher: Option<Cipher>) -> Resu
                 let _ = storage.set_item(ACCOUNTS_KEY, &json);
                 Ok(())
             } else {
-                Err("Failed to serialize accounts".to_string())
+                Err(TranslationKey::MiscAccountsPersistenceFailedSerializeAccounts.format(&[]))
             }
         }
-        _ => Err("localStorage not available".to_string()),
+        _ => Err(TranslationKey::MiscAccountsPersistenceLocalStorageNotAvailable.format(&[])),
     }
 }
 
@@ -356,7 +360,10 @@ async fn derive_cipher(password: String, rounds: u32, salt: &[u8]) -> Result<Cip
         .t_cost(rounds)
         .p_cost(1)
         .build()
-        .map_err(|e| format!("Failed to build Argon2 params: {}", e))?;
+        .map_err(|e| {
+            TranslationKey::MiscAccountsPersistenceFailedBuildArgon2Params
+                .format(&[("error", &e.to_string())])
+        })?;
 
     let argon2 = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
 
@@ -364,7 +371,10 @@ async fn derive_cipher(password: String, rounds: u32, salt: &[u8]) -> Result<Cip
     argon2
         .hash_password_into(password.as_bytes(), salt, &mut key_bytes)
         .await
-        .map_err(|e| format!("Failed to derive key: {}", e))?;
+        .map_err(|e| {
+            TranslationKey::MiscAccountsPersistenceFailedDeriveKey
+                .format(&[("error", &e.to_string())])
+        })?;
     let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
     let cipher = Aes256Gcm::new(key);
     Ok(Cipher {
@@ -389,13 +399,18 @@ async fn save_encrypted_accounts(cipher: Cipher, accounts: AccountsState) -> Res
     OsRng.fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
 
-    let accounts_json = serde_json::to_string(&accounts)
-        .map_err(|e| format!("Failed to serialize accounts: {}", e))?;
+    let accounts_json = serde_json::to_string(&accounts).map_err(|e| {
+        TranslationKey::MiscAccountsPersistenceFailedSerializeAccountsJson
+            .format(&[("error", &e.to_string())])
+    })?;
 
     let encrypted_data = cipher
         .cipher
         .encrypt(nonce, accounts_json.as_bytes())
-        .map_err(|e| format!("Failed to encrypt data: {}", e))?;
+        .map_err(|e| {
+            TranslationKey::MiscAccountsPersistenceFailedEncryptData
+                .format(&[("error", &e.to_string())])
+        })?;
 
     let encrypted_data = if is_tauri() {
         let (tx, rx) = futures_channel::oneshot::channel();
@@ -404,22 +419,31 @@ async fn save_encrypted_accounts(cipher: Cipher, accounts: AccountsState) -> Res
             let key_promise = tauri_invoke_no_args("get_os_encryption_key");
             let key_future = JsFuture::from(key_promise);
             let Ok(key_js) = key_future.await else {
-                tx.send(Err("Failed to get key".to_string())).unwrap();
+                tx.send(Err(
+                    TranslationKey::MiscAccountsPersistenceFailedGetOsKey.format(&[])
+                ))
+                .unwrap();
                 return;
             };
             let Some(key_string) = key_js.as_string() else {
-                tx.send(Err("Key is not a string".to_string())).unwrap();
+                tx.send(Err(
+                    TranslationKey::MiscAccountsPersistenceOsKeyNotString.format(&[])
+                ))
+                .unwrap();
                 return;
             };
             let Ok(key_bytes) = BASE64_STANDARD.decode(&key_string) else {
-                tx.send(Err("Failed to decode key".to_string())).unwrap();
+                tx.send(Err(
+                    TranslationKey::MiscAccountsPersistenceFailedDecodeOsKey.format(&[]),
+                ))
+                .unwrap();
                 return;
             };
             let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
             let cipher = Aes256Gcm::new(key);
             let Ok(encrypted_data) = cipher.encrypt(&nonce, encrypted_data.as_ref()) else {
                 tx.send(Err(
-                    "Failed to encrypt data using OS key on client".to_string()
+                    TranslationKey::MiscAccountsPersistenceFailedEncryptWithOsKey.format(&[]),
                 ))
                 .unwrap();
                 return;
@@ -440,14 +464,21 @@ async fn save_encrypted_accounts(cipher: Cipher, accounts: AccountsState) -> Res
 
     match get_local_storage() {
         Some(storage) => {
-            let encrypted_json = serde_json::to_string(&encrypted_accounts)
-                .map_err(|e| format!("Failed to serialize encrypted data: {}", e))?;
+            let encrypted_json = serde_json::to_string(&encrypted_accounts).map_err(|e| {
+                TranslationKey::MiscAccountsPersistenceFailedSerializeEncryptedBlob
+                    .format(&[("error", &e.to_string())])
+            })?;
             storage
                 .set_item(ENCRYPTED_ACCOUNTS_KEY, &encrypted_json)
-                .map_err(|e| format!("Failed to save to localStorage: {:?}", e))?;
+                .map_err(|e| {
+                    TranslationKey::MiscAccountsPersistenceFailedSaveLocalStorage
+                        .format(&[("error", &format!("{e:?}"))])
+                })?;
         }
         _ => {
-            return Err("localStorage not available".to_string());
+            return Err(
+                TranslationKey::MiscAccountsPersistenceLocalStorageNotAvailable.format(&[]),
+            );
         }
     }
 
@@ -464,12 +495,18 @@ fn has_encrypted_data() -> bool {
 
 fn get_encrypted_accounts() -> Result<EncryptedAccountsData, String> {
     let encrypted_json = get_local_storage()
-        .ok_or("localStorage not available".to_string())?
+        .ok_or(TranslationKey::MiscAccountsPersistenceLocalStorageNotAvailable.format(&[]))?
         .get_item(ENCRYPTED_ACCOUNTS_KEY)
-        .map_err(|e| format!("Failed to read from localStorage: {:?}", e))?
-        .ok_or("No encrypted data found".to_string())?;
-    let encrypted_accounts: EncryptedAccountsData = serde_json::from_str(&encrypted_json)
-        .map_err(|e| format!("Failed to parse encrypted data: {}", e))?;
+        .map_err(|e| {
+            TranslationKey::MiscAccountsPersistenceFailedReadLocalStorage
+                .format(&[("error", &format!("{e:?}"))])
+        })?
+        .ok_or(TranslationKey::MiscAccountsPersistenceNoEncryptedDataFound.format(&[]))?;
+    let encrypted_accounts: EncryptedAccountsData =
+        serde_json::from_str(&encrypted_json).map_err(|e| {
+            TranslationKey::MiscAccountsPersistenceFailedParseEncryptedData
+                .format(&[("error", &e.to_string())])
+        })?;
     Ok(encrypted_accounts)
 }
 
@@ -479,13 +516,22 @@ async fn try_decrypt_accounts(
     let encrypted_accounts = get_encrypted_accounts()?;
     let salt = general_purpose::STANDARD
         .decode(&encrypted_accounts.salt)
-        .map_err(|e| format!("Failed to decode salt: {}", e))?;
+        .map_err(|e| {
+            TranslationKey::MiscAccountsPersistenceFailedDecodeSalt
+                .format(&[("error", &e.to_string())])
+        })?;
     let nonce_bytes = general_purpose::STANDARD
         .decode(&encrypted_accounts.nonce)
-        .map_err(|e| format!("Failed to decode nonce: {}", e))?;
+        .map_err(|e| {
+            TranslationKey::MiscAccountsPersistenceFailedDecodeNonce
+                .format(&[("error", &e.to_string())])
+        })?;
     let encrypted_data = general_purpose::STANDARD
         .decode(&encrypted_accounts.encrypted_data)
-        .map_err(|e| format!("Failed to decode encrypted data: {}", e))?;
+        .map_err(|e| {
+            TranslationKey::MiscAccountsPersistenceFailedDecodeEncryptedBytes
+                .format(&[("error", &e.to_string())])
+        })?;
 
     let nonce = Nonce::from_slice(&nonce_bytes);
     let encrypted_data = if is_tauri() {
@@ -495,15 +541,24 @@ async fn try_decrypt_accounts(
             let key_promise = tauri_invoke_no_args("get_os_encryption_key");
             let key_future = JsFuture::from(key_promise);
             let Ok(key_js) = key_future.await else {
-                tx.send(Err("Failed to get key".to_string())).unwrap();
+                tx.send(Err(
+                    TranslationKey::MiscAccountsPersistenceFailedGetOsKey.format(&[])
+                ))
+                .unwrap();
                 return;
             };
             let Some(key_string) = key_js.as_string() else {
-                tx.send(Err("Key is not a string".to_string())).unwrap();
+                tx.send(Err(
+                    TranslationKey::MiscAccountsPersistenceOsKeyNotString.format(&[])
+                ))
+                .unwrap();
                 return;
             };
             let Ok(key_bytes) = BASE64_STANDARD.decode(&key_string) else {
-                tx.send(Err("Failed to decode key".to_string())).unwrap();
+                tx.send(Err(
+                    TranslationKey::MiscAccountsPersistenceFailedDecodeOsKey.format(&[]),
+                ))
+                .unwrap();
                 return;
             };
             let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
@@ -511,9 +566,11 @@ async fn try_decrypt_accounts(
             let decrypted_data = match cipher.decrypt(&nonce, encrypted_data.as_ref()) {
                 Ok(decrypted_data) => decrypted_data,
                 Err(e) => {
-                    tx.send(Err(format!(
-                        "Failed to decrypt data using OS key on client: {e:?}"
-                    )))
+                    let err = format!("{e:?}");
+                    tx.send(Err(
+                        TranslationKey::MiscAccountsPersistenceFailedDecryptWithOsKey
+                            .format(&[("error", &err)]),
+                    ))
                     .unwrap();
                     return;
                 }
@@ -530,24 +587,34 @@ async fn try_decrypt_accounts(
         .t_cost(encrypted_accounts.rounds)
         .p_cost(1)
         .build()
-        .map_err(|e| format!("Failed to build Argon2 params: {}", e))?;
+        .map_err(|e| {
+            TranslationKey::MiscAccountsPersistenceFailedBuildArgon2Params
+                .format(&[("error", &e.to_string())])
+        })?;
     let argon2 = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
     let mut key_bytes = [0u8; 32];
     argon2
         .hash_password_into(password.as_bytes(), &salt, &mut key_bytes)
         .await
-        .map_err(|e| format!("Failed to derive key: {}", e))?;
+        .map_err(|e| {
+            TranslationKey::MiscAccountsPersistenceFailedDeriveKey
+                .format(&[("error", &e.to_string())])
+        })?;
 
     let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
     let cipher = Aes256Gcm::new(key);
 
     let decrypted_data = cipher
         .decrypt(nonce, encrypted_data.as_ref())
-        .map_err(|_| "Incorrect password".to_string())?;
-    let accounts_json = String::from_utf8(decrypted_data)
-        .map_err(|e| format!("Failed to convert decrypted data to string: {}", e))?;
-    let accounts: AccountsState = serde_json::from_str(&accounts_json)
-        .map_err(|e| format!("Failed to parse decrypted accounts: {}", e))?;
+        .map_err(|_| TranslationKey::MiscAccountsPersistenceIncorrectPassword.format(&[]))?;
+    let accounts_json = String::from_utf8(decrypted_data).map_err(|e| {
+        TranslationKey::MiscAccountsPersistenceFailedDecryptedUtf8
+            .format(&[("error", &e.to_string())])
+    })?;
+    let accounts: AccountsState = serde_json::from_str(&accounts_json).map_err(|e| {
+        TranslationKey::MiscAccountsPersistenceFailedParseDecryptedAccounts
+            .format(&[("error", &e.to_string())])
+    })?;
 
     Ok((
         accounts,
@@ -573,9 +640,10 @@ async fn store_cipher_to_service(key_bytes: [u8; 32], duration_seconds: u64) -> 
     let nonce = Nonce::from_slice(&nonce_bytes);
 
     // Encrypt the key bytes directly
-    let encrypted_data = aes_cipher
-        .encrypt(nonce, key_bytes.as_ref())
-        .map_err(|e| format!("Failed to encrypt cipher: {}", e))?;
+    let encrypted_data = aes_cipher.encrypt(nonce, key_bytes.as_ref()).map_err(|e| {
+        TranslationKey::MiscAccountsPersistenceFailedEncryptCipher
+            .format(&[("error", &e.to_string())])
+    })?;
 
     // Combine nonce + encrypted data and encode as base64
     let mut combined_data = nonce_bytes.to_vec();
@@ -599,16 +667,23 @@ async fn store_cipher_to_service(key_bytes: [u8; 32], duration_seconds: u64) -> 
         .json(&request)
         .send()
         .await
-        .map_err(|e| format!("Failed to send request: {}", e))?;
+        .map_err(|e| {
+            TranslationKey::MiscAccountsPersistencePasswordServiceSendFailed
+                .format(&[("error", &e.to_string())])
+        })?;
 
     if !response.status().is_success() {
-        return Err(format!("Server returned error: {}", response.status()));
+        let status = response.status().to_string();
+        return Err(
+            TranslationKey::MiscAccountsPersistencePasswordServiceStoreServerError
+                .format(&[("status", &status)]),
+        );
     }
 
-    let store_response: StoreResponse = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
+    let store_response: StoreResponse = response.json().await.map_err(|e| {
+        TranslationKey::MiscAccountsPersistencePasswordServiceStoreParseFailed
+            .format(&[("error", &e.to_string())])
+    })?;
 
     // Store service data in localStorage
     let service_data = PasswordServiceData {
@@ -656,7 +731,10 @@ async fn retrieve_cipher_from_service() -> Result<Option<Cipher>, String> {
         ))
         .send()
         .await
-        .map_err(|e| format!("Failed to send request: {}", e))?;
+        .map_err(|e| {
+            TranslationKey::MiscAccountsPersistencePasswordServiceRetrieveSendFailed
+                .format(&[("error", &e.to_string())])
+        })?;
     if response.status().as_u16() == 404 {
         // Data expired or not found, remove the reference to the key
         if let Some(storage) = get_local_storage() {
@@ -665,18 +743,25 @@ async fn retrieve_cipher_from_service() -> Result<Option<Cipher>, String> {
         return Ok(None);
     }
     if !response.status().is_success() {
-        return Err(format!("Server returned error: {}", response.status()));
+        let status = response.status().to_string();
+        return Err(
+            TranslationKey::MiscAccountsPersistencePasswordServiceRetrieveServerError
+                .format(&[("status", &status)]),
+        );
     }
-    let retrieve_response: RetrieveResponse = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
+    let retrieve_response: RetrieveResponse = response.json().await.map_err(|e| {
+        TranslationKey::MiscAccountsPersistencePasswordServiceRetrieveParseFailed
+            .format(&[("error", &e.to_string())])
+    })?;
 
     let stored_payload = general_purpose::STANDARD
         .decode(&retrieve_response.data)
-        .map_err(|e| format!("Failed to decode data: {}", e))?;
+        .map_err(|e| {
+            TranslationKey::MiscAccountsPersistencePasswordServiceDecodePayloadFailed
+                .format(&[("error", &e.to_string())])
+        })?;
     if stored_payload.len() < 12 {
-        return Err("Invalid encrypted data".to_string());
+        return Err(TranslationKey::MiscAccountsPersistenceInvalidStoredCipherPayload.format(&[]));
     }
     let nonce_bytes = &stored_payload[0..12];
     let encrypted_data = &stored_payload[12..];
@@ -687,13 +772,21 @@ async fn retrieve_cipher_from_service() -> Result<Option<Cipher>, String> {
 
     let decrypted_data = aes_cipher
         .decrypt(nonce, encrypted_data.as_ref())
-        .map_err(|e| format!("Failed to decrypt cipher: {}", e))?;
+        .map_err(|e| {
+            TranslationKey::MiscAccountsPersistenceFailedDecryptStoredCipher
+                .format(&[("error", &e.to_string())])
+        })?;
 
-    let encrypted_accounts =
-        get_encrypted_accounts().map_err(|e| format!("Failed to get encrypted accounts: {}", e))?;
+    let encrypted_accounts = get_encrypted_accounts().map_err(|e| {
+        TranslationKey::MiscAccountsPersistenceFailedGetEncryptedAccountsNested
+            .format(&[("error", &e)])
+    })?;
     let salt_for_derivation = general_purpose::STANDARD
         .decode(&encrypted_accounts.salt)
-        .map_err(|e| format!("Failed to decode salt: {}", e))?;
+        .map_err(|e| {
+            TranslationKey::MiscAccountsPersistenceFailedDecodeSalt
+                .format(&[("error", &e.to_string())])
+        })?;
     let rounds_for_derivation = encrypted_accounts.rounds;
 
     let key = Key::<Aes256Gcm>::from_slice(&decrypted_data);
@@ -747,15 +840,25 @@ pub fn provide_accounts_context() {
                         let key_promise = tauri_invoke_no_args("get_os_encryption_key");
                         let key_future = JsFuture::from(key_promise);
                         let Ok(key_js) = key_future.await else {
-                            tx.send(Err("Failed to get key".to_string())).unwrap();
+                            tx.send(Err(
+                                TranslationKey::MiscAccountsPersistenceFailedGetOsKey.format(&[])
+                            ))
+                            .unwrap();
                             return;
                         };
                         let Some(key_string) = key_js.as_string() else {
-                            tx.send(Err("Key is not a string".to_string())).unwrap();
+                            tx.send(Err(
+                                TranslationKey::MiscAccountsPersistenceOsKeyNotString.format(&[])
+                            ))
+                            .unwrap();
                             return;
                         };
                         let Ok(key_bytes) = BASE64_STANDARD.decode(&key_string) else {
-                            tx.send(Err("Failed to decode key".to_string())).unwrap();
+                            tx.send(Err(
+                                TranslationKey::MiscAccountsPersistenceFailedDecodeOsKey
+                                    .format(&[]),
+                            ))
+                            .unwrap();
                             return;
                         };
                         let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
@@ -763,7 +866,8 @@ pub fn provide_accounts_context() {
                         let Ok(decrypted_data) = cipher.decrypt(&nonce, encrypted_data.as_ref())
                         else {
                             tx.send(Err(
-                                "Failed to decrypt data using OS key on client".to_string()
+                                TranslationKey::MiscAccountsPersistenceFailedDecryptWithOsKey
+                                    .format(&[("error", "decryption failed")]),
                             ))
                             .unwrap();
                             return;
@@ -932,7 +1036,9 @@ pub fn provide_accounts_context() {
                     // Protect from weird edge cases or when the user tries to use
                     // development tools to access the raw UI without decrypting accounts
                     // first, which could lead to losing data
-                    return Box::pin(async move { Err("No accounts to encrypt".to_string()) })
+                    return Box::pin(async move {
+                        Err(TranslationKey::MiscAccountsPersistenceNoAccountsToEncrypt.format(&[]))
+                    })
                         as Pin<Box<dyn Future<Output = Result<(), String>> + Send>>;
                 }
                 let password = password.clone();

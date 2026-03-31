@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 
+use crate::translations::TranslationKey;
 use crate::utils::generate_qr_code;
 
 #[component]
@@ -34,7 +35,10 @@ pub fn QRCodeDisplay(
                                 view! {
                                     <img
                                         src=qr_code_data_url
-                                        alt="QR Code for deposit address"
+                                        alt=move || {
+                                            TranslationKey::ComponentsQrCodeDisplayAltDeposit
+                                                .format(&[])
+                                        }
                                         class=format!("{} rounded-lg", size)
                                     />
                                 }
@@ -44,7 +48,9 @@ pub fn QRCodeDisplay(
                                     <div class=format!(
                                         "{} bg-neutral-800 rounded-lg flex items-center justify-center text-red-400",
                                         size,
-                                    )>"Failed to generate QR code"</div>
+                                    )>
+                                        {move || TranslationKey::ComponentsQrCodeDisplayQrFailed.format(&[])}
+                                    </div>
                                 }
                                     .into_any()
                             }

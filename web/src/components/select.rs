@@ -11,6 +11,8 @@ use std::{
 };
 use wasm_bindgen::JsCast;
 
+use crate::translations::TranslationKey;
+
 pub trait AnyViewCopy: Fn() -> AnyView + Send + Sync + 'static {}
 
 impl<F> AnyViewCopy for F where F: Fn() -> AnyView + Send + Sync + 'static {}
@@ -104,7 +106,7 @@ pub fn Select(
     let classes = class.map_or(base_classes.to_string(), |c| format!("{base_classes} {c}"));
     let placeholder_text = placeholder
         .clone()
-        .unwrap_or_else(|| "Select an option".to_string());
+        .unwrap_or_else(|| TranslationKey::ComponentsSelectDefaultPlaceholder.format(&[]));
 
     // Close dropdown when clicking outside
     let _ = use_event_listener(use_document(), leptos::ev::mousedown, move |ev| {

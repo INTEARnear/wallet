@@ -57,20 +57,30 @@ fn RheaBalanceCard(rhea_tokens: Vec<TokenData>, total_usd: BigDecimal) -> impl I
                     <div class="text-left">
                         <div class="flex items-center gap-2">
                             <span class="text-white text-lg font-semibold">
-                                "Rhea Inner Balance"
+                                {move || {
+                                    TranslationKey::ComponentsTokenBalanceListRheaInnerBalanceTitle
+                                        .format(&[])
+                                }}
                             </span>
                             <div class="px-2 py-0.5 bg-purple-500/20 border border-purple-400/30 rounded-full">
                                 <span class="text-purple-300 text-xs font-medium">
-                                    {format!(
-                                        "{} token{}",
-                                        token_count,
-                                        if token_count == 1 { "" } else { "s" },
-                                    )}
+                                    {move || {
+                                        if token_count == 1 {
+                                            TranslationKey::ComponentsTokenBalanceListRheaTokenCountSingular
+                                                .format(&[])
+                                        } else {
+                                            TranslationKey::ComponentsTokenBalanceListRheaTokenCountPlural
+                                                .format(&[("count", &token_count.to_string())])
+                                        }
+                                    }}
                                 </span>
                             </div>
                         </div>
                         <p class="text-purple-300/70 text-sm mt-1">
-                            "Tap to view & manage internal balances"
+                            {move || {
+                                TranslationKey::ComponentsTokenBalanceListRheaTapToViewHint
+                                    .format(&[])
+                            }}
                         </p>
                     </div>
                 </div>
@@ -79,7 +89,12 @@ fn RheaBalanceCard(rhea_tokens: Vec<TokenData>, total_usd: BigDecimal) -> impl I
                         {move || format_usd_value(total_usd.clone())}
                     </p>
                     <div class="flex items-center gap-1 text-purple-300/70 text-sm mt-1 justify-end">
-                        <span>"View details"</span>
+                        <span>
+                            {move || {
+                                TranslationKey::ComponentsTokenBalanceListRheaViewDetails
+                                    .format(&[])
+                            }}
+                        </span>
                         <Icon icon=icondata::LuChevronRight width="16" height="16" />
                     </div>
                 </div>
@@ -107,7 +122,11 @@ fn RheaBalanceModal(rhea_tokens: Vec<TokenData>) -> impl IntoView {
                 on:click=|ev| ev.stop_propagation()
             >
                 <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-xl font-bold text-white">"Rhea Internal Balance"</h2>
+                    <h2 class="text-xl font-bold text-white">
+                        {move || {
+                            TranslationKey::ComponentsTokenBalanceListRheaModalTitle.format(&[])
+                        }}
+                    </h2>
                     <button
                         class="text-gray-400 hover:text-white transition-colors cursor-pointer"
                         on:click=move |_| modal.set(None)
@@ -116,7 +135,9 @@ fn RheaBalanceModal(rhea_tokens: Vec<TokenData>) -> impl IntoView {
                     </button>
                 </div>
                 <p class="text-gray-400 text-sm mb-6">
-                    "These tokens are stored in Rhea's internal balance, apps like BettearBot use this feature to trade faster. Withdraw them to use in your wallet."
+                    {move || {
+                        TranslationKey::ComponentsTokenBalanceListRheaModalDescription.format(&[])
+                    }}
                 </p>
                 <div class="flex flex-col gap-3">
                     {move || {
@@ -226,7 +247,8 @@ fn RheaBalanceModal(rhea_tokens: Vec<TokenData>) -> impl IntoView {
                                                         let mut transactions = Vec::new();
                                                         if needs_storage_deposit {
                                                             let (_rx, storage_tx) = EnqueuedTransaction::create(
-                                                                TranslationKey::MiscTransactionStorageDeposit.format(&[("token_symbol", &token_symbol)]),
+                                                                TranslationKey::MiscTransactionStorageDeposit
+                                                                    .format(&[("token_symbol", &token_symbol)]),
                                                                 signer_clone.clone(),
                                                                 token_id_clone.clone(),
                                                                 vec![
@@ -251,7 +273,8 @@ fn RheaBalanceModal(rhea_tokens: Vec<TokenData>) -> impl IntoView {
                                                             transactions.push(storage_tx);
                                                         }
                                                         let (_rx, withdraw_tx) = EnqueuedTransaction::create(
-                                                            TranslationKey::MiscTransactionWithdrawFromRhea.format(&[("token_symbol", &token_symbol)]),
+                                                            TranslationKey::MiscTransactionWithdrawFromRhea
+                                                                .format(&[("token_symbol", &token_symbol)]),
                                                             signer_clone,
                                                             "v2.ref-finance.near".parse().unwrap(),
                                                             vec![
@@ -290,7 +313,10 @@ fn RheaBalanceModal(rhea_tokens: Vec<TokenData>) -> impl IntoView {
                                                 width="16"
                                                 height="16"
                                             />
-                                            "Withdraw"
+                                            {move || {
+                                                TranslationKey::ComponentsTokenBalanceListRheaWithdraw
+                                                    .format(&[])
+                                            }}
                                         </button>
                                     </div>
                                 }
@@ -359,8 +385,7 @@ pub fn TokenBalanceList() -> impl IntoView {
                             }
                             let market_cap_is_abnormal = &token.token.price_usd_raw
                                 * &BigDecimal::from(token.token.circulating_supply)
-                                / power_of_10(USDT_DECIMALS)
-                                >= 100_000_000_000_000u128;
+                                / power_of_10(USDT_DECIMALS) >= 100_000_000_000_000u128;
                             if market_cap_is_abnormal && network.get() == Network::Mainnet {
                                 log::warn!(
                                     "Hiding token {:?} as it has abnormal market cap",
@@ -421,9 +446,7 @@ pub fn TokenBalanceList() -> impl IntoView {
                                 let usd_value = format_usd_value(
                                     &token.token.price_usd * &normalized_balance,
                                 );
-                                let price_change = if token.token.price_usd_hardcoded
-                                    == 1
-                                {
+                                let price_change = if token.token.price_usd_hardcoded == 1 {
                                     BigDecimal::from(0)
                                 } else if token.token.price_usd_raw_24h_ago > 0 {
                                     let hundred = BigDecimal::from(100);
@@ -547,10 +570,16 @@ pub fn TokenBalanceList() -> impl IntoView {
                                     </div>
                                     <div>
                                         <span class="text-white text-lg font-medium">
-                                            "Create Your Own Token"
+                                            {move || {
+                                                TranslationKey::ComponentsTokenBalanceListCreateYourOwnToken
+                                                    .format(&[])
+                                            }}
                                         </span>
                                         <p class="text-gray-400 text-sm">
-                                            "Available in Developer Settings"
+                                            {move || {
+                                                TranslationKey::ComponentsTokenBalanceListAvailableInDeveloperSettings
+                                                    .format(&[])
+                                            }}
                                         </p>
                                     </div>
                                 </div>
@@ -580,9 +609,11 @@ pub fn TokenBalanceList() -> impl IntoView {
                                 }}
                                 {move || {
                                     if config.get().show_low_balance_tokens {
-                                        "Hide Low Balance Tokens"
+                                        TranslationKey::ComponentsTokenBalanceListHideLowBalanceTokens
+                                            .format(&[])
                                     } else {
-                                        "Show Low Balance Tokens"
+                                        TranslationKey::ComponentsTokenBalanceListShowLowBalanceTokens
+                                            .format(&[])
                                     }
                                 }}
                             </button>

@@ -6,6 +6,7 @@ use crate::contexts::config_context::ConfigContext;
 use crate::contexts::modal_context::ModalContext;
 use crate::contexts::network_context::{Network, NetworkContext};
 use crate::contexts::tokens_context::{Token, TokensContext};
+use crate::translations::TranslationKey;
 use crate::utils::{USDT_DECIMALS, balance_to_decimal, format_usd_value, is_tauri, power_of_10};
 use bigdecimal::{BigDecimal, ToPrimitive};
 use leptos::prelude::*;
@@ -190,7 +191,9 @@ pub fn TotalPortfolioValue() -> impl IntoView {
                 if network.get() == Network::Testnet {
                     view! {
                         <div class="text-yellow-500 text-sm font-medium mb-4">
-                            "This is a testnet account. Assets have no real value."
+                            {move || {
+                                TranslationKey::ComponentsTotalPortfolioValueTestnetDisclaimer.format(&[])
+                            }}
                         </div>
                     }
                         .into_any()
@@ -232,7 +235,12 @@ pub fn TotalPortfolioValue() -> impl IntoView {
                             attr:class="inline-flex items-center gap-2 py-1.5 px-3 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-yellow-300 hover:bg-yellow-500/20 transition-colors cursor-pointer"
                         >
                             <Icon icon=icondata::LuTriangleAlert width="16" height="16" />
-                            <span class="text-xs font-medium">"Enable Persistent Storage"</span>
+                            <span class="text-xs font-medium">
+                                {move || {
+                                    TranslationKey::ComponentsTotalPortfolioValueEnablePersistentStorage
+                                        .format(&[])
+                                }}
+                            </span>
                         </A>
                     </div>
                 </Show>
@@ -257,7 +265,11 @@ pub fn TotalPortfolioValue() -> impl IntoView {
                             }
                         >
                             <Icon icon=icondata::LuTriangleAlert width="16" height="16" />
-                            <span class="text-xs font-medium">"Back Up Your Keys"</span>
+                            <span class="text-xs font-medium">
+                                {move || {
+                                    TranslationKey::ComponentsTotalPortfolioValueBackUpYourKeys.format(&[])
+                                }}
+                            </span>
                         </button>
                     </div>
                 </Show>
@@ -268,7 +280,11 @@ pub fn TotalPortfolioValue() -> impl IntoView {
                             on:click=open_swap_for_gas_modal
                         >
                             <Icon icon=icondata::LuArrowLeftRight width="16" height="16" />
-                            <span class="text-xs font-medium">"Swap For Gas"</span>
+                            <span class="text-xs font-medium">
+                                {move || {
+                                    TranslationKey::ComponentsTotalPortfolioValueSwapForGas.format(&[])
+                                }}
+                            </span>
                         </button>
                     </div>
                 </Show>

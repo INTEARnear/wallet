@@ -457,7 +457,7 @@ pub fn PreferencesSettings() -> impl IntoView {
                                                 >
                                                     <span>{group.display_name()}</span>
                                                     <span class="text-xs opacity-75">
-                                                        {TranslationKey::PagesSettingsPreferencesBackgroundCount.format(&[("count", &group.get_count().to_string())])}
+                                                        {move || TranslationKey::PagesSettingsPreferencesBackgroundCount.format(&[("count", &group.get_count().to_string())])}
                                                     </span>
                                                 </button>
                                             }

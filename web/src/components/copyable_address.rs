@@ -2,6 +2,8 @@ use leptos::prelude::*;
 use leptos_icons::*;
 use std::time::Duration;
 
+use crate::translations::TranslationKey;
+
 #[component]
 pub fn CopyableAddress(
     address: String,
@@ -25,7 +27,7 @@ pub fn CopyableAddress(
                         set_is_copied(true);
                         set_timeout(move || set_is_copied(false), Duration::from_millis(2000));
                     }
-                    title="Copy address"
+                    title=move || TranslationKey::ComponentsCopyableAddressTitleCopy.format(&[])
                 >
                     {move || {
                         if is_copied.get() {

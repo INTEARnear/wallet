@@ -31,9 +31,7 @@ use crate::contexts::{
     transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
 };
 use crate::pages::stake::is_validator_supported;
-use crate::utils::{
-    Resolution, StorageBalance, format_account_id_no_hide, format_token_amount_no_hide, proxify_url,
-};
+use crate::utils::{Resolution, StorageBalance, format_token_amount_no_hide, proxify_url};
 
 async fn fetch_spam_list() -> Vec<HiddenNft> {
     let proxy_base = dotenvy_macro::dotenv!("SHARED_NFT_PROXY_SERVICE_ADDR");
@@ -497,7 +495,11 @@ pub fn NftCollection() -> impl IntoView {
                             } else {
                                 false
                             };
-                            if hidden { "Unhide" } else { "Hide" }
+                            if hidden {
+                                TranslationKey::PagesNftsUnhide.format(&[])
+                            } else {
+                                TranslationKey::PagesNftsHide.format(&[])
+                            }
                         }
                         class="text-neutral-400 hover:text-white transition-colors cursor-pointer"
                         style=move || {
@@ -519,14 +521,14 @@ pub fn NftCollection() -> impl IntoView {
                         if is_reported.get() {
                             view! {
                                 <span class="text-neutral-400 text-sm select-none">
-                                    "Reported!"
+                                    {move || TranslationKey::PagesNftsReported.format(&[])}
                                 </span>
                             }
                                 .into_any()
                         } else {
                             view! {
                                 <button
-                                    title="Report"
+                                    title=move || TranslationKey::PagesNftsReport.format(&[])
                                     class="text-neutral-400 hover:text-white transition-colors cursor-pointer"
                                     on:click=report_collection
                                 >
@@ -550,9 +552,12 @@ pub fn NftCollection() -> impl IntoView {
                         if nft_tokens.is_empty() {
                             view! {
                                 <div class="flex flex-col items-center justify-center h-64 text-center">
-                                    <div class="text-neutral-400 text-lg mb-2">"No NFTs found"</div>
+                                    <div class="text-neutral-400 text-lg mb-2">
+                                        {move || TranslationKey::PagesNftsEmptyCollectionTitle.format(&[])}
+                                    </div>
                                     <div class="text-neutral-500 text-sm">
-                                        "No NFTs found in this collection"
+                                        {move || TranslationKey::PagesNftsEmptyCollectionSubtitle
+                                            .format(&[])}
                                     </div>
                                 </div>
                             }
@@ -598,7 +603,7 @@ pub fn NftCollection() -> impl IntoView {
                                             let title = nft
                                                 .metadata
                                                 .title
-                                                .unwrap_or_else(|| "Untitled".to_string());
+                                                .unwrap_or_else(|| TranslationKey::PagesNftsFallbackUntitled.format(&[]));
                                             let media = nft.metadata.media.clone();
                                             let base_uri = base_uri();
                                             let navigate = use_navigate();
@@ -734,10 +739,12 @@ pub fn Nfts() -> impl IntoView {
                         attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer no-mobile-ripple"
                     >
                         <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                        <span>"Back"</span>
+                        <span>{move || TranslationKey::PagesNftsBack.format(&[])}</span>
                     </A>
                     <div class="flex justify-between items-center pr-4">
-                        <h1 class="text-white text-2xl font-bold">"Search Results"</h1>
+                        <h1 class="text-white text-2xl font-bold">
+                            {move || TranslationKey::PagesNftsTitleSearchResults.format(&[])}
+                        </h1>
                     </div>
                     <Suspense fallback=move || {
                         view! {
@@ -762,7 +769,7 @@ pub fn Nfts() -> impl IntoView {
                                         .metadata
                                         .as_ref()
                                         .map(|m| m.name.clone())
-                                        .unwrap_or_else(|| "Unknown Collection".to_string());
+                                        .unwrap_or_else(|| TranslationKey::PagesNftsFallbackUnknownCollection.format(&[]));
                                     let collection_name_score = compute_match_score(
                                         &query,
                                         &collection_name,
@@ -831,10 +838,10 @@ pub fn Nfts() -> impl IntoView {
                                     view! {
                                         <div class="flex flex-col items-center justify-center h-64 text-center">
                                             <div class="text-neutral-400 text-lg mb-2">
-                                                "Nothing matched your search"
+                                                {move || TranslationKey::PagesNftsEmptySearchTitle.format(&[])}
                                             </div>
                                             <div class="text-neutral-500 text-sm">
-                                                "Try another query"
+                                                {move || TranslationKey::PagesNftsEmptySearchSubtitle.format(&[])}
                                             </div>
                                         </div>
                                     }
@@ -854,7 +861,7 @@ pub fn Nfts() -> impl IntoView {
                                                         .metadata
                                                         .as_ref()
                                                         .map(|m| m.name.clone())
-                                                        .unwrap_or_else(|| "Unknown Collection".to_string());
+                                                        .unwrap_or_else(|| TranslationKey::PagesNftsFallbackUnknownCollection.format(&[]));
                                                     let collection_name_clone = collection_name.clone();
                                                     let contract_id_display = collection.contract_id.clone();
                                                     let tokens_view = tokens
@@ -895,7 +902,7 @@ pub fn Nfts() -> impl IntoView {
                                                                 .metadata
                                                                 .title
                                                                 .clone()
-                                                                .unwrap_or_else(|| "Untitled".to_string());
+                                                                .unwrap_or_else(|| TranslationKey::PagesNftsFallbackUntitled.format(&[]));
                                                             let media = nft.metadata.media.clone();
                                                             let token_id = nft.token_id.clone();
                                                             let navigate = use_navigate();
@@ -1021,10 +1028,12 @@ pub fn Nfts() -> impl IntoView {
                                 attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer no-mobile-ripple"
                             >
                                 <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                                <span>"Back"</span>
+                                <span>{move || TranslationKey::PagesNftsBack.format(&[])}</span>
                             </A>
                             <div class="flex justify-between items-center pr-4">
-                                <h1 class="text-white text-2xl font-bold">"NFT Collections"</h1>
+                                <h1 class="text-white text-2xl font-bold">
+                                    {move || TranslationKey::PagesNftsTitleCollections.format(&[])}
+                                </h1>
                                 <button
                                     class="text-neutral-400 hover:text-white transition-colors cursor-pointer"
                                     on:click=move |_| {
@@ -1077,10 +1086,12 @@ pub fn Nfts() -> impl IntoView {
                                             view! {
                                                 <div class="flex flex-col items-center justify-center h-64 text-center">
                                                     <div class="text-neutral-400 text-lg mb-2">
-                                                        "No NFTs found"
+                                                        {move || TranslationKey::PagesNftsEmptyCollectionsTitle
+                                                            .format(&[])}
                                                     </div>
                                                     <div class="text-neutral-500 text-sm">
-                                                        "Your NFT collections will appear here"
+                                                        {move || TranslationKey::PagesNftsEmptyCollectionsSubtitle
+                                                            .format(&[])}
                                                     </div>
                                                 </div>
                                             }
@@ -1181,7 +1192,7 @@ pub fn Nfts() -> impl IntoView {
                                                                                     if let Some(metadata) = &metadata_for_name {
                                                                                         metadata.name.clone()
                                                                                     } else {
-                                                                                        "Unknown Collection".to_string()
+                                                                                        TranslationKey::PagesNftsFallbackUnknownCollection.format(&[])
                                                                                     }
                                                                                 }}
                                                                             </div>
@@ -1232,10 +1243,12 @@ pub fn Nfts() -> impl IntoView {
                                 attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer no-mobile-ripple"
                             >
                                 <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                                <span>"Back"</span>
+                                <span>{move || TranslationKey::PagesNftsBack.format(&[])}</span>
                             </A>
                             <div class="flex justify-between items-center pr-4">
-                                <h1 class="text-white text-2xl font-bold">"Your NFTs"</h1>
+                                <h1 class="text-white text-2xl font-bold">
+                                    {move || TranslationKey::PagesNftsTitleYourNfts.format(&[])}
+                                </h1>
                                 <button
                                     class="text-neutral-400 hover:text-white transition-colors cursor-pointer"
                                     on:click=move |_| {
@@ -1302,10 +1315,11 @@ pub fn Nfts() -> impl IntoView {
                                             return view! {
                                                 <div class="flex flex-col items-center justify-center h-64 text-center">
                                                     <div class="text-neutral-400 text-lg mb-2">
-                                                        "No NFTs found"
+                                                        {move || TranslationKey::PagesNftsEmptyAllNftsTitle.format(&[])}
                                                     </div>
                                                     <div class="text-neutral-500 text-sm">
-                                                        "Your NFTs will appear here"
+                                                        {move || TranslationKey::PagesNftsEmptyAllNftsSubtitle
+                                                            .format(&[])}
                                                     </div>
                                                 </div>
                                             }
@@ -1326,7 +1340,7 @@ pub fn Nfts() -> impl IntoView {
                                                     .metadata
                                                     .as_ref()
                                                     .map(|m| m.name.clone())
-                                                    .unwrap_or_else(|| "Unknown Collection".to_string());
+                                                    .unwrap_or_else(|| TranslationKey::PagesNftsFallbackUnknownCollection.format(&[]));
                                                 let contract_id_display = collection.contract_id.clone();
                                                 let cfg = config.get();
                                                 let global_spam_list = spam_list.get().unwrap_or_default();
@@ -1406,7 +1420,7 @@ pub fn Nfts() -> impl IntoView {
                                                             .metadata
                                                             .title
                                                             .clone()
-                                                            .unwrap_or_else(|| "Untitled".to_string());
+                                                            .unwrap_or_else(|| TranslationKey::PagesNftsFallbackUntitled.format(&[]));
                                                         let media = nft.metadata.media.clone();
                                                         let token_id = nft.token_id.clone();
                                                         let contract_id_nav = contract_id_display.clone();
@@ -1626,30 +1640,41 @@ pub fn SendNft() -> impl IntoView {
 
                     if ft_metadata_result.is_ok() {
                         set_recipient_warning.set(Some(RecipientWarning {
-                            message: "This is a token contract address, not someone's wallet address, sending NFTs to it would likely result in asset loss".to_string(),
+                            message: TranslationKey::PagesNftsWarningRecipientTokenContract
+                                .format(&[]),
                             link: Some(format!("/token/{}", recipient_for_validator_check)),
-                            link_text: Some("View token details".to_string()),
+                            link_text: Some(
+                                TranslationKey::PagesNftsWarningRecipientTokenContractLink
+                                    .format(&[]),
+                            ),
                         }));
                     } else if nft_metadata_result.is_ok() {
                         set_recipient_warning.set(Some(RecipientWarning {
-                            message: "This is an NFT contract address, not someone's wallet address, sending NFTs to it would likely result in asset loss".to_string(),
+                            message: TranslationKey::PagesNftsWarningRecipientNftContract
+                                .format(&[]),
                             link: Some(format!("/nfts/{}", recipient_for_validator_check)),
-                            link_text: Some("View NFT collection".to_string()),
+                            link_text: Some(
+                                TranslationKey::PagesNftsWarningRecipientNftContractLink
+                                    .format(&[]),
+                            ),
                         }));
                     } else if is_validator_supported(
                         &recipient_for_validator_check,
                         network.get_untracked(),
                     ) {
                         set_recipient_warning.set(Some(RecipientWarning {
-                            message: "This is a validator address. Sending NFTs to validators will result in asset loss. Consider using the staking functionality instead".to_string(),
+                            message: TranslationKey::PagesNftsWarningRecipientValidator.format(&[]),
                             link: Some(format!("/stake/{}/stake", recipient_for_validator_check)),
-                            link_text: Some("Stake instead".to_string()),
+                            link_text: Some(
+                                TranslationKey::PagesNftsWarningRecipientValidatorLink.format(&[]),
+                            ),
                         }));
                     } else if recipient_is_evm_implicit
                         && !balance_result.as_ref().is_ok_and(|a| !a.amount.is_zero())
                     {
                         set_recipient_warning.set(Some(RecipientWarning {
-                            message: "This is an EVM-like address on NEAR blockchain. These addresses are supported, but they're incredibly rare, so you probably don't want to do this. Please use a bridge if you want to send tokens to Ethereum or other networks".to_string(),
+                            message: TranslationKey::PagesNftsWarningRecipientEvmImplicit
+                                .format(&[]),
                             link: None,
                             link_text: None,
                         }));
@@ -1795,7 +1820,7 @@ pub fn SendNft() -> impl IntoView {
                 }
             >
                 <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                <span>"Back"</span>
+                <span>{move || TranslationKey::PagesNftsBack.format(&[])}</span>
             </button>
 
             {move || {
@@ -1805,7 +1830,7 @@ pub fn SendNft() -> impl IntoView {
                             .metadata
                             .title
                             .clone()
-                            .unwrap_or_else(|| "Untitled".to_string());
+                            .unwrap_or_else(|| TranslationKey::PagesNftsFallbackUntitled.format(&[]));
                         let media_opt = token.metadata.media.clone();
                         let base_uri = collection_metadata
                             .get()
@@ -1857,7 +1882,9 @@ pub fn SendNft() -> impl IntoView {
 
                                 <div class="flex flex-col gap-4">
                                     <div class="flex flex-col gap-2">
-                                        <label class="text-gray-400">"Recipient"</label>
+                                        <label class="text-gray-400">
+                                            {move || TranslationKey::PagesNftsSendRecipientLabel.format(&[])}
+                                        </label>
                                         <input
                                             type="text"
                                             class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 text-base"
@@ -1937,30 +1964,37 @@ pub fn SendNft() -> impl IntoView {
                                                         {move || {
                                                             if let Ok(recipient) = recipient.get().parse::<AccountId>()
                                                             {
-                                                                format_account_id_no_hide(&recipient)
+                                                                let balance =
+                                                                    format_token_amount_no_hide(
+                                                                        recipient_balance.as_yoctonear(),
+                                                                        24,
+                                                                        "NEAR",
+                                                                    );
+                                                                TranslationKey::PagesNftsSendRecipientHasBalance
+                                                                    .format(&[
+                                                                        ("account", recipient.as_str()),
+                                                                        ("balance", &balance),
+                                                                    ])
                                                             } else {
-                                                                ().into_any()
+                                                                String::new()
                                                             }
-                                                        }}" has "
-                                                        {format_token_amount_no_hide(
-                                                            recipient_balance.as_yoctonear(),
-                                                            24,
-                                                            "NEAR",
-                                                        )}
+                                                        }}
                                                     </p>
                                                 }
                                                     .into_any()
                                             } else if is_loading_recipient.get() {
                                                 view! {
                                                     <p class="text-gray-400 text-sm mt-2 font-medium">
-                                                        Checking...
+                                                        {move || TranslationKey::PagesNftsSendChecking
+                                                            .format(&[])}
                                                     </p>
                                                 }
                                                     .into_any()
                                             } else if has_typed_recipient.get() {
                                                 view! {
                                                     <p class="text-red-500 text-sm mt-2 font-medium">
-                                                        "Account does not exist"
+                                                        {move || TranslationKey::PagesNftsSendAccountNotExist
+                                                            .format(&[])}
                                                     </p>
                                                 }
                                                     .into_any()
@@ -1988,7 +2022,10 @@ pub fn SendNft() -> impl IntoView {
                                                 } else {
                                                     view! {
                                                         <Icon icon=icondata::LuSend width="20" height="20" />
-                                                        <span>"Send"</span>
+                                                        <span>
+                                                            {move || TranslationKey::PagesNftsSendButton
+                                                                .format(&[])}
+                                                        </span>
                                                     }
                                                         .into_any()
                                                 }
@@ -2003,9 +2040,11 @@ pub fn SendNft() -> impl IntoView {
                     Some(None) => {
                         view! {
                             <div class="flex flex-col items-center justify-center h-64 text-center">
-                                <div class="text-neutral-400 text-lg mb-2">"NFT not found"</div>
+                                <div class="text-neutral-400 text-lg mb-2">
+                                    {move || TranslationKey::PagesNftsNotFoundTitle.format(&[])}
+                                </div>
                                 <div class="text-neutral-500 text-sm">
-                                    "Unable to locate the requested NFT token"
+                                    {move || TranslationKey::PagesNftsNotFoundSubtitle.format(&[])}
                                 </div>
                             </div>
                         }
@@ -2130,7 +2169,9 @@ pub fn NftTokenDetails() -> impl IntoView {
                     }
                 >
                     <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                    <h1 class="text-white text-2xl font-bold">"NFT Details"</h1>
+                    <h1 class="text-white text-2xl font-bold">
+                        {move || TranslationKey::PagesNftsTitleNftDetails.format(&[])}
+                    </h1>
                 </button>
                 <div class="flex items-center gap-3">
                     <button
@@ -2152,7 +2193,11 @@ pub fn NftTokenDetails() -> impl IntoView {
                             } else {
                                 false
                             };
-                            if hidden { "Unhide" } else { "Hide" }
+                            if hidden {
+                                TranslationKey::PagesNftsUnhide.format(&[])
+                            } else {
+                                TranslationKey::PagesNftsHide.format(&[])
+                            }
                         }
                         class="text-neutral-400 hover:text-white transition-colors cursor-pointer"
                         style=move || {
@@ -2183,14 +2228,14 @@ pub fn NftTokenDetails() -> impl IntoView {
                         if is_reported.get() {
                             view! {
                                 <span class="text-neutral-400 text-sm select-none">
-                                    "Reported!"
+                                    {move || TranslationKey::PagesNftsReported.format(&[])}
                                 </span>
                             }
                                 .into_any()
                         } else {
                             view! {
                                 <button
-                                    title="Report"
+                                    title=move || TranslationKey::PagesNftsReport.format(&[])
                                     class="text-neutral-400 hover:text-white transition-colors cursor-pointer"
                                     on:click=report_token
                                 >
@@ -2215,7 +2260,7 @@ pub fn NftTokenDetails() -> impl IntoView {
                             .metadata
                             .title
                             .clone()
-                            .unwrap_or_else(|| "Untitled".to_string());
+                            .unwrap_or_else(|| TranslationKey::PagesNftsFallbackUntitled.format(&[]));
                         let description = token.metadata.description.clone().unwrap_or_default();
                         let media_opt = token.metadata.media.clone();
                         let base_uri = collection_metadata
@@ -2262,14 +2307,14 @@ pub fn NftTokenDetails() -> impl IntoView {
                                     attr:class="bg-neutral-900 rounded-xl p-2 py-4 text-white hover:bg-neutral-800 transition-colors flex items-center gap-2 cursor-pointer w-full justify-center mb-4"
                                 >
                                     <Icon icon=icondata::LuSend width="20" height="20" />
-                                    <span>"Send"</span>
+                                    <span>{move || TranslationKey::PagesNftsSendButton.format(&[])}</span>
                                 </A> <div class="space-y-4 px-2">
                                     <h2 class="text-2xl font-semibold text-white wrap-break-word">
                                         {title}
                                     </h2>
                                     <p class="text-neutral-400 whitespace-pre-wrap wrap-break-word mb-4">
                                         {if description.is_empty() {
-                                            "No description".to_string()
+                                            TranslationKey::PagesNftsDetailsNoDescription.format(&[])
                                         } else {
                                             description
                                         }}
@@ -2281,7 +2326,8 @@ pub fn NftTokenDetails() -> impl IntoView {
                                                 view! {
                                                     <div class="mt-6">
                                                         <h3 class="text-lg font-semibold text-white mb-3">
-                                                            "Traits"
+                                                            {move || TranslationKey::PagesNftsDetailsTraitsHeading
+                                                                .format(&[])}
                                                         </h3>
                                                         <div class="grid grid-cols-2 gap-3">
                                                             {traits
@@ -2314,9 +2360,11 @@ pub fn NftTokenDetails() -> impl IntoView {
                     } else {
                         view! {
                             <div class="flex flex-col items-center justify-center h-64 text-center">
-                                <div class="text-neutral-400 text-lg mb-2">"NFT not found"</div>
+                                <div class="text-neutral-400 text-lg mb-2">
+                                    {move || TranslationKey::PagesNftsNotFoundTitle.format(&[])}
+                                </div>
                                 <div class="text-neutral-500 text-sm">
-                                    "Unable to locate the requested NFT token"
+                                    {move || TranslationKey::PagesNftsNotFoundSubtitle.format(&[])}
                                 </div>
                             </div>
                         }

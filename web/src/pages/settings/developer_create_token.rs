@@ -592,7 +592,10 @@ pub fn DeveloperCreateToken() -> impl IntoView {
                                         <div class="flex items-start gap-3">
                                             <img
                                                 src=image_data_url.clone()
-                                                alt="Token image preview"
+                                                alt=move || {
+                                                    TranslationKey::PagesSettingsDeveloperCreateTokenImagePreviewAlt
+                                                        .format(&[])
+                                                }
                                                 class="w-32 h-32 object-cover rounded-lg border border-neutral-600 bg-neutral-900"
                                             />
                                             <button

@@ -2,6 +2,8 @@ use leptos::prelude::*;
 use leptos_icons::*;
 use std::time::Duration;
 
+use crate::translations::TranslationKey;
+
 #[component]
 pub fn CopyButton(#[prop(into)] text: Signal<String>) -> impl IntoView {
     let (is_copied, set_is_copied) = signal(false);
@@ -16,7 +18,7 @@ pub fn CopyButton(#[prop(into)] text: Signal<String>) -> impl IntoView {
                 set_is_copied(true);
                 set_timeout(move || set_is_copied(false), Duration::from_millis(2000));
             }
-            title="Copy amount"
+            title=move || TranslationKey::ComponentsCopyButtonTitle.format(&[])
         >
             {move || {
                 if is_copied.get() {

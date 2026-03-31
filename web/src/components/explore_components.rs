@@ -11,6 +11,7 @@ use crate::{
         tokens_context::{Token, TokenInfo, TokenScore, TokensContext},
     },
     data::learn::ARTICLES,
+    translations::TranslationKey,
     utils::{balance_to_decimal, format_token_price},
 };
 
@@ -126,8 +127,12 @@ pub fn TrendingTokensSection() -> impl IntoView {
     view! {
         <div class="bg-neutral-900 rounded-xl p-4 mb-4">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-white text-xl font-semibold">"Trending Tokens"</h2>
-                <div class="text-neutral-400 text-sm">"24h"</div>
+                <h2 class="text-white text-xl font-semibold">
+                    {move || TranslationKey::PagesExploreTrendingTokens.format(&[])}
+                </h2>
+                <div class="text-neutral-400 text-sm">
+                    {move || TranslationKey::PagesExplorePeriod24h.format(&[])}
+                </div>
             </div>
             <Suspense fallback=move || {
                 view! {
@@ -213,7 +218,13 @@ pub fn TrendingTokensSection() -> impl IntoView {
                     on:click=move |_| set_show_all.update(|v| *v = !*v)
                     class="flex items-center gap-1 text-neutral-300 hover:text-white text-sm px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700 cursor-pointer transition-colors"
                 >
-                    {move || if show_all.get() { "Show Less" } else { "Show More" }}
+                    {move || {
+                        if show_all.get() {
+                            TranslationKey::PagesExploreShowLess.format(&[])
+                        } else {
+                            TranslationKey::PagesExploreShowMore.format(&[])
+                        }
+                    }}
                     {move || {
                         if show_all.get() {
                             view! { <Icon icon=icondata::LuChevronUp width="16" height="16" /> }
@@ -257,7 +268,9 @@ pub fn LearnSection() -> impl IntoView {
 
     view! {
         <div class="bg-neutral-900 rounded-xl p-4 mb-4">
-            <h2 class="text-white text-xl font-semibold mb-4">"Learn"</h2>
+            <h2 class="text-white text-xl font-semibold mb-4">
+                {move || TranslationKey::PagesExploreLearn.format(&[])}
+            </h2>
             <div class="space-y-0 rounded-lg overflow-hidden">
                 {move || {
                     displayed_articles()
@@ -307,7 +320,7 @@ pub fn LearnSection() -> impl IntoView {
                                 }
                                 class="flex items-center gap-1 text-neutral-300 hover:text-white text-sm px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700 cursor-pointer transition-colors"
                             >
-                                "Show More"
+                                {move || TranslationKey::PagesExploreShowMore.format(&[])}
                                 <Icon icon=icondata::LuChevronDown width="16" height="16" />
                             </button>
                         </div>
@@ -330,6 +343,31 @@ enum RecommendationType {
     Firedrops,
 }
 
+fn recommendation_text_keys(card_type: RecommendationType) -> (TranslationKey, TranslationKey) {
+    match card_type {
+        RecommendationType::Rhea => (
+            TranslationKey::PagesExploreRecommendationsRheaTitle,
+            TranslationKey::PagesExploreRecommendationsRheaDescription,
+        ),
+        RecommendationType::Stables => (
+            TranslationKey::PagesExploreRecommendationsStablesTitle,
+            TranslationKey::PagesExploreRecommendationsStablesDescription,
+        ),
+        RecommendationType::Staking => (
+            TranslationKey::PagesExploreRecommendationsStakingTitle,
+            TranslationKey::PagesExploreRecommendationsStakingDescription,
+        ),
+        RecommendationType::Shitzu => (
+            TranslationKey::PagesExploreRecommendationsShitzuTitle,
+            TranslationKey::PagesExploreRecommendationsShitzuDescription,
+        ),
+        RecommendationType::Firedrops => (
+            TranslationKey::PagesExploreRecommendationsFiredropsTitle,
+            TranslationKey::PagesExploreRecommendationsFiredropsDescription,
+        ),
+    }
+}
+
 #[component]
 pub fn ForYouSection() -> impl IntoView {
     let TokensContext {
@@ -339,7 +377,7 @@ pub fn ForYouSection() -> impl IntoView {
     } = expect_context::<TokensContext>();
 
     let recommendations = move || {
-        let mut recs = Vec::new();
+        let mut recommendations = Vec::new();
         let tokens_data = tokens.get();
 
         // Calculate total portfolio value
@@ -354,17 +392,13 @@ pub fn ForYouSection() -> impl IntoView {
 
         // Add Shitzu Boost recommendation if total value is less than $100
         if total_value < 100 {
-            recs.push((
-                "Earn with Shitzu Boost",
+            recommendations.push((
                 "https://t.me/ShitzuTasks",
-                "Complete simple tasks to earn rewards in $SHITZU",
                 vec![],
                 RecommendationType::Shitzu,
             ));
-            recs.push((
-                "Collect Firedrops",
+            recommendations.push((
                 "https://t.me/firedrops_board",
-                "Get $0.04+ for a few clicks",
                 vec![],
                 RecommendationType::Firedrops,
             ));
@@ -405,10 +439,8 @@ pub fn ForYouSection() -> impl IntoView {
             .collect::<Vec<_>>();
 
         if !stable_tokens.is_empty() {
-            recs.push((
-                "Deposit stables on Rhea Lending with 9%+ APY",
+            recommendations.push((
                 "https://lending.rhea.finance/",
-                "Earn high yields on your stablecoins",
                 stable_tokens,
                 RecommendationType::Stables,
             ));
@@ -439,13 +471,7 @@ pub fn ForYouSection() -> impl IntoView {
             .collect::<Vec<_>>();
 
         if !near_tokens.is_empty() {
-            recs.push((
-                "Stake NEAR with our validator for 4-5% APY",
-                "",
-                "Earn staking rewards on your NEAR, with unstaking delay of 1 day",
-                near_tokens,
-                RecommendationType::Staking,
-            ));
+            recommendations.push(("", near_tokens, RecommendationType::Staking));
         }
 
         // Check for REF holdings
@@ -471,21 +497,21 @@ pub fn ForYouSection() -> impl IntoView {
             .collect::<Vec<_>>();
 
         if !ref_tokens.is_empty() {
-            recs.push((
-                "Stake $RHEA for 2-3% APY",
+            recommendations.push((
                 "https://app.rhea.finance/stake",
-                "No unstaking delay, revenue comes from Rhea fees",
                 ref_tokens,
                 RecommendationType::Rhea,
             ));
         }
 
-        recs
+        recommendations
     };
 
     view! {
         <div class="mb-8">
-            <h2 class="text-white text-xl font-semibold mb-4">"Opportunities For You"</h2>
+            <h2 class="text-white text-xl font-semibold mb-4">
+                {move || TranslationKey::PagesExploreOpportunitiesForYou.format(&[])}
+            </h2>
             {move || {
                 if loading_tokens.get() {
                     view! {
@@ -495,12 +521,15 @@ pub fn ForYouSection() -> impl IntoView {
                     }
                         .into_any()
                 } else {
-                    let recs = recommendations();
-                    if recs.is_empty() {
+                    let recommendations = recommendations();
+                    if recommendations.is_empty() {
                         view! {
                             <div class="bg-neutral-900 rounded-xl p-6 text-center">
                                 <p class="text-white/60">
-                                    No personalized recommendations available yet.
+                                    {move || {
+                                        TranslationKey::PagesExploreNoPersonalizedRecommendations
+                                            .format(&[])
+                                    }}
                                 </p>
                             </div>
                         }
@@ -508,9 +537,11 @@ pub fn ForYouSection() -> impl IntoView {
                     } else {
                         view! {
                             <div class="flex flex-col gap-3">
-                                {recs
+                                {recommendations
                                     .into_iter()
-                                    .map(|(title, url, description, tokens, card_type)| {
+                                    .map(|(url, tokens, card_type)| {
+                                        let (title_key, desc_key) =
+                                            recommendation_text_keys(card_type);
                                         let (background_style, border_color, badge) = match card_type {
                                             RecommendationType::Rhea => {
                                                 (
@@ -534,7 +565,10 @@ pub fn ForYouSection() -> impl IntoView {
                                                         view! {
                                                             <div class="text-yellow-500 font-medium flex items-center gap-1 text-xs mt-4">
                                                                 <Icon icon=icondata::LuStar width="12" height="12" />
-                                                                "By Wallet Creators"
+                                                                {move || {
+                                                                    TranslationKey::PagesExploreByWalletCreators
+                                                                        .format(&[])
+                                                                }}
                                                             </div>
                                                         },
                                                     ),
@@ -594,12 +628,17 @@ pub fn ForYouSection() -> impl IntoView {
                                                                 .collect::<Vec<_>>()}
                                                         </div>
                                                         <div>
-                                                            <p class="text-white/60 mt-2">{description}</p>
+                                                            <p class="text-white/60 mt-2">
+                                                                {move || desc_key.format(&[])}
+                                                            </p>
                                                             <A
                                                                 href="/stake/intear.pool.near/stake"
                                                                 attr:class="inline-flex items-center gap-1 text-white text-sm px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 cursor-pointer transition-colors mt-4"
                                                             >
-                                                                "Stake"
+                                                                {move || {
+                                                                    TranslationKey::PagesExploreStake
+                                                                        .format(&[])
+                                                                }}
                                                                 <Icon icon=icondata::LuArrowRight width="16" height="16" />
                                                             </A>
                                                             {badge}
@@ -650,9 +689,13 @@ pub fn ForYouSection() -> impl IntoView {
                                                         </div>
                                                         <div>
                                                             <div class="flex items-center gap-2">
-                                                                <h3 class="text-white text-lg font-medium">{title}</h3>
+                                                                <h3 class="text-white text-lg font-medium">
+                                                                    {move || title_key.format(&[])}
+                                                                </h3>
                                                             </div>
-                                                            <p class="text-white/60 mt-2">{description}</p>
+                                                            <p class="text-white/60 mt-2">
+                                                                {move || desc_key.format(&[])}
+                                                            </p>
                                                             {badge}
                                                         </div>
                                                     </div>

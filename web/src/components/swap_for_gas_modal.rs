@@ -448,7 +448,9 @@ pub fn SwapForGasModal() -> impl IntoView {
                 on:click=|ev| ev.stop_propagation()
             >
                 <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-xl font-bold text-white">"Swap For Gas"</h2>
+                    <h2 class="text-xl font-bold text-white">
+                        {move || TranslationKey::ComponentsSwapForGasModalTitle.format(&[])}
+                    </h2>
                     <button
                         class="text-gray-400 hover:text-white transition-colors cursor-pointer"
                         on:click=move |_| modal.set(None)
@@ -457,7 +459,7 @@ pub fn SwapForGasModal() -> impl IntoView {
                     </button>
                 </div>
                 <p class="text-gray-400 text-sm mb-6">
-                    "Select a token to swap for NEAR to pay for transaction fees."
+                    {move || TranslationKey::ComponentsSwapForGasModalDescription.format(&[])}
                 </p>
                 <div class="flex flex-col gap-3">
                     {move || {
@@ -465,7 +467,8 @@ pub fn SwapForGasModal() -> impl IntoView {
                         if tokens_list.is_empty() {
                             view! {
                                 <div class="text-center text-gray-400 py-8">
-                                    "No eligible tokens available for swap"
+                                    {move || TranslationKey::ComponentsSwapForGasModalNoEligibleTokens
+                                        .format(&[])}
                                 </div>
                             }
                                 .into_any()
@@ -544,7 +547,15 @@ pub fn SwapForGasModal() -> impl IntoView {
                                                     {move || format_usd_value(usd_value.clone())}
                                                 </span>
                                                 <span class="text-blue-400 text-sm font-medium">
-                                                    {if is_wrap_near { "Unwrap" } else { "Swap" }}
+                                                    {move || {
+                                                        if is_wrap_near {
+                                                            TranslationKey::ComponentsSwapForGasModalActionUnwrap
+                                                                .format(&[])
+                                                        } else {
+                                                            TranslationKey::ComponentsSwapForGasModalActionSwap
+                                                                .format(&[])
+                                                        }
+                                                    }}
                                                 </span>
                                             </div>
                                         </button>
@@ -578,12 +589,13 @@ pub fn SwapForGasModal() -> impl IntoView {
                                     }
                                 });
                             match (has_wrap_near, has_other_tokens) {
-                                (true, true) => {
-                                    "wNEAR will be unwrapped to NEAR for free. 0.03 NEAR after-swap fee applies to other tokens."
-                                }
-                                (true, false) => "wNEAR will be unwrapped to NEAR for free.",
-                                (false, true) => "0.03 NEAR will be taken after the swap as a fee.",
-                                (false, false) => "",
+                                (true, true) => TranslationKey::ComponentsSwapForGasModalFeeNoteWrapAndOther
+                                    .format(&[]),
+                                (true, false) => TranslationKey::ComponentsSwapForGasModalFeeNoteWrapOnly
+                                    .format(&[]),
+                                (false, true) => TranslationKey::ComponentsSwapForGasModalFeeNoteSwapOnly
+                                    .format(&[]),
+                                (false, false) => String::new(),
                             }
                         }}
                     </p>

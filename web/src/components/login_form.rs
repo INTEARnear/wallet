@@ -14,11 +14,12 @@ use crate::contexts::accounts_context::{
     Account, AccountsContext, SecretKeyHolder, format_ledger_error,
 };
 use crate::contexts::config_context::ConfigContext;
-use crate::contexts::legal_consents_context::{LEGAL_CONSENTS_BLOCKING_MESSAGE, LegalConsents};
+use crate::contexts::legal_consents_context::LegalConsents;
 use crate::contexts::network_context::Network;
 use crate::contexts::security_log_context::add_security_log;
 use crate::pages::settings::LedgerSelector;
 use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
+use crate::translations::TranslationKey;
 use crate::utils::serialize_to_js_value;
 
 async fn find_accounts_by_public_key(
@@ -133,7 +134,9 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                         if !legal_consents.all_accepted_untracked() {
                             set_available_accounts.set(vec![]);
                             set_selected_accounts.set(vec![]);
-                            set_error.set(Some(LEGAL_CONSENTS_BLOCKING_MESSAGE.to_string()));
+                            set_error.set(Some(
+                                TranslationKey::ComponentsLegalConsentsBlockingMessage.format(&[]),
+                            ));
                             return;
                         }
 
@@ -158,22 +161,28 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                     if all_accounts.is_empty() {
                                         if has_existing {
                                             set_error.set(Some(
-                                                "You already have an account with this Ledger key imported. There are no other accounts that can be imported."
-                                                    .to_string(),
+                                                TranslationKey::ComponentsLoginFormErrLedgerAlreadyImported
+                                                    .format(&[]),
                                             ));
                                         } else {
                                             set_error.set(Some(
-                                                "No accounts found for this Ledger key".to_string(),
+                                                TranslationKey::ComponentsLoginFormErrLedgerNoAccounts
+                                                    .format(&[]),
                                             ));
                                         }
                                     }
                                 });
                             } else {
-                                set_error.set(Some("Failed to parse public key".to_string()));
+                                set_error.set(Some(
+                                    TranslationKey::ComponentsLoginFormErrParsePublicKey
+                                        .format(&[]),
+                                ));
                             }
                         } else {
-                            set_error
-                                .set(Some("Invalid public key length from Ledger".to_string()));
+                            set_error.set(Some(
+                                TranslationKey::ComponentsLoginFormErrInvalidLedgerKeyLength
+                                    .format(&[]),
+                            ));
                         }
                     }
                     JsWalletResponse::LedgerConnectError { error } => {
@@ -200,7 +209,9 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
             return;
         }
         if !legal_consents.all_accepted_untracked() {
-            set_error.set(Some(LEGAL_CONSENTS_BLOCKING_MESSAGE.to_string()));
+            set_error.set(Some(
+                TranslationKey::ComponentsLegalConsentsBlockingMessage.format(&[]),
+            ));
             set_available_accounts.set(vec![]);
             set_selected_accounts.set(vec![]);
             set_is_valid.set(None);
@@ -210,7 +221,9 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
         let secret_key = if let Some(secret_key) = seed_phrase_to_key(&seed_phrase) {
             secret_key
         } else {
-            set_error.set(Some("Invalid seed phrase".to_string()));
+            set_error.set(Some(
+                TranslationKey::ComponentsLoginFormErrInvalidSeedPhrase.format(&[]),
+            ));
             set_is_valid.set(None);
             return;
         };
@@ -225,11 +238,12 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
             if all_accounts.is_empty() {
                 if has_existing {
                     set_error.set(Some(
-                        "You already have an account with this seed phrase imported. There are no other accounts that can be imported."
-                            .to_string(),
+                        TranslationKey::ComponentsLoginFormErrSeedAlreadyImported.format(&[]),
                     ));
                 } else {
-                    set_error.set(Some("No accounts found for this seed phrase".to_string()));
+                    set_error.set(Some(
+                        TranslationKey::ComponentsLoginFormErrSeedNoAccounts.format(&[]),
+                    ));
                 }
                 set_is_valid.set(None);
             } else {
@@ -245,7 +259,9 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
             return;
         }
         if !legal_consents.all_accepted_untracked() {
-            set_error.set(Some(LEGAL_CONSENTS_BLOCKING_MESSAGE.to_string()));
+            set_error.set(Some(
+                TranslationKey::ComponentsLegalConsentsBlockingMessage.format(&[]),
+            ));
             set_available_accounts.set(vec![]);
             set_selected_accounts.set(vec![]);
             set_is_valid.set(None);
@@ -255,7 +271,9 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
         let secret_key = if let Ok(secret_key) = private_key.parse::<SecretKey>() {
             secret_key
         } else {
-            set_error.set(Some("Invalid private key".to_string()));
+            set_error.set(Some(
+                TranslationKey::ComponentsLoginFormErrInvalidPrivateKey.format(&[]),
+            ));
             set_is_valid.set(None);
             return;
         };
@@ -270,11 +288,12 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
             if all_accounts.is_empty() {
                 if has_existing {
                     set_error.set(Some(
-                        "You already have an account with this private key imported. There are no other accounts that can be imported."
-                            .to_string(),
+                        TranslationKey::ComponentsLoginFormErrPrivateKeyAlreadyImported.format(&[]),
                     ));
                 } else {
-                    set_error.set(Some("No accounts found for this private key".to_string()));
+                    set_error.set(Some(
+                        TranslationKey::ComponentsLoginFormErrPrivateKeyNoAccounts.format(&[]),
+                    ));
                 }
                 set_is_valid.set(None);
             } else {
@@ -285,7 +304,9 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
 
     let import_account = move || {
         if !legal_consents.all_accepted_untracked() {
-            set_error.set(Some(LEGAL_CONSENTS_BLOCKING_MESSAGE.to_string()));
+            set_error.set(Some(
+                TranslationKey::ComponentsLegalConsentsBlockingMessage.format(&[]),
+            ));
             return;
         }
         let selected_list = selected_accounts.get();
@@ -301,7 +322,9 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
             } else if let Some(secret_key) = seed_phrase_to_key(&user_input) {
                 (secret_key, Some(user_input))
             } else {
-                set_error.set(Some("Invalid seed phrase".to_string()));
+                set_error.set(Some(
+                    TranslationKey::ComponentsLoginFormErrInvalidSeedPhrase.format(&[]),
+                ));
                 set_is_valid.set(None);
                 set_import_in_progress(false);
                 return;
@@ -384,7 +407,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
             }} <div class="flex items-center justify-center min-h-[calc(100%-40px)]">
                 <div class="bg-neutral-950 p-8 rounded-xl w-full max-w-md">
                     <h2 class="text-white text-2xl font-semibold mb-6">
-                        "Log in with Existing Account"
+                        {move || TranslationKey::ComponentsLoginFormTitle.format(&[])}
                     </h2>
 
                     // Always show login method selection buttons
@@ -416,7 +439,12 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                         attr:class="text-blue-400"
                                     />
                                 </div>
-                                <div class="text-white text-sm font-medium">"Seed Phrase"</div>
+                                <div class="text-white text-sm font-medium">
+                                    {move || {
+                                        TranslationKey::ComponentsLoginFormMethodSeedPhrase
+                                            .format(&[])
+                                    }}
+                                </div>
                             </div>
                         </button>
 
@@ -447,7 +475,12 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                         attr:class="text-green-500"
                                     />
                                 </div>
-                                <div class="text-white text-sm font-medium">"Private Key"</div>
+                                <div class="text-white text-sm font-medium">
+                                    {move || {
+                                        TranslationKey::ComponentsLoginFormMethodPrivateKey
+                                            .format(&[])
+                                    }}
+                                </div>
                             </div>
                         </button>
                         <button
@@ -479,7 +512,9 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                         attr:class="text-purple-400"
                                     />
                                 </div>
-                                <div class="text-white text-sm font-medium">"Ledger"</div>
+                                <div class="text-white text-sm font-medium">
+                                    {move || TranslationKey::ComponentsLoginFormMethodLedger.format(&[])}
+                                </div>
                             </div>
                         </button>
                     </div>
@@ -490,7 +525,10 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                 <div class="space-y-4">
                                     <div class="text-center py-8">
                                         <p class="text-neutral-400">
-                                            "Select a login method above to continue"
+                                            {move || {
+                                                TranslationKey::ComponentsLoginFormHintSelectMethod
+                                                    .format(&[])
+                                            }}
                                         </p>
                                     </div>
                                 </div>
@@ -521,7 +559,10 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                             view! {
                                                 <div class="space-y-2">
                                                     <label class="block text-neutral-400 text-sm font-medium">
-                                                        "Select Accounts to Import"
+                                                        {move || {
+                                                            TranslationKey::ComponentsLoginFormLabelSelectAccountsImport
+                                                                .format(&[])
+                                                        }}
                                                     </label>
                                                     <div class="space-y-2 max-h-48 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                                                         {available_accounts
@@ -567,8 +608,16 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                                 if network == Network::Testnet {
                                                                                     view! {
                                                                                         <p class="text-yellow-500 text-sm mt-1 font-medium">
-                                                                                            "This is a " <b>"testnet"</b>
-                                                                                            " account. Tokens sent to this account are not real and hold no value"
+                                                                                            {move || TranslationKey::ComponentsLoginFormTestnetImportDisclaimer
+                                                                                                .format_view(vec![("testnet", view! {
+                                                                                                    <b>
+                                                                                                        {move || {
+                                                                                                            TranslationKey::ComponentsLoginFormTestnetWord
+                                                                                                                .format(&[])
+                                                                                                        }}
+                                                                                                    </b>
+                                                                                                }
+                                                                                                .into_any())])}
                                                                                         </p>
                                                                                     }
                                                                                         .into_any()
@@ -640,9 +689,11 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                 }}
                                                 {move || {
                                                     if import_in_progress.get() {
-                                                        "Importing...".to_string()
+                                                        TranslationKey::ComponentsLoginFormButtonImporting
+                                                            .format(&[])
                                                     } else {
-                                                        "Import Account".to_string()
+                                                        TranslationKey::ComponentsLoginFormButtonImportAccount
+                                                            .format(&[])
                                                     }
                                                 }}
                                             </span>
@@ -657,7 +708,10 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                 <div class="space-y-6">
                                     <div>
                                         <label class="block text-neutral-400 text-sm font-medium mb-2">
-                                            "Private Key"
+                                            {move || {
+                                                TranslationKey::ComponentsLoginFormLabelPrivateKeyField
+                                                    .format(&[])
+                                            }}
                                         </label>
                                         <div class="relative">
                                             <input
@@ -689,7 +743,10 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                             } else {
                                                 view! {
                                                     <p class="text-neutral-400 text-sm mt-2 font-medium">
-                                                        "Enter your private key"
+                                                        {move || {
+                                                            TranslationKey::ComponentsLoginFormHintEnterPrivateKey
+                                                                .format(&[])
+                                                        }}
                                                     </p>
                                                 }
                                                     .into_any()
@@ -701,7 +758,10 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                             view! {
                                                 <div class="space-y-2">
                                                     <label class="block text-neutral-400 text-sm font-medium">
-                                                        "Select Accounts to Import"
+                                                        {move || {
+                                                            TranslationKey::ComponentsLoginFormLabelSelectAccountsImport
+                                                                .format(&[])
+                                                        }}
                                                     </label>
                                                     <div class="space-y-2 max-h-48 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                                                         {available_accounts
@@ -750,8 +810,16 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                                 if network == Network::Testnet {
                                                                                     view! {
                                                                                         <p class="text-yellow-500 text-sm mt-1 font-medium">
-                                                                                            "This is a "<b>"testnet"</b>
-                                                                                            account. Tokens sent to this account are not real and hold no value
+                                                                                            {move || TranslationKey::ComponentsLoginFormTestnetImportDisclaimer
+                                                                                                .format_view(vec![("testnet",  view! {
+                                                                                                    <b>
+                                                                                                        {move || {
+                                                                                                            TranslationKey::ComponentsLoginFormTestnetWord
+                                                                                                                .format(&[])
+                                                                                                        }}
+                                                                                                    </b>
+                                                                                                }
+                                                                                                .into_any())])}
                                                                                         </p>
                                                                                     }
                                                                                         .into_any()
@@ -823,9 +891,11 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                 }}
                                                 {move || {
                                                     if import_in_progress.get() {
-                                                        "Importing...".to_string()
+                                                        TranslationKey::ComponentsLoginFormButtonImporting
+                                                            .format(&[])
                                                     } else {
-                                                        "Import Account".to_string()
+                                                        TranslationKey::ComponentsLoginFormButtonImportAccount
+                                                            .format(&[])
                                                     }
                                                 }}
                                             </span>
@@ -876,7 +946,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                             on:click=move |_| {
                                                                 if !legal_consents.all_accepted_untracked() {
                                                                     set_error
-                                                                        .set(Some(LEGAL_CONSENTS_BLOCKING_MESSAGE.to_string()));
+                                                                        .set(Some(TranslationKey::ComponentsLegalConsentsBlockingMessage.format(&[])));
                                                                     return;
                                                                 }
                                                                 set_error.set(None);
@@ -926,9 +996,11 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                 }}
                                                                 {move || {
                                                                     if ledger_getting_public_key.get() {
-                                                                        "Confirm in your Ledger".to_string()
+                                                                        TranslationKey::ComponentsLoginFormLedgerConfirmOnDevice
+                                                                            .format(&[])
                                                                     } else {
-                                                                        "Find Accounts".to_string()
+                                                                        TranslationKey::ComponentsLoginFormLedgerButtonFindAccounts
+                                                                            .format(&[])
                                                                     }
                                                                 }}
                                                             </span>
@@ -958,7 +1030,10 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                             view! {
                                                 <div class="space-y-2">
                                                     <label class="block text-neutral-400 text-sm font-medium">
-                                                        "Select Account to Import"
+                                                        {move || {
+                                                            TranslationKey::ComponentsLoginFormLabelSelectAccountImport
+                                                                .format(&[])
+                                                        }}
                                                     </label>
                                                     <div class="space-y-2 max-h-48 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                                                         {available_accounts
@@ -1010,7 +1085,10 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                             {account_id_str}
                                                                         </div>
                                                                         <div class="text-purple-400 text-sm mt-1 font-medium">
-                                                                            "Connected via Ledger"
+                                                                            {move || {
+                                                                                TranslationKey::ComponentsLoginFormLedgerBadgeConnectedVia
+                                                                                    .format(&[])
+                                                                            }}
                                                                         </div>
                                                                         {
                                                                             let network = network.clone();
@@ -1018,8 +1096,16 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                                 if network == Network::Testnet {
                                                                                     view! {
                                                                                         <p class="text-yellow-500 text-sm mt-1 font-medium">
-                                                                                            "This is a " <b>"testnet"</b>
-                                                                                            " account. Tokens sent to this account are not real and hold no value"
+                                                                                            {move || TranslationKey::ComponentsLoginFormTestnetImportDisclaimer
+                                                                                                .format_view(vec![("testnet",  view! {
+                                                                                                    <b>
+                                                                                                        {move || {
+                                                                                                            TranslationKey::ComponentsLoginFormTestnetWord
+                                                                                                                .format(&[])
+                                                                                                        }}
+                                                                                                    </b>
+                                                                                                }
+                                                                                                .into_any())])}
                                                                                         </p>
                                                                                     }
                                                                                         .into_any()
@@ -1055,7 +1141,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                             on:click=move |_| {
                                                                 if !legal_consents.all_accepted_untracked() {
                                                                     set_error
-                                                                        .set(Some(LEGAL_CONSENTS_BLOCKING_MESSAGE.to_string()));
+                                                                        .set(Some(TranslationKey::ComponentsLegalConsentsBlockingMessage.format(&[])));
                                                                     return;
                                                                 }
                                                                 if let Some((path, public_key)) = ledger_current_key_data
@@ -1102,12 +1188,10 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                     set_modal_state.set(ModalState::AccountList);
                                                                     set_import_in_progress(false);
                                                                 } else {
-                                                                    set_error
-                                                                        .set(
-                                                                            Some(
-                                                                                "Please find accounts first before importing".to_string(),
-                                                                            ),
-                                                                        );
+                                                                    set_error.set(Some(
+                                                                        TranslationKey::ComponentsLoginFormErrLedgerImportFindAccountsFirst
+                                                                            .format(&[]),
+                                                                    ));
                                                                 }
                                                             }
                                                         >
@@ -1124,9 +1208,11 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                 }}
                                                                 {move || {
                                                                     if import_in_progress.get() {
-                                                                        "Importing...".to_string()
+                                                                        TranslationKey::ComponentsLoginFormButtonImporting
+                                                                            .format(&[])
                                                                     } else {
-                                                                        "Import Account".to_string()
+                                                                        TranslationKey::ComponentsLoginFormButtonImportAccount
+                                                                            .format(&[])
                                                                     }
                                                                 }}
                                                             </span>
@@ -1151,7 +1237,9 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                             <div class="w-full border-t border-neutral-800"></div>
                         </div>
                         <div class="relative flex justify-center text-sm">
-                            <span class="px-2 bg-neutral-950 text-neutral-400">"or"</span>
+                            <span class="px-2 bg-neutral-950 text-neutral-400">
+                                {move || TranslationKey::ComponentsLoginFormDividerOr.format(&[])}
+                            </span>
                         </div>
                     </div>
 
@@ -1160,7 +1248,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                         disabled=move || !legal_consents.all_accepted()
                         on:click=move |_| {
                             if !legal_consents.all_accepted_untracked() {
-                                set_error.set(Some(LEGAL_CONSENTS_BLOCKING_MESSAGE.to_string()));
+                                set_error.set(Some(TranslationKey::ComponentsLegalConsentsBlockingMessage.format(&[])));
                                 return;
                             }
                             set_modal_state
@@ -1170,7 +1258,9 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                 })
                         }
                     >
-                        <span class="relative">"Create New Account"</span>
+                        <span class="relative">
+                            {move || TranslationKey::ComponentsLoginFormButtonCreateNewAccount.format(&[])}
+                        </span>
                     </button>
                 </div>
             </div>

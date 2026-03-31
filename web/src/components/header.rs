@@ -12,6 +12,7 @@ use crate::{
         account_selector_context::AccountSelectorContext, accounts_context::AccountsContext,
         search_context::SearchContext,
     },
+    translations::TranslationKey,
     utils::format_account_id,
 };
 
@@ -69,9 +70,11 @@ pub fn WalletHeader() -> impl IntoView {
                                     class="bg-transparent text-white w-full focus:outline-none text-base"
                                     placeholder=move || {
                                         if location.pathname.get() == "/stake" {
-                                            "Search validators..."
+                                            TranslationKey::ComponentsHeaderSearchValidatorsPlaceholder
+                                                .format(&[])
                                         } else {
-                                            "Search tokens..."
+                                            TranslationKey::ComponentsHeaderSearchTokensPlaceholder
+                                                .format(&[])
                                         }
                                     }
                                     prop:value=query

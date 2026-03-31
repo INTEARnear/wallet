@@ -236,7 +236,9 @@ pub fn SecuritySettings() -> impl IntoView {
                 }
                 Err(err) => {
                     log::error!("Failed to clear cache: {:?}", err);
-                    set_cache_clear_result(Some(Err("Failed to clear cache".to_string())));
+                    set_cache_clear_result(Some(Err(
+                        TranslationKey::PagesSettingsSecurityErrClearCache.format(&[]),
+                    )));
                 }
             }
             set_clearing_cache(false);

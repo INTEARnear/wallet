@@ -141,7 +141,7 @@ pub fn Settings() -> impl IntoView {
                     />
                     <span style=move || {
                         if is_active("/settings/developer") { "font-weight: bold;" } else { "" }
-                    }>{move || TranslationKey::PagesSettingsDeveloperSettingsTab.format(&[])}</span>
+                    }>{move || TranslationKey::PagesSettingsDeveloperTab.format(&[])}</span>
                 </A>
             </div>
             <div class="flex-1">

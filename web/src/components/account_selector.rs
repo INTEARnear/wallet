@@ -33,6 +33,7 @@ use crate::contexts::security_log_context::add_security_log;
 use crate::contexts::{
     account_selector_context::AccountSelectorContext, accounts_context::AccountsContext,
 };
+use crate::translations::TranslationKey;
 use crate::utils::{Resolution, is_debug_enabled, proxify_url};
 
 #[derive(Debug, Clone, Deserialize)]
@@ -298,7 +299,10 @@ pub fn AccountEntry(
                                 view! {
                                     <img
                                         src=proxify_url(&image_url, Resolution::Low)
-                                        alt="Profile"
+                                        alt=move || {
+                                            TranslationKey::ComponentsAccountSelectorProfileImageAlt
+                                                .format(&[])
+                                        }
                                         class="w-full h-full object-cover rounded-full"
                                     />
                                 }
@@ -939,7 +943,12 @@ pub fn AccountSelector() -> impl IntoView {
                                                     <Icon icon=icondata::LuPlus width="16" height="16" />
                                                 </div>
                                             </div>
-                                            <div class="text-xs text-center">"Add"</div>
+                                            <div class="text-xs text-center">
+                                                {move || {
+                                                    TranslationKey::ComponentsAccountSelectorButtonAdd
+                                                        .format(&[])
+                                                }}
+                                            </div>
                                         </button>
 
                                         <A
@@ -952,7 +961,12 @@ pub fn AccountSelector() -> impl IntoView {
                                                     <Icon icon=icondata::LuSettings width="16" height="16" />
                                                 </div>
                                             </div>
-                                            <div class="text-xs text-center">"Settings"</div>
+                                            <div class="text-xs text-center">
+                                                {move || {
+                                                    TranslationKey::ComponentsAccountSelectorButtonSettings
+                                                        .format(&[])
+                                                }}
+                                            </div>
                                         </A>
                                     </div>
                                 </div>
@@ -979,10 +993,16 @@ pub fn AccountSelector() -> impl IntoView {
                                         />
                                     </div>
                                     <h2 class="text-white text-2xl font-semibold mb-4 text-center">
-                                        "Logged Out from Different Device"
+                                        {move || {
+                                            TranslationKey::ComponentsAccountSelectorLoggedOutTitle
+                                                .format(&[])
+                                        }}
                                     </h2>
                                     <p class="text-neutral-400 mb-6 text-center">
-                                        "Your access to the following accounts was terminated using \"Terminate all other sessions\" button on another device:"
+                                        {move || {
+                                            TranslationKey::ComponentsAccountSelectorLoggedOutBody
+                                                .format(&[])
+                                        }}
                                     </p>
                                     <div class="mb-6 space-y-2">
                                         {accounts
@@ -1001,20 +1021,29 @@ pub fn AccountSelector() -> impl IntoView {
                                             class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden bg-red-500/20 hover:bg-red-500/30 cursor-pointer"
                                             on:click=move |_| set_show_security_alert.set(true)
                                         >
-                                            "I didn't do this"
+                                            {move || {
+                                                TranslationKey::ComponentsAccountSelectorButtonNotMe
+                                                    .format(&[])
+                                            }}
                                         </button>
                                         <button
                                             class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden cursor-pointer"
                                             style="background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%);"
                                             on:click=move |_| set_modal_state.set(ModalState::LoggingIn)
                                         >
-                                            "Import Account"
+                                            {move || {
+                                                TranslationKey::ComponentsAccountSelectorButtonImportAccount
+                                                    .format(&[])
+                                            }}
                                         </button>
                                         <button
                                             class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden bg-neutral-800 hover:bg-neutral-700 cursor-pointer"
                                             on:click=move |_| set_expanded(false)
                                         >
-                                            "OK"
+                                            {move || {
+                                                TranslationKey::ComponentsAccountSelectorButtonOk
+                                                    .format(&[])
+                                            }}
                                         </button>
                                     </div>
                                 </div>
@@ -1025,31 +1054,59 @@ pub fn AccountSelector() -> impl IntoView {
                                     <div class="absolute inset-0 flex items-center justify-center">
                                         <div class="bg-neutral-950 p-8 rounded-xl w-full max-w-md border border-red-500/20">
                                             <h3 class="text-xl font-semibold mb-4 text-white">
-                                                "Account Security Alert"
+                                                {move || {
+                                                    TranslationKey::ComponentsAccountSelectorSecurityAlertTitle
+                                                        .format(&[])
+                                                }}
                                             </h3>
                                             <p class="text-neutral-400 mb-6">
-                                                "If it wasn't you, your account most likely was compromised. Here's what you can do:"
+                                                {move || {
+                                                    TranslationKey::ComponentsAccountSelectorSecurityAlertIntro
+                                                        .format(&[])
+                                                }}
                                             </p>
                                             <ul class="list-disc list-inside text-neutral-400 mb-6 space-y-2">
                                                 <li>
-                                                    "Move on and create a new account with a fresh seed phrase (if your old account didn't have a lot of money)"
+                                                    {move || {
+                                                        TranslationKey::ComponentsAccountSelectorSecurityAlertBulletFreshAccount
+                                                            .format(&[])
+                                                    }}
                                                 </li>
                                                 <li>
-                                                    <a
-                                                        href="https://t.me/intearchat"
-                                                        target="_blank"
-                                                        class="text-blue-500 hover:text-blue-600"
-                                                    >
-                                                        "Contact support for assistance"
-                                                    </a>
-                                                    ". We are not able to recover your account, but we can give you the exact time when it happened, so you can try to remember what you did. Maybe you terminated all sessions from a different device."
+                                                    {move || {
+                                                        let link = view! {
+                                                            <a
+                                                                href="https://t.me/intearchat"
+                                                                target="_blank"
+                                                                class="text-blue-500 hover:text-blue-600"
+                                                            >
+                                                                {move || {
+                                                                    TranslationKey::ComponentsAccountSelectorSecurityAlertSupportLinkText
+                                                                        .format(&[])
+                                                                }}
+                                                            </a>
+                                                        }
+                                                        .into_any();
+                                                        let tail = view! {
+                                                            { move || {
+                                                                TranslationKey::ComponentsAccountSelectorSecurityAlertSupportTail
+                                                                    .format(&[])
+                                                            } }
+                                                        }
+                                                        .into_any();
+                                                        TranslationKey::ComponentsAccountSelectorSecurityAlertSupportBullet
+                                                            .format_view(vec![("link", link), ("tail", tail)])
+                                                    }}
                                                 </li>
                                             </ul>
                                             <button
                                                 class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden bg-neutral-800 hover:bg-neutral-700"
                                                 on:click=move |_| set_show_security_alert.set(false)
                                             >
-                                                "Close"
+                                                {move || {
+                                                    TranslationKey::ComponentsAccountSelectorSecurityAlertButtonClose
+                                                        .format(&[])
+                                                }}
                                             </button>
                                         </div>
                                     </div>

@@ -1,10 +1,12 @@
 use leptos::prelude::*;
 use leptos_icons::*;
 
+use crate::translations::TranslationKey;
+
 #[component]
 pub fn TransactionSuccessModal(
     on_close: impl Fn() + 'static + Clone,
-    message: String,
+    message: impl Fn() -> String + 'static + Send,
 ) -> impl IntoView {
     let on_close2 = on_close.clone();
     view! {
@@ -26,7 +28,9 @@ pub fn TransactionSuccessModal(
                                 attr:class="text-white"
                             />
                         </div>
-                        <h3 class="text-white font-bold text-xl mb-2">"Transaction Successful!"</h3>
+                        <h3 class="text-white font-bold text-xl mb-2">
+                            {move || TranslationKey::ComponentsTransactionModalsTitleSuccess.format(&[])}
+                        </h3>
                         <p class="text-gray-400 text-sm">{message}</p>
                     </div>
 
@@ -34,7 +38,7 @@ pub fn TransactionSuccessModal(
                         class="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
                         on:click=move |_| on_close2()
                     >
-                        "Close"
+                        {move || TranslationKey::ComponentsTransactionModalsButtonClose.format(&[])}
                     </button>
                 </div>
             </div>
@@ -67,7 +71,9 @@ pub fn TransactionErrorModal(
                                 attr:class="text-white"
                             />
                         </div>
-                        <h3 class="text-white font-bold text-xl mb-2">"Transaction Failed"</h3>
+                        <h3 class="text-white font-bold text-xl mb-2">
+                            {move || TranslationKey::ComponentsTransactionModalsTitleFailed.format(&[])}
+                        </h3>
                         <p class="text-gray-400 text-sm">{error}</p>
                     </div>
 
@@ -75,7 +81,7 @@ pub fn TransactionErrorModal(
                         class="w-full mt-6 bg-red-600 hover:bg-red-700 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
                         on:click=move |_| on_close2()
                     >
-                        "Close"
+                        {move || TranslationKey::ComponentsTransactionModalsButtonClose.format(&[])}
                     </button>
                 </div>
             </div>

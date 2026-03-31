@@ -11,6 +11,7 @@ use crate::{
         accounts_context::AccountsContext,
         security_log_context::{SecurityLog, load_security_logs},
     },
+    translations::TranslationKey,
     utils::format_account_id,
 };
 
@@ -52,7 +53,9 @@ pub fn SecurityLogPage() -> impl IntoView {
     view! {
         <div class="flex flex-col gap-4 p-4">
             <div class="flex items-center justify-between">
-                <div class="text-xl font-semibold">"Security Log"</div>
+                <div class="text-xl font-semibold">
+                    {move || TranslationKey::PagesSettingsSecurityLogPageTitle.format(&[])}
+                </div>
             </div>
 
             <div class="flex flex-col gap-4">
@@ -62,7 +65,12 @@ pub fn SecurityLogPage() -> impl IntoView {
                         view! {
                             <div class="flex flex-col items-center justify-center p-8 text-neutral-400">
                                 <Icon icon=icondata::LuShieldCheck width="32" height="32" />
-                                <div class="mt-4 text-center">"No security logs found"</div>
+                                <div class="mt-4 text-center">
+                                    {move || {
+                                        TranslationKey::PagesSettingsSecurityLogEmptyState
+                                            .format(&[])
+                                    }}
+                                </div>
                             </div>
                         }
                             .into_any()
@@ -106,7 +114,8 @@ fn LogEntry(log: SecurityLog) -> impl IntoView {
     let log_for_message = log.clone();
     let account_id = log.account.clone();
 
-    let (message, set_message) = signal("[Loading...]".to_string());
+    let (message, set_message) =
+        signal(TranslationKey::PagesSettingsSecurityLogMessageLoading.format(&[]));
 
     spawn_local(async move {
         let cipher = accounts_context.cipher.get_untracked();

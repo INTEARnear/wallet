@@ -36,9 +36,10 @@ use crate::{
         transaction_queue_context::TransactionQueueContext,
     },
     pages::nfts::fetch_nfts,
+    translations::TranslationKey,
     utils::{
-        Resolution, balance_to_decimal, decimal_to_balance, format_account_id_no_hide,
-        format_duration, format_number_for_input, format_token_amount, proxify_url,
+        Resolution, balance_to_decimal, decimal_to_balance, format_duration,
+        format_number_for_input, format_token_amount, proxify_url,
     },
 };
 
@@ -275,7 +276,7 @@ pub fn Gifts() -> impl IntoView {
                 &token.token.metadata.symbol,
             )
         } else {
-            "Loading".to_string()
+            TranslationKey::PagesGiftsBalanceLoading.format(&[])
         }
     };
 
@@ -350,14 +351,15 @@ pub fn Gifts() -> impl IntoView {
 
         let amount_trim = amount.trim();
         if amount_trim.is_empty() {
-            set_near_amount_error.set(Some("Please enter NEAR amount".to_string()));
+            set_near_amount_error.set(Some(TranslationKey::PagesGiftsErrNearEnter.format(&[])));
             return;
         }
 
         match amount_trim.parse::<BigDecimal>() {
             Ok(dec) => {
                 if dec <= 0 {
-                    set_near_amount_error.set(Some("Amount must be greater than 0".to_string()));
+                    set_near_amount_error
+                        .set(Some(TranslationKey::PagesGiftsErrNearGtZero.format(&[])));
                 } else {
                     let min_amount = calculate_total_fee() + BigDecimal::from_str("0.01").unwrap();
                     if dec < min_amount {
@@ -368,12 +370,16 @@ pub fn Gifts() -> impl IntoView {
                                 .trim_end_matches('.')
                                 .to_string();
                         }
-                        set_near_amount_error
-                            .set(Some(format!("Minimum amount is {} NEAR", min_amount_str)));
+                        set_near_amount_error.set(Some(
+                            TranslationKey::PagesGiftsErrNearMinimum
+                                .format(&[("min", min_amount_str.as_str())]),
+                        ));
                     } else if let Some(near_token) = near_token() {
                         let max_amount_decimal = balance_to_decimal(near_token.balance, 24);
                         if dec > max_amount_decimal {
-                            set_near_amount_error.set(Some("Not enough NEAR balance".to_string()));
+                            set_near_amount_error.set(Some(
+                                TranslationKey::PagesGiftsErrNearInsufficient.format(&[]),
+                            ));
                         } else {
                             set_near_amount_error.set(None);
                         }
@@ -381,7 +387,8 @@ pub fn Gifts() -> impl IntoView {
                 }
             }
             Err(_) => {
-                set_near_amount_error.set(Some("Please enter a valid amount".to_string()));
+                set_near_amount_error
+                    .set(Some(TranslationKey::PagesGiftsErrNearInvalid.format(&[])));
             }
         }
     };
@@ -412,25 +419,25 @@ pub fn Gifts() -> impl IntoView {
     let check_token_amount = move |token_data: &TokenData, amount: String| {
         let amount_trim = amount.trim();
         let error = if amount_trim.is_empty() {
-            Some("Please enter amount".to_string())
+            Some(TranslationKey::PagesGiftsErrTokenEnter.format(&[]))
         } else {
             match amount_trim.parse::<BigDecimal>() {
                 Ok(dec) => {
                     if dec <= 0 {
-                        Some("Amount must be greater than 0".to_string())
+                        Some(TranslationKey::PagesGiftsErrTokenGtZero.format(&[]))
                     } else {
                         let max_amount_decimal = balance_to_decimal(
                             token_data.balance,
                             token_data.token.metadata.decimals,
                         );
                         if dec > max_amount_decimal {
-                            Some("Not enough balance".to_string())
+                            Some(TranslationKey::PagesGiftsErrTokenInsufficient.format(&[]))
                         } else {
                             None
                         }
                     }
                 }
-                Err(_) => Some("Please enter a valid amount".to_string()),
+                Err(_) => Some(TranslationKey::PagesGiftsErrTokenInvalid.format(&[])),
             }
         };
 
@@ -595,10 +602,10 @@ pub fn Gifts() -> impl IntoView {
                             <Icon icon=icondata::LuCircleX attr:class="w-8 h-8 text-red-500" />
                         </div>
                         <h2 class="text-xl font-bold text-white mb-2">
-                            "Gifts Only Available on Mainnet"
+                            {move || TranslationKey::PagesGiftsMainnetOnlyTitle.format(&[])}
                         </h2>
                         <p class="text-gray-400 max-w-md">
-                            "The gift feature is only available on NEAR Mainnet. Please switch to a Mainnet account to send NEAR gifts."
+                            {move || TranslationKey::PagesGiftsMainnetOnlyDescription.format(&[])}
                         </p>
                     </div>
                 }
@@ -610,20 +617,28 @@ pub fn Gifts() -> impl IntoView {
                     attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer no-mobile-ripple"
                 >
                     <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                    <span>"Back"</span>
+                    <span>{move || TranslationKey::PagesGiftsBack.format(&[])}</span>
                 </A>
                 <div class="text-center">
-                    <h1 class="text-2xl font-bold text-white mb-2">"Gift Tokens"</h1>
-                    <p class="text-gray-400">"Send tokens as a gift link to someone"</p>
+                    <h1 class="text-2xl font-bold text-white mb-2">
+                        {move || TranslationKey::PagesGiftsTitle.format(&[])}
+                    </h1>
+                    <p class="text-gray-400">
+                        {move || TranslationKey::PagesGiftsSubtitle.format(&[])}
+                    </p>
                 </div>
 
                 <div class="bg-neutral-900/30 rounded-2xl p-3 md:p-6 space-y-4 md:space-y-6">
                     <div class="space-y-4">
                         <div class="flex justify-between items-center">
-                            <h3 class="text-white font-medium">"NEAR Amount"</h3>
+                            <h3 class="text-white font-medium">
+                                {move || TranslationKey::PagesGiftsNearAmountLabel.format(&[])}
+                            </h3>
                             <div class="text-sm text-gray-400">
-                                "Balance: "
-                                <span class="text-white font-medium">{near_balance_formatted}</span>
+                                <span class="text-white font-medium">{move || {
+                                    let balance = near_balance_formatted();
+                                    TranslationKey::PagesGiftsBalanceLabel.format(&[("balance", &balance)])
+                                }}</span>
                             </div>
                         </div>
 
@@ -658,7 +673,7 @@ pub fn Gifts() -> impl IntoView {
                                     class="absolute right-3 top-1/2 -translate-y-1/2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm px-3 py-1 rounded-lg transition-colors duration-200 no-mobile-ripple cursor-pointer"
                                     on:click=handle_near_max
                                 >
-                                    "MAX"
+                                    {move || TranslationKey::PagesGiftsMaxButton.format(&[])}
                                 </button>
                             </div>
                             {move || {
@@ -689,11 +704,10 @@ pub fn Gifts() -> impl IntoView {
                                                         .trim_end_matches('.')
                                                         .to_string();
                                                 }
-                                                format!(
-                                                    "The gift will contain {} NEAR (after {} NEAR fee)",
-                                                    formatted_gift_amount,
-                                                    fee_str,
-                                                )
+                                                TranslationKey::PagesGiftsGiftNearAfterFee.format(&[
+                                                    ("amount", formatted_gift_amount.as_str()),
+                                                    ("fee", fee_str.as_str()),
+                                                ])
                                             }
                                         </p>
                                     }
@@ -707,7 +721,9 @@ pub fn Gifts() -> impl IntoView {
 
                     <div class="space-y-4">
                         <div class="flex items-center justify-between">
-                            <h3 class="text-white font-medium">"Tokens"</h3>
+                            <h3 class="text-white font-medium">
+                                {move || TranslationKey::PagesGiftsTokensSection.format(&[])}
+                            </h3>
                             <button
                                 class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors"
                                 disabled=move || !can_add_more_tokens()
@@ -740,7 +756,7 @@ pub fn Gifts() -> impl IntoView {
                             >
                                 <div class="flex items-center gap-2">
                                     <Icon icon=icondata::LuPlus attr:class="w-4 h-4" />
-                                    <span>"Add Token"</span>
+                                    <span>{move || TranslationKey::PagesGiftsAddToken.format(&[])}</span>
                                 </div>
                             </button>
                         </div>
@@ -766,7 +782,7 @@ pub fn Gifts() -> impl IntoView {
                                                         <div class="flex flex-col md:flex-row gap-3">
                                                             <div class="flex-1">
                                                                 <label class="text-gray-400 text-sm mb-2 block">
-                                                                    "Token"
+                                                                    {move || TranslationKey::PagesGiftsTokenLabel.format(&[])}
                                                                 </label>
                                                                 <TokenSelector
                                                                     selected_token=move || Some(token_data_clone.clone())
@@ -781,14 +797,14 @@ pub fn Gifts() -> impl IntoView {
                                                                                 remove_duplicate_fungible_tokens(tokens, Some(token_index));
                                                                             });
                                                                     }
-                                                                    placeholder="Select token"
+                                                                    placeholder=move || TranslationKey::PagesGiftsSelectTokenPlaceholder.format(&[])
                                                                     allow_native_near=false
                                                                 />
                                                             </div>
 
                                                             <div class="flex-1">
                                                                 <label class="text-gray-400 text-sm mb-2 block">
-                                                                    "Amount"
+                                                                    {move || TranslationKey::PagesGiftsAmountLabel.format(&[])}
                                                                 </label>
                                                                 <div class="relative">
                                                                     <input
@@ -831,7 +847,7 @@ pub fn Gifts() -> impl IntoView {
                                                                             token_data_clone_2.clone(),
                                                                         )
                                                                     >
-                                                                        "MAX"
+                                                                        {move || TranslationKey::PagesGiftsMaxButton.format(&[])}
                                                                     </button>
                                                                 </div>
 
@@ -882,7 +898,9 @@ pub fn Gifts() -> impl IntoView {
 
                     <div class="space-y-4">
                         <div class="flex items-center justify-between">
-                            <h3 class="text-white font-medium">"NFTs"</h3>
+                            <h3 class="text-white font-medium">
+                                {move || TranslationKey::PagesGiftsNftsSection.format(&[])}
+                            </h3>
                             <button
                                 class="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors"
                                 disabled=move || {
@@ -912,7 +930,7 @@ pub fn Gifts() -> impl IntoView {
                             >
                                 <div class="flex items-center gap-2">
                                     <Icon icon=icondata::LuPlus attr:class="w-4 h-4" />
-                                    <span>"Add NFT"</span>
+                                    <span>{move || TranslationKey::PagesGiftsAddNft.format(&[])}</span>
                                 </div>
                             </button>
                         </div>
@@ -935,7 +953,7 @@ pub fn Gifts() -> impl IntoView {
                                                         attr:class="w-6 h-6 text-gray-400 mx-auto mb-2"
                                                     />
                                                     <p class="text-gray-400 text-sm">
-                                                        "No NFTs found. NFTs will appear here when you own some."
+                                                        {move || TranslationKey::PagesGiftsNoNftsDescription.format(&[])}
                                                     </p>
                                                 </div>
                                             }
@@ -960,7 +978,7 @@ pub fn Gifts() -> impl IntoView {
                                                                             <div class="flex flex-col md:flex-row gap-3">
                                                                                 <div class="flex-1">
                                                                                     <label class="text-gray-400 text-sm mb-2 block">
-                                                                                        "Collection"
+                                                                                        {move || TranslationKey::PagesGiftsCollectionLabel.format(&[])}
                                                                                     </label>
                                                                                     <Select
                                                                                         options=Signal::derive(move || {
@@ -1048,7 +1066,7 @@ pub fn Gifts() -> impl IntoView {
 
                                                                                 <div class="flex-1">
                                                                                     <label class="text-gray-400 text-sm mb-2 block">
-                                                                                        "Token"
+                                                                                        {move || TranslationKey::PagesGiftsNftTokenLabel.format(&[])}
                                                                                     </label>
                                                                                     <Select
                                                                                         options=Signal::derive(move || {
@@ -1150,7 +1168,7 @@ pub fn Gifts() -> impl IntoView {
                                                     attr:class="w-6 h-6 text-red-400 mx-auto mb-2"
                                                 />
                                                 <p class="text-red-400 text-sm">
-                                                    "Failed to load NFTs. Please try again."
+                                                    {move || TranslationKey::PagesGiftsNftsLoadError.format(&[])}
                                                 </p>
                                             </div>
                                         }
@@ -1179,7 +1197,7 @@ pub fn Gifts() -> impl IntoView {
                                             attr:class="w-4 h-4 text-yellow-400"
                                         />
                                         <p class="text-yellow-400 text-sm font-medium">
-                                            "Maximum of 10 tokens (FT + NFT) allowed per gift"
+                                            {move || TranslationKey::PagesGiftsMaxAssetsHint.format(&[])}
                                         </p>
                                     </div>
                                 </div>
@@ -1195,7 +1213,7 @@ pub fn Gifts() -> impl IntoView {
                         disabled=move || !is_valid()
                         on:click=handle_gift
                     >
-                        "Create Gift"
+                        {move || TranslationKey::PagesGiftsButtonCreateGift.format(&[])}
                     </button>
                 </div>
 
@@ -1210,7 +1228,7 @@ pub fn Gifts() -> impl IntoView {
                             class:hover:text-white=move || active_tab.get() != ActiveTab::Gifts
                             on:click=move |_| set_active_tab.set(ActiveTab::Gifts)
                         >
-                            "Your Gifts"
+                            {move || TranslationKey::PagesGiftsTabYourGifts.format(&[])}
                         </button>
                         <button
                             class="py-3 px-1 text-sm font-medium transition-colors cursor-pointer border-b-2"
@@ -1221,7 +1239,7 @@ pub fn Gifts() -> impl IntoView {
                             class:hover:text-white=move || active_tab.get() != ActiveTab::Claimed
                             on:click=move |_| set_active_tab.set(ActiveTab::Claimed)
                         >
-                            "Claimed"
+                            {move || TranslationKey::PagesGiftsTabClaimed.format(&[])}
                         </button>
                     </div>
 
@@ -1245,7 +1263,7 @@ pub fn Gifts() -> impl IntoView {
                                                             attr:class="w-8 h-8 text-gray-400 mx-auto mb-2"
                                                         />
                                                         <p class="text-gray-400 text-sm">
-                                                            "No gifts created yet. Create your first gift above!"
+                                                            {move || TranslationKey::PagesGiftsEmptyYourGifts.format(&[])}
                                                         </p>
                                                     </div>
                                                 }
@@ -1290,7 +1308,9 @@ pub fn Gifts() -> impl IntoView {
                                                                                             />
                                                                                         </div>
                                                                                         <div class="text-gray-400 text-sm">
-                                                                                            "Created "{created_ago}" ago"
+                                                                                            {move || TranslationKey::PagesGiftsRowCreatedAgo.format(&[
+                                                                                                ("duration", created_ago.as_str()),
+                                                                                            ])}
                                                                                         </div>
                                                                                     </div>
                                                                                 </div>
@@ -1309,7 +1329,7 @@ pub fn Gifts() -> impl IntoView {
                                                                                                         drop_clone.clone(),
                                                                                                     )
                                                                                                 >
-                                                                                                    "Cancel"
+                                                                                                    {move || TranslationKey::PagesGiftsButtonCancel.format(&[])}
                                                                                                 </button>
                                                                                             }
                                                                                                 .into_any()
@@ -1326,13 +1346,18 @@ pub fn Gifts() -> impl IntoView {
                                                                                                 .to_std()
                                                                                                 .unwrap_or(Duration::from_secs(0));
                                                                                             let claimed_ago = format_duration(claim_duration);
+                                                                                            let account_str = claim.0.to_string();
                                                                                             view! {
                                                                                                 <div class="text-right">
                                                                                                     <div class="text-green-400 text-sm font-medium">
-                                                                                                        "Claimed by " {format_account_id_no_hide(claim.0)}
+                                                                                                        {move || TranslationKey::PagesGiftsRowClaimedBy.format(&[
+                                                                                                            ("account", account_str.as_str()),
+                                                                                                        ])}
                                                                                                     </div>
                                                                                                     <div class="text-gray-400 text-xs">
-                                                                                                        "Claimed "{claimed_ago}" ago"
+                                                                                                        {move || TranslationKey::PagesGiftsRowClaimedAgo.format(&[
+                                                                                                            ("duration", claimed_ago.as_str()),
+                                                                                                        ])}
                                                                                                     </div>
                                                                                                 </div>
                                                                                             }
@@ -1341,7 +1366,7 @@ pub fn Gifts() -> impl IntoView {
                                                                                         (DropStatus::Cancelled, _) => {
                                                                                             view! {
                                                                                                 <div class="text-red-400 text-sm font-medium">
-                                                                                                    "Cancelled"
+                                                                                                    {move || TranslationKey::PagesGiftsStatusCancelled.format(&[])}
                                                                                                 </div>
                                                                                             }
                                                                                                 .into_any()
@@ -1367,7 +1392,7 @@ pub fn Gifts() -> impl IntoView {
                                                         attr:class="w-6 h-6 text-red-400 mx-auto mb-2"
                                                     />
                                                     <p class="text-red-400 text-sm">
-                                                        "Failed to load gifts. Please try again."
+                                                        {move || TranslationKey::PagesGiftsErrLoadYourGifts.format(&[])}
                                                     </p>
                                                 </div>
                                             }
@@ -1394,7 +1419,7 @@ pub fn Gifts() -> impl IntoView {
                                                             attr:class="w-8 h-8 text-gray-400 mx-auto mb-2"
                                                         />
                                                         <p class="text-gray-400 text-sm">
-                                                            "No claimed gifts yet. Claim a gift to see it here!"
+                                                            {move || TranslationKey::PagesGiftsEmptyClaimed.format(&[])}
                                                         </p>
                                                     </div>
                                                 }
@@ -1438,8 +1463,13 @@ pub fn Gifts() -> impl IntoView {
                                                                                         />
                                                                                     </div>
                                                                                     <div class="text-gray-400 text-sm">
-                                                                                        "Created by " {drop.created_by.to_string()} " "{created_ago}
-                                                                                        " ago"
+                                                                                        {
+                                                                                            let creator = drop.created_by.to_string();
+                                                                                            TranslationKey::PagesGiftsRowCreatedByAgo.format(&[
+                                                                                                ("creator", creator.as_str()),
+                                                                                                ("duration", created_ago.as_str()),
+                                                                                            ])
+                                                                                        }
                                                                                     </div>
                                                                                 </div>
                                                                             </div>
@@ -1460,10 +1490,17 @@ pub fn Gifts() -> impl IntoView {
                                                                                     view! {
                                                                                         <div class="text-right">
                                                                                             <div class="text-green-400 text-sm font-medium">
-                                                                                                "Claimed "{claimed_ago}" ago"
+                                                                                                {move || TranslationKey::PagesGiftsRowClaimedAgo.format(&[
+                                                                                                    ("duration", claimed_ago.as_str()),
+                                                                                                ])}
                                                                                             </div>
                                                                                             <div class="text-gray-400 text-xs">
-                                                                                                "From " {format_account_id_no_hide(claimer)}
+                                                                                                {
+                                                                                                    let from_acc = claimer.to_string();
+                                                                                                    TranslationKey::PagesGiftsRowFromAccount.format(&[
+                                                                                                        ("account", from_acc.as_str()),
+                                                                                                    ])
+                                                                                                }
                                                                                             </div>
                                                                                         </div>
                                                                                     }
@@ -1490,7 +1527,7 @@ pub fn Gifts() -> impl IntoView {
                                                         attr:class="w-6 h-6 text-red-400 mx-auto mb-2"
                                                     />
                                                     <p class="text-red-400 text-sm">
-                                                        "Failed to load claimed gifts. Please try again."
+                                                        {move || TranslationKey::PagesGiftsErrLoadClaimed.format(&[])}
                                                     </p>
                                                 </div>
                                             }

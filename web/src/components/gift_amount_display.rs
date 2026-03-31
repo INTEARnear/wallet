@@ -23,6 +23,7 @@ use crate::{
         gifts::{Drop, DropStatus},
         nfts::{fetch_nft_metadata, fetch_nft_token},
     },
+    translations::TranslationKey,
     utils::{Resolution, format_account_id, proxify_url},
 };
 
@@ -60,15 +61,11 @@ fn GiftNftImageDisplay(
                 }
             }>
                 {move || {
+                    let token_id_for_display= token_id_for_display.clone();
                     let metadata = metadata_resource.get();
                     let nft_token = nft_token_resource.get();
                     match (metadata, nft_token) {
                         (Some(Some(metadata)), Some(Some(nft_response))) => {
-                            let display_name = format!(
-                                "{} #{}",
-                                metadata.name,
-                                token_id_for_display.clone(),
-                            );
                             let image_url = if let Some(media) = &nft_response.metadata.media {
                                 format!(
                                     "{}/{}",
@@ -102,7 +99,10 @@ fn GiftNftImageDisplay(
                                     </div>
                                     <div class="text-center">
                                         <div class="text-white text-sm font-medium truncate">
-                                            {display_name}
+                                            {move || TranslationKey::PagesGiftsFormatNftWithName.format(&[
+                                                ("name", metadata.name.as_str()),
+                                                ("token_id", token_id_for_display.as_str()),
+                                            ])}
                                         </div>
                                     </div>
                                 </div>
@@ -110,12 +110,6 @@ fn GiftNftImageDisplay(
                                 .into_any()
                         }
                         (Some(Some(metadata)), _) => {
-                            let display_name = format!(
-                                "{} #{}",
-                                metadata.name,
-                                token_id_for_display.clone(),
-                            );
-
                             view! {
                                 <div class="space-y-3">
                                     <div class="w-[200px] h-[200px] rounded-lg overflow-hidden bg-neutral-700">
@@ -128,7 +122,10 @@ fn GiftNftImageDisplay(
                                     </div>
                                     <div class="text-center">
                                         <div class="text-white text-sm font-medium truncate">
-                                            {display_name}
+                                            {move || TranslationKey::PagesGiftsFormatNftWithName.format(&[
+                                                ("name", metadata.name.as_str()),
+                                                ("token_id", token_id_for_display.as_str()),
+                                            ])}
                                         </div>
                                     </div>
                                 </div>
@@ -146,7 +143,10 @@ fn GiftNftImageDisplay(
                                     </div>
                                     <div class="text-center">
                                         <div class="text-gray-400 text-sm font-medium">
-                                            "NFT #{}"
+                                            {move || TranslationKey::PagesGiftsFormatNftNumber.format(&[(
+                                                "token_id",
+                                                token_id_for_display.as_str(),
+                                            )])}
                                         </div>
                                     </div>
                                 </div>
@@ -245,7 +245,9 @@ pub fn GiftAmountDisplay() -> impl IntoView {
             view! {
                 <div class="bg-neutral-900/50 rounded-2xl p-6 text-center">
                     <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-white mx-auto mb-3"></div>
-                    <p class="text-gray-400 text-sm">"Loading gift..."</p>
+                    <p class="text-gray-400 text-sm">
+                        {move || TranslationKey::PagesGiftsGiftLinkLoading.format(&[])}
+                    </p>
                 </div>
             }
         }>
@@ -264,10 +266,10 @@ pub fn GiftAmountDisplay() -> impl IntoView {
                                             />
                                         </div>
                                         <p class="text-yellow-400 text-sm font-medium">
-                                            "Switch to Mainnet"
+                                            {move || TranslationKey::PagesGiftsGiftLinkSwitchMainnetTitle.format(&[])}
                                         </p>
                                         <p class="text-gray-400 text-xs mt-1">
-                                            "Gifts only work on NEAR Mainnet"
+                                            {move || TranslationKey::PagesGiftsGiftLinkSwitchMainnetDescription.format(&[])}
                                         </p>
                                     </div>
                                 }
@@ -283,10 +285,10 @@ pub fn GiftAmountDisplay() -> impl IntoView {
                                             />
                                         </div>
                                         <p class="text-red-400 text-sm font-medium">
-                                            "Invalid Gift Link"
+                                            {move || TranslationKey::PagesGiftsGiftLinkInvalidTitle.format(&[])}
                                         </p>
                                         <p class="text-gray-400 text-xs mt-1">
-                                            "This link is corrupted or invalid"
+                                            {move || TranslationKey::PagesGiftsGiftLinkInvalidDescription.format(&[])}
                                         </p>
                                     </div>
                                 }
@@ -302,10 +304,10 @@ pub fn GiftAmountDisplay() -> impl IntoView {
                                             />
                                         </div>
                                         <p class="text-red-400 text-sm font-medium">
-                                            "Gift Not Found"
+                                            {move || TranslationKey::PagesGiftsGiftLinkNotFoundTitle.format(&[])}
                                         </p>
                                         <p class="text-gray-400 text-xs mt-1">
-                                            "This gift doesn't exist"
+                                            {move || TranslationKey::PagesGiftsGiftLinkNotFoundDescription.format(&[])}
                                         </p>
                                     </div>
                                 }
@@ -321,16 +323,21 @@ pub fn GiftAmountDisplay() -> impl IntoView {
                                             />
                                         </div>
                                         <p class="text-yellow-400 text-sm font-medium">
-                                            "Already Claimed"
+                                            {move || TranslationKey::PagesGiftsGiftLinkAlreadyClaimedTitle.format(&[])}
                                         </p>
                                         <p class="text-gray-400 text-xs mt-1">
-                                            "This gift has already been claimed by "
-                                            {if accounts().selected_account_id.as_ref()
-                                                == Some(&claimed_by)
-                                            {
-                                                view! { "you" }.into_any()
-                                            } else {
-                                                format_account_id(&claimed_by)
+                                            {move || {
+                                                let claimer_str =
+                                                    if accounts().selected_account_id.as_ref()
+                                                        == Some(&claimed_by)
+                                                    {
+                                                        TranslationKey::PagesGiftsGiftLinkClaimedByYou
+                                                            .format(&[])
+                                                    } else {
+                                                        claimed_by.to_string()
+                                                    };
+                                                TranslationKey::PagesGiftsGiftLinkAlreadyClaimedBy
+                                                    .format(&[("claimer", claimer_str.as_str())])
                                             }}
                                         </p>
                                     </div>
@@ -347,10 +354,10 @@ pub fn GiftAmountDisplay() -> impl IntoView {
                                             />
                                         </div>
                                         <p class="text-red-400 text-sm font-medium">
-                                            "Gift Cancelled"
+                                            {move || TranslationKey::PagesGiftsGiftLinkCancelledTitle.format(&[])}
                                         </p>
                                         <p class="text-gray-400 text-xs mt-1">
-                                            "This gift was cancelled"
+                                            {move || TranslationKey::PagesGiftsGiftLinkCancelledDescription.format(&[])}
                                         </p>
                                     </div>
                                 }
@@ -407,7 +414,12 @@ pub fn GiftAmountDisplay() -> impl IntoView {
                                             </div>
                                         </div>
                                         <p class="text-gray-400 text-sm mt-2">
-                                            "Gift from " {format_account_id(&drop.created_by)}
+                                            {move || {
+                                                TranslationKey::PagesGiftsGiftLinkFromPrefix.format_view(vec![(
+                                                    "account",
+                                                    format_account_id(&drop.created_by),
+                                                )])
+                                            }}
                                         </p>
                                     </div>
                                 }

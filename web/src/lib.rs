@@ -70,6 +70,7 @@ use crate::pages::sign_message::SignMessage;
 use crate::pages::stake::{Stake, StakeValidator, UnstakeValidator};
 use crate::pages::swap::Swap;
 use crate::pages::token::TokenDetails;
+use crate::translations::TranslationKey;
 use crate::utils::is_tauri;
 
 // macro_rules! bad_waterfall_lazy_route {
@@ -126,10 +127,13 @@ pub fn App() -> impl IntoView {
     let _ = window().navigator().storage().persist();
 
     let warning_closure = Closure::wrap(Box::new(|| {
-        let message = "%c⚠️ STOP! Don't paste any code here! This is dangerous and could compromise your wallet security. If someone told you to paste code here, they're trying to scam you.";
+        let message = format!(
+            "%c{}",
+            TranslationKey::MiscAppDeveloperConsolePasteWarning.format(&[])
+        );
         let style = "font-size: 20px; font-weight: bold; color: #ff4444; background: #fff3cd; padding: 15px; border: 2px solid #ff4444; border-radius: 5px; line-height: 1.5; display: block;";
 
-        let message_js = wasm_bindgen::JsValue::from_str(message);
+        let message_js = wasm_bindgen::JsValue::from_str(&message);
         let style_js = wasm_bindgen::JsValue::from_str(style);
 
         web_sys::console::log_2(&message_js, &style_js);
@@ -161,7 +165,9 @@ pub fn App() -> impl IntoView {
             <ConfigProvider theme=RwSignal::new(Theme::dark())>
                 <Router>
                     <Layout>
-                        <Routes fallback=|| view! { "404 Not Found" }>
+                        <Routes fallback=|| {
+                            view! { {move || { TranslationKey::MiscAppRouteNotFound.format(&[]) }} }
+                        }>
                             <Route path=path!("/") view=Home />
                             <Route path=path!("/nfts") view=Nfts />
                             <Route path=path!("/nfts/:collection_id") view=NftCollection />

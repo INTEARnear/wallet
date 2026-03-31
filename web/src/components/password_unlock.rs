@@ -5,6 +5,7 @@ use web_sys::KeyboardEvent;
 
 use crate::components::danger_confirm_input::DangerConfirmInput;
 use crate::contexts::accounts_context::{AccountsContext, AccountsState, PasswordAction};
+use crate::translations::TranslationKey;
 
 #[component]
 pub fn PasswordUnlockOverlay() -> impl IntoView {
@@ -182,7 +183,9 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
             >
                 <div class="flex flex-col items-center space-y-4">
                     <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                    <p class="text-white text-lg font-medium">"Loading..."</p>
+                    <p class="text-white text-lg font-medium">
+                        {move || TranslationKey::ComponentsPasswordUnlockLoading.format(&[])}
+                    </p>
                 </div>
             </div>
 
@@ -209,21 +212,31 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
                                 attr:class="text-blue-500"
                             />
                         </div>
-                        <h2 class="text-white text-2xl font-semibold mb-2">"Welcome Back!"</h2>
-                        <p class="text-neutral-400 text-sm">"Enter your password to log in"</p>
+                        <h2 class="text-white text-2xl font-semibold mb-2">
+                            {move || TranslationKey::ComponentsPasswordUnlockTitleWelcome.format(&[])}
+                        </h2>
+                        <p class="text-neutral-400 text-sm">
+                            {move || {
+                                TranslationKey::ComponentsPasswordUnlockSubtitleEnterPassword
+                                    .format(&[])
+                            }}
+                        </p>
                     </div>
 
                     <div>
                         <div>
                             <label class="block text-neutral-400 text-sm font-medium mb-2">
-                                "Password"
+                                {move || TranslationKey::ComponentsPasswordUnlockLabelPassword.format(&[])}
                             </label>
                             <div class="relative">
                                 <input
                                     node_ref=input_ref
                                     type="password"
                                     class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 border-2 border-neutral-700 focus:border-blue-500 text-base"
-                                    placeholder="Enter your password"
+                                    placeholder=move || {
+                                        TranslationKey::ComponentsPasswordUnlockPlaceholderPassword
+                                            .format(&[])
+                                    }
                                     prop:value=password_input
                                     on:input=handle_input
                                     on:keydown=handle_keydown
@@ -250,7 +263,10 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
                                 class="text-neutral-400 text-sm hover:text-neutral-300 transition-colors cursor-pointer"
                                 on:click=move |_| set_show_forgot_password.update(|v| *v = !*v)
                             >
-                                "Forgot Password?"
+                                {move || {
+                                    TranslationKey::ComponentsPasswordUnlockLinkForgotPassword
+                                        .format(&[])
+                                }}
                             </button>
                         </div>
 
@@ -299,7 +315,12 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
                                     }
                                 }}
                                 {move || {
-                                    if is_unlocking.get() { "Unlocking..." } else { "Unlock" }
+                                    if is_unlocking.get() {
+                                        TranslationKey::ComponentsPasswordUnlockButtonUnlocking
+                                            .format(&[])
+                                    } else {
+                                        TranslationKey::ComponentsPasswordUnlockButtonUnlock.format(&[])
+                                    }
                                 }}
                             </span>
                         </button>
@@ -308,9 +329,19 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
                             <div class="mt-4 space-y-4">
                                 <div class="p-4 bg-yellow-900/30 border border-yellow-700/50 rounded-xl">
                                     <p class="text-yellow-200 text-sm">
-                                        "If you forgot your password, you can "
-                                        <span class="text-red-400 font-semibold">"reset"</span>
-                                        " your wallet. Make sure you have the seed phrases for all your accounts before doing so, because otherwise they will be lost."
+                                        {move || {
+                                            let reset_emphasis = view! {
+                                                <span class="text-red-400 font-semibold">
+                                                    {move || {
+                                                        TranslationKey::ComponentsPasswordUnlockForgotPasswordResetEmphasis
+                                                            .format(&[])
+                                                    }}
+                                                </span>
+                                            }
+                                            .into_any();
+                                            TranslationKey::ComponentsPasswordUnlockForgotPasswordBody
+                                                .format_view(vec![("reset", reset_emphasis)])
+                                        }}
                                     </p>
                                 </div>
 
@@ -320,7 +351,10 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
                                         on:click=move |_| set_show_reset_confirmation.set(true)
                                     >
                                         <Icon icon=icondata::LuTrash2 width="20" height="20" />
-                                        "Reset Wallet"
+                                        {move || {
+                                            TranslationKey::ComponentsPasswordUnlockButtonResetWallet
+                                                .format(&[])
+                                        }}
                                     </button>
                                 </Show>
 
@@ -328,9 +362,14 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
                                     <div class="space-y-4">
                                         <DangerConfirmInput
                                             set_is_confirmed=set_is_confirmed
-                                            warning_title="Reset Wallet".to_string()
-                                            warning_message="This will permanently delete all accounts from this wallet. Make sure you have backed up your seed phrases."
-                                                .to_string()
+                                            warning_title=Signal::derive(move || {
+                                                TranslationKey::ComponentsPasswordUnlockResetDangerTitle
+                                                    .format(&[])
+                                            })
+                                            warning_message=Signal::derive(move || {
+                                                TranslationKey::ComponentsPasswordUnlockResetDangerMessage
+                                                    .format(&[])
+                                            })
                                         />
 
                                         <button
@@ -344,11 +383,17 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
                                         >
                                             <Show when=move || !is_resetting.get()>
                                                 <Icon icon=icondata::LuTrash2 width="20" height="20" />
-                                                "Confirm Reset"
+                                                {move || {
+                                                    TranslationKey::ComponentsPasswordUnlockButtonConfirmReset
+                                                        .format(&[])
+                                                }}
                                             </Show>
                                             <Show when=move || is_resetting.get()>
                                                 <div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                                "Resetting..."
+                                                {move || {
+                                                    TranslationKey::ComponentsPasswordUnlockButtonResetting
+                                                        .format(&[])
+                                                }}
                                             </Show>
                                         </button>
                                     </div>

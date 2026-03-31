@@ -3,6 +3,7 @@ use leptos_icons::*;
 
 use crate::components::explore_components::{ForYouSection, LearnSection, TrendingTokensSection};
 use crate::data::protocols::{Protocol, ProtocolCategory, ProtocolSize, get_protocols};
+use crate::translations::TranslationKey;
 
 #[component]
 pub fn Explore() -> impl IntoView {
@@ -64,7 +65,9 @@ pub fn Explore() -> impl IntoView {
                             view! {
                                 <div class="text-yellow-500 font-medium flex items-center gap-1 text-xs">
                                     <Icon icon=icondata::LuStar width="12" height="12" />
-                                    "By Wallet Creators"
+                                    {move || {
+                                        TranslationKey::PagesExploreByWalletCreators.format(&[])
+                                    }}
                                 </div>
                             }
                                 .into_any()
@@ -77,11 +80,13 @@ pub fn Explore() -> impl IntoView {
         }
     };
 
-    let render_category = move |title: String, category: ProtocolCategory| {
+    let render_category = move |title_key: TranslationKey, category: ProtocolCategory| {
         let protocols = get_category_protocols(category);
         view! {
             <div class="mb-8">
-                <h2 class="text-white text-xl font-semibold mb-4">{title}</h2>
+                <h2 class="text-white text-xl font-semibold mb-4">
+                    {move || title_key.format(&[])}
+                </h2>
                 <div class="grid grid-cols-3 sm:grid-cols-4 gap-2 sm:gap-3 grid-flow-row-dense">
                     {protocols.iter().map(&render_protocol).collect::<Vec<_>>()}
                 </div>
@@ -92,7 +97,7 @@ pub fn Explore() -> impl IntoView {
     view! {
         <div class="pt-4 lg:p-2">
             <h1 class="text-4xl font-bold mb-8 bg-linear-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                "Explore NEAR Ecosystem"
+                {move || TranslationKey::PagesExploreTitle.format(&[])}
             </h1>
             {move || {
                 if protocols.with(|p| p.is_none()) {
@@ -106,26 +111,44 @@ pub fn Explore() -> impl IntoView {
                     view! {
                         <>
                             <TrendingTokensSection />
-                            {move || render_category("DeFi".to_string(), ProtocolCategory::DeFi)}
-                            {move || render_category("AI".to_string(), ProtocolCategory::Ai)}
+                            {move || {
+                                render_category(
+                                    TranslationKey::PagesExploreCategoryDefi,
+                                    ProtocolCategory::DeFi,
+                                )
+                            }}
+                            {move || {
+                                render_category(
+                                    TranslationKey::PagesExploreCategoryAi,
+                                    ProtocolCategory::Ai,
+                                )
+                            }}
                             <ForYouSection />
-                            {move || render_category(
-                                "Featured Memecoins".to_string(),
-                                ProtocolCategory::Memecoin,
-                            )}
-                            {move || render_category(
-                                "Chain Abstraction".to_string(),
-                                ProtocolCategory::ChainAbstraction,
-                            )}
+                            {move || {
+                                render_category(
+                                    TranslationKey::PagesExploreCategoryFeaturedMemecoins,
+                                    ProtocolCategory::Memecoin,
+                                )
+                            }}
+                            {move || {
+                                render_category(
+                                    TranslationKey::PagesExploreCategoryChainAbstraction,
+                                    ProtocolCategory::ChainAbstraction,
+                                )
+                            }}
                             <LearnSection />
-                            {move || render_category(
-                                "Launchpad".to_string(),
-                                ProtocolCategory::Launchpad,
-                            )}
-                            {move || render_category(
-                                "Explorer".to_string(),
-                                ProtocolCategory::Explorer,
-                            )}
+                            {move || {
+                                render_category(
+                                    TranslationKey::PagesExploreCategoryLaunchpad,
+                                    ProtocolCategory::Launchpad,
+                                )
+                            }}
+                            {move || {
+                                render_category(
+                                    TranslationKey::PagesExploreCategoryExplorer,
+                                    ProtocolCategory::Explorer,
+                                )
+                            }}
                             <div class="mb-8">
                                 <a
                                     href="https://app.nearcatalog.org/"
@@ -136,27 +159,46 @@ pub fn Explore() -> impl IntoView {
                                         "📒NEARCatalog"
                                     </h2>
                                     <p class="text-white text-lg pt-4 font-medium">
-                                        "Discover more projects"
+                                        {move || {
+                                            TranslationKey::PagesExploreNearCatalogSubtitle.format(&[])
+                                        }}
                                     </p>
                                 </a>
                             </div>
-                            {move || render_category("NFTs".to_string(), ProtocolCategory::Nft)}
-                            {move || render_category("Bots".to_string(), ProtocolCategory::Bot)}
-                            {move || render_category("Games".to_string(), ProtocolCategory::Game)}
-                            {move || render_category(
-                                "Social".to_string(),
-                                ProtocolCategory::Social,
-                            )}
+                            {move || {
+                                render_category(
+                                    TranslationKey::PagesExploreCategoryNfts,
+                                    ProtocolCategory::Nft,
+                                )
+                            }}
+                            {move || {
+                                render_category(
+                                    TranslationKey::PagesExploreCategoryBots,
+                                    ProtocolCategory::Bot,
+                                )
+                            }}
+                            {move || {
+                                render_category(
+                                    TranslationKey::PagesExploreCategoryGames,
+                                    ProtocolCategory::Game,
+                                )
+                            }}
+                            {move || {
+                                render_category(
+                                    TranslationKey::PagesExploreCategorySocial,
+                                    ProtocolCategory::Social,
+                                )
+                            }}
                             <div class="bg-neutral-900 rounded-xl p-6 text-center">
                                 <h2 class="text-white text-xl font-semibold mb-2">
-                                    Building on NEAR?
+                                    {move || TranslationKey::PagesExploreBuildingOnNear.format(&[])}
                                 </h2>
                                 <a
                                     href="https://github.com/INTEARnear/wallet"
                                     target="_blank"
                                     class="inline-flex items-center gap-2 text-white text-sm px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 cursor-pointer transition-colors"
                                 >
-                                    "Add your app"
+                                    {move || TranslationKey::PagesExploreAddYourApp.format(&[])}
                                     <Icon icon=icondata::LuArrowRight width="16" height="16" />
                                 </a>
                             </div>

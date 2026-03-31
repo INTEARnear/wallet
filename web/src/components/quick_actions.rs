@@ -3,6 +3,7 @@ use leptos_icons::*;
 use leptos_router::components::A;
 
 use crate::contexts::network_context::{Network, NetworkContext};
+use crate::translations::TranslationKey;
 
 #[component]
 pub fn WalletQuickActions() -> impl IntoView {
@@ -31,10 +32,30 @@ pub fn WalletQuickActions() -> impl IntoView {
     view! {
         {move || {
             let buttons = vec![
-                (true, "/receive", icondata::LuDownload, "Receive & Bridge"),
-                (show_stake(), "/stake", icondata::LuBeef, "Stake"),
-                (show_nfts(), "/nfts", icondata::LuImage, "NFTs"),
-                (show_gifts(), "/gifts", icondata::LuGift, "Gift"),
+                (
+                    true,
+                    "/receive",
+                    icondata::LuDownload,
+                    TranslationKey::ComponentsWalletQuickActionsReceive,
+                ),
+                (
+                    show_stake(),
+                    "/stake",
+                    icondata::LuBeef,
+                    TranslationKey::ComponentsWalletQuickActionsStake,
+                ),
+                (
+                    show_nfts(),
+                    "/nfts",
+                    icondata::LuImage,
+                    TranslationKey::ComponentsWalletQuickActionsNfts,
+                ),
+                (
+                    show_gifts(),
+                    "/gifts",
+                    icondata::LuGift,
+                    TranslationKey::ComponentsWalletQuickActionsGift,
+                ),
             ]
                 .into_iter()
                 .filter(|(show, _, _, _)| *show)
@@ -51,7 +72,7 @@ pub fn WalletQuickActions() -> impl IntoView {
                 >
                     {buttons
                         .into_iter()
-                        .map(|(_, href, icon, label)| {
+                        .map(|(_, href, icon, label_key)| {
                             view! {
                                 <A
                                     href=href
@@ -60,7 +81,9 @@ pub fn WalletQuickActions() -> impl IntoView {
                                     <div class="w-12 h-12 rounded-full bg-neutral-800 hover:bg-neutral-700 flex items-center justify-center transition-colors">
                                         <Icon icon=icon width="20" height="20" />
                                     </div>
-                                    <span class="text-sm text-white w-20 text-center">{label}</span>
+                                    <span class="text-sm text-white w-20 text-center">
+                                        {move || label_key.format(&[])}
+                                    </span>
                                 </A>
                             }
                         })

@@ -713,7 +713,10 @@ where
                             <div class="flex items-center gap-3 pb-3 border-b border-neutral-700">
                                 <img
                                     src=token_image.clone()
-                                    alt="Token"
+                                    alt=move || {
+                                        TranslationKey::PagesSettingsDeveloperCreateTokenTokenImageAlt
+                                            .format(&[])
+                                    }
                                     class="w-12 h-12 rounded-lg border border-neutral-600"
                                 />
                                 <div>

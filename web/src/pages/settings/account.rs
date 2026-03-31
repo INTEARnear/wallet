@@ -6,10 +6,9 @@ use crate::components::account_selector::{
 use crate::components::bridge_history::DepositAddress;
 use crate::components::danger_confirm_input::DangerConfirmInput;
 use crate::components::derivation_path_input::DerivationPathInput;
-use crate::contexts::accounts_context::format_ledger_error;
 use crate::contexts::{
     account_selector_context::AccountSelectorContext,
-    accounts_context::{AccountsContext, SecretKeyHolder},
+    accounts_context::{AccountsContext, SecretKeyHolder, format_ledger_error},
     config_context::{ConfigContext, LedgerMode},
     modal_context::ModalContext,
     network_context::{Network, NetworkContext},
@@ -39,14 +38,14 @@ use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen;
 
 /// Sorted from newest to oldest
-const SMART_WALLET_VERSIONS: &[(CryptoHash, NaiveDate, &[&str])] = &[
+const SMART_WALLET_VERSIONS: &[(CryptoHash, NaiveDate, &[TranslationKey])] = &[
     (
         CryptoHash(
             bs58::decode::<&[u8]>(b"5VSWnrNQZ2EVGeEAmxiJY64G2KPSd2AqTQf6EFSZreCK")
                 .into_array_const_unwrap::<32>(),
         ),
         NaiveDate::from_ymd_opt(2025, 5, 31).unwrap(),
-        &["Enable recovery in wallet interface"],
+        &[TranslationKey::PagesSettingsAccountSmartWalletChangelogEnableRecovery],
     ),
     (
         CryptoHash(
@@ -54,7 +53,7 @@ const SMART_WALLET_VERSIONS: &[(CryptoHash, NaiveDate, &[&str])] = &[
                 .into_array_const_unwrap::<32>(),
         ),
         NaiveDate::from_ymd_opt(2025, 5, 30).unwrap(),
-        &["Reduce storage cost for recovery methods"],
+        &[TranslationKey::PagesSettingsAccountSmartWalletChangelogReduceStorage],
     ),
     (
         CryptoHash(
@@ -62,7 +61,7 @@ const SMART_WALLET_VERSIONS: &[(CryptoHash, NaiveDate, &[&str])] = &[
                 .into_array_const_unwrap::<32>(),
         ),
         NaiveDate::from_ymd_opt(2025, 5, 29).unwrap(),
-        &["Initial release"],
+        &[TranslationKey::PagesSettingsAccountSmartWalletChangelogInitialRelease],
     ),
 ];
 const CURRENT_SMART_WALLET_VERSION: CryptoHash = SMART_WALLET_VERSIONS[0].0;
@@ -178,7 +177,9 @@ fn TerminateSessionsModal(
                     on:click=|ev| ev.stop_propagation()
                 >
                     <h3 class="text-xl font-semibold mb-4 text-white">
-                        "Terminate All Other Sessions"
+                        {move || {
+                            TranslationKey::PagesSettingsAccountTerminateModalTitle.format(&[])
+                        }}
                     </h3>
                     <div class="text-neutral-400 mb-6 space-y-4">
                         {move || {
@@ -186,7 +187,10 @@ fn TerminateSessionsModal(
                                 view! {
                                     <div class="space-y-4">
                                         <p>
-                                            "This will remove all other access keys from your account, keeping only the current Ledger key. This will make the currently connected Ledger the only way to access this account."
+                                            {move || {
+                                                TranslationKey::PagesSettingsAccountTerminateBodyLedgerRemoveKeys
+                                                    .format(&[])
+                                            }}
                                         </p>
                                     </div>
                                 }
@@ -195,15 +199,38 @@ fn TerminateSessionsModal(
                                 view! {
                                     <div class="space-y-4">
                                         <p>
-                                            "This will log you out of all wallets other than this one. This can be useful if you feel like you might have compromised your seed phrase and want to change it."
+                                            {move || {
+                                                TranslationKey::PagesSettingsAccountTerminateBodyLogOutOtherWallets
+                                                    .format(&[])
+                                            }}
                                         </p>
                                         <p>
-                                            "Note that if you have saved your seed phrase, "
-                                            <span class="text-yellow-400 font-bold">
-                                                "IT WILL STOP WORKING"
-                                            </span> ", and a "
-                                            <span class="text-yellow-400 font-bold">"NEW"</span>
-                                            " phrase will appear in the Account page."
+                                            {move || {
+                                                let stops_working = view! {
+                                                    <span class="text-yellow-400 font-bold">
+                                                        {move || {
+                                                            TranslationKey::PagesSettingsAccountEmphasisSeedStopsWorking
+                                                                .format(&[])
+                                                        }}
+                                                    </span>
+                                                }
+                                                    .into_any();
+                                                let new_phrase = view! {
+                                                    <span class="text-yellow-400 font-bold">
+                                                        {move || {
+                                                            TranslationKey::PagesSettingsAccountEmphasisNew.format(&[])
+                                                        }}
+                                                    </span>
+                                                }
+                                                    .into_any();
+                                                TranslationKey::PagesSettingsAccountTerminateBodySeedPhraseWarning
+                                                    .format_view(
+                                                        vec![
+                                                            ("stops_working", stops_working),
+                                                            ("new_phrase", new_phrase),
+                                                        ],
+                                                    )
+                                            }}
                                         </p>
                                     </div>
                                 }
@@ -215,7 +242,12 @@ fn TerminateSessionsModal(
                     <Show when=move || { new_mnemonic.get().is_some() && !is_ledger_account() }>
                         <div class="bg-neutral-900 rounded-lg p-4 mb-6 border border-neutral-700">
                             <div class="flex items-center justify-between mb-3">
-                                <h4 class="text-lg font-medium text-white">"New Seed Phrase"</h4>
+                                <h4 class="text-lg font-medium text-white">
+                                    {move || {
+                                        TranslationKey::PagesSettingsAccountNewSeedPhraseHeading
+                                            .format(&[])
+                                    }}
+                                </h4>
                                 <div class="flex gap-2">
                                     <button
                                         class="p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors cursor-pointer"
@@ -237,9 +269,10 @@ fn TerminateSessionsModal(
                                         }
                                         title=move || {
                                             if copied_to_clipboard.get() {
-                                                "Copied!"
+                                                TranslationKey::PagesSettingsAccountButtonCopied.format(&[])
                                             } else {
-                                                "Copy seed phrase"
+                                                TranslationKey::PagesSettingsAccountCopySeedPhraseTooltip
+                                                    .format(&[])
                                             }
                                         }
                                     >
@@ -253,7 +286,8 @@ fn TerminateSessionsModal(
                                     <button
                                         class="p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors cursor-pointer"
                                         on:click=move |_| generate_new_mnemonic()
-                                        title="Generate new seed phrase"
+                                        title=TranslationKey::PagesSettingsAccountGenerateSeedPhraseTooltip
+                                            .format(&[])
                                     >
                                         <Icon icon=icondata::LuRefreshCw width="16" height="16" />
                                     </button>
@@ -288,21 +322,26 @@ fn TerminateSessionsModal(
                                     height="14"
                                     attr:class="inline mr-1"
                                 />
-                                "Save this new seed phrase - it will replace your current one!"
+                                {move || {
+                                    TranslationKey::PagesSettingsAccountSaveNewSeedPhraseWarning
+                                        .format(&[])
+                                }}
                             </div>
                         </div>
                     </Show>
 
                     <DangerConfirmInput
                         set_is_confirmed=set_is_confirmed
-                        warning_title="Please read the above"
+                        warning_title=Signal::derive(move || {
+                            TranslationKey::PagesSettingsAccountDangerConfirmTitle.format(&[])
+                        })
                         warning_message=Signal::derive(move || {
                             if is_ledger_account() {
-                                "This action cannot be undone. Your Ledger device will be the ONLY way to access this account."
-                                    .to_string()
+                                TranslationKey::PagesSettingsAccountDangerConfirmLedgerOnly
+                                    .format(&[])
                             } else {
-                                "This action cannot be undone. This device will be the ONLY one that can access this account."
-                                    .to_string()
+                                TranslationKey::PagesSettingsAccountDangerConfirmDeviceOnly
+                                    .format(&[])
                             }
                         })
                         attr:class="mb-4"
@@ -313,7 +352,7 @@ fn TerminateSessionsModal(
                             class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden bg-neutral-800 hover:bg-neutral-700 cursor-pointer"
                             on:click=move |_| close_modal()
                         >
-                            "Cancel"
+                            {move || TranslationKey::PagesSettingsAccountButtonCancel.format(&[])}
                         </button>
                         <button
                             class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden bg-red-500 hover:bg-red-600 disabled:bg-red-500/50 disabled:cursor-not-allowed cursor-pointer"
@@ -323,7 +362,7 @@ fn TerminateSessionsModal(
                                 close_modal();
                             }
                         >
-                            "Confirm"
+                            {move || TranslationKey::PagesSettingsAccountButtonConfirm.format(&[])}
                         </button>
                     </div>
                 </div>
@@ -399,14 +438,15 @@ pub fn AccountSettings() -> impl IntoView {
                     .origin()
                     .unwrap_or_else(|_| "*".to_string());
                 if window().post_message(&js_value, &origin).is_err() {
-                    set_ledger_error
-                        .set(Some("Failed to send Ledger connection request".to_string()));
+                    set_ledger_error.set(Some(
+                        TranslationKey::PagesSettingsAccountErrLedgerConnectPostMessage.format(&[]),
+                    ));
                     set_ledger_connection_in_progress(false);
                 }
             }
             _ => {
                 set_ledger_error.set(Some(
-                    "Failed to serialize Ledger connection request".to_string(),
+                    TranslationKey::PagesSettingsAccountErrLedgerConnectSerialize.format(&[]),
                 ));
                 set_ledger_connection_in_progress(false);
             }
@@ -476,8 +516,8 @@ pub fn AccountSettings() -> impl IntoView {
                 Ok(account) => {
                     if account.code_hash != Default::default() {
                         return Err(
-                            "Your wallet is a smart contract, no additional features are available"
-                                .to_string(),
+                            TranslationKey::PagesSettingsAccountErrSmartWalletNoContractFeatures
+                                .format(&[]),
                         );
                     }
                     if let Some(global_contract_hash) = account.global_contract_hash {
@@ -487,7 +527,10 @@ pub fn AccountSettings() -> impl IntoView {
                         {
                             Ok(Some(version))
                         } else {
-                            Err("Your wallet is a global smart contract, no additional features are available".to_string())
+                            Err(
+                                TranslationKey::PagesSettingsAccountErrSmartWalletGlobalContractFeatures
+                                    .format(&[]),
+                            )
                         }
                     } else {
                         Ok(None)
@@ -495,7 +538,7 @@ pub fn AccountSettings() -> impl IntoView {
                 }
                 _ => {
                     log::error!("Failed to fetch account");
-                    Err("Failed to fetch account".to_string())
+                    Err(TranslationKey::PagesSettingsAccountErrFetchAccount.format(&[]))
                 }
             }
         }
@@ -571,12 +614,15 @@ pub fn AccountSettings() -> impl IntoView {
                                 set_ledger_error.set(None);
                             } else {
                                 set_ledger_error.set(Some(
-                                    "Failed to parse public key from Ledger".to_string(),
+                                    TranslationKey::PagesSettingsAccountErrParsePublicKeyFromLedger
+                                        .format(&[]),
                                 ));
                             }
                         } else {
-                            set_ledger_error
-                                .set(Some("Invalid public key length from Ledger".to_string()));
+                            set_ledger_error.set(Some(
+                                TranslationKey::PagesSettingsAccountErrInvalidLedgerPublicKeyLength
+                                    .format(&[]),
+                            ));
                         }
                     }
                     JsWalletResponse::LedgerConnectError { error } => {
@@ -864,17 +910,32 @@ pub fn AccountSettings() -> impl IntoView {
 
     view! {
         <div class="flex flex-col gap-4 p-4">
-            <div class="text-xl font-semibold">"Account"</div>
+            <div class="text-xl font-semibold">
+                {move || TranslationKey::PagesSettingsAccountPageTitle.format(&[])}
+            </div>
 
             // Export to Other Wallets section
             <div class="flex flex-col gap-4">
                 <div class="flex flex-col gap-2">
-                    <div class="text-lg font-medium">"Export to Other Wallets"</div>
+                    <div class="text-lg font-medium">
+                        {move || {
+                            TranslationKey::PagesSettingsAccountSectionExportHeading.format(&[])
+                        }}
+                    </div>
                     <div class="text-sm text-neutral-400">
-                        "Export your account to another wallet or device. "
-                        <span class="text-red-400">
-                            "Keep this information secure and never share it with anyone."
-                        </span>
+                        {move || {
+                            let security_warning = view! {
+                                <span class="text-red-400">
+                                    {move || {
+                                        TranslationKey::PagesSettingsAccountExportSecurityWarning
+                                            .format(&[])
+                                    }}
+                                </span>
+                            }
+                                .into_any();
+                            TranslationKey::PagesSettingsAccountExportIntro
+                                .format_view(vec![("security_warning", security_warning)])
+                        }}
                     </div>
                 </div>
 
@@ -885,7 +946,12 @@ pub fn AccountSettings() -> impl IntoView {
                     >
                         <div class="flex items-center gap-3">
                             <Icon icon=icondata::LuKeyRound width="20" height="20" />
-                            <span>"Export to Other Wallets"</span>
+                            <span>
+                                {move || {
+                                    TranslationKey::PagesSettingsAccountExportChevronLabel
+                                        .format(&[])
+                                }}
+                            </span>
                         </div>
                         <Show when=move || show_secrets.get()>
                             <Icon icon=icondata::LuEyeOff width="20" height="20" />
@@ -916,6 +982,7 @@ pub fn AccountSettings() -> impl IntoView {
                                 Some(account) => {
                                     match &account.secret_key {
                                         SecretKeyHolder::Ledger { path, public_key: _ } => {
+                                            let ledger_derivation_path_display = path.clone();
                                             view! {
                                                 <div class="p-4 rounded-lg bg-amber-950/30 border border-amber-700/30">
                                                     <div class="flex items-center gap-2 mb-2">
@@ -926,15 +993,29 @@ pub fn AccountSettings() -> impl IntoView {
                                                             attr:class="text-amber-400"
                                                         />
                                                         <span class="text-amber-400 font-medium">
-                                                            Ledger Account
+                                                            {move || {
+                                                                TranslationKey::PagesSettingsAccountBadgeLedgerAccount
+                                                                    .format(&[])
+                                                            }}
                                                         </span>
                                                     </div>
                                                     <div class="text-sm text-amber-200 mb-3">
-                                                        "This account is managed by a Ledger hardware wallet. To export the account to a different wallet, connect the other wallet to the same Ledger device and enter the same derivation path."
+                                                        {move || {
+                                                            TranslationKey::PagesSettingsAccountExportLedgerInstructions
+                                                                .format(&[])
+                                                        }}
                                                     </div>
                                                     <div class="text-sm text-amber-300">
-                                                        "Derivation path: "
-                                                        <span class="font-mono">{path.clone()}</span>
+                                                        {move || {
+                                                            let path_view = view! {
+                                                                <span class="font-mono">
+                                                                    {ledger_derivation_path_display.clone()}
+                                                                </span>
+                                                            }
+                                                                .into_any();
+                                                            TranslationKey::PagesSettingsAccountExportDerivationPathLine
+                                                                .format_view(vec![("path", path_view)])
+                                                        }}
                                                     </div>
                                                 </div>
                                             }
@@ -946,7 +1027,10 @@ pub fn AccountSettings() -> impl IntoView {
                                                 <div class="p-4 rounded-lg bg-neutral-900">
                                                     <div class="flex items-center justify-between">
                                                         <div class="text-sm text-neutral-400">
-                                                            "Your seed phrase:"
+                                                            {move || {
+                                                                TranslationKey::PagesSettingsAccountLabelSeedPhrase
+                                                                    .format(&[])
+                                                            }}
                                                         </div>
                                                         <Show when=move || seed_phrase_exists>
                                                             <button
@@ -956,7 +1040,11 @@ pub fn AccountSettings() -> impl IntoView {
                                                                 <Icon icon=icondata::LuCopy width="16" height="16" />
                                                                 <span>
                                                                     {move || {
-                                                                        if copied_seed.get() { "Copied!" } else { "Copy" }
+                                                                        if copied_seed.get() {
+                                                                            TranslationKey::PagesSettingsAccountButtonCopied.format(&[])
+                                                                        } else {
+                                                                            TranslationKey::PagesSettingsAccountButtonCopy.format(&[])
+                                                                        }
                                                                     }}
                                                                 </span>
                                                             </button>
@@ -968,7 +1056,10 @@ pub fn AccountSettings() -> impl IntoView {
                                                             None => {
                                                                 view! {
                                                                     <div class="text-neutral-400">
-                                                                        "Seed phrase for this account is unknown. Most likely, because you imported this account using a private key."
+                                                                        {move || {
+                                                                            TranslationKey::PagesSettingsAccountSeedPhraseUnknown
+                                                                                .format(&[])
+                                                                        }}
                                                                     </div>
                                                                 }
                                                                     .into_any()
@@ -980,7 +1071,10 @@ pub fn AccountSettings() -> impl IntoView {
                                                 <div class="p-4 rounded-lg bg-neutral-900">
                                                     <div class="flex items-center justify-between">
                                                         <div class="text-sm text-neutral-400">
-                                                            "Your private key:"
+                                                            {move || {
+                                                                TranslationKey::PagesSettingsAccountLabelPrivateKey
+                                                                    .format(&[])
+                                                            }}
                                                         </div>
                                                         <button
                                                             on:click=copy_key
@@ -989,7 +1083,11 @@ pub fn AccountSettings() -> impl IntoView {
                                                             <Icon icon=icondata::LuCopy width="16" height="16" />
                                                             <span>
                                                                 {move || {
-                                                                    if copied_key.get() { "Copied!" } else { "Copy" }
+                                                                    if copied_key.get() {
+                                                                        TranslationKey::PagesSettingsAccountButtonCopied.format(&[])
+                                                                    } else {
+                                                                        TranslationKey::PagesSettingsAccountButtonCopy.format(&[])
+                                                                    }
                                                                 }}
                                                             </span>
                                                         </button>
@@ -1006,7 +1104,12 @@ pub fn AccountSettings() -> impl IntoView {
                                 None => {
                                     view! {
                                         <div class="p-4 rounded-lg bg-red-950/30 border border-red-700/30">
-                                            <div class="text-red-400">"No account selected"</div>
+                                            <div class="text-red-400">
+                                                {move || {
+                                                    TranslationKey::PagesSettingsAccountErrorNoAccountSelected
+                                                        .format(&[])
+                                                }}
+                                            </div>
                                         </div>
                                     }
                                         .into_any()
@@ -1142,7 +1245,11 @@ pub fn AccountSettings() -> impl IntoView {
                             class="flex items-center justify-center gap-2 p-4 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 transition-colors font-medium cursor-pointer"
                         >
                             <Icon icon=icondata::LuUnlink width="20" height="20" />
-                            <span>"Disconnect Ledger"</span>
+                            <span>
+                                {move || {
+                                    TranslationKey::PagesSettingsAccountDisconnectLedger.format(&[])
+                                }}
+                            </span>
                         </button>
                     }
                         .into_any()
@@ -1157,11 +1264,21 @@ pub fn AccountSettings() -> impl IntoView {
                                 >
                                     <Show when=move || ledger_connection_in_progress.get()>
                                         <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-400"></div>
-                                        <span>"Connecting Ledger..."</span>
+                                        <span>
+                                            {move || {
+                                                TranslationKey::PagesSettingsAccountConnectingLedger
+                                                    .format(&[])
+                                            }}
+                                        </span>
                                     </Show>
                                     <Show when=move || !ledger_connection_in_progress.get()>
                                         <Icon icon=icondata::LuWallet width="20" height="20" />
-                                        <span>"Connect Ledger"</span>
+                                        <span>
+                                            {move || {
+                                                TranslationKey::PagesSettingsAccountConnectLedger
+                                                    .format(&[])
+                                            }}
+                                        </span>
                                     </Show>
                                 </button>
                             </Show>
@@ -1186,7 +1303,12 @@ pub fn AccountSettings() -> impl IntoView {
                                                     width="20"
                                                     height="20"
                                                 />
-                                                <span class="font-medium">"Error"</span>
+                                                <span class="font-medium">
+                                                    {move || {
+                                                        TranslationKey::PagesSettingsAccountLedgerErrorHeading
+                                                            .format(&[])
+                                                    }}
+                                                </span>
                                             </div>
                                             <p class="text-red-300 text-sm mt-2">
                                                 {move || ledger_error.get().unwrap_or_default()}
@@ -1218,7 +1340,10 @@ pub fn AccountSettings() -> impl IntoView {
                                                         if window().post_message(&js_value, &origin).is_err() {
                                                             set_ledger_error
                                                                 .set(
-                                                                    Some("Failed to send Ledger public key request".to_string()),
+                                                                    Some(
+                                                                        TranslationKey::PagesSettingsAccountErrLedgerPublicKeyPostMessage
+                                                                            .format(&[]),
+                                                                    ),
                                                                 );
                                                             set_ledger_getting_public_key(false);
                                                         }
@@ -1227,7 +1352,8 @@ pub fn AccountSettings() -> impl IntoView {
                                                         set_ledger_error
                                                             .set(
                                                                 Some(
-                                                                    "Failed to serialize Ledger public key request".to_string(),
+                                                                    TranslationKey::PagesSettingsAccountErrLedgerPublicKeySerialize
+                                                                        .format(&[]),
                                                                 ),
                                                             );
                                                         set_ledger_getting_public_key(false);
@@ -1239,11 +1365,20 @@ pub fn AccountSettings() -> impl IntoView {
                                         >
                                             <Show when=move || ledger_getting_public_key.get()>
                                                 <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-400"></div>
-                                                <span>"Confirm in Ledger..."</span>
+                                                <span>
+                                                    {move || {
+                                                        TranslationKey::PagesSettingsAccountConfirmInLedger
+                                                            .format(&[])
+                                                    }}
+                                                </span>
                                             </Show>
                                             <Show when=move || !ledger_getting_public_key.get()>
                                                 <Icon icon=icondata::LuKey width="20" height="20" />
-                                                <span>"Get Public Key"</span>
+                                                <span>
+                                                    {move || {
+                                                        TranslationKey::PagesSettingsAccountGetPublicKey.format(&[])
+                                                    }}
+                                                </span>
                                             </Show>
                                         </button>
                                     </Show>
@@ -1358,7 +1493,12 @@ pub fn AccountSettings() -> impl IntoView {
                                             class="w-full flex items-center justify-center gap-2 p-4 rounded-lg bg-green-500/10 hover:bg-green-500/20 text-green-400 transition-colors font-medium cursor-pointer"
                                         >
                                             <Icon icon=icondata::LuCheck width="20" height="20" />
-                                            <span>"Complete Ledger Connection"</span>
+                                            <span>
+                                                {move || {
+                                                    TranslationKey::PagesSettingsAccountCompleteLedgerConnection
+                                                        .format(&[])
+                                                }}
+                                            </span>
                                         </button>
                                     </Show>
                                 </div>
@@ -1389,7 +1529,13 @@ pub fn AccountSettings() -> impl IntoView {
                 network.get() == Network::Testnet && !is_ledger
             }>
                 <Suspense fallback=move || {
-                    view! { <div class="text-sm text-neutral-400">"Loading..."</div> }
+                    view! {
+                        <div class="text-sm text-neutral-400">
+                            {move || {
+                                TranslationKey::PagesSettingsAccountSmartWalletLoading.format(&[])
+                            }}
+                        </div>
+                    }
                 }>
                     {move || {
                         smart_wallet_version
@@ -1415,7 +1561,8 @@ pub fn AccountSettings() -> impl IntoView {
                                                                     }),
                                                                 );
                                                                 let (receiver, transaction) = EnqueuedTransaction::create(
-                                                                    TranslationKey::MiscTransactionDeploySmartWallet.format(&[]),
+                                                                    TranslationKey::MiscTransactionDeploySmartWallet
+                                                                        .format(&[]),
                                                                     selected_account_id.clone(),
                                                                     selected_account_id,
                                                                     vec![action],
@@ -1442,7 +1589,10 @@ pub fn AccountSettings() -> impl IntoView {
                                                         <div class="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent transform skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
                                                         <span class="relative z-10 font-semibold text-white flex items-center gap-2">
                                                             <Icon icon=icondata::LuSparkles width="20" height="20" />
-                                                            "Enable Smart Wallet"
+                                                            {move || {
+                                                                TranslationKey::PagesSettingsAccountSmartWalletEnableButton
+                                                                    .format(&[])
+                                                            }}
                                                             <Icon icon=icondata::LuSparkles width="20" height="20" />
                                                         </span>
                                                     </button>
@@ -1453,7 +1603,10 @@ pub fn AccountSettings() -> impl IntoView {
                                                             height="16"
                                                         />
                                                         <span>
-                                                            "This feature is experimental and has not been audited. Use with caution."
+                                                            {move || {
+                                                                TranslationKey::PagesSettingsAccountSmartWalletExperimentalWarning
+                                                                    .format(&[])
+                                                            }}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -1465,7 +1618,7 @@ pub fn AccountSettings() -> impl IntoView {
                                         let is_latest = current_version.0
                                             == CURRENT_SMART_WALLET_VERSION;
                                         let latest_version_info = &SMART_WALLET_VERSIONS[0];
-                                        let cumulative_changes: Vec<&str> = if let Some(
+                                        let cumulative_changes: Vec<TranslationKey> = if let Some(
                                             current_idx,
                                         ) = SMART_WALLET_VERSIONS
                                             .iter()
@@ -1483,22 +1636,39 @@ pub fn AccountSettings() -> impl IntoView {
                                         view! {
                                             <div class="flex flex-col gap-4">
                                                 <div class="flex flex-col gap-2">
-                                                    <div class="text-lg font-medium">"Smart Wallet"</div>
+                                                    <div class="text-lg font-medium">
+                                                        {move || {
+                                                            TranslationKey::PagesSettingsAccountSmartWalletHeading
+                                                                .format(&[])
+                                                        }}
+                                                    </div>
                                                     <Show when=move || !is_latest>
                                                         <div class="p-4 rounded-lg bg-blue-950/30 border border-blue-700/30">
                                                             <div class="text-sm font-medium text-blue-300 mb-2">
-                                                                "New Version Available - "
-                                                                {latest_version_info.1.format("%B %d, %Y").to_string()}
+                                                                {move || {
+                                                                    let date = latest_version_info
+                                                                        .1
+                                                                        .format("%B %d, %Y")
+                                                                        .to_string();
+                                                                    TranslationKey::PagesSettingsAccountSmartWalletNewVersionHeading
+                                                                        .format(&[("date", &date)])
+                                                                }}
                                                             </div>
-                                                            <div class="text-sm text-blue-200 mb-3">"What's new:"</div>
+                                                            <div class="text-sm text-blue-200 mb-3">
+                                                                {move || {
+                                                                    TranslationKey::PagesSettingsAccountSmartWalletWhatsNew
+                                                                        .format(&[])
+                                                                }}
+                                                            </div>
                                                             <ul class="text-sm text-blue-100 space-y-1 mb-4">
                                                                 {cumulative_changes
                                                                     .iter()
-                                                                    .map(|change| {
+                                                                    .map(|change_key| {
+                                                                        let change_key = *change_key;
                                                                         view! {
                                                                             <li class="flex items-start gap-2">
                                                                                 <span class="text-blue-400">-</span>
-                                                                                <span>{change.to_string()}</span>
+                                                                                <span>{change_key.format(&[])}</span>
                                                                             </li>
                                                                         }
                                                                     })
@@ -1535,7 +1705,8 @@ pub fn AccountSettings() -> impl IntoView {
                                                                             }),
                                                                         );
                                                                         let (receiver, transaction) = EnqueuedTransaction::create(
-                                                                            TranslationKey::MiscTransactionUpdateSmartWallet.format(&[]),
+                                                                            TranslationKey::MiscTransactionUpdateSmartWallet
+                                                                                .format(&[]),
                                                                             selected_account_id.clone(),
                                                                             selected_account_id,
                                                                             if supports_feature(
@@ -1567,7 +1738,10 @@ pub fn AccountSettings() -> impl IntoView {
                                                                 class="w-full flex items-center justify-center gap-2 p-3 rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors font-medium text-white cursor-pointer"
                                                             >
                                                                 <Icon icon=icondata::LuDownload width="16" height="16" />
-                                                                "Update Smart Wallet"
+                                                                {move || {
+                                                                    TranslationKey::PagesSettingsAccountSmartWalletUpdateButton
+                                                                        .format(&[])
+                                                                }}
                                                             </button>
                                                         </div>
                                                     </Show>
@@ -1605,7 +1779,10 @@ pub fn AccountSettings() -> impl IntoView {
                     .unwrap_or(false)
             }>
                 <div class="text-sm text-neutral-400 p-4 bg-neutral-900 rounded-lg">
-                    "Smart Wallet feature is not available for Ledger accounts yet."
+                    {move || {
+                        TranslationKey::PagesSettingsAccountSmartWalletNotAvailableLedger
+                            .format(&[])
+                    }}
                 </div>
             </Show>
 
@@ -1625,15 +1802,25 @@ pub fn AccountSettings() -> impl IntoView {
                         <div class="flex flex-col gap-4">
                             <div class="flex flex-col gap-2">
                                 <div class="flex items-center justify-between">
-                                    <div class="text-lg font-medium">"Bettear Bot"</div>
+                                    <div class="text-lg font-medium">
+                                        {move || {
+                                            TranslationKey::PagesSettingsAccountBettearTitle.format(&[])
+                                        }}
+                                    </div>
                                     <img
                                         src="/bettearbot-small.webp"
-                                        alt="BettearBot"
+                                        alt=move || {
+                                            TranslationKey::PagesSettingsAccountBettearImageAlt
+                                                .format(&[])
+                                        }
                                         class="w-16 h-16 shrink-0"
                                     />
                                 </div>
                                 <div class="text-sm text-neutral-400">
-                                    "Control whether your account is accessible to BettearBot, or take full custody of it to use as a normal wallet"
+                                    {move || {
+                                        TranslationKey::PagesSettingsAccountBettearDescription
+                                            .format(&[])
+                                    }}
                                 </div>
                             </div>
 
@@ -1642,7 +1829,12 @@ pub fn AccountSettings() -> impl IntoView {
                                 disabled=move || bettear_bot_change_in_progress.get()
                             >
                                 <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-current"></div>
-                                <span>"Loading..."</span>
+                                <span>
+                                    {move || {
+                                        TranslationKey::PagesSettingsAccountBettearLoading
+                                            .format(&[])
+                                    }}
+                                </span>
                             </button>
                         </div>
                     }
@@ -1655,15 +1847,25 @@ pub fn AccountSettings() -> impl IntoView {
                                     <div class="flex flex-col gap-4">
                                         <div class="flex flex-col gap-2">
                                             <div class="flex items-center justify-between">
-                                                <div class="text-lg font-medium">"Bettear Bot"</div>
+                                                <div class="text-lg font-medium">
+                                                    {move || {
+                                                        TranslationKey::PagesSettingsAccountBettearTitle.format(&[])
+                                                    }}
+                                                </div>
                                                 <img
                                                     src="/bettearbot-small.webp"
-                                                    alt="BettearBot"
+                                                    alt=move || {
+                                                        TranslationKey::PagesSettingsAccountBettearImageAlt
+                                                            .format(&[])
+                                                    }
                                                     class="w-16 h-16 shrink-0"
                                                 />
                                             </div>
                                             <div class="text-sm text-neutral-400">
-                                                "Control whether your account is accessible to BettearBot, or take full custody of it to use as a normal wallet"
+                                                {move || {
+                                                    TranslationKey::PagesSettingsAccountBettearDescription
+                                                        .format(&[])
+                                                }}
                                             </div>
                                         </div>
 
@@ -1760,16 +1962,30 @@ pub fn AccountSettings() -> impl IntoView {
                                         >
                                             <Show when=move || bettear_bot_change_in_progress.get()>
                                                 <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-current"></div>
-                                                <span>"Processing..."</span>
+                                                <span>
+                                                    {move || {
+                                                        TranslationKey::PagesSettingsAccountBettearProcessing
+                                                            .format(&[])
+                                                    }}
+                                                </span>
                                             </Show>
                                             <Show when=move || !bettear_bot_change_in_progress.get()>
                                                 <Show when=move || has_key>
                                                     <Icon icon=icondata::LuUnlink width="20" height="20" />
-                                                    <span>"Unlink"</span>
+                                                    <span>
+                                                        {move || {
+                                                            TranslationKey::PagesSettingsAccountBettearUnlink
+                                                                .format(&[])
+                                                        }}
+                                                    </span>
                                                 </Show>
                                                 <Show when=move || !has_key>
                                                     <Icon icon=icondata::LuLink width="20" height="20" />
-                                                    <span>"Link"</span>
+                                                    <span>
+                                                        {move || {
+                                                            TranslationKey::PagesSettingsAccountBettearLink.format(&[])
+                                                        }}
+                                                    </span>
                                                 </Show>
                                             </Show>
                                         </button>
@@ -1813,7 +2029,9 @@ pub fn AccountSettings() -> impl IntoView {
                 class="flex items-center justify-center gap-2 p-4 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 transition-colors font-medium cursor-pointer"
             >
                 <Icon icon=icondata::LuPlus width="20" height="20" />
-                <span>"Create Subaccount"</span>
+                <span>
+                    {move || TranslationKey::PagesSettingsAccountCreateSubaccount.format(&[])}
+                </span>
             </button>
         </div>
 
@@ -1821,18 +2039,19 @@ pub fn AccountSettings() -> impl IntoView {
             <div class="text-lg font-medium">
                 {move || {
                     if is_ledger_account() {
-                        "Access Key Management"
+                        TranslationKey::PagesSettingsAccountAccessKeySectionTitleLedger.format(&[])
                     } else {
-                        "Terminate All Other Sessions"
+                        TranslationKey::PagesSettingsAccountAccessKeySectionTitleStandard
+                            .format(&[])
                     }
                 }}
             </div>
             <div class="text-sm text-neutral-400">
                 {move || {
                     if is_ledger_account() {
-                        "This will remove all other access keys from your account, keeping only the current Ledger key. This will make your Ledger the only way to access this account."
+                        TranslationKey::PagesSettingsAccountAccessKeyDescriptionLedger.format(&[])
                     } else {
-                        "This will log you out of all devices / wallets other than this one."
+                        TranslationKey::PagesSettingsAccountAccessKeyDescriptionStandard.format(&[])
                     }
                 }}
             </div>
@@ -1841,7 +2060,7 @@ pub fn AccountSettings() -> impl IntoView {
                 <div class="flex items-center gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400">
                     <Icon icon=icondata::LuCircleCheck width="16" height="16" />
                     <span class="text-sm">
-                        "Your Ledger is already the only access key for this account"
+                        {move || TranslationKey::PagesSettingsAccountLedgerOnlyKeyOk.format(&[])}
                     </span>
                 </div>
             </Show>
@@ -1891,29 +2110,37 @@ pub fn AccountSettings() -> impl IntoView {
                     <span>
                         {move || {
                             if is_ledger_account() {
-                                "Remove Other Access Keys"
+                                TranslationKey::PagesSettingsAccountButtonRemoveOtherKeys
+                                    .format(&[])
                             } else {
-                                "Terminate All Other Sessions"
+                                TranslationKey::PagesSettingsAccountButtonTerminateSessions
+                                    .format(&[])
                             }
                         }}
                     </span>
                 </Show>
                 <Show when=move || terminating_sessions.get()>
                     <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-red-500"></div>
-                    <span>"Terminating..."</span>
+                    <span>
+                        {move || TranslationKey::PagesSettingsAccountButtonTerminating.format(&[])}
+                    </span>
                 </Show>
                 <Show when=move || checking_keys.get()>
                     <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-neutral-500"></div>
-                    <span>"Checking keys..."</span>
+                    <span>
+                        {move || TranslationKey::PagesSettingsAccountButtonCheckingKeys.format(&[])}
+                    </span>
                 </Show>
             </button>
         </div>
 
         // Log Out section
         <div class="flex flex-col gap-4 p-4">
-            <div class="text-lg font-medium">"Log Out"</div>
+            <div class="text-lg font-medium">
+                {move || TranslationKey::PagesSettingsAccountLogOutSectionTitle.format(&[])}
+            </div>
             <div class="text-sm text-neutral-400">
-                "This will log you out of your account on this device. Make sure to export your seed phrase or private key somewhere safe."
+                {move || TranslationKey::PagesSettingsAccountLogOutDescription.format(&[])}
             </div>
             <button
                 on:click=move |_| {
@@ -1960,7 +2187,7 @@ pub fn AccountSettings() -> impl IntoView {
                 class="flex items-center justify-center gap-2 p-3 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors font-medium cursor-pointer"
             >
                 <Icon icon=icondata::LuLogOut width="16" height="16" />
-                "Log Out"
+                {move || TranslationKey::PagesSettingsAccountLogOutButton.format(&[])}
             </button>
         </div>
     }

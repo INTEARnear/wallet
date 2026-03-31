@@ -3,6 +3,7 @@ use leptos::prelude::*;
 use leptos_icons::*;
 use near_min_api::types::NearToken;
 
+use crate::translations::TranslationKey;
 use crate::utils::balance_to_decimal;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -73,7 +74,11 @@ pub fn ProjectedRevenue(
                     view! {
                         <div class="bg-neutral-900/50 rounded-xl p-4 space-y-3">
                             <div class="flex items-center justify-between">
-                                <h3 class="text-white font-semibold">"Projected Revenue"</h3>
+                                <h3 class="text-white font-semibold">
+                                    {move || {
+                                        TranslationKey::ComponentsProjectedRevenueTitle.format(&[])
+                                    }}
+                                </h3>
                                 <button
                                     class="text-xs bg-neutral-800 hover:bg-neutral-700 text-white px-2 py-1 rounded transition-colors cursor-pointer"
                                     on:click=move |_| set_show_usd.update(|show| *show = !*show)
@@ -112,7 +117,12 @@ pub fn ProjectedRevenue(
                                             }
                                         }}
                                     </p>
-                                    <p class="text-gray-400 text-xs">"Daily"</p>
+                                    <p class="text-gray-400 text-xs">
+                                        {move || {
+                                            TranslationKey::ComponentsProjectedRevenuePeriodDaily
+                                                .format(&[])
+                                        }}
+                                    </p>
                                 </div>
                                 <div>
                                     <p class="text-gray-400 text-xs">
@@ -144,7 +154,12 @@ pub fn ProjectedRevenue(
                                             }
                                         }}
                                     </p>
-                                    <p class="text-gray-400 text-xs">"Monthly"</p>
+                                    <p class="text-gray-400 text-xs">
+                                        {move || {
+                                            TranslationKey::ComponentsProjectedRevenuePeriodMonthly
+                                                .format(&[])
+                                        }}
+                                    </p>
                                 </div>
                                 <div>
                                     <p class="text-gray-400 text-xs">
@@ -176,7 +191,12 @@ pub fn ProjectedRevenue(
                                             }
                                         }}
                                     </p>
-                                    <p class="text-gray-400 text-xs">"Yearly"</p>
+                                    <p class="text-gray-400 text-xs">
+                                        {move || {
+                                            TranslationKey::ComponentsProjectedRevenuePeriodYearly
+                                                .format(&[])
+                                        }}
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -186,7 +206,11 @@ pub fn ProjectedRevenue(
                     view! {
                         <div class="bg-neutral-900/50 rounded-xl p-4 space-y-3">
                             <div class="flex items-center justify-between">
-                                <h3 class="text-white font-semibold">"Projected Revenue"</h3>
+                                <h3 class="text-white font-semibold">
+                                    {move || {
+                                        TranslationKey::ComponentsProjectedRevenueTitle.format(&[])
+                                    }}
+                                </h3>
                                 <button
                                     class="text-xs bg-neutral-800 hover:bg-neutral-700 text-white px-2 py-1 rounded transition-colors cursor-pointer"
                                     on:click=move |_| set_show_usd.update(|show| *show = !*show)
@@ -205,7 +229,12 @@ pub fn ProjectedRevenue(
                                             }
                                         }}
                                     </p>
-                                    <p class="text-gray-400 text-xs">"Daily"</p>
+                                    <p class="text-gray-400 text-xs">
+                                        {move || {
+                                            TranslationKey::ComponentsProjectedRevenuePeriodDaily
+                                                .format(&[])
+                                        }}
+                                    </p>
                                 </div>
                                 <div>
                                     <p class="text-white font-medium">
@@ -217,7 +246,12 @@ pub fn ProjectedRevenue(
                                             }
                                         }}
                                     </p>
-                                    <p class="text-gray-400 text-xs">"Monthly"</p>
+                                    <p class="text-gray-400 text-xs">
+                                        {move || {
+                                            TranslationKey::ComponentsProjectedRevenuePeriodMonthly
+                                                .format(&[])
+                                        }}
+                                    </p>
                                 </div>
                                 <div>
                                     <p class="text-white font-medium">
@@ -229,7 +263,12 @@ pub fn ProjectedRevenue(
                                             }
                                         }}
                                     </p>
-                                    <p class="text-gray-400 text-xs">"Yearly"</p>
+                                    <p class="text-gray-400 text-xs">
+                                        {move || {
+                                            TranslationKey::ComponentsProjectedRevenuePeriodYearly
+                                                .format(&[])
+                                        }}
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -240,7 +279,11 @@ pub fn ProjectedRevenue(
                 view! {
                     <div class="bg-neutral-900/50 rounded-xl p-4 space-y-3">
                         <div class="flex items-center justify-between">
-                            <h3 class="text-white font-semibold">"Projected Revenue"</h3>
+                            <h3 class="text-white font-semibold">
+                                {move || {
+                                    TranslationKey::ComponentsProjectedRevenueTitle.format(&[])
+                                }}
+                            </h3>
                             <button
                                 class="text-xs bg-neutral-800 hover:bg-neutral-700 text-white px-2 py-1 rounded transition-colors cursor-pointer"
                                 on:click=move |_| set_show_usd.update(|show| *show = !*show)
@@ -259,7 +302,12 @@ pub fn ProjectedRevenue(
                                         }
                                     }}
                                 </p>
-                                <p class="text-gray-400 text-xs">"Daily"</p>
+                                <p class="text-gray-400 text-xs">
+                                    {move || {
+                                        TranslationKey::ComponentsProjectedRevenuePeriodDaily
+                                            .format(&[])
+                                    }}
+                                </p>
                             </div>
                             <div>
                                 <p class="text-white font-medium">
@@ -271,7 +319,12 @@ pub fn ProjectedRevenue(
                                         }
                                     }}
                                 </p>
-                                <p class="text-gray-400 text-xs">"Monthly"</p>
+                                <p class="text-gray-400 text-xs">
+                                    {move || {
+                                        TranslationKey::ComponentsProjectedRevenuePeriodMonthly
+                                            .format(&[])
+                                    }}
+                                </p>
                             </div>
                             <div>
                                 <p class="text-white font-medium">
@@ -283,7 +336,12 @@ pub fn ProjectedRevenue(
                                         }
                                     }}
                                 </p>
-                                <p class="text-gray-400 text-xs">"Yearly"</p>
+                                <p class="text-gray-400 text-xs">
+                                    {move || {
+                                        TranslationKey::ComponentsProjectedRevenuePeriodYearly
+                                            .format(&[])
+                                    }}
+                                </p>
                             </div>
                         </div>
                     </div>

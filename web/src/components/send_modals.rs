@@ -4,6 +4,7 @@ use crate::{
         tokens_context::TokenData, transaction_queue_context::TransactionQueueContext,
     },
     pages::send::execute_send,
+    translations::TranslationKey,
     utils::{
         balance_to_decimal, format_account_id_no_hide, format_token_amount_full_precision,
         format_usd_value_no_hide,
@@ -69,6 +70,7 @@ pub fn SendConfirmationModal(
         None
     };
     let amount_usd_clone = amount_usd.clone();
+    let transfer_count = confirmation_data.transfers.len();
 
     view! {
         <div
@@ -81,15 +83,19 @@ pub fn SendConfirmationModal(
             >
                 <div class="text-center">
                     <div class="mb-4">
-                        <h3 class="text-white font-bold text-xl mb-2">"Confirm Send"</h3>
+                        <h3 class="text-white font-bold text-xl mb-2">
+                            {move || TranslationKey::PagesSendConfirmModalTitle.format(&[])}
+                        </h3>
                         <p class="text-gray-400 text-sm">
-                            "Review the details below and confirm to proceed with the transfer."
+                            {move || TranslationKey::PagesSendConfirmModalSubtitle.format(&[])}
                         </p>
                     </div>
 
                     <div class="space-y-4">
                         <div class="bg-neutral-800 rounded-lg p-4">
-                            <div class="text-gray-400 text-sm mb-2">"You're sending"</div>
+                            <div class="text-gray-400 text-sm mb-2">
+                                {move || TranslationKey::PagesSendConfirmModalYoureSending.format(&[])}
+                            </div>
                             <div class="flex items-center gap-3">
                                 {match confirmation_data.token.token.metadata.icon {
                                     Some(icon) => {
@@ -130,13 +136,14 @@ pub fn SendConfirmationModal(
                                             }
                                         }}
                                     </div>
-                                    {if confirmation_data.transfers.len() > 1 {
+                                    {if transfer_count > 1 {
                                         view! {
                                             <div class="text-gray-500 text-xs mt-1">
-                                                {format!(
-                                                    "Total across {} recipients",
-                                                    confirmation_data.transfers.len(),
-                                                )}
+                                                {move || {
+                                                    let c = transfer_count.to_string();
+                                                    TranslationKey::PagesSendConfirmModalTotalAcrossRecipients
+                                                        .format(&[("count", c.as_str())])
+                                                }}
                                             </div>
                                         }
                                             .into_any()
@@ -158,10 +165,16 @@ pub fn SendConfirmationModal(
 
                         <div class="bg-neutral-800 rounded-lg p-4">
                             <div class="text-gray-400 text-sm mb-3">
-                                {if confirmation_data.transfers.len() == 1 {
-                                    "To account".to_string()
-                                } else {
-                                    format!("To {} accounts", confirmation_data.transfers.len())
+                                {move || {
+                                    if transfer_count == 1 {
+                                        TranslationKey::PagesSendConfirmModalToAccountHeading
+                                            .format(&[])
+                                    } else {
+                                        let c = transfer_count.to_string();
+                                        TranslationKey::PagesSendConfirmModalToAccountsHeading.format(&[
+                                            ("count", c.as_str()),
+                                        ])
+                                    }
                                 }}
                             </div>
                             <div class="space-y-2 max-h-48 overflow-y-auto">
@@ -229,12 +242,13 @@ pub fn SendConfirmationModal(
                                     })
                                     .collect::<Vec<_>>()}
                             </div>
-                            {if confirmation_data.transfers.len() > 1 {
+                            {if transfer_count > 1 {
                                 view! {
                                     <div class="mt-3 pt-3 border-t border-neutral-600/30">
                                         <div class="flex justify-between items-center">
                                             <span class="text-gray-400 text-sm font-medium">
-                                                "Total:"
+                                                {move || TranslationKey::PagesSendConfirmModalTotalLabel
+                                                    .format(&[])}
                                             </span>
                                             <div class="text-right">
                                                 <div class="text-white font-medium text-sm font-mono">
@@ -266,7 +280,7 @@ pub fn SendConfirmationModal(
                             class="flex-1 bg-neutral-700 hover:bg-neutral-600 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
                             on:click=move |_| modal.set(None)
                         >
-                            "Cancel"
+                            {move || TranslationKey::PagesSendConfirmModalCancel.format(&[])}
                         </button>
                         <button
                             class="flex-1 bg-linear-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-xl px-4 py-3 font-medium transition-all cursor-pointer"
@@ -293,7 +307,7 @@ pub fn SendConfirmationModal(
                                 }
                             }
                         >
-                            "Confirm Send"
+                            {move || TranslationKey::PagesSendConfirmModalConfirmButton.format(&[])}
                         </button>
                     </div>
                 </div>
@@ -310,6 +324,7 @@ pub fn SendSuccessModal(result: SendResult) -> impl IntoView {
         result.token.token.metadata.decimals,
         &result.token.token.metadata.symbol,
     );
+    let recipient_count = result.recipients.len();
 
     view! {
         <div
@@ -330,12 +345,16 @@ pub fn SendSuccessModal(result: SendResult) -> impl IntoView {
                                 attr:class="text-white"
                             />
                         </div>
-                        <h3 class="text-white font-bold text-xl mb-2">"Sent!"</h3>
+                        <h3 class="text-white font-bold text-xl mb-2">
+                            {move || TranslationKey::PagesSendSuccessModalTitle.format(&[])}
+                        </h3>
                     </div>
 
                     <div class="space-y-4">
                         <div class="bg-neutral-800 rounded-lg p-4">
-                            <div class="text-gray-400 text-sm mb-2">"You sent"</div>
+                            <div class="text-gray-400 text-sm mb-2">
+                                {move || TranslationKey::PagesSendSuccessModalYouSent.format(&[])}
+                            </div>
                             <div class="flex items-center gap-3">
                                 {match result.token.token.metadata.icon {
                                     Some(icon) => {
@@ -382,10 +401,15 @@ pub fn SendSuccessModal(result: SendResult) -> impl IntoView {
 
                         <div class="bg-neutral-800 rounded-lg p-4">
                             <div class="text-gray-400 text-sm mb-3">
-                                {if result.recipients.len() == 1 {
-                                    "To recipient".to_string()
-                                } else {
-                                    format!("To {} recipients", result.recipients.len())
+                                {move || {
+                                    if recipient_count == 1 {
+                                        TranslationKey::PagesSendSuccessModalToRecipientHeading
+                                            .format(&[])
+                                    } else {
+                                        let c = recipient_count.to_string();
+                                        TranslationKey::PagesSendSuccessModalToRecipientsHeading
+                                            .format(&[("count", c.as_str())])
+                                    }
                                 }}
                             </div>
                             <div class="max-h-32 overflow-y-auto space-y-2">
@@ -421,7 +445,7 @@ pub fn SendSuccessModal(result: SendResult) -> impl IntoView {
                         class="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
                         on:click=move |_| modal.set(None)
                     >
-                        "Close"
+                        {move || TranslationKey::PagesSendSuccessModalClose.format(&[])}
                     </button>
                 </div>
             </div>
@@ -451,9 +475,11 @@ pub fn SendErrorModal() -> impl IntoView {
                                 attr:class="text-white"
                             />
                         </div>
-                        <h3 class="text-white font-bold text-xl mb-2">"Send Failed"</h3>
+                        <h3 class="text-white font-bold text-xl mb-2">
+                            {move || TranslationKey::PagesSendErrorModalTitle.format(&[])}
+                        </h3>
                         <p class="text-gray-400 text-sm">
-                            "The send transaction failed. Please check the transaction details and try again."
+                            {move || TranslationKey::PagesSendErrorModalDescription.format(&[])}
                         </p>
                     </div>
 
@@ -461,7 +487,7 @@ pub fn SendErrorModal() -> impl IntoView {
                         class="w-full mt-6 bg-red-600 hover:bg-red-700 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
                         on:click=move |_| modal.set(None)
                     >
-                        "Close"
+                        {move || TranslationKey::PagesSendErrorModalClose.format(&[])}
                     </button>
                 </div>
             </div>

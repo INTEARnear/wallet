@@ -135,9 +135,7 @@ impl Network {
                 .iter()
                 .find(|n| n.id == *id)
                 .map(|n| Network::Localnet(Box::new(n.clone())))
-                .ok_or_else(|| {
-                    format!("Network '{id}' not found. If the app is deployed on a local network, you can add the network in Settings > Developer > Localnet, and the network ID must match.")
-                })?,
+                .ok_or_else(|| TranslationKey::PagesConnectNetworkNotFound.format(&[("id", id)]))?,
         })
     }
 }
@@ -774,14 +772,17 @@ pub fn Connect() -> impl IntoView {
                                 post_to_opener(message, true);
                             } else {
                                 let message = SendMessage::Error {
-                                    message: "Failed to add function call key. Possibly, you don't have NEAR for gas?".to_string(),
+                                    message:
+                                        TranslationKey::PagesConnectFailedAddFunctionCallKeyGas
+                                            .format(&[]),
                                 };
                                 post_to_opener(message, true);
                             }
                         }
                         Err(err) => {
                             let message = SendMessage::Error {
-                                message: format!("Failed to add function call key: {err}"),
+                                message: TranslationKey::PagesConnectFailedAddFunctionCallKey
+                                    .format(&[("error", &err.to_string())]),
                             };
                             post_to_opener(message, true);
                         }
@@ -819,9 +820,27 @@ pub fn Connect() -> impl IntoView {
 
     let handle_cancel = move |_| {
         let message = SendMessage::Error {
-            message: "User rejected the connection".to_string(),
+            message: TranslationKey::PagesConnectUserRejectedConnection.format(&[]),
         };
         post_to_opener(message, true);
+    };
+
+    let connect_network_label = move |network: &Network| -> String {
+        match network {
+            Network::Mainnet => TranslationKey::PagesConnectNetworkMainnet.format(&[]),
+            Network::Testnet => TranslationKey::PagesConnectNetworkTestnet.format(&[]),
+            Network::Localnet(n) => n.id.clone(),
+        }
+    };
+
+    let connect_gas_phrase = move |allowance: &GasAllowance| -> String {
+        match allowance {
+            GasAllowance::Amount(amount) => TranslationKey::PagesConnectGasAllowanceUpTo
+                .format(&[("amount", &amount.to_string())]),
+            GasAllowance::Unlimited => {
+                TranslationKey::PagesConnectGasAllowanceUnlimited.format(&[])
+            }
+        }
     };
 
     view! {
@@ -831,7 +850,11 @@ pub fn Connect() -> impl IntoView {
                     if let Some(error_msg) = error.get() {
                         view! {
                             <div class="flex flex-col items-center gap-4 text-center max-w-sm">
-                                <p class="text-red-400 text-lg font-semibold">"Connection Error"</p>
+                                <p class="text-red-400 text-lg font-semibold">
+                                    {move || {
+                                        TranslationKey::PagesConnectConnectionErrorTitle.format(&[])
+                                    }}
+                                </p>
                                 <p class="text-neutral-300 text-sm">{error_msg}</p>
                             </div>
                         }
@@ -840,7 +863,12 @@ pub fn Connect() -> impl IntoView {
                         view! {
                             <div class="flex flex-col items-center gap-4">
                                 <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-white"></div>
-                                <p class="text-white text-lg">"Receiving connection details..."</p>
+                                <p class="text-white text-lg">
+                                    {move || {
+                                        TranslationKey::PagesConnectReceivingConnectionDetails
+                                            .format(&[])
+                                    }}
+                                </p>
                             </div>
                         }
                             .into_any()
@@ -860,9 +888,15 @@ pub fn Connect() -> impl IntoView {
                         log::error!("Selected account not found");
                         return ().into_any();
                     };
+                    let selected_account_network = StoredValue::new(selected_account_network);
                     let Some(rd) = request_data() else {
                         return view! {
-                            <p class="text-red-400 text-sm">"Error: connection data unavailable"</p>
+                            <p class="text-red-400 text-sm">
+                                {move || {
+                                    TranslationKey::PagesConnectConnectionDataUnavailable
+                                        .format(&[])
+                                }}
+                            </p>
                         }
                             .into_any();
                     };
@@ -871,7 +905,7 @@ pub fn Connect() -> impl IntoView {
                             .contract_id
                             .as_ref()
                             .is_some_and(|contract_id| !contract_id.is_empty());
-                    let request_network = match Network::from_lowecase(
+                    let request_network = StoredValue::new(match Network::from_lowecase(
                         rd.network_id,
                         &config.read(),
                     ) {
@@ -880,22 +914,26 @@ pub fn Connect() -> impl IntoView {
                             return view! {
                                 <div class="flex flex-col items-center gap-4 text-center max-w-sm">
                                     <p class="text-red-400 text-lg font-semibold">
-                                        "Connection Error"
+                                        {move || {
+                                            TranslationKey::PagesConnectConnectionErrorTitle.format(&[])
+                                        }}
                                     </p>
                                     <p class="text-neutral-300 text-sm">{e}</p>
                                 </div>
                             }
                                 .into_any();
                         }
-                    };
-                    let network_mismatch = selected_account_network != request_network
-                        && !matches!(selected_account_network, Network::Localnet(_));
+                    });
+                    let network_mismatch = *selected_account_network.read_value() != *request_network.read_value()
+                        && !matches!(*selected_account_network.read_value(), Network::Localnet(_));
 
                     view! {
                         <div class="flex flex-col items-center gap-6 max-w-md w-full">
                             <div class="flex flex-col items-center gap-4 w-full">
                                 <h2 class="text-xl font-bold text-white text-center">
-                                    "Connect as"
+                                    {move || {
+                                        TranslationKey::PagesConnectTitleConnectAs.format(&[])
+                                    }}
                                 </h2>
                                 <button
                                     class="cursor-pointer w-full px-6 py-4 bg-neutral-800/70 backdrop-blur-sm rounded-xl border border-neutral-700/50 hover:bg-neutral-700/70 transition-all duration-200 shadow-lg flex items-center justify-between gap-3"
@@ -912,7 +950,9 @@ pub fn Connect() -> impl IntoView {
                                         </div>
                                         <div class="flex flex-col items-start min-w-0 flex-1">
                                             <span class="text-neutral-400 text-sm">
-                                                "Selected Account"
+                                                {move || {
+                                                    TranslationKey::PagesConnectSelectedAccountLabel.format(&[])
+                                                }}
                                             </span>
                                             <div class="text-white text-lg font-medium wrap-anywhere">
                                                 {move || format_account_id(&selected_account_id)}
@@ -934,11 +974,16 @@ pub fn Connect() -> impl IntoView {
                                             <span class="text-neutral-300 text-lg">{"🔒"}</span>
                                         </div>
                                         <div>
-                                            <p class="text-neutral-400 text-sm">"Connecting to"</p>
+                                            <p class="text-neutral-400 text-sm">
+                                                {move || {
+                                                    TranslationKey::PagesConnectConnectingToLabel.format(&[])
+                                                }}
+                                            </p>
                                             <p class="text-white font-medium wrap-anywhere">
                                                 {move || {
                                                     let Some(actual_origin) = actual_origin() else {
-                                                        return "WARNING: Unknown origin".to_string();
+                                                        return TranslationKey::PagesConnectUnknownOriginWarning
+                                                            .format(&[]);
                                                     };
                                                     let domain = actual_origin
                                                         .trim_start_matches("http://")
@@ -954,7 +999,7 @@ pub fn Connect() -> impl IntoView {
                                                         || domain.ends_with(".local")
                                                         || domain.ends_with(".localhost")
                                                     {
-                                                        "🛠 Localhost".to_string()
+                                                        TranslationKey::PagesConnectLocalhostBadge.format(&[])
                                                     } else {
                                                         actual_origin.to_string()
                                                     }
@@ -966,7 +1011,9 @@ pub fn Connect() -> impl IntoView {
                                     <div class="space-y-4">
                                         <div>
                                             <p class="text-neutral-300 text-sm font-medium mb-2">
-                                                "This app will be able to:"
+                                                {move || {
+                                                    TranslationKey::PagesConnectCapabilitiesHeading.format(&[])
+                                                }}
                                             </p>
                                             <ul class="space-y-2">
                                                 <li class="flex items-center gap-2 text-sm">
@@ -974,7 +1021,10 @@ pub fn Connect() -> impl IntoView {
                                                         <span class="text-blue-400 text-xs">{"👤"}</span>
                                                     </div>
                                                     <span class="text-neutral-300">
-                                                        "View your account name"
+                                                        {move || {
+                                                            TranslationKey::PagesConnectCapabilityViewAccountName
+                                                                .format(&[])
+                                                        }}
                                                     </span>
                                                 </li>
                                                 <li class="flex items-center gap-2 text-sm">
@@ -982,7 +1032,10 @@ pub fn Connect() -> impl IntoView {
                                                         <span class="text-blue-400 text-xs">{"💰"}</span>
                                                     </div>
                                                     <span class="text-neutral-300">
-                                                        "View your account balance"
+                                                        {move || {
+                                                            TranslationKey::PagesConnectCapabilityViewAccountBalance
+                                                                .format(&[])
+                                                        }}
                                                     </span>
                                                 </li>
                                             </ul>
@@ -998,10 +1051,15 @@ pub fn Connect() -> impl IntoView {
                                                             </div>
                                                             <div>
                                                                 <p class="text-neutral-300 text-sm font-medium">
-                                                                    "Message"
+                                                                    {move || {
+                                                                        TranslationKey::PagesConnectMessageSectionTitle.format(&[])
+                                                                    }}
                                                                 </p>
                                                                 <p class="text-neutral-400 text-xs">
-                                                                    "This app also asks you to sign a message"
+                                                                    {move || {
+                                                                        TranslationKey::PagesConnectMessageSectionSubtitle
+                                                                            .format(&[])
+                                                                    }}
                                                                 </p>
                                                             </div>
                                                         </div>
@@ -1022,28 +1080,21 @@ pub fn Connect() -> impl IntoView {
                                         None | Some("") => ().into_any(),
                                         Some(contract_id) => {
                                             let method_names = request.method_names.unwrap_or_default();
+                                            let gas_phrase = connect_gas_phrase(&request.gas_allowance);
                                             let label = if method_names.is_empty() {
-                                                format!(
-                                                    "Allow calling {contract_id} without confirmation and spend {} for gas",
-                                                    match request.gas_allowance {
-                                                        GasAllowance::Amount(amount) => format!("up to {amount}"),
-                                                        GasAllowance::Unlimited => {
-                                                            "UNLIMITED amount of NEAR".to_string()
-                                                        }
-                                                    },
-                                                )
+                                                TranslationKey::PagesConnectFunctionCallAllowanceNoMethods
+                                                    .format(
+                                                        &[("contract_id", contract_id), ("gas", &gas_phrase)],
+                                                    )
                                             } else {
-                                                format!(
-                                                    "Allow calling {} on {} without confirmation and spend {} for gas",
-                                                    method_names.join(", "),
-                                                    contract_id,
-                                                    match request.gas_allowance {
-                                                        GasAllowance::Amount(amount) => format!("up to {amount}"),
-                                                        GasAllowance::Unlimited => {
-                                                            "UNLIMITED amount of NEAR".to_string()
-                                                        }
-                                                    },
-                                                )
+                                                TranslationKey::PagesConnectFunctionCallAllowanceWithMethods
+                                                    .format(
+                                                        &[
+                                                            ("methods", &method_names.join(", ")),
+                                                            ("contract_id", contract_id),
+                                                            ("gas", &gas_phrase),
+                                                        ],
+                                                    )
                                             };
 
                                             view! {
@@ -1080,21 +1131,13 @@ pub fn Connect() -> impl IntoView {
                                                         <span class="text-yellow-500 text-lg">{"⚠️"}</span>
                                                     </div>
                                                     <p class="text-yellow-500 text-sm">
-                                                        "Network mismatch: The app is requesting to connect on "
-                                                        <b class="text-yellow-400">
-                                                            {match &request_network {
-                                                                Network::Mainnet => "mainnet".to_string(),
-                                                                Network::Testnet => "testnet".to_string(),
-                                                                Network::Localnet(network) => network.id.clone(),
-                                                            }}
-                                                        </b> " but your selected account is on "
-                                                        <b class="text-yellow-400">
-                                                            {match &selected_account_network {
-                                                                Network::Mainnet => "mainnet".to_string(),
-                                                                Network::Testnet => "testnet".to_string(),
-                                                                Network::Localnet(network) => network.id.clone(),
-                                                            }}
-                                                        </b> ". Please select a different account."
+                                                        {move || TranslationKey::PagesConnectNetworkMismatch
+                                                            .format(
+                                                                &[
+                                                                    ("request_network", &connect_network_label(&request_network.read_value())),
+                                                                    ("account_network", &connect_network_label(&selected_account_network.read_value())),
+                                                                ],
+                                                            )}
                                                     </p>
                                                 </div>
                                             </div>
@@ -1120,13 +1163,15 @@ pub fn Connect() -> impl IntoView {
                                                         || (function_call_key_required && !add_function_call_key())
                                                 }
                                             >
-                                                "Connect"
+                                                {move || {
+                                                    TranslationKey::PagesConnectConnect.format(&[])
+                                                }}
                                             </button>
                                             <button
                                                 class="cursor-pointer w-full px-6 py-3.5 bg-neutral-800 text-white font-medium rounded-xl hover:bg-neutral-700 transition-all duration-200 shadow-lg shadow-black/20"
                                                 on:click=handle_cancel
                                             >
-                                                "Cancel"
+                                                {move || { TranslationKey::PagesConnectCancel.format(&[]) }}
                                             </button>
                                         </div>
                                     }
@@ -1139,9 +1184,15 @@ pub fn Connect() -> impl IntoView {
                                             view! {
                                                 <div class="text-white text-center flex flex-col items-center gap-2 mt-2 border-t border-neutral-700 pt-2">
                                                     <Icon icon=icondata::LuUsb width="24" height="24" />
-                                                    <p class="text-sm font-bold">"Waiting for Ledger"</p>
+                                                    <p class="text-sm font-bold">
+                                                        {move || {
+                                                            TranslationKey::PagesConnectLedgerWaitingTitle.format(&[])
+                                                        }}
+                                                    </p>
                                                     <p class="text-xs">
-                                                        "Please confirm the signature on your Ledger device."
+                                                        {move || {
+                                                            TranslationKey::PagesConnectLedgerWaitingBody.format(&[])
+                                                        }}
                                                     </p>
                                                     <button
                                                         class="p-2 text-sm bg-neutral-700 rounded-md hover:bg-neutral-600 transition-colors cursor-pointer grow w-full"
@@ -1152,7 +1203,9 @@ pub fn Connect() -> impl IntoView {
                                                                 });
                                                         }
                                                     >
-                                                        "Retry"
+                                                        {move || {
+                                                            TranslationKey::PagesConnectLedgerRetry.format(&[])
+                                                        }}
                                                     </button>
                                                 </div>
                                             }
@@ -1167,7 +1220,11 @@ pub fn Connect() -> impl IntoView {
                                                         height="24"
                                                         attr:class="text-red-500"
                                                     />
-                                                    <p class="text-sm font-bold">"Ledger Error"</p>
+                                                    <p class="text-sm font-bold">
+                                                        {move || {
+                                                            TranslationKey::PagesConnectLedgerErrorTitle.format(&[])
+                                                        }}
+                                                    </p>
                                                     <p class="text-xs max-w-xs wrap-break-word text-red-400">
                                                         {error.clone()}
                                                     </p>
@@ -1187,7 +1244,9 @@ pub fn Connect() -> impl IntoView {
                                                                     })
                                                             }
                                                         >
-                                                            "Retry"
+                                                            {move || {
+                                                                TranslationKey::PagesConnectLedgerRetry.format(&[])
+                                                            }}
                                                         </button>
                                                         <button
                                                             class="p-2 text-sm bg-red-800 rounded-md hover:bg-red-700 transition-colors cursor-pointer grow w-full"
@@ -1195,7 +1254,9 @@ pub fn Connect() -> impl IntoView {
                                                                 ledger_signing_state.set(LedgerSigningState::Idle)
                                                             }
                                                         >
-                                                            "Cancel"
+                                                            {move || {
+                                                                TranslationKey::PagesConnectLedgerCancel.format(&[])
+                                                            }}
                                                         </button>
                                                     </div>
                                                 </div>

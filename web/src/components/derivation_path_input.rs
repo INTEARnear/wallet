@@ -1,6 +1,8 @@
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 
+use crate::translations::TranslationKey;
+
 fn parse_derivation_path(path: &str) -> Option<(u32, u32, u32)> {
     let path = path.trim();
     let path = path.trim_start_matches("m/");
@@ -53,7 +55,9 @@ pub fn DerivationPathInput(
     view! {
         <div class="space-y-4 w-full">
             <div class="space-y-4">
-                <div class="block text-neutral-400 text-sm font-medium">"Derivation Path"</div>
+                <div class="block text-neutral-400 text-sm font-medium">
+                    {move || TranslationKey::ComponentsDerivationPathInputLabelDerivationPath.format(&[])}
+                </div>
                 <div class="flex items-center gap-0 text-base text-neutral-400 select-none justify-center">
                     <span>"m/44'/397'/"</span>
                     <input

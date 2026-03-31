@@ -32,6 +32,7 @@ use crate::contexts::{
     rpc_context::RpcContext,
     tokens_context::{Token, TokenData, TokenInfo, TokenMetadata},
 };
+use crate::translations::TranslationKey;
 
 pub const USDT_DECIMALS: u32 = 6;
 
@@ -385,27 +386,42 @@ pub fn format_duration(duration: Duration) -> String {
     let seconds = duration.as_secs();
 
     if seconds < 60 {
-        format!("{seconds}s")
+        TranslationKey::MiscDurationFormatSeconds.format(&[("seconds", &seconds.to_string())])
     } else if seconds < 60 * 60 {
         let minutes = seconds / 60;
         let remaining_seconds = seconds % 60;
-        format!("{minutes}m {remaining_seconds}s")
+        TranslationKey::MiscDurationFormatMinutesSeconds.format(&[
+            ("minutes", &minutes.to_string()),
+            ("seconds", &remaining_seconds.to_string()),
+        ])
     } else if seconds < 60 * 60 * 24 {
         let hours = seconds / (60 * 60);
         let remaining_minutes = (seconds % (60 * 60)) / 60;
-        format!("{hours}h {remaining_minutes}m")
+        TranslationKey::MiscDurationFormatHoursMinutes.format(&[
+            ("hours", &hours.to_string()),
+            ("minutes", &remaining_minutes.to_string()),
+        ])
     } else if seconds < 60 * 60 * 24 * 30 {
         let days = seconds / (60 * 60 * 24);
         let remaining_hours = (seconds % (60 * 60 * 24)) / (60 * 60);
-        format!("{days}d {remaining_hours}h")
+        TranslationKey::MiscDurationFormatDaysHours.format(&[
+            ("days", &days.to_string()),
+            ("hours", &remaining_hours.to_string()),
+        ])
     } else if seconds < 60 * 60 * 24 * 365 {
         let months = seconds / (60 * 60 * 24 * 30);
         let remaining_days = (seconds % (60 * 60 * 24 * 30)) / (60 * 60 * 24);
-        format!("{months}mo {remaining_days}d")
+        TranslationKey::MiscDurationFormatMonthsDays.format(&[
+            ("months", &months.to_string()),
+            ("days", &remaining_days.to_string()),
+        ])
     } else {
         let years = seconds / (60 * 60 * 24 * 365);
         let remaining_months = (seconds % (60 * 60 * 24 * 365)) / (60 * 60 * 24 * 30);
-        format!("{years}y {remaining_months}mo")
+        TranslationKey::MiscDurationFormatYearsMonths.format(&[
+            ("years", &years.to_string()),
+            ("months", &remaining_months.to_string()),
+        ])
     }
 }
 

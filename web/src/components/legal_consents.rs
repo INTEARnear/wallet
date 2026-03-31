@@ -6,9 +6,31 @@ use leptos_icons::*;
 use crate::components::copy_button::CopyButton;
 use crate::contexts::accounts_context::{AccountsContext, SecretKeyHolder};
 use crate::contexts::legal_consents_context::{
-    LegalConsents, LegalDocument, provide_legal_consents_state,
+    LegalConsents, LegalDocument, legal_document_display_title, provide_legal_consents_state,
 };
 use crate::contexts::modal_context::ModalContext;
+use crate::translations::TranslationKey;
+
+fn document_link_button(
+    modal: RwSignal<Option<Box<dyn Fn() -> AnyView>>, LocalStorage>,
+    doc: LegalDocument,
+) -> AnyView {
+    view! {
+        <button
+            type="button"
+            class="text-sky-400 hover:text-sky-300 transition-colors cursor-pointer"
+            on:click=move |ev| {
+                ev.prevent_default();
+                modal.set(Some(Box::new(move || {
+                    view! { <DocumentViewerModal doc=doc /> }.into_any()
+                })));
+            }
+        >
+            {move || legal_document_display_title(doc)}
+        </button>
+    }
+    .into_any()
+}
 
 #[component]
 fn DocumentViewerModal(doc: LegalDocument) -> impl IntoView {
@@ -23,7 +45,9 @@ fn DocumentViewerModal(doc: LegalDocument) -> impl IntoView {
                 on:click=|ev| ev.stop_propagation()
             >
                 <div class="flex items-center justify-between px-5 py-4 border-b border-neutral-800 shrink-0">
-                    <h3 class="text-white font-semibold text-base">{doc.title()}</h3>
+                    <h3 class="text-white font-semibold text-base">
+                        {move || legal_document_display_title(doc)}
+                    </h3>
                     <button
                         class="text-neutral-400 hover:text-white transition-colors cursor-pointer"
                         on:click=move |_| modal.set(None)
@@ -44,7 +68,6 @@ fn StaleDocumentModal(doc: LegalDocument, remaining: Vec<LegalDocument>) -> impl
     let ModalContext { modal } = expect_context::<ModalContext>();
     let consents = expect_context::<LegalConsents>();
     let remaining_for_accept = remaining.clone();
-    let title = format!("{} was updated", doc.title());
     view! {
         <div class="fixed inset-0 bg-black/80 flex items-end sm:items-center justify-center z-100000">
             <div
@@ -52,9 +75,18 @@ fn StaleDocumentModal(doc: LegalDocument, remaining: Vec<LegalDocument>) -> impl
                 on:click=|ev| ev.stop_propagation()
             >
                 <div class="px-5 py-4 border-b border-neutral-800 shrink-0">
-                    <h3 class="text-white font-semibold text-base">{title}</h3>
+                    <h3 class="text-white font-semibold text-base">
+                        {move || {
+                            let doc_title = legal_document_display_title(doc);
+                            TranslationKey::ComponentsLegalConsentsStaleDocumentHeading.format(&[
+                                ("document_title", doc_title.as_str()),
+                            ])
+                        }}
+                    </h3>
                     <p class="text-neutral-400 text-xs mt-1">
-                        "Please review the updated document before continuing."
+                        {move || {
+                            TranslationKey::ComponentsLegalConsentsStaleDocumentBody.format(&[])
+                        }}
                     </p>
                 </div>
                 <pre class="p-5 text-xs text-neutral-300 whitespace-pre-wrap wrap-break-word overflow-y-auto flex-1">
@@ -87,7 +119,7 @@ fn StaleDocumentModal(doc: LegalDocument, remaining: Vec<LegalDocument>) -> impl
                             }
                         }
                     >
-                        "Accept"
+                        {move || TranslationKey::ComponentsLegalConsentsButtonAccept.format(&[])}
                     </button>
                     <button
                         class="flex-1 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl py-3 font-medium transition-colors cursor-pointer"
@@ -109,7 +141,7 @@ fn StaleDocumentModal(doc: LegalDocument, remaining: Vec<LegalDocument>) -> impl
                             }
                         }
                     >
-                        "Deny"
+                        {move || TranslationKey::ComponentsLegalConsentsButtonDeny.format(&[])}
                     </button>
                 </div>
             </div>
@@ -118,7 +150,10 @@ fn StaleDocumentModal(doc: LegalDocument, remaining: Vec<LegalDocument>) -> impl
 }
 
 #[component]
-fn SecretField(label: &'static str, value: String) -> impl IntoView {
+fn SecretField(
+    label: impl Fn() -> String + 'static + Send,
+    #[prop(into)] value: String,
+) -> impl IntoView {
     let shown = RwSignal::new(false);
     let value_for_copy = value.clone();
     let skeleton = "•".repeat(value.len().min(40));
@@ -178,9 +213,13 @@ fn DenyModal(stale_docs: Vec<LegalDocument>) -> impl IntoView {
                 on:click=|ev| ev.stop_propagation()
             >
                 <div class="px-5 py-4 border-b border-neutral-800 shrink-0">
-                    <h3 class="text-white font-semibold text-lg text-center">"Get Out."</h3>
+                    <h3 class="text-white font-semibold text-lg text-center">
+                        {move || TranslationKey::ComponentsLegalConsentsDenyModalTitle.format(&[])}
+                    </h3>
                     <p class="text-neutral-400 text-xs mt-1 text-center">
-                        "Save your account keys before leaving."
+                        {move || {
+                            TranslationKey::ComponentsLegalConsentsDenyModalSubtitle.format(&[])
+                        }}
                     </p>
                 </div>
                 <div class="overflow-y-auto flex-1 px-4 py-4 space-y-4">
@@ -203,7 +242,13 @@ fn DenyModal(stale_docs: Vec<LegalDocument>) -> impl IntoView {
                                         </div>
 
                                         {if let Some(phrase) = seed_phrase {
-                                            view! { <SecretField label="Seed phrase" value=phrase /> }
+                                            view! {
+                                                <SecretField
+                                                    label=move || TranslationKey::ComponentsLegalConsentsLabelSeedPhrase
+                                                        .format(&[])
+                                                    value=phrase
+                                                />
+                                            }
                                                 .into_any()
                                         } else {
                                             ().into_any()
@@ -214,7 +259,8 @@ fn DenyModal(stale_docs: Vec<LegalDocument>) -> impl IntoView {
                                             view! {
                                                 <div class="space-y-1">
                                                     <div class="text-neutral-400 text-xs font-medium">
-                                                        "Ledger HD path"
+                                                        {move || TranslationKey::ComponentsLegalConsentsLabelLedgerHdPath
+                                                            .format(&[])}
                                                     </div>
                                                     <div class="flex items-center gap-2">
                                                         <code class="text-white text-xs font-mono flex-1 break-all">
@@ -229,7 +275,11 @@ fn DenyModal(stale_docs: Vec<LegalDocument>) -> impl IntoView {
                                                 .into_any()
                                         } else {
                                             view! {
-                                                <SecretField label="Private key" value=secret_str />
+                                                <SecretField
+                                                    label=move || TranslationKey::ComponentsLegalConsentsLabelPrivateKey
+                                                        .format(&[])
+                                                    value=secret_str
+                                                />
                                             }
                                                 .into_any()
                                         }}
@@ -263,7 +313,9 @@ fn DenyModal(stale_docs: Vec<LegalDocument>) -> impl IntoView {
                             }
                         }
                     >
-                        "I changed my mind"
+                        {move || {
+                            TranslationKey::ComponentsLegalConsentsButtonChangedMind.format(&[])
+                        }}
                     </button>
                 </div>
             </div>
@@ -317,58 +369,23 @@ pub fn LegalConsentsSection(#[prop(default = false)] short: bool) -> impl IntoVi
                             }
                         />
                         <span>
-                            "I accept the "
-                            <button
-                                class="text-sky-400 hover:text-sky-300 transition-colors cursor-pointer"
-                                on:click=move |ev| {
-                                    ev.prevent_default();
-                                    modal
-                                        .set(
-                                            Some(
-                                                Box::new(move || {
-                                                    view! { <DocumentViewerModal doc=LegalDocument::Terms /> }
-                                                        .into_any()
-                                                }),
-                                            ),
-                                        );
-                                }
-                            >
-                                "Terms of Service"
-                            </button> ", "
-                            <button
-                                class="text-sky-400 hover:text-sky-300 transition-colors cursor-pointer"
-                                on:click=move |ev| {
-                                    ev.prevent_default();
-                                    modal
-                                        .set(
-                                            Some(
-                                                Box::new(move || {
-                                                    view! { <DocumentViewerModal doc=LegalDocument::Privacy /> }
-                                                        .into_any()
-                                                }),
-                                            ),
-                                        );
-                                }
-                            >
-                                "Privacy Policy"
-                            </button> " and "
-                            <button
-                                class="text-sky-400 hover:text-sky-300 transition-colors cursor-pointer"
-                                on:click=move |ev| {
-                                    ev.prevent_default();
-                                    modal
-                                        .set(
-                                            Some(
-                                                Box::new(move || {
-                                                    view! { <DocumentViewerModal doc=LegalDocument::License /> }
-                                                        .into_any()
-                                                }),
-                                            ),
-                                        );
-                                }
-                            >
-                                "License"
-                            </button>
+                            {move || {
+                                TranslationKey::ComponentsLegalConsentsCheckboxAcceptCombined
+                                    .format_view(vec![
+                                        (
+                                            "terms",
+                                            document_link_button(modal, LegalDocument::Terms),
+                                        ),
+                                        (
+                                            "privacy",
+                                            document_link_button(modal, LegalDocument::Privacy),
+                                        ),
+                                        (
+                                            "license",
+                                            document_link_button(modal, LegalDocument::License),
+                                        ),
+                                    ])
+                            }}
                         </span>
                     </label>
                 </div>
@@ -393,24 +410,14 @@ pub fn LegalConsentsSection(#[prop(default = false)] short: bool) -> impl IntoVi
                             }
                         />
                         <span>
-                            "I accept the "
-                            <button
-                                class="text-sky-400 hover:text-sky-300 transition-colors cursor-pointer"
-                                on:click=move |ev| {
-                                    ev.prevent_default();
-                                    modal
-                                        .set(
-                                            Some(
-                                                Box::new(move || {
-                                                    view! { <DocumentViewerModal doc=LegalDocument::Terms /> }
-                                                        .into_any()
-                                                }),
-                                            ),
-                                        );
-                                }
-                            >
-                                "Terms of Service"
-                            </button>
+                            {move || {
+                                TranslationKey::ComponentsLegalConsentsCheckboxAcceptLine.format_view(
+                                    vec![(
+                                        "doc",
+                                        document_link_button(modal, LegalDocument::Terms),
+                                    )],
+                                )
+                            }}
                         </span>
                     </label>
                     <label class="flex items-start gap-3 text-sm text-neutral-200 cursor-pointer">
@@ -427,24 +434,14 @@ pub fn LegalConsentsSection(#[prop(default = false)] short: bool) -> impl IntoVi
                             }
                         />
                         <span>
-                            "I accept the "
-                            <button
-                                class="text-sky-400 hover:text-sky-300 transition-colors cursor-pointer"
-                                on:click=move |ev| {
-                                    ev.prevent_default();
-                                    modal
-                                        .set(
-                                            Some(
-                                                Box::new(move || {
-                                                    view! { <DocumentViewerModal doc=LegalDocument::Privacy /> }
-                                                        .into_any()
-                                                }),
-                                            ),
-                                        );
-                                }
-                            >
-                                "Privacy Policy"
-                            </button>
+                            {move || {
+                                TranslationKey::ComponentsLegalConsentsCheckboxAcceptLine.format_view(
+                                    vec![(
+                                        "doc",
+                                        document_link_button(modal, LegalDocument::Privacy),
+                                    )],
+                                )
+                            }}
                         </span>
                     </label>
                     <label class="flex items-start gap-3 text-sm text-neutral-200 cursor-pointer">
@@ -461,24 +458,14 @@ pub fn LegalConsentsSection(#[prop(default = false)] short: bool) -> impl IntoVi
                             }
                         />
                         <span>
-                            "I accept the "
-                            <button
-                                class="text-sky-400 hover:text-sky-300 transition-colors cursor-pointer"
-                                on:click=move |ev| {
-                                    ev.prevent_default();
-                                    modal
-                                        .set(
-                                            Some(
-                                                Box::new(move || {
-                                                    view! { <DocumentViewerModal doc=LegalDocument::License /> }
-                                                        .into_any()
-                                                }),
-                                            ),
-                                        );
-                                }
-                            >
-                                "License"
-                            </button>
+                            {move || {
+                                TranslationKey::ComponentsLegalConsentsCheckboxAcceptLine.format_view(
+                                    vec![(
+                                        "doc",
+                                        document_link_button(modal, LegalDocument::License),
+                                    )],
+                                )
+                            }}
                         </span>
                     </label>
                 </div>

@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::contexts::accounts_context::AccountsContext;
+use crate::translations::TranslationKey;
 
 const LEGAL_CONSENTS_STORAGE_KEY: &str = "legal_consents";
 
@@ -24,8 +25,13 @@ const fn extract_last_updated(document: &'static str) -> &'static str {
 pub const TERMS_LAST_UPDATED: &str = extract_last_updated(TERMS_TEXT);
 pub const PRIVACY_LAST_UPDATED: &str = extract_last_updated(PRIVACY_TEXT);
 
-pub const LEGAL_CONSENTS_BLOCKING_MESSAGE: &str =
-    "Please accept Terms of Service, Privacy Policy, and License to continue.";
+pub fn legal_document_display_title(doc: LegalDocument) -> String {
+    match doc {
+        LegalDocument::Terms => TranslationKey::ComponentsLegalConsentsDocNameTerms.format(&[]),
+        LegalDocument::Privacy => TranslationKey::ComponentsLegalConsentsDocNamePrivacy.format(&[]),
+        LegalDocument::License => TranslationKey::ComponentsLegalConsentsDocNameLicense.format(&[]),
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum LegalDocument {

@@ -76,16 +76,22 @@ impl GiftToken {
                 if let Ok(metadata) = get_ft_metadata(token_id.clone(), rpc_client).await {
                     format_token_amount_no_hide(*amount, metadata.decimals, &metadata.symbol)
                 } else {
-                    format!("{} tokens", amount)
+                    let amount_str = amount.to_string();
+                    TranslationKey::PagesGiftsFormatRawTokenAmount
+                        .format(&[("amount", amount_str.as_str())])
                 }
             }
             GiftToken::Nep171(contract_id, token_id) => {
                 if let Some(metadata) =
                     fetch_nft_metadata(contract_id.clone(), rpc_client, false).await
                 {
-                    format!("{} #{}", metadata.name, token_id)
+                    TranslationKey::PagesGiftsFormatNftWithName.format(&[
+                        ("name", metadata.name.as_str()),
+                        ("token_id", token_id.as_str()),
+                    ])
                 } else {
-                    format!("NFT #{}", token_id)
+                    TranslationKey::PagesGiftsFormatNftNumber
+                        .format(&[("token_id", token_id.as_str())])
                 }
             }
         }
@@ -161,7 +167,11 @@ fn ModalFtDisplay(token_id: AccountId, amount: u128, attr_class: &'static str) -
     view! {
         <span class=attr_class>
             <Suspense fallback=move || {
-                view! { <span class="text-gray-400">"Loading..."</span> }
+                view! {
+                    <span class="text-gray-400">
+                        {move || TranslationKey::PagesGiftsLoading.format(&[])}
+                    </span>
+                }
             }>
                 {move || {
                     metadata_resource
@@ -193,12 +203,21 @@ fn ModalFtDisplay(token_id: AccountId, amount: u128, attr_class: &'static str) -
                                 }
                                     .into_any()
                             } else {
-                                view! { <span class="text-gray-400">"Unknown token"</span> }
+                                view! {
+                                    <span class="text-gray-400">
+                                        {move || TranslationKey::PagesGiftsUnknownToken.format(&[])}
+                                    </span>
+                                }
                                     .into_any()
                             }
                         })
                         .unwrap_or_else(|| {
-                            view! { <span class="text-gray-400">"Loading..."</span> }.into_any()
+                            view! {
+                                <span class="text-gray-400">
+                                    {move || TranslationKey::PagesGiftsLoading.format(&[])}
+                                </span>
+                            }
+                                .into_any()
                         })
                 }}
             </Suspense>
@@ -238,15 +257,11 @@ fn ModalNftImageDisplay(
                 }
             }>
                 {move || {
+                    let token_id_for_display = token_id_for_display.clone();
                     let metadata = metadata_resource.get();
                     let nft_token = nft_token_resource.get();
                     match (metadata, nft_token) {
                         (Some(Some(metadata)), Some(Some(nft_response))) => {
-                            let display_name = format!(
-                                "{} #{}",
-                                metadata.name,
-                                token_id_for_display.clone(),
-                            );
                             let image_url = if let Some(media) = &nft_response.metadata.media {
                                 if media.starts_with("http") {
                                     media.clone()
@@ -294,7 +309,15 @@ fn ModalNftImageDisplay(
                                     </div>
                                     <div class="text-center">
                                         <div class="text-white text-sm font-medium truncate">
-                                            {display_name}
+                                            {move || {
+                                                TranslationKey::PagesGiftsFormatNftWithName
+                                                    .format(
+                                                        &[
+                                                            ("name", metadata.name.as_str()),
+                                                            ("token_id", token_id_for_display.as_str()),
+                                                        ],
+                                                    )
+                                            }}
                                         </div>
                                     </div>
                                 </div>
@@ -302,12 +325,6 @@ fn ModalNftImageDisplay(
                                 .into_any()
                         }
                         (Some(Some(metadata)), _) => {
-                            let display_name = format!(
-                                "{} #{}",
-                                metadata.name,
-                                token_id_for_display.clone(),
-                            );
-
                             view! {
                                 <div class="space-y-3">
                                     <div class="w-[150px] h-[150px] rounded-lg overflow-hidden bg-neutral-700">
@@ -321,7 +338,15 @@ fn ModalNftImageDisplay(
                                     </div>
                                     <div class="text-center">
                                         <div class="text-white text-sm font-medium truncate">
-                                            {display_name}
+                                            {move || {
+                                                TranslationKey::PagesGiftsFormatNftWithName
+                                                    .format(
+                                                        &[
+                                                            ("name", metadata.name.as_str()),
+                                                            ("token_id", token_id_for_display.as_str()),
+                                                        ],
+                                                    )
+                                            }}
                                         </div>
                                     </div>
                                 </div>
@@ -339,7 +364,10 @@ fn ModalNftImageDisplay(
                                     </div>
                                     <div class="text-center">
                                         <div class="text-gray-400 text-sm font-medium">
-                                            "NFT #{}"
+                                            {move || {
+                                                TranslationKey::PagesGiftsFormatNftNumber
+                                                    .format(&[("token_id", token_id_for_display.as_str())])
+                                            }}
                                         </div>
                                     </div>
                                 </div>
@@ -378,19 +406,18 @@ fn ModalNftDisplay(
     view! {
         <span class=attr_class>
             <Suspense fallback=move || {
-                view! { <span class="text-gray-400">"Loading..."</span> }
+                view! {
+                    <span class="text-gray-400">
+                        {move || TranslationKey::PagesGiftsLoading.format(&[])}
+                    </span>
+                }
             }>
                 {move || {
+                    let token_id_for_display= token_id_for_display.clone();
                     let metadata = metadata_resource.get();
                     let nft_token = nft_token_resource.get();
                     match (metadata, nft_token) {
                         (Some(Some(metadata)), Some(Some(_nft_response))) => {
-                            let display_name = format!(
-                                "{} #{}",
-                                metadata.name,
-                                token_id_for_display.clone(),
-                            );
-
                             view! {
                                 {if let Some(icon_url) = metadata.icon.clone() {
                                     let low_res_url = proxify_url(&icon_url, Resolution::Low);
@@ -412,16 +439,19 @@ fn ModalNftDisplay(
                                         .into_any()
                                 }}
                                 " "
-                                {display_name}
+                                {move || {
+                                    TranslationKey::PagesGiftsFormatNftWithName
+                                        .format(
+                                            &[
+                                                ("name", metadata.name.as_str()),
+                                                ("token_id", token_id_for_display.as_str()),
+                                            ],
+                                        )
+                                }}
                             }
                                 .into_any()
                         }
                         (Some(Some(metadata)), _) => {
-                            let display_name = format!(
-                                "{} #{}",
-                                metadata.name,
-                                token_id_for_display.clone(),
-                            );
                             view! {
                                 {if let Some(icon_url) = metadata.icon.clone() {
                                     let low_res_url = proxify_url(&icon_url, Resolution::Low);
@@ -443,11 +473,29 @@ fn ModalNftDisplay(
                                         .into_any()
                                 }}
                                 " "
-                                {display_name}
+                                {move || {
+                                    TranslationKey::PagesGiftsFormatNftWithName
+                                        .format(
+                                            &[
+                                                ("name", metadata.name.as_str()),
+                                                ("token_id", token_id_for_display.as_str()),
+                                            ],
+                                        )
+                                }}
                             }
                                 .into_any()
                         }
-                        _ => view! { <span class="text-gray-400">"NFT #{}"</span> }.into_any(),
+                        _ => {
+                            view! {
+                                <span class="text-gray-400">
+                                    {move || {
+                                        TranslationKey::PagesGiftsFormatNftNumber
+                                            .format(&[("token_id", token_id_for_display.as_str())])
+                                    }}
+                                </span>
+                            }
+                                .into_any()
+                        }
                     }
                 }}
             </Suspense>
@@ -526,15 +574,19 @@ pub fn GiftConfirmationModal(
             >
                 <div class="text-center">
                     <div class="mb-4">
-                        <h3 class="text-white font-bold text-xl mb-2">"Confirm Gift"</h3>
+                        <h3 class="text-white font-bold text-xl mb-2">
+                            {move || TranslationKey::PagesGiftsModalConfirmTitle.format(&[])}
+                        </h3>
                         <p class="text-gray-400 text-sm">
-                            "Review the details below and confirm to create your NEAR gift."
+                            {move || TranslationKey::PagesGiftsModalConfirmDescription.format(&[])}
                         </p>
                     </div>
 
                     <div class="space-y-4">
                         <div class="bg-neutral-800 rounded-lg p-4">
-                            <div class="text-gray-400 text-sm mb-2">"NEAR Amount"</div>
+                            <div class="text-gray-400 text-sm mb-2">
+                                {move || TranslationKey::PagesGiftsModalNearSection.format(&[])}
+                            </div>
                             <div class="flex items-center gap-3">
                                 {match confirmation_data.near_token.token.metadata.icon.clone() {
                                     Some(icon) => {
@@ -579,7 +631,11 @@ pub fn GiftConfirmationModal(
                         {if !confirmation_data.fts.is_empty() {
                             view! {
                                 <div class="space-y-3">
-                                    <div class="text-gray-400 text-sm">"Fungible Tokens"</div>
+                                    <div class="text-gray-400 text-sm">
+                                        {move || {
+                                            TranslationKey::PagesGiftsModalFtSection.format(&[])
+                                        }}
+                                    </div>
                                     {confirmation_data
                                         .fts
                                         .iter()
@@ -653,7 +709,11 @@ pub fn GiftConfirmationModal(
                         {if !confirmation_data.nfts.is_empty() {
                             view! {
                                 <div class="space-y-3">
-                                    <div class="text-gray-400 text-sm">"NFTs"</div>
+                                    <div class="text-gray-400 text-sm">
+                                        {move || {
+                                            TranslationKey::PagesGiftsModalNftSection.format(&[])
+                                        }}
+                                    </div>
                                     <div class="grid grid-cols-2 gap-4">
                                         {confirmation_data
                                             .nfts
@@ -687,7 +747,9 @@ pub fn GiftConfirmationModal(
                                     attr:class="w-4 h-4 text-yellow-400 shrink-0"
                                 />
                                 <p class="text-yellow-200 text-xs">
-                                    "Gifts functionality has not been audited. It's ok to use for small gifts, but we don't recommend transferring large amounts through Gifts."
+                                    {move || {
+                                        TranslationKey::PagesGiftsModalAuditWarning.format(&[])
+                                    }}
                                 </p>
                             </div>
                         </div>
@@ -698,7 +760,7 @@ pub fn GiftConfirmationModal(
                             class="flex-1 bg-neutral-700 hover:bg-neutral-600 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
                             on:click=move |_| modal.set(None)
                         >
-                            "Cancel"
+                            {move || TranslationKey::PagesGiftsModalActionCancel.format(&[])}
                         </button>
                         <button
                             class="flex-1 bg-linear-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-xl px-4 py-3 font-medium transition-all cursor-pointer"
@@ -722,7 +784,7 @@ pub fn GiftConfirmationModal(
                                 }
                             }
                         >
-                            "Create Gift"
+                            {move || TranslationKey::PagesGiftsModalActionCreate.format(&[])}
                         </button>
                     </div>
                 </div>
@@ -764,13 +826,17 @@ pub fn GiftSuccessModal(result: GiftResult) -> impl IntoView {
                             />
                         </div>
                         <h3 class="text-white font-bold text-xl mb-2">
-                            "Gift Created Successfully!"
+                            {move || TranslationKey::PagesGiftsModalSuccessTitle.format(&[])}
                         </h3>
-                        <p class="text-gray-400 text-sm">"Your gift has been created."</p>
+                        <p class="text-gray-400 text-sm">
+                            {move || TranslationKey::PagesGiftsModalSuccessDescription.format(&[])}
+                        </p>
                     </div>
 
                     <div class="bg-neutral-800 rounded-lg p-4 mb-4">
-                        <div class="text-gray-400 text-sm mb-3">"Gift Contents:"</div>
+                        <div class="text-gray-400 text-sm mb-3">
+                            {move || TranslationKey::PagesGiftsModalGiftContentsHeading.format(&[])}
+                        </div>
                         <div class="flex items-center justify-center gap-2 flex-wrap mb-4">
                             <Icon icon=icondata::LuGift attr:class="w-5 h-5 text-blue-400" />
                             <span class="text-white font-medium flex items-center gap-2 flex-wrap">
@@ -784,7 +850,7 @@ pub fn GiftSuccessModal(result: GiftResult) -> impl IntoView {
 
                     <div class="bg-neutral-900 rounded-lg p-4 mb-4">
                         <div class="text-gray-400 text-sm mb-4">
-                            "Share this link with the recipient:"
+                            {move || TranslationKey::PagesGiftsModalShareLink.format(&[])}
                         </div>
 
                         <div class="flex flex-col items-center mb-4">
@@ -803,7 +869,7 @@ pub fn GiftSuccessModal(result: GiftResult) -> impl IntoView {
                                                 view! {
                                                     <img
                                                         src=qr_code_data_url
-                                                        alt="QR Code for gift link"
+                                                        alt=TranslationKey::PagesGiftsModalQrAlt.format(&[])
                                                         class="w-64 h-64 rounded-lg mb-2"
                                                     />
                                                 }
@@ -846,7 +912,7 @@ pub fn GiftSuccessModal(result: GiftResult) -> impl IntoView {
                                     view! {
                                         <div class="flex items-center justify-center gap-2">
                                             <Icon icon=icondata::LuCheck attr:class="w-4 h-4" />
-                                            "Copied!"
+                                            {move || TranslationKey::PagesGiftsModalCopied.format(&[])}
                                         </div>
                                     }
                                         .into_any()
@@ -854,7 +920,9 @@ pub fn GiftSuccessModal(result: GiftResult) -> impl IntoView {
                                     view! {
                                         <div class="flex items-center justify-center gap-2">
                                             <Icon icon=icondata::LuCopy attr:class="w-4 h-4" />
-                                            "Copy Link"
+                                            {move || {
+                                                TranslationKey::PagesGiftsModalCopyLink.format(&[])
+                                            }}
                                         </div>
                                     }
                                         .into_any()
@@ -867,7 +935,7 @@ pub fn GiftSuccessModal(result: GiftResult) -> impl IntoView {
                         class="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
                         on:click=move |_| modal.set(None)
                     >
-                        "Close"
+                        {move || TranslationKey::PagesGiftsModalClose.format(&[])}
                     </button>
                 </div>
             </div>
@@ -897,9 +965,13 @@ pub fn GiftErrorModal() -> impl IntoView {
                                 attr:class="text-white"
                             />
                         </div>
-                        <h3 class="text-white font-bold text-xl mb-2">"Gift Creation Failed"</h3>
+                        <h3 class="text-white font-bold text-xl mb-2">
+                            {move || TranslationKey::PagesGiftsModalCreateFailedTitle.format(&[])}
+                        </h3>
                         <p class="text-gray-400 text-sm">
-                            "The gift creation transaction failed. Please check the transaction details and try again."
+                            {move || {
+                                TranslationKey::PagesGiftsModalCreateFailedDescription.format(&[])
+                            }}
                         </p>
                     </div>
 
@@ -907,7 +979,7 @@ pub fn GiftErrorModal() -> impl IntoView {
                         class="w-full mt-6 bg-red-600 hover:bg-red-700 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
                         on:click=move |_| modal.set(None)
                     >
-                        "Close"
+                        {move || TranslationKey::PagesGiftsModalClose.format(&[])}
                     </button>
                 </div>
             </div>
@@ -1252,15 +1324,21 @@ pub fn CancelDropConfirmationModal(
             >
                 <div class="text-center">
                     <div class="mb-4">
-                        <h3 class="text-white font-bold text-xl mb-2">"Cancel Gift"</h3>
+                        <h3 class="text-white font-bold text-xl mb-2">
+                            {move || TranslationKey::PagesGiftsModalCancelTitle.format(&[])}
+                        </h3>
                         <p class="text-gray-400 text-sm">
-                            "Are you sure you want to cancel this gift? The tokens will be returned to you."
+                            {move || TranslationKey::PagesGiftsModalCancelDescription.format(&[])}
                         </p>
                     </div>
 
                     <div class="space-y-4">
                         <div class="bg-neutral-800 rounded-lg p-4">
-                            <div class="text-gray-400 text-sm mb-2">"Gift contents"</div>
+                            <div class="text-gray-400 text-sm mb-2">
+                                {move || {
+                                    TranslationKey::PagesGiftsModalCancelContentsHeading.format(&[])
+                                }}
+                            </div>
                             <div class="flex items-center justify-center gap-2 flex-wrap">
                                 <Icon icon=icondata::LuGift attr:class="w-5 h-5 text-blue-400" />
                                 <span class="text-white font-medium flex items-center gap-2 flex-wrap">
@@ -1278,7 +1356,7 @@ pub fn CancelDropConfirmationModal(
                             class="flex-1 bg-neutral-700 hover:bg-neutral-600 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
                             on:click=move |_| modal.set(None)
                         >
-                            "Keep Gift"
+                            {move || TranslationKey::PagesGiftsModalKeepGift.format(&[])}
                         </button>
                         <button
                             class="flex-1 bg-linear-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl px-4 py-3 font-medium transition-all cursor-pointer"
@@ -1302,7 +1380,7 @@ pub fn CancelDropConfirmationModal(
                                 }
                             }
                         >
-                            "Cancel Gift"
+                            {move || TranslationKey::PagesGiftsModalCancelConfirm.format(&[])}
                         </button>
                     </div>
                 </div>
@@ -1351,14 +1429,17 @@ pub fn CancelDropSuccessModal(
                             />
                         </div>
                         <h3 class="text-white font-bold text-xl mb-2">
-                            "Gift Cancelled Successfully!"
+                            {move || TranslationKey::PagesGiftsModalCancelSuccessTitle.format(&[])}
                         </h3>
                         <p class="text-gray-400 text-sm">
                             <Suspense fallback=move || {
                                 view! {
                                     <div class="flex items-center justify-center gap-2">
                                         <div class="w-4 h-4 border-2 border-t-transparent border-blue-500 rounded-full animate-spin" />
-                                        "Loading gift details..."
+                                        {move || {
+                                            TranslationKey::PagesGiftsModalLoadingGiftDetails
+                                                .format(&[])
+                                        }}
                                     </div>
                                 }
                             }>
@@ -1366,10 +1447,8 @@ pub fn CancelDropSuccessModal(
                                     gift_message
                                         .get()
                                         .map(|message| {
-                                            format!(
-                                                "Your {} gift has been cancelled and the tokens have been returned to your account.",
-                                                message,
-                                            )
+                                            TranslationKey::PagesGiftsModalCancelSuccessDescription
+                                                .format(&[("contents", message.as_str())])
                                         })
                                 }}
                             </Suspense>
@@ -1381,7 +1460,7 @@ pub fn CancelDropSuccessModal(
                             class="flex-1 bg-neutral-700 hover:bg-neutral-600 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
                             on:click=move |_| modal.set(None)
                         >
-                            "Close"
+                            {move || TranslationKey::PagesGiftsModalClose.format(&[])}
                         </button>
                         <button
                             class="flex-1 bg-linear-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-xl px-4 py-3 font-medium transition-all cursor-pointer"
@@ -1400,7 +1479,7 @@ pub fn CancelDropSuccessModal(
                                 }
                             }
                         >
-                            "Re-create Gift"
+                            {move || TranslationKey::PagesGiftsModalRecreateGift.format(&[])}
                         </button>
                     </div>
                 </div>
@@ -1431,9 +1510,13 @@ pub fn CancelDropErrorModal() -> impl IntoView {
                                 attr:class="text-white"
                             />
                         </div>
-                        <h3 class="text-white font-bold text-xl mb-2">"Cancel Failed"</h3>
+                        <h3 class="text-white font-bold text-xl mb-2">
+                            {move || TranslationKey::PagesGiftsModalCancelFailedTitle.format(&[])}
+                        </h3>
                         <p class="text-gray-400 text-sm">
-                            "The gift cancellation failed. Please try again."
+                            {move || {
+                                TranslationKey::PagesGiftsModalCancelFailedDescription.format(&[])
+                            }}
                         </p>
                     </div>
 
@@ -1441,7 +1524,7 @@ pub fn CancelDropErrorModal() -> impl IntoView {
                         class="w-full mt-6 bg-red-600 hover:bg-red-700 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
                         on:click=move |_| modal.set(None)
                     >
-                        "Close"
+                        {move || TranslationKey::PagesGiftsModalClose.format(&[])}
                     </button>
                 </div>
             </div>

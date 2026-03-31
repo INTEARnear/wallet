@@ -3,6 +3,8 @@ use leptos::{html::Input, prelude::*};
 use wasm_bindgen::JsCast;
 use web_sys::Event;
 
+use crate::translations::TranslationKey;
+
 const WORD_COUNT: usize = 12;
 const WORD_POSITION_NUMBER_STYLE: &str =
     "absolute -top-1 -left-1 text-xs text-neutral-500 bg-neutral-950 px-1 z-10 rounded-full";
@@ -147,7 +149,7 @@ pub fn SeedPhraseInput(#[prop(into)] on_change: Callback<String>) -> impl IntoVi
 
             if words.len() == 13 {
                 set_warning_message.set(Some(
-                    "13-word seed phrases are only supported in HOT Wallet. If you are importing from HOT Wallet, please copy Private Key from Security & Apps > Seed phrase & Private keys > Private keys > NEAR, and import it via Private Key".to_string()
+                    TranslationKey::ComponentsSeedPhraseInputWarningHotWallet13Words.format(&[]),
                 ));
             } else if words.len() == WORD_COUNT {
                 set_warning_message.set(None);
@@ -390,7 +392,9 @@ pub fn SeedPhraseInput(#[prop(into)] on_change: Callback<String>) -> impl IntoVi
 
     view! {
         <div class="space-y-4">
-            <label class="block text-neutral-400 text-sm font-medium">"Seed Phrase"</label>
+            <label class="block text-neutral-400 text-sm font-medium">
+                {move || TranslationKey::ComponentsSeedPhraseInputLabel.format(&[])}
+            </label>
 
             {move || {
                 if let Some(warning) = warning_message.get() {

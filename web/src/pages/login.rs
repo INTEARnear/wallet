@@ -1,4 +1,3 @@
-use crate::translations::TranslationKey;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_router::hooks::{use_location, use_navigate};
@@ -13,6 +12,7 @@ use crate::{
         security_log_context::add_security_log,
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
+    translations::TranslationKey,
 };
 
 #[component]
@@ -41,7 +41,7 @@ pub fn Login() -> impl IntoView {
         <div class="flex flex-col items-center justify-center min-h-[calc(80vh-100px)] p-4">
             <div class="flex flex-col items-center gap-6 max-w-md w-full">
                 <h2 class="text-2xl font-bold text-white mb-2 wrap-anywhere">
-                    "Add Full Access Key"
+                    {move || TranslationKey::PagesLoginTitle.format(&[])}
                 </h2>
                 <div class="flex flex-col gap-4 w-full">
                     <div class="p-6 bg-neutral-800/50 backdrop-blur-sm rounded-xl border border-neutral-700/50 shadow-lg">
@@ -51,7 +51,9 @@ pub fn Login() -> impl IntoView {
                                 .get()
                                 .selected_account_id
                                 .map(|id| id.to_string())
-                                .unwrap_or_else(|| "No account selected".to_string());
+                                .unwrap_or_else(|| {
+                                    TranslationKey::PagesLoginNoAccountSelected.format(&[])
+                                });
                             if let Some(public_key) = public_key.get() {
                                 view! {
                                     <div class="flex items-center gap-3 pb-4 mb-4 border-b border-neutral-700/50">
@@ -59,11 +61,15 @@ pub fn Login() -> impl IntoView {
                                             <span class="text-neutral-300 text-lg">"🔑"</span>
                                         </div>
                                         <div>
-                                            <p class="text-neutral-400 text-sm">"Account"</p>
+                                            <p class="text-neutral-400 text-sm">
+                                                {move || TranslationKey::PagesLoginAccountLabel.format(&[])}
+                                            </p>
                                             <p class="text-white font-medium wrap-anywhere">
                                                 {account_id}
                                             </p>
-                                            <p class="text-neutral-400 text-sm mt-2">"Public Key"</p>
+                                            <p class="text-neutral-400 text-sm mt-2">
+                                                {move || TranslationKey::PagesLoginPublicKeyLabel.format(&[])}
+                                            </p>
                                             <p class="text-white font-medium wrap-anywhere">
                                                 {public_key.to_string()}
                                             </p>
@@ -78,8 +84,12 @@ pub fn Login() -> impl IntoView {
                         }}
                         <DangerConfirmInput
                             set_is_confirmed=set_is_confirmed
-                            warning_title="⚠️ Dangerous Operation"
-                            warning_message="You are about to give FULL ACCESS to your account. This means the owner of this key will have complete control over your account, including the ability to transfer all funds and delete your account. This should ONLY be done if you're a developer."
+                            warning_title=Signal::derive(move || {
+                                TranslationKey::PagesLoginDangerTitle.format(&[])
+                            })
+                            warning_message=Signal::derive(move || {
+                                TranslationKey::PagesLoginDangerMessage.format(&[])
+                            })
                         />
                         {move || {
                             if let Some(error) = error.get() {
@@ -113,7 +123,9 @@ pub fn Login() -> impl IntoView {
                                         .accounts
                                         .get()
                                         .selected_account_id else {
-                                        set_error.set(Some("No account selected".to_string()));
+                                        set_error.set(Some(
+                                            TranslationKey::PagesLoginNoAccountSelected.format(&[]),
+                                        ));
                                         return;
                                     };
                                     add_security_log(
@@ -149,8 +161,12 @@ pub fn Login() -> impl IntoView {
                                                 navigate_clone("/", Default::default());
                                             }
                                             Err(e) => {
-                                                set_error
-                                                    .set(Some(format!("Failed to add access key: {e}")));
+                                                set_error.set(Some(
+                                                    TranslationKey::PagesLoginErrAddKeyFailed.format(&[(
+                                                        "error",
+                                                        &e.to_string(),
+                                                    )]),
+                                                ));
                                                 set_is_loading.set(false);
                                             }
                                         }
@@ -171,7 +187,8 @@ pub fn Login() -> impl IntoView {
                                         } else {
                                             ().into_any()
                                         }
-                                    }}Add Full Access Key
+                                    }}
+                                    {move || TranslationKey::PagesLoginConfirm.format(&[])}
                                 </span>
                             </button>
                             <button
@@ -179,7 +196,7 @@ pub fn Login() -> impl IntoView {
                                 prop:disabled=move || is_loading.get()
                                 on:click=move |_| navigate("/", Default::default())
                             >
-                                Cancel
+                                {move || TranslationKey::PagesLoginCancel.format(&[])}
                             </button>
                         </div>
                     </div>

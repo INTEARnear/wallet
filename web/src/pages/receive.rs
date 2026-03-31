@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use crate::contexts::accounts_context::AccountsContext;
 use crate::contexts::network_context::{Network, NetworkContext};
+use crate::translations::TranslationKey;
 use crate::utils::{format_account_id_full, generate_qr_code};
 
 #[component]
@@ -43,10 +44,14 @@ pub fn Receive() -> impl IntoView {
                 attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer no-mobile-ripple"
             >
                 <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                <span>"Back"</span>
+                <span>
+                    {move || TranslationKey::PagesReceiveBack.format(&[])}
+                </span>
             </A>
             <div class="flex flex-col items-center justify-center min-h-[60vh] gap-6">
-                <h1 class="text-2xl font-bold text-white mb-4">"Receive"</h1>
+                <h1 class="text-2xl font-bold text-white mb-4">
+                    {move || TranslationKey::PagesReceivePageTitle.format(&[])}
+                </h1>
 
                 <Suspense fallback=move || {
                     view! {
@@ -63,7 +68,9 @@ pub fn Receive() -> impl IntoView {
                                     view! {
                                         <img
                                             src=qr_code_data_url
-                                            alt="QR Code for wallet address"
+                                            alt=move || {
+                                                TranslationKey::PagesReceiveQrAltWallet.format(&[])
+                                            }
                                             class="w-64 h-64 rounded-lg mb-4"
                                         />
                                     }
@@ -71,7 +78,7 @@ pub fn Receive() -> impl IntoView {
                                 } else {
                                     view! {
                                         <div class="w-64 h-64 bg-neutral-800 rounded-lg flex items-center justify-center text-red-400">
-                                            "Failed to generate QR code"
+                                            {move || TranslationKey::PagesReceiveQrFailed.format(&[])}
                                         </div>
                                     }
                                         .into_any()
@@ -99,7 +106,9 @@ pub fn Receive() -> impl IntoView {
                                     <button
                                         class="bg-neutral-700 hover:bg-neutral-600 rounded-lg p-2 transition-colors cursor-pointer shrink-0"
                                         on:click=copy_to_clipboard
-                                        title="Copy address"
+                                        title=move || {
+                                            TranslationKey::PagesReceiveCopyAddressTooltip.format(&[])
+                                        }
                                     >
                                         {move || {
                                             if is_copied.get() {
@@ -130,7 +139,12 @@ pub fn Receive() -> impl IntoView {
                         }
                             .into_any()
                     } else {
-                        view! { <div class="text-red-400">"No account selected"</div> }.into_any()
+                        view! {
+                            <div class="text-red-400">
+                                {move || TranslationKey::PagesReceiveNoAccountSelected.format(&[])}
+                            </div>
+                        }
+                            .into_any()
                     }
                 }}
 
@@ -156,7 +170,9 @@ pub fn Receive() -> impl IntoView {
                             href="/receive/invoices"
                             attr:class="w-full bg-neutral-700 hover:bg-neutral-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors cursor-pointer text-center text-base relative"
                         >
-                            <span>"Invoices"</span>
+                            <span>
+                                {move || TranslationKey::PagesReceiveInvoicesNav.format(&[])}
+                            </span>
                             <span class="absolute top-1 right-1 bg-yellow-500 text-black text-xs px-1.5 py-0.5 rounded">
                                 "BETA"
                             </span>

@@ -3,6 +3,7 @@ use crate::contexts::transaction_queue_context::{
     OverlayMode, TransactionQueueContext, TransactionStage,
 };
 use crate::pages::settings::LedgerSelector;
+use crate::translations::TranslationKey;
 use leptos::prelude::*;
 use leptos_icons::*;
 
@@ -119,18 +120,18 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                         <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white transition-colors duration-150" />
                         <span>
                             {move || {
-                                format!(
-                                    "Transaction{}",
-                                    if queue.read().len() > 1 {
-                                        format!(
-                                            " {}/{}",
-                                            (current_index.get() + 1).min(queue.read().len()),
-                                            queue.read().len(),
-                                        )
-                                    } else {
-                                        "".to_string()
-                                    },
-                                )
+                                let queue_len = queue.read().len();
+                                if queue_len > 1 {
+                                    let current = (current_index.get() + 1).min(queue_len);
+                                    TranslationKey::ComponentsTransactionQueueOverlayCompactLabelProgress
+                                        .format(&[
+                                            ("current", &current.to_string()),
+                                            ("total", &queue_len.to_string()),
+                                        ])
+                                } else {
+                                    TranslationKey::ComponentsTransactionQueueOverlayCompactLabelSingle
+                                        .format(&[])
+                                }
                             }}
                         </span>
                     </div>
@@ -157,7 +158,9 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                     on:click=|ev| ev.stop_propagation()
                 >
                     <div class="flex items-center justify-between mb-4">
-                        <h2 class="text-lg font-medium">"Transaction Queue"</h2>
+                        <h2 class="text-lg font-medium">
+                            {move || TranslationKey::ComponentsTransactionQueueOverlayModalTitle.format(&[])}
+                        </h2>
                         <div class="flex items-center gap-2">
                             <button
                                 on:mouseup=move |_| overlay_mode.set(OverlayMode::Background)
@@ -204,9 +207,17 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                                                             view! {
                                                                 <div class="text-white text-center flex flex-col items-center gap-2 mt-2 border-t border-neutral-700 pt-2">
                                                                     <Icon icon=icondata::LuUsb width="24" height="24" />
-                                                                    <p class="text-sm font-bold">"Waiting for Ledger"</p>
+                                                                    <p class="text-sm font-bold">
+                                                                        {move || {
+                                                                            TranslationKey::ComponentsTransactionQueueOverlayLedgerWaitingTitle
+                                                                                .format(&[])
+                                                                        }}
+                                                                    </p>
                                                                     <p class="text-xs">
-                                                                        "Please confirm the transaction on your Ledger device."
+                                                                        {move || {
+                                                                            TranslationKey::ComponentsTransactionQueueOverlayLedgerWaitingBody
+                                                                                .format(&[])
+                                                                        }}
                                                                     </p>
                                                                     <button
                                                                         class="p-2 text-sm bg-neutral-700 rounded-md hover:bg-neutral-600 transition-colors cursor-pointer grow w-full"
@@ -217,7 +228,10 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                                                                                 })
                                                                         }
                                                                     >
-                                                                        "Retry"
+                                                                        {move || {
+                                                                            TranslationKey::ComponentsTransactionQueueOverlayButtonRetry
+                                                                                .format(&[])
+                                                                        }}
                                                                     </button>
                                                                 </div>
                                                             }
@@ -232,7 +246,12 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                                                                         height="24"
                                                                         attr:class="text-red-500"
                                                                     />
-                                                                    <p class="text-sm font-bold">"Ledger Error"</p>
+                                                                    <p class="text-sm font-bold">
+                                                                        {move || {
+                                                                            TranslationKey::ComponentsTransactionQueueOverlayLedgerErrorTitle
+                                                                                .format(&[])
+                                                                        }}
+                                                                    </p>
                                                                     <p class="text-xs max-w-xs wrap-break-word text-red-400">
                                                                         {error.clone()}
                                                                     </p>
@@ -252,7 +271,10 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                                                                                     })
                                                                             }
                                                                         >
-                                                                            "Retry"
+                                                                            {move || {
+                                                                                TranslationKey::ComponentsTransactionQueueOverlayButtonRetry
+                                                                                    .format(&[])
+                                                                            }}
                                                                         </button>
                                                                         <button
                                                                             class="p-2 text-sm bg-red-800 rounded-md hover:bg-red-700 transition-colors cursor-pointer grow w-full"
@@ -260,7 +282,10 @@ pub fn TransactionQueueOverlay() -> impl IntoView {
                                                                                 ledger_signing_state.set(LedgerSigningState::Idle)
                                                                             }
                                                                         >
-                                                                            "Cancel"
+                                                                            {move || {
+                                                                                TranslationKey::ComponentsTransactionQueueOverlayButtonCancel
+                                                                                    .format(&[])
+                                                                            }}
                                                                         </button>
                                                                     </div>
                                                                 </div>

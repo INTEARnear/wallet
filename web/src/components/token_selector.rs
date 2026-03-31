@@ -12,6 +12,7 @@ use crate::{
             Token, TokenBalanceSource, TokenData, TokenInfo, TokenScore, TokensContext,
         },
     },
+    translations::TranslationKey,
     utils::{balance_to_decimal, format_token_amount, format_usd_value, format_usd_value_no_hide},
 };
 
@@ -124,7 +125,9 @@ fn TokenSelectorModal(
                 <div class="bg-neutral-900 rounded-2xl w-full max-h-[60vh] overflow-hidden flex flex-col">
                     <div class="p-4 border-b border-neutral-800 shrink-0">
                         <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-white font-bold text-lg">"Select Token"</h3>
+                            <h3 class="text-white font-bold text-lg">
+                                {move || TranslationKey::ComponentsTokenSelectorModalTitle.format(&[])}
+                            </h3>
                             <button
                                 class="text-gray-400 hover:text-white transition-colors cursor-pointer"
                                 on:click=move |_| modal.set(None)
@@ -142,7 +145,9 @@ fn TokenSelectorModal(
                             <input
                                 type="text"
                                 class="w-full bg-neutral-800 text-white rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
-                                placeholder="Search tokens..."
+                                prop:placeholder=move || {
+                                    TranslationKey::ComponentsTokenSelectorSearchPlaceholder.format(&[])
+                                }
                                 prop:value=search_query
                                 on:input=move |ev| {
                                     let value = event_target_value(&ev);
@@ -282,7 +287,10 @@ fn TokenSelectorModal(
                                                                             width="16"
                                                                             height="16"
                                                                             attr:class="text-yellow-500 shrink-0"
-                                                                            attr:title="Warning: This token has unknown reputation. Exercise caution."
+                                                                            attr:title=move || {
+                                                                                TranslationKey::ComponentsTokenSelectorUnknownReputationWarning
+                                                                                    .format(&[])
+                                                                            }
                                                                         />
                                                                     }
                                                                         .into_any()
@@ -332,13 +340,14 @@ fn TokenSelectorModal(
                                                 && let Some(near_token_data) = user_tokens
                                                     .iter()
                                                     .find(|t| t.token.account_id == Token::Near)
-                                                {
-                                                    search_results.insert(0, near_token_data.token.clone());
-                                                }
+                                            {
+                                                search_results.insert(0, near_token_data.token.clone());
+                                            }
                                             if search_results.is_empty() {
                                                 view! {
                                                     <div class="flex items-center justify-center h-32 text-gray-400">
-                                                        "No tokens found"
+                                                        {move || TranslationKey::ComponentsTokenSelectorEmptyResults
+                                                            .format(&[])}
                                                     </div>
                                                 }
                                                     .into_any()
@@ -426,7 +435,10 @@ fn TokenSelectorModal(
                                                                                         width="16"
                                                                                         height="16"
                                                                                         attr:class="text-yellow-500 shrink-0"
-                                                                                        attr:title="Warning: This token has unknown reputation. Exercise caution."
+                                                                                        attr:title=move || {
+                                                                                            TranslationKey::ComponentsTokenSelectorUnknownReputationWarning
+                                                                                                .format(&[])
+                                                                                        }
                                                                                     />
                                                                                 }
                                                                                     .into_any()
@@ -499,7 +511,8 @@ fn TokenSelectorModal(
                                         Some(Err(SearchError::SearchFailed(_))) => {
                                             view! {
                                                 <div class="flex items-center justify-center h-32 text-red-400">
-                                                    "Error loading search results"
+                                                    {move || TranslationKey::ComponentsTokenSelectorErrorSearch
+                                                        .format(&[])}
                                                 </div>
                                             }
                                                 .into_any()
@@ -545,7 +558,7 @@ fn TokenSelectorModal(
 pub fn TokenSelector(
     selected_token: impl Fn() -> Option<TokenData> + Send + Sync + 'static,
     on_select: impl Fn(TokenData) + Send + Sync + 'static + Copy,
-    placeholder: &'static str,
+    placeholder: impl Fn() -> String + Send + Sync + 'static + Clone,
     allow_native_near: bool,
 ) -> impl IntoView {
     let ModalContext { modal } = expect_context::<ModalContext>();
@@ -595,7 +608,10 @@ pub fn TokenSelector(
                                                     width="12"
                                                     height="12"
                                                     attr:class="text-yellow-500"
-                                                    attr:title="Warning: This token has unknown reputation. Exercise caution."
+                                                    attr:title=move || {
+                                                        TranslationKey::ComponentsTokenSelectorUnknownReputationWarning
+                                                            .format(&[])
+                                                    }
                                                 />
                                             </div>
                                         }
@@ -618,6 +634,7 @@ pub fn TokenSelector(
                     }
                         .into_any()
                 } else {
+                    let placeholder = placeholder.clone();
                     view! {
                         <>
                             <span class="text-gray-400 truncate">{placeholder}</span>

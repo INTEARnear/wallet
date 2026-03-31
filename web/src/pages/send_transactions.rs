@@ -212,9 +212,12 @@ fn TransactionAction(
 
     let format_action = move |action: &SendTransactionsAction| -> String {
         match Action::from(action.clone()) {
-            Action::CreateAccount(_) => "Create Account".into(),
+            Action::CreateAccount(_) => {
+                TranslationKey::PagesSendTransactionsActionCreateAccount.format(&[])
+            }
             Action::DeployContract(DeployContractAction { code }) => {
-                format!("Deploy Contract ({:?})", CryptoHash::hash_bytes(&code))
+                let hash = format!("{:?}", CryptoHash::hash_bytes(&code));
+                TranslationKey::PagesSendTransactionsActionDeployContract.format(&[("hash", &hash)])
             }
             Action::FunctionCall(box FunctionCallAction {
                 method_name,
@@ -222,25 +225,35 @@ fn TransactionAction(
                 deposit,
                 ..
             }) => {
-                let deposit_str = if deposit.is_zero() {
+                let deposit_suffix = if deposit.is_zero() {
                     String::new()
                 } else {
-                    format!(" and deposit {deposit}")
+                    TranslationKey::PagesSendTransactionsActionFunctionCallDepositSuffix
+                        .format(&[("deposit", &deposit.exact_amount_display())])
                 };
-                format!("Call '{method_name}' with {gas}{deposit_str}")
+                TranslationKey::PagesSendTransactionsActionFunctionCall.format(&[
+                    ("method_name", method_name.as_str()),
+                    ("gas", &format!("{gas}")),
+                    ("deposit_suffix", &deposit_suffix),
+                ])
             }
             Action::Transfer(TransferAction { deposit }) => {
-                format!("Transfer {deposit}")
+                TranslationKey::PagesSendTransactionsActionTransfer
+                    .format(&[("deposit", &deposit.exact_amount_display())])
             }
             Action::Stake(box StakeAction { stake, public_key }) => {
-                format!("Stake {stake} with key {public_key}")
+                TranslationKey::PagesSendTransactionsActionStake.format(&[
+                    ("stake", &stake.to_string()),
+                    ("public_key", &public_key.to_string()),
+                ])
             }
             Action::AddKey(box AddKeyAction {
                 public_key,
                 access_key,
             }) => match &access_key.permission {
                 AccessKeyPermission::FullAccess => {
-                    format!("Add Full Access Key {public_key}")
+                    TranslationKey::PagesSendTransactionsActionAddFullAccessKey
+                        .format(&[("public_key", &public_key.to_string())])
                 }
                 AccessKeyPermission::FunctionCall(FunctionCallPermission {
                     receiver_id,
@@ -248,62 +261,80 @@ fn TransactionAction(
                     method_names,
                 }) => {
                     let methods = if method_names.is_empty() {
-                        "any".to_string()
+                        TranslationKey::PagesSendTransactionsActionMethodsAny.format(&[])
                     } else {
                         method_names.join(", ")
                     };
-                    let allowance_str = allowance
-                        .map(|a| format!(" and allowance {a}"))
+                    let allowance_suffix = allowance
+                        .map(|a| {
+                            TranslationKey::PagesSendTransactionsActionAllowanceSuffix
+                                .format(&[("allowance", &a.to_string())])
+                        })
                         .unwrap_or_default();
-                    format!(
-                        "Add Function Call Key {public_key} for contract {receiver_id} with methods: {methods}{allowance_str}"
-                    )
+                    TranslationKey::PagesSendTransactionsActionAddFunctionCallKey.format(&[
+                        ("public_key", &public_key.to_string()),
+                        ("receiver_id", &receiver_id.to_string()),
+                        ("methods", &methods),
+                        ("allowance_suffix", &allowance_suffix),
+                    ])
                 }
             },
             Action::DeleteKey(box DeleteKeyAction { public_key }) => {
-                format!("Delete Key {public_key}")
+                TranslationKey::PagesSendTransactionsActionDeleteKey
+                    .format(&[("public_key", &public_key.to_string())])
             }
             Action::DeleteAccount(DeleteAccountAction { beneficiary_id }) => {
-                format!("Delete Account (funds go to {beneficiary_id})")
+                TranslationKey::PagesSendTransactionsActionDeleteAccount
+                    .format(&[("beneficiary_id", beneficiary_id.as_ref())])
             }
             Action::UseGlobalContract(box UseGlobalContractAction {
                 contract_identifier,
             }) => {
-                format!(
-                    "Deploy Global Contract on this account from {}",
-                    match contract_identifier {
-                        GlobalContractIdentifier::AccountId(account_id) =>
-                            format!("account {account_id}"),
-                        GlobalContractIdentifier::CodeHash(code_hash) =>
-                            format!("code hash {code_hash}"),
+                let source = match contract_identifier {
+                    GlobalContractIdentifier::AccountId(account_id) => {
+                        TranslationKey::PagesSendTransactionsActionGlobalContractSourceAccount
+                            .format(&[("account_id", account_id.as_ref())])
                     }
-                )
+                    GlobalContractIdentifier::CodeHash(code_hash) => {
+                        TranslationKey::PagesSendTransactionsActionGlobalContractSourceCodeHash
+                            .format(&[("code_hash", &format!("{code_hash:?}"))])
+                    }
+                };
+                TranslationKey::PagesSendTransactionsActionUseGlobalContract
+                    .format(&[("source", &source)])
             }
             Action::DeployGlobalContract(DeployGlobalContractAction { code, deploy_mode }) => {
                 const GLOBAL_CONTRACT_DEPLOY_MULTIPLIER: usize = 10;
-                format!(
-                    "Deploy Global Contract {} and bind to {} for {}",
-                    CryptoHash::hash_bytes(&code),
-                    match deploy_mode {
-                        GlobalContractDeployMode::CodeHash => "the code hash",
-                        GlobalContractDeployMode::AccountId => "this account",
-                    },
-                    format_token_amount_no_hide(
-                        "0.00001 NEAR"
-                            .parse::<NearToken>()
-                            .unwrap()
-                            .saturating_mul(code.len() as u128)
-                            .saturating_mul(GLOBAL_CONTRACT_DEPLOY_MULTIPLIER as u128)
-                            .as_yoctonear(),
-                        24,
-                        "NEAR",
-                    )
-                )
+                let bind_mode = match deploy_mode {
+                    GlobalContractDeployMode::CodeHash => {
+                        TranslationKey::PagesSendTransactionsActionGlobalContractBindCodeHash
+                            .format(&[])
+                    }
+                    GlobalContractDeployMode::AccountId => {
+                        TranslationKey::PagesSendTransactionsActionGlobalContractBindThisAccount
+                            .format(&[])
+                    }
+                };
+                let hash = format!("{:?}", CryptoHash::hash_bytes(&code));
+                let amount = format_token_amount_no_hide(
+                    "0.00001 NEAR"
+                        .parse::<NearToken>()
+                        .unwrap()
+                        .saturating_mul(code.len() as u128)
+                        .saturating_mul(GLOBAL_CONTRACT_DEPLOY_MULTIPLIER as u128)
+                        .as_yoctonear(),
+                    24,
+                    "NEAR",
+                );
+                TranslationKey::PagesSendTransactionsActionDeployGlobalContract.format(&[
+                    ("hash", &hash),
+                    ("bind_mode", &bind_mode),
+                    ("amount", &amount),
+                ])
             }
             Action::Delegate(_) => panic!("Delegate actions are not supported"),
         }
     };
-
     view! {
         <div class="flex flex-col gap-1">
             <div class="flex items-start gap-2">
@@ -318,7 +349,11 @@ fn TransactionAction(
                                 class="text-blue-400 hover:text-blue-300 transition-colors text-sm px-2"
                                 on:click=toggle_action
                             >
-                                {if is_expanded() { "Hide args" } else { "Show args" }}
+                                {move || if is_expanded() {
+                                    TranslationKey::PagesSendTransactionsHideArgs.format(&[])
+                                } else {
+                                    TranslationKey::PagesSendTransactionsShowArgs.format(&[])
+                                }}
                             </button>
                         }
                             .into_any()
@@ -343,16 +378,18 @@ fn TransactionAction(
                         view! {
                             <div class="flex flex-col gap-2">
                                 <pre class="text-xs font-mono bg-neutral-800 text-neutral-300 rounded-lg p-3 whitespace-pre-wrap">
-                                    {if let Some(args_json) = args_json {
-                                        serde_json::to_string_pretty(&args_json).unwrap()
+                                    {move || if let Some(args_json) = &args_json {
+                                        serde_json::to_string_pretty(args_json).unwrap()
                                     } else {
-                                        format!(
-                                            "binary: {}",
-                                            args_clone2
-                                                .iter()
-                                                .map(|byte| format!("{byte:02x}"))
-                                                .collect::<Vec<String>>()
-                                                .join(""),
+                                        TranslationKey::PagesSendTransactionsArgsBinaryPrefix.format(
+                                            &[(
+                                                "content",
+                                                &args_clone2
+                                                    .iter()
+                                                    .map(|byte| format!("{byte:02x}"))
+                                                    .collect::<Vec<String>>()
+                                                    .join(""),
+                                            )],
                                         )
                                     }}
                                 </pre>
@@ -365,7 +402,13 @@ fn TransactionAction(
                                             >
                                                 <Icon icon=LuClipboard width="14" height="14" />
                                                 {move || {
-                                                    if json_copied.get() { "Copied!" } else { "Copy JSON" }
+                                                    if json_copied.get() {
+                                                        TranslationKey::PagesSendTransactionsCopied
+                                                            .format(&[])
+                                                    } else {
+                                                        TranslationKey::PagesSendTransactionsCopyJson
+                                                            .format(&[])
+                                                    }
                                                 }}
                                             </button>
                                         }
@@ -393,7 +436,13 @@ fn TransactionAction(
                                     >
                                         <Icon icon=LuTerminal width="14" height="14" />
                                         {move || {
-                                            if cli_copied.get() { "Copied!" } else { "Copy CLI" }
+                                            if cli_copied.get() {
+                                                TranslationKey::PagesSendTransactionsCopied
+                                                    .format(&[])
+                                            } else {
+                                                TranslationKey::PagesSendTransactionsCopyCli
+                                                    .format(&[])
+                                            }
                                         }}
                                     </button>
                                 </div>
@@ -426,7 +475,7 @@ fn TransactionItem<'a>(
                 </div>
                 <div class="flex-1 max-w-full wrap-anywhere">
                     <p class="text-neutral-200 font-medium mb-1">
-                        {"Transaction to "}
+                        {move || TranslationKey::PagesSendTransactionsTransactionToPrefix.format(&[])}
                         <code class="px-1.5 py-0.5 bg-neutral-700/50 rounded text-sm font-mono wrap-anywhere">
                             {tx.receiver_id.to_string()}
                         </code>
@@ -466,7 +515,9 @@ fn TransactionList(
         <div class="flex flex-col gap-4">
             <div class="p-3 bg-neutral-900/50 rounded-lg border border-neutral-800">
                 <p class="text-neutral-400 text-sm">
-                    "Transaction preview is not yet available. Stay tuned for wallet updates!"
+                    {move || {
+                        TranslationKey::PagesSendTransactionsPreviewUnavailable.format(&[])
+                    }}
                 </p>
             </div>
 
@@ -950,14 +1001,15 @@ pub fn SendTransactions() -> impl IntoView {
                 serde_json::from_str::<Vec<WalletSelectorTransaction>>(&request_data.transactions)
             );
             let message = SendMessage::Error {
-                message: "Failed to deserialize transactions".to_string(),
+                message: TranslationKey::PagesSendTransactionsFailedDeserializeTransactions
+                    .format(&[]),
             };
             post_to_opener(message, true);
             return;
         };
         if transactions.is_empty() {
             let message = SendMessage::Error {
-                message: "No transactions (an empty array) passed to the wallet".to_string(),
+                message: TranslationKey::PagesSendTransactionsNoTransactionsEmpty.format(&[]),
             };
             post_to_opener(message, true);
             return;
@@ -1014,7 +1066,11 @@ pub fn SendTransactions() -> impl IntoView {
                                     outcome_result
                                         .map(|d| d.final_execution_outcome)
                                         .map_err(|e| {
-                                            format!("Failed to send transaction {}: {e}", i + 1)
+                                            TranslationKey::PagesSendTransactionsFailedSendTransaction
+                                                .format(&[
+                                                    ("index", &(i + 1).to_string()),
+                                                    ("error", &e),
+                                                ])
                                         })
                                 })
                                 .collect::<Result<Option<Vec<_>>, String>>();
@@ -1082,7 +1138,11 @@ pub fn SendTransactions() -> impl IntoView {
                                 .enumerate()
                                 .map(|(i, result)| {
                                     result.map_err(|e| {
-                                        format!("Failed to sign delegate action {}: {e}", i + 1)
+                                        TranslationKey::PagesSendTransactionsFailedSignDelegateAction
+                                            .format(&[
+                                                ("index", &(i + 1).to_string()),
+                                                ("error", &e),
+                                            ])
                                     })
                                 })
                                 .collect::<Result<Vec<_>, String>>();
@@ -1111,7 +1171,8 @@ pub fn SendTransactions() -> impl IntoView {
                         Err(_) => {
                             log::error!("Failed to receive signed delegate actions");
                             let message = SendMessage::Error {
-                                message: "Failed to receive signed delegate actions".to_string(),
+                                message: TranslationKey::PagesSendTransactionsFailedReceiveSignedDelegateActions
+                                    .format(&[]),
                             };
                             post_to_opener(message, true);
                         }
@@ -1123,7 +1184,7 @@ pub fn SendTransactions() -> impl IntoView {
 
     let handle_cancel = move |_| {
         let message = SendMessage::Error {
-            message: "User rejected the transactions".to_string(),
+            message: TranslationKey::PagesSendTransactionsUserRejectedTransactions.format(&[]),
         };
         post_to_opener(message, true);
     };
@@ -1143,7 +1204,10 @@ pub fn SendTransactions() -> impl IntoView {
                         view! {
                             <div class="flex flex-col items-center gap-4 text-center max-w-sm">
                                 <p class="text-red-400 text-lg font-semibold">
-                                    "Transaction Error"
+                                    {move || {
+                                        TranslationKey::PagesSendTransactionsTransactionErrorTitle
+                                            .format(&[])
+                                    }}
                                 </p>
                                 <p class="text-neutral-300 text-sm">{error_msg}</p>
                             </div>
@@ -1153,7 +1217,12 @@ pub fn SendTransactions() -> impl IntoView {
                         view! {
                             <div class="flex flex-col items-center gap-4">
                                 <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-white"></div>
-                                <p class="text-white text-lg">"Receiving transaction details..."</p>
+                                <p class="text-white text-lg">
+                                    {move || {
+                                        TranslationKey::PagesSendTransactionsReceivingTransactionDetails
+                                            .format(&[])
+                                    }}
+                                </p>
                             </div>
                         }
                             .into_any()
@@ -1162,7 +1231,10 @@ pub fn SendTransactions() -> impl IntoView {
                     view! {
                         <div class="flex flex-col items-center gap-6 max-w-md w-full">
                             <h2 class="text-2xl font-bold text-white mb-2 wrap-anywhere">
-                                "Approve Transactions"
+                                {move || {
+                                    TranslationKey::PagesSendTransactionsTitleApproveTransactions
+                                        .format(&[])
+                                }}
                             </h2>
                             <div class="flex flex-col gap-4 w-full">
                                 <div class="p-6 bg-neutral-800/50 backdrop-blur-sm rounded-xl border border-neutral-700/50 shadow-lg">
@@ -1171,16 +1243,23 @@ pub fn SendTransactions() -> impl IntoView {
                                             <span class="text-neutral-300 text-lg">{"📝"}</span>
                                         </div>
                                         <div>
-                                            <p class="text-neutral-400 text-sm">"Request from"</p>
+                                            <p class="text-neutral-400 text-sm">
+                                                {move || {
+                                                    TranslationKey::PagesSendTransactionsRequestFromLabel
+                                                        .format(&[])
+                                                }}
+                                            </p>
                                             <p class="text-white font-medium wrap-anywhere">
                                                 {if let Some(app) = connected_app() {
                                                     if is_localhost_app(&app) {
-                                                        "🛠 Localhost".to_string()
+                                                        TranslationKey::PagesSendTransactionsLocalhostBadge
+                                                            .format(&[])
                                                     } else {
                                                         app.origin.to_string()
                                                     }
                                                 } else {
-                                                    "⚠️ Unknown".to_string()
+                                                    TranslationKey::PagesSendTransactionsUnknownOrigin
+                                                        .format(&[])
                                                 }}
                                             </p>
                                         </div>
@@ -1216,10 +1295,10 @@ pub fn SendTransactions() -> impl IntoView {
                                                         />
                                                         <div>
                                                             <p class="font-medium">
-                                                                "Multiple Transactions to Same Contract"
+                                                                {move || TranslationKey::PagesSendTransactionsWarningMultipleTxTitle.format(&[])}
                                                             </p>
                                                             <p class="text-yellow-500/80 text-sm">
-                                                                "Consider combining these into a single transaction with multiple actions to speed up the user experience and have atomicity between these transactions."
+                                                                {move || TranslationKey::PagesSendTransactionsWarningMultipleTxBody.format(&[])}
                                                             </p>
                                                         </div>
                                                     </div>
@@ -1238,9 +1317,11 @@ pub fn SendTransactions() -> impl IntoView {
                                                             attr:class="min-w-5 min-h-5"
                                                         />
                                                         <div>
-                                                            <p class="font-medium">"High Gas Usage Detected"</p>
+                                                            <p class="font-medium">
+                                                                {move || TranslationKey::PagesSendTransactionsWarningHighGasTitle.format(&[])}
+                                                            </p>
                                                             <p class="text-yellow-500/80 text-sm">
-                                                                "One or more function calls attach 300 TGas or more. Consider reducing the gas if the full amount isn't needed, because it can make some people unable to use your app, and there will be a high fee penalty introduced in the future NEAR release."
+                                                                {move || TranslationKey::PagesSendTransactionsWarningHighGasBody.format(&[])}
                                                             </p>
                                                         </div>
                                                     </div>
@@ -1274,9 +1355,11 @@ pub fn SendTransactions() -> impl IntoView {
                                                         attr:class="min-w-5 min-h-5"
                                                     />
                                                     <div>
-                                                        <p class="font-medium">"Account Mismatch Error"</p>
+                                                        <p class="font-medium">
+                                                            {move || TranslationKey::PagesSendTransactionsSignerMismatchTitle.format(&[])}
+                                                        </p>
                                                         <p class="text-red-400 text-sm">
-                                                            "The transaction signer does not match the connected account. This is probably a bug in the app that requested the transaction. Please report this to the app developer."
+                                                            {move || TranslationKey::PagesSendTransactionsSignerMismatchBody.format(&[])}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -1287,8 +1370,14 @@ pub fn SendTransactions() -> impl IntoView {
                                         view! {
                                             <DangerConfirmInput
                                                 set_is_confirmed=set_is_confirmed
-                                                warning_title="⚠️ Warning: This transaction is dangerous!"
-                                                warning_message="It can allow the app to do things that can affect your account. Please confirm only if you trust the app and know that you risk losing your account."
+                                                warning_title=Signal::derive(move || {
+                                                    TranslationKey::PagesSendTransactionsDangerWarningTitle
+                                                        .format(&[])
+                                                })
+                                                warning_message=Signal::derive(move || {
+                                                    TranslationKey::PagesSendTransactionsDangerWarningBody
+                                                        .format(&[])
+                                                })
                                             />
                                         }
                                             .into_any()
@@ -1314,10 +1403,11 @@ pub fn SendTransactions() -> impl IntoView {
                                                                         }
                                                                     />
                                                                     <span>
-                                                                        "Remember for all app interactions with "
-                                                                        <code class="px-1 py-0.5 bg-neutral-700/50 rounded wrap-anywhere">
-                                                                            {receiver_id.to_string()}
-                                                                        </code>
+                                                                        {move || TranslationKey::PagesSendTransactionsRememberContract
+                                                                            .format(&[(
+                                                                                "receiver_id",
+                                                                                receiver_id.as_ref(),
+                                                                            )])}
                                                                     </span>
                                                                 </label>
                                                             }
@@ -1339,7 +1429,8 @@ pub fn SendTransactions() -> impl IntoView {
                                                                         )
                                                                     />
                                                                     <span>
-                                                                        "Remember for non-financial interactions with all contracts"
+                                                                        {move || TranslationKey::PagesSendTransactionsRememberNonFinancial
+                                                                            .format(&[])}
                                                                     </span>
                                                                 </label>
                                                             }
@@ -1378,9 +1469,10 @@ pub fn SendTransactions() -> impl IntoView {
                                 >
                                     {move || {
                                         if should_autoconfirm.get() {
-                                            "Auto-confirming..."
+                                            TranslationKey::PagesSendTransactionsAutoConfirming
+                                                .format(&[])
                                         } else {
-                                            "Approve"
+                                            TranslationKey::PagesSendTransactionsApprove.format(&[])
                                         }
                                     }}
                                 </button>
@@ -1389,7 +1481,9 @@ pub fn SendTransactions() -> impl IntoView {
                                     on:click=handle_cancel
                                     disabled=started_sending
                                 >
-                                    "Cancel"
+                                    {move || {
+                                        TranslationKey::PagesSendTransactionsCancel.format(&[])
+                                    }}
                                 </button>
                             </div>
                         </div>

@@ -251,7 +251,9 @@ fn ValidatorCard(
     let apy = (&one - &fee) * &base_apy * BigDecimal::from(100);
     let apy_str = format!("{:.2}%", apy);
 
-    let fee_str = format!("(fee: {:.2}%)", &fee * BigDecimal::from(100));
+    let fee_percent_str = format!("{:.2}", &fee * BigDecimal::from(100));
+    let fee_str =
+        TranslationKey::PagesStakeFeeParenthetical.format(&[("percent", &fee_percent_str)]);
 
     let apy_color = if fee > BigDecimal::from_str("0.2").unwrap() {
         "#ef4444" // red-500
@@ -335,7 +337,9 @@ fn ValidatorCard(
                             .into_any()
                     }}
                     <div class="text-xs text-gray-400 text-center">
-                        "Total Stake" <div style:color=stake_color class="text-center w-full">
+                        {move || {
+                            TranslationKey::PagesStakeValidatorTotalStake.format(&[])
+                        }} <div style:color=stake_color class="text-center w-full">
                             {move || format_token_amount_no_hide(
                                 validator().total_stake.as_yoctonear(),
                                 24,
@@ -353,7 +357,9 @@ fn ValidatorCard(
                                     {if staked >= threshold {
                                         view! {
                                             <div class="text-xs text-gray-400 text-center">
-                                                "Staked"
+                                                {move || {
+                                                    TranslationKey::PagesStakeValidatorStaked.format(&[])
+                                                }}
                                                 <div class="text-green-400 w-full">
                                                     {move || format_token_amount(
                                                         staked.as_yoctonear(),
@@ -390,7 +396,9 @@ fn ValidatorCard(
 
                                         view! {
                                             <div class="text-xs text-gray-400 text-center">
-                                                "Unclaimed"
+                                                {move || {
+                                                    TranslationKey::PagesStakeValidatorUnclaimed.format(&[])
+                                                }}
                                                 <div class="w-full space-y-1">
                                                     {move || {
                                                         #[allow(clippy::redundant_iter_cloned)]
@@ -415,7 +423,9 @@ fn ValidatorCard(
                                                         view! {
                                                             <div class="text-yellow-400 text-center text-xs">
                                                                 {move || {
-                                                                    format!("Total: {}", format_usd_value(total_usd.clone()))
+                                                                    let amount = format_usd_value(total_usd.clone());
+                                                                    TranslationKey::PagesStakeValidatorUnclaimedTotal
+                                                                        .format(&[("amount", &amount)])
                                                                 }}
                                                             </div>
                                                         }
@@ -432,7 +442,10 @@ fn ValidatorCard(
                                                                     rel="noopener noreferrer"
                                                                     class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-1 px-2 rounded cursor-pointer text-xs mt-1 inline-block text-center"
                                                                 >
-                                                                    "Claim"
+                                                                    {move || {
+                                                                        TranslationKey::PagesStakeButtonClaimRewards
+                                                                            .format(&[])
+                                                                    }}
                                                                 </a>
                                                             }
                                                                 .into_any()
@@ -551,7 +564,10 @@ fn ValidatorCard(
                                                                         }
                                                                     }
                                                                 >
-                                                                    "Claim"
+                                                                    {move || {
+                                                                        TranslationKey::PagesStakeButtonClaimRewards
+                                                                            .format(&[])
+                                                                    }}
                                                                 </button>
                                                             }
                                                                 .into_any()
@@ -695,7 +711,7 @@ fn ValidatorCard(
                             href=format!("/stake/{}/stake", validator().account_id)
                             attr:class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded cursor-pointer"
                         >
-                            "Stake"
+                            {move || TranslationKey::PagesStakeButtonStake.format(&[])}
                         </A>
                         {if is_supported && (staked >= threshold || unstaked >= threshold) {
                             view! {
@@ -705,7 +721,9 @@ fn ValidatorCard(
                                             href=format!("/stake/{}/unstake", validator().account_id)
                                             attr:class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded cursor-pointer"
                                         >
-                                            "Unstake"
+                                            {move || {
+                                                TranslationKey::PagesStakeButtonUnstake.format(&[])
+                                            }}
                                         </A>
                                     }
                                         .into_any()
@@ -762,7 +780,9 @@ fn ValidatorCard(
                                                 }
                                             }
                                         >
-                                            "Withdraw"
+                                            {move || {
+                                                TranslationKey::PagesStakeButtonWithdraw.format(&[])
+                                            }}
                                             <span>
                                                 {move || format_token_amount(
                                                     unstaked.as_yoctonear(),
@@ -804,7 +824,7 @@ fn ValidatorCard(
                 } else {
                     view! {
                         <div class="bg-gray-600 text-gray-400 font-bold py-2 px-4 rounded cursor-not-allowed">
-                            "Not Supported"
+                            {move || TranslationKey::PagesStakeNotSupported.format(&[])}
                         </div>
                     }
                         .into_any()
@@ -847,41 +867,57 @@ fn ValidatorCard(
                                                         if total_stake_usd > 0 {
                                                             let additional_apy = (&annual_usd_value / &total_stake_usd)
                                                                 * BigDecimal::from(100);
+                                                            let pct = format!("{:.2}", additional_apy);
+                                                            let sym = token_symbol.clone();
                                                             view! {
                                                                 <div class="text-green-400 text-xs">
-                                                                    {format!("+{:.2}% in {}", additional_apy, token_symbol)}
+                                                                    {move || {
+                                                                        TranslationKey::PagesStakeFarmBonusApyPercent
+                                                                            .format(&[
+                                                                                ("percent", &pct),
+                                                                                ("symbol", &sym),
+                                                                            ])
+                                                                    }}
                                                                 </div>
                                                             }
                                                                 .into_any()
                                                         } else {
+                                                            let amt = format_token_amount_no_hide(
+                                                                annual_amount.to_u128().unwrap_or(0),
+                                                                farm.token.metadata.decimals,
+                                                                "",
+                                                            );
+                                                            let sym = token_symbol.clone();
                                                             view! {
                                                                 <div class="text-green-400 text-xs">
-                                                                    {format!(
-                                                                        "+ {} {} / year",
-                                                                        format_token_amount_no_hide(
-                                                                            annual_amount.to_u128().unwrap_or(0),
-                                                                            farm.token.metadata.decimals,
-                                                                            "",
-                                                                        ),
-                                                                        token_symbol,
-                                                                    )}
+                                                                    {move || {
+                                                                        TranslationKey::PagesStakeFarmBonusApyPerYear
+                                                                            .format(&[
+                                                                                ("amount", &amt),
+                                                                                ("symbol", &sym),
+                                                                            ])
+                                                                    }}
                                                                 </div>
                                                             }
                                                                 .into_any()
                                                         }
                                                     } else {
                                                         // No price data, show token amount
+                                                        let amt = format_token_amount_no_hide(
+                                                            annual_amount.to_u128().unwrap_or(0),
+                                                            farm.token.metadata.decimals,
+                                                            "",
+                                                        );
+                                                        let sym = token_symbol.clone();
                                                         view! {
                                                             <div class="text-green-400 text-xs">
-                                                                {format!(
-                                                                    "+ {} {} / year",
-                                                                    format_token_amount_no_hide(
-                                                                        annual_amount.to_u128().unwrap_or(0),
-                                                                        farm.token.metadata.decimals,
-                                                                        "",
-                                                                    ),
-                                                                    token_symbol,
-                                                                )}
+                                                                {move || {
+                                                                    TranslationKey::PagesStakeFarmBonusApyPerYear
+                                                                        .format(&[
+                                                                            ("amount", &amt),
+                                                                            ("symbol", &sym),
+                                                                        ])
+                                                                }}
                                                             </div>
                                                         }
                                                             .into_any()
@@ -892,7 +928,9 @@ fn ValidatorCard(
                                     }
                                 })
                                 .collect_view()}
-                            <div class="text-gray-400 text-xs">"APY"</div>
+                            <div class="text-gray-400 text-xs">
+                                {move || TranslationKey::PagesStakeLabelApy.format(&[])}
+                            </div>
                             <div class="text-gray-500 text-xs">{fee_str}</div>
                         }
                             .into_any()
@@ -905,7 +943,11 @@ fn ValidatorCard(
                                     height="20"
                                     attr:class="text-red-400"
                                 />
-                                <div class="text-red-400 text-xs">"Inactive"</div>
+                                <div class="text-red-400 text-xs">
+                                    {move || {
+                                        TranslationKey::PagesStakeValidatorInactive.format(&[])
+                                    }}
+                                </div>
                             </div>
                         }
                             .into_any()
@@ -1110,8 +1152,8 @@ fn LiquidStakingCard(
                 style={format!("background-color: {}", background_color)}
             >
                 <img
-                    src={logo_src}
-                    alt={logo_alt}
+                    src=logo_src
+                    alt=logo_alt
                     class="h-12 shrink-0 object-contain mb-2 m-4"
                 />
                 <div class="flex flex-col items-center justify-center bg-black/75 w-full h-full">
@@ -1146,11 +1188,18 @@ fn LiquidStakingCard(
                             })
                             .unwrap_or_else(|| {
                                 view! {
-                                    <div class="text-gray-200 font-semibold text-lg">"Loading"</div>
+                                    <div class="text-gray-200 font-semibold text-lg">
+                                        {move || {
+                                            TranslationKey::PagesStakeLiquidStakingLoading.format(&[])
+                                        }}
+                                    </div>
                                 }
                                     .into_any()
                             })
-                    }} <div class="text-gray-300 text-xs">"14-day average APY"</div>
+                    }}
+                    <div class="text-gray-300 text-xs">
+                        {move || TranslationKey::PagesStakeLiquidStakingApyCaption.format(&[])}
+                    </div>
                 </div>
             </div>
         </A>
@@ -1193,32 +1242,33 @@ pub fn Stake() -> impl IntoView {
                     Network::Localnet(network) => network.pool_details_contract,
                 };
 
-                let details_batch_future =
-                    if let Some(pool_details_contract) = pool_details_contract {
-                        let details_requests: Vec<_> = active_validators_info
-                            .iter()
-                            .map(|v| {
-                                (
-                                    pool_details_contract.clone(),
-                                    "get_fields_by_pool",
-                                    serde_json::json!({ "pool_id": v.account_id.clone() }),
-                                    QueryFinality::Finality(Finality::DoomSlug),
-                                )
-                            })
-                            .collect();
-                        Box::pin(rpc_client.batch_call::<PoolDetails>(details_requests))
-                            as Pin<Box<dyn Future<Output = _>>>
-                    } else {
-                        Box::pin(async {
-                            Ok((0..active_validators_info.len())
-                                .map(|_| {
-                                    Err(CallError::Rpc(Error::OtherQueryError(
-                                        "Pool details not available on this network".to_string(),
-                                    )))
-                                })
-                                .collect::<Vec<_>>())
+                let details_batch_future = if let Some(pool_details_contract) =
+                    pool_details_contract
+                {
+                    let details_requests: Vec<_> = active_validators_info
+                        .iter()
+                        .map(|v| {
+                            (
+                                pool_details_contract.clone(),
+                                "get_fields_by_pool",
+                                serde_json::json!({ "pool_id": v.account_id.clone() }),
+                                QueryFinality::Finality(Finality::DoomSlug),
+                            )
                         })
-                    };
+                        .collect();
+                    Box::pin(rpc_client.batch_call::<PoolDetails>(details_requests))
+                        as Pin<Box<dyn Future<Output = _>>>
+                } else {
+                    Box::pin(async {
+                        Ok((0..active_validators_info.len())
+                            .map(|_| {
+                                Err(CallError::Rpc(Error::OtherQueryError(
+                                    TranslationKey::PagesStakeErrPoolDetailsUnavailable.format(&[]),
+                                )))
+                            })
+                            .collect::<Vec<_>>())
+                    })
+                };
 
                 let (fees_results, details_results) =
                     join(fee_batch_future, details_batch_future).await;
@@ -1613,23 +1663,29 @@ pub fn Stake() -> impl IntoView {
                 attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer no-mobile-ripple"
             >
                 <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                <span>"Back"</span>
+                <span>{move || TranslationKey::PagesStakeBack.format(&[])}</span>
             </A>
             {move || {
                 let query = search_query.get();
                 if !query.trim().is_empty() {
                     view! {
                         <div>
-                            <h1 class="text-2xl font-bold">"Search Results"</h1>
+                            <h1 class="text-2xl font-bold">
+                                {move || {
+                                    TranslationKey::PagesStakeTitleSearchResults.format(&[])
+                                }}
+                            </h1>
                         </div>
                     }
                         .into_any()
                 } else {
                     view! {
                         <div>
-                            <h1 class="text-2xl font-bold">"Stake with a Validator"</h1>
+                            <h1 class="text-2xl font-bold">
+                                {move || TranslationKey::PagesStakeTitleMain.format(&[])}
+                            </h1>
                             <p class="text-gray-400 mt-2">
-                                "Earn rewards by staking your NEAR with a validator. Validators help secure the network and you get a share of the rewards."
+                                {move || TranslationKey::PagesStakeSubtitle.format(&[])}
                             </p>
                         </div>
                     }
@@ -1644,7 +1700,11 @@ pub fn Stake() -> impl IntoView {
                     // Hide liquid staking when search is active
                     view! {
                         <div class="mb-2">
-                            <h2 class="text-xl font-semibold mb-4">"Liquid Staking"</h2>
+                            <h2 class="text-xl font-semibold mb-4">
+                                {move || {
+                                    TranslationKey::PagesStakeSectionLiquidStaking.format(&[])
+                                }}
+                            </h2>
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <LiquidStakingCard
                                     href="/swap?from=near&to=meta-pool.near"
@@ -1756,12 +1816,20 @@ pub fn Stake() -> impl IntoView {
                                         .collect()
                                 };
                                 if filtered_validators.is_empty() {
-                                    let message = if query.trim().is_empty() {
-                                        "No validators found."
-                                    } else {
-                                        "No validators match your search query."
-                                    };
-                                    view! { <p class="text-gray-400">{message}</p> }.into_any()
+                                    let query_is_empty = query.trim().is_empty();
+                                    view! {
+                                        <p class="text-gray-400">
+                                            {move || {
+                                                if query_is_empty {
+                                                    TranslationKey::PagesStakeEmptyNoValidators
+                                                        .format(&[])
+                                                } else {
+                                                    TranslationKey::PagesStakeEmptyNoMatch.format(&[])
+                                                }
+                                            }}
+                                        </p>
+                                    }
+                                        .into_any()
                                 } else {
                                     let total_staked: u128 = validators
                                         .iter()
@@ -1797,13 +1865,21 @@ pub fn Stake() -> impl IntoView {
                                                 fallback=move || {
                                                     view! {
                                                         <p class="text-gray-400">
-                                                            "Validators matching your search query"
+                                                            {move || {
+                                                                TranslationKey::PagesStakeSectionSearchMatches
+                                                                    .format(&[])
+                                                            }}
                                                         </p>
                                                     }
                                                 }
                                             >
                                                 <div class="flex items-center justify-between mb-4">
-                                                    <h2 class="text-xl font-semibold">"Native Staking"</h2>
+                                                    <h2 class="text-xl font-semibold">
+                                                        {move || {
+                                                            TranslationKey::PagesStakeSectionNativeStaking
+                                                                .format(&[])
+                                                        }}
+                                                    </h2>
                                                     <button
                                                         class="text-gray-400 hover:text-white cursor-pointer no-mobile-ripple"
                                                         on:click=move |_| {
@@ -1818,7 +1894,10 @@ pub fn Stake() -> impl IntoView {
                                                 <div class="relative bg-neutral-800 p-4 rounded-lg mb-4">
                                                     <div class="absolute -top-2 right-2 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-neutral-800"></div>
                                                     <p class="text-gray-300 text-sm">
-                                                        "Validators are randomly shuffled to promote decentralization. This helps prevent bias toward larger validators, ensuring fairer distribution of stake across the network. Of course, you're free to choose any validator you want, but having few validators with large concentration of stake makes the network less secure."
+                                                        {move || {
+                                                            TranslationKey::PagesStakeNativeShuffleExplanation
+                                                                .format(&[])
+                                                        }}
                                                     </p>
                                                 </div>
                                             </Show>
@@ -1844,9 +1923,14 @@ pub fn Stake() -> impl IntoView {
                                 }
                             }
                             Err(e) => {
+                                let err_msg = e.clone();
                                 view! {
                                     <p class="text-red-500">
-                                        {format!("Error loading validators: {}", e)}
+                                        {move || {
+                                            TranslationKey::PagesStakeErrorLoadValidators.format(&[
+                                                ("error", &err_msg),
+                                            ])
+                                        }}
                                     </p>
                                 }
                                     .into_any()
@@ -1902,7 +1986,7 @@ pub fn StakeValidator() -> impl IntoView {
         let tokens = tokens_context.tokens.get();
         async move {
             let Some(validator_account_id) = validator_account_id else {
-                return Err("Invalid validator account ID".to_string());
+                return Err(TranslationKey::PagesStakeErrInvalidValidatorAccount.format(&[]));
             };
 
             let data = rpc_client
@@ -1921,7 +2005,7 @@ pub fn StakeValidator() -> impl IntoView {
             } else if is_validator_supported(&validator_account_id, network.clone()) {
                 None
             } else {
-                return Err("Validator not found or not supported".to_string());
+                return Err(TranslationKey::PagesStakeErrValidatorNotFound.format(&[]));
             };
 
             let (fee_res, details_res) = join(
@@ -1947,7 +2031,7 @@ pub fn StakeValidator() -> impl IntoView {
                             .await
                     } else {
                         Err(CallError::Rpc(Error::OtherQueryError(
-                            "Pool details not available on this network".to_string(),
+                            TranslationKey::PagesStakeErrPoolDetailsUnavailable.format(&[]),
                         )))
                     }
                 },
@@ -2050,17 +2134,19 @@ pub fn StakeValidator() -> impl IntoView {
         set_has_typed_amount.set(true);
         if let Ok(amount_decimal) = amount_str.parse::<BigDecimal>() {
             if amount_decimal <= 0 {
-                set_amount_error.set(Some("Amount must be greater than 0".to_string()));
+                set_amount_error.set(Some(TranslationKey::PagesStakeErrAmountGtZero.format(&[])));
                 return;
             }
             let max_amount = balance_to_decimal(near_balance(), 24);
             if amount_decimal > max_amount {
-                set_amount_error.set(Some("Not enough balance".to_string()));
+                set_amount_error.set(Some(
+                    TranslationKey::PagesStakeErrNotEnoughBalance.format(&[]),
+                ));
                 return;
             }
             set_amount_error.set(None);
         } else {
-            set_amount_error.set(Some("Please enter a valid amount".to_string()));
+            set_amount_error.set(Some(TranslationKey::PagesStakeErrInvalidAmount.format(&[])));
         }
     };
 
@@ -2113,9 +2199,9 @@ pub fn StakeValidator() -> impl IntoView {
             let navigate_clone2 = navigate.clone();
             match rx.await {
                 Ok(_) => {
-                    let message =
-                        format!("Successfully staked {} with {}", amount, validator_pool,);
+                    let validator = validator_pool.to_string();
                     modal.set(Some(Box::new(move || {
+                        let validator = validator.clone();
                         let navigate = navigate_clone.clone();
                         view! {
                             <TransactionSuccessModal
@@ -2123,7 +2209,10 @@ pub fn StakeValidator() -> impl IntoView {
                                     modal.set(None);
                                     navigate("/stake", Default::default());
                                 }
-                                message=message.clone()
+                                message=move || TranslationKey::PagesStakeSuccessStaked.format(&[
+                                    ("amount", &amount.to_string()),
+                                    ("validator", &validator),
+                                ])
                             />
                         }
                         .into_any()
@@ -2160,7 +2249,9 @@ pub fn StakeValidator() -> impl IntoView {
                 attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-2 cursor-pointer no-mobile-ripple"
             >
                 <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                <span>"Back to Validators"</span>
+                <span>
+                    {move || TranslationKey::PagesStakeBackToValidators.format(&[])}
+                </span>
             </A>
             {move || {
                 match validator_data.get() {
@@ -2185,10 +2276,7 @@ pub fn StakeValidator() -> impl IntoView {
                                 let apy_bigdecimal = (&one - &fee) * &data.base_apy;
                                 let apy_percent = &apy_bigdecimal * BigDecimal::from(100);
                                 let apy_str = format!("{:.2}%", apy_percent);
-                                let fee_str = format!(
-                                    "(fee: {:.2}%)",
-                                    &fee * BigDecimal::from(100),
-                                );
+                                let fee_pct = format!("{:.2}", &fee * BigDecimal::from(100));
                                 let current_stake = current_staked_balance.get().flatten();
 
                                 view! {
@@ -2220,22 +2308,36 @@ pub fn StakeValidator() -> impl IntoView {
                                                         <h2 class="text-white text-xl font-bold wrap-anywhere">
                                                             {data.validator.account_id.to_string()}
                                                         </h2>
-                                                        <p class="text-gray-400 font-bold">"Stake NEAR"</p>
+                                                        <p class="text-gray-400 font-bold">
+                                                            {move || {
+                                                                TranslationKey::PagesStakeStakeNearHeading.format(&[])
+                                                            }}
+                                                        </p>
                                                     </div>
                                                 </div>
                                                 <div class="text-right">
                                                     <div class="text-green-400 text-lg font-bold">
                                                         {apy_str}
                                                     </div>
-                                                    <div class="text-gray-400 text-xs">"APY"</div>
-                                                    <div class="text-gray-500 text-xs">{fee_str}</div>
+                                                    <div class="text-gray-400 text-xs">
+                                                        {move || {
+                                                            TranslationKey::PagesStakeLabelApy.format(&[])
+                                                        }}
+                                                    </div>
+                                                    <div class="text-gray-500 text-xs">{move || {
+                                                         TranslationKey::PagesStakeFeeParenthetical
+                                    .format(&[("percent", &fee_pct)])
+                                                    }}</div>
                                                 </div>
                                             </div>
                                         </div>
                                         <div class="flex flex-col gap-4">
                                             <div class="flex flex-col gap-2">
                                                 <label for="amount" class="text-gray-400">
-                                                    "Amount to Stake"
+                                                    {move || {
+                                                        TranslationKey::PagesStakeAmountToStakeLabel
+                                                            .format(&[])
+                                                    }}
                                                 </label>
                                                 <div class="relative">
                                                     <input
@@ -2282,7 +2384,9 @@ pub fn StakeValidator() -> impl IntoView {
                                                             check_amount(final_amount_str);
                                                         }
                                                     >
-                                                        "MAX"
+                                                    {move || {
+                                                        TranslationKey::PagesStakeMaxButton.format(&[])
+                                                    }}
                                                     </button>
                                                 </div>
                                                 <div class="flex justify-between items-center mt-1">
@@ -2290,8 +2394,13 @@ pub fn StakeValidator() -> impl IntoView {
                                                         {move || amount_error.get().unwrap_or_default()}
                                                     </p>
                                                     <p class="text-gray-400 text-sm">
-                                                        "Balance: "
-                                                        {move || format_token_amount(near_balance(), 24, "NEAR")}
+                                                        {move || {
+                                                            let bal =
+                                                                format_token_amount(near_balance(), 24, "NEAR");
+                                                            TranslationKey::PagesStakeBalanceLabel.format(&[
+                                                                ("balance", &bal),
+                                                            ])
+                                                        }}
                                                     </p>
                                                 </div>
                                             </div>
@@ -2310,7 +2419,7 @@ pub fn StakeValidator() -> impl IntoView {
                                                 }
                                                 on:click=handle_stake.clone()
                                             >
-                                                "Stake"
+                                                {move || TranslationKey::PagesStakeButtonStake.format(&[])}
                                             </button>
                                         </div>
                                     </div>
@@ -2371,7 +2480,7 @@ pub fn UnstakeValidator() -> impl IntoView {
         let tokens = tokens_context.tokens.get();
         async move {
             let Some(validator_account_id) = validator_account_id else {
-                return Err("Invalid validator account ID".to_string());
+                return Err(TranslationKey::PagesStakeErrInvalidValidatorAccount.format(&[]));
             };
 
             let data = rpc_client
@@ -2390,7 +2499,7 @@ pub fn UnstakeValidator() -> impl IntoView {
             } else if is_validator_supported(&validator_account_id, network.clone()) {
                 None
             } else {
-                return Err("Validator not found or not supported".to_string());
+                return Err(TranslationKey::PagesStakeErrValidatorNotFound.format(&[]));
             };
 
             let (fee_res, details_res) = join(
@@ -2416,7 +2525,7 @@ pub fn UnstakeValidator() -> impl IntoView {
                             .await
                     } else {
                         Err(CallError::Rpc(Error::OtherQueryError(
-                            "Pool details not available on this network".to_string(),
+                            TranslationKey::PagesStakeErrPoolDetailsUnavailable.format(&[]),
                         )))
                     }
                 },
@@ -2509,19 +2618,20 @@ pub fn UnstakeValidator() -> impl IntoView {
         set_has_typed_amount.set(true);
         if let Ok(decimal) = val.parse::<BigDecimal>() {
             if decimal <= 0 {
-                set_amount_error.set(Some("Amount must be greater than 0".to_string()));
+                set_amount_error.set(Some(TranslationKey::PagesStakeErrAmountGtZero.format(&[])));
             } else {
                 if let Some(Some(staked_token)) = staked_balance.get() {
                     let max_decimal = balance_to_decimal(staked_token.as_yoctonear(), 24);
                     if decimal > max_decimal {
-                        set_amount_error.set(Some("Amount exceeds staked balance".to_string()));
+                        set_amount_error
+                            .set(Some(TranslationKey::PagesStakeErrExceedsStaked.format(&[])));
                         return;
                     }
                 }
                 set_amount_error.set(None);
             }
         } else {
-            set_amount_error.set(Some("Invalid number".to_string()));
+            set_amount_error.set(Some(TranslationKey::PagesStakeErrInvalidNumber.format(&[])));
         }
     };
 
@@ -2576,19 +2686,20 @@ pub fn UnstakeValidator() -> impl IntoView {
             let navigate_clone2 = navigate.clone();
             match rx.await {
                 Ok(_) => {
-                    let message = format!(
-                        "Successfully initiated unstake of {} from {}. Come back tomorrow to withdraw your NEAR.",
-                        amount, validator_pool
-                    );
+                    let validator = validator_pool.to_string();
                     modal.set(Some(Box::new(move || {
                         let navigate = navigate_clone.clone();
+                        let validator = validator.clone();
                         view! {
                             <TransactionSuccessModal
                                 on_close=move || {
                                     modal.set(None);
                                     navigate("/stake", Default::default());
                                 }
-                                message=message.clone()
+                                message=move || TranslationKey::PagesStakeSuccessUnstakeInitiated.format(&[
+                                    ("amount", &amount.to_string()),
+                                    ("validator", &validator),
+                                ])
                             />
                         }
                         .into_any()
@@ -2625,7 +2736,9 @@ pub fn UnstakeValidator() -> impl IntoView {
                 attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-2 cursor-pointer no-mobile-ripple"
             >
                 <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                <span>"Back to Validators"</span>
+                <span>
+                    {move || TranslationKey::PagesStakeBackToValidators.format(&[])}
+                </span>
             </A>
 
             {move || {
@@ -2651,10 +2764,7 @@ pub fn UnstakeValidator() -> impl IntoView {
                                 let apy_bigdecimal = (&one - &fee) * &data.base_apy;
                                 let apy_percent = &apy_bigdecimal * BigDecimal::from(100);
                                 let apy_str = format!("{:.2}%", apy_percent);
-                                let fee_str = format!(
-                                    "(fee: {:.2}%)",
-                                    &fee * BigDecimal::from(100),
-                                );
+                                let fee_pct = format!("{:.2}", &fee * BigDecimal::from(100));
                                 let current_stake = staked_balance.get().flatten();
 
                                 view! {
@@ -2685,11 +2795,19 @@ pub fn UnstakeValidator() -> impl IntoView {
                                                     <h2 class="text-white text-xl font-bold wrap-anywhere">
                                                         {data.validator.account_id.to_string()}
                                                     </h2>
-                                                    <p class="text-gray-400 font-bold">"Unstake NEAR"</p>
+                                                    <p class="text-gray-400 font-bold">
+                                                        {move || {
+                                                            TranslationKey::PagesStakeUnstakeNearHeading
+                                                                .format(&[])
+                                                        }}
+                                                    </p>
                                                     {if let Some(s) = current_stake {
                                                         view! {
                                                             <p class="text-gray-400 text-sm">
-                                                                {format!("Currently staked: {s}")}
+                                                                {move || {
+                                                                    TranslationKey::PagesStakeCurrentlyStaked
+                                                                        .format(&[("amount", &s.to_string())])
+                                                                }}
                                                             </p>
                                                         }
                                                             .into_any()
@@ -2702,8 +2820,13 @@ pub fn UnstakeValidator() -> impl IntoView {
                                                 <div class="text-green-400 text-lg font-bold">
                                                     {apy_str}
                                                 </div>
-                                                <div class="text-gray-400 text-xs">"APY"</div>
-                                                <div class="text-gray-500 text-xs">{fee_str}</div>
+                                                <div class="text-gray-400 text-xs">
+                                                    {move || {
+                                                        TranslationKey::PagesStakeLabelApy.format(&[])
+                                                    }}
+                                                </div>
+                                                <div class="text-gray-500 text-xs">{move || TranslationKey::PagesStakeFeeParenthetical
+                                                    .format(&[("percent", &fee_pct)])}</div>
                                             </div>
                                         </div>
                                     </div>
@@ -2732,7 +2855,9 @@ pub fn UnstakeValidator() -> impl IntoView {
 
             <div class="flex flex-col gap-2">
                 <label class="text-gray-400" for="amount">
-                    "Amount to Unstake"
+                    {move || {
+                        TranslationKey::PagesStakeAmountToUnstakeLabel.format(&[])
+                    }}
                 </label>
                 <div class="relative">
                     <input
@@ -2768,7 +2893,7 @@ pub fn UnstakeValidator() -> impl IntoView {
                             }
                         }
                     >
-                        "MAX"
+                        {move || TranslationKey::PagesStakeMaxButton.format(&[])}
                     </button>
                 </div>
                 <div class="flex justify-between items-center mt-1">
@@ -2780,7 +2905,10 @@ pub fn UnstakeValidator() -> impl IntoView {
                             staked_balance
                                 .get()
                                 .flatten()
-                                .map(|s| { format!("Staked: {s}") })
+                                .map(|s| {
+                                    TranslationKey::PagesStakeStakedBalanceLabel
+                                        .format(&[("amount", &s.to_string())])
+                                })
                                 .unwrap_or_default()
                         }}
                     </p>
@@ -2824,7 +2952,7 @@ pub fn UnstakeValidator() -> impl IntoView {
                 disabled=move || amount_error.with(|e| e.is_some()) || amount.with(|a| a.is_empty())
                 on:click=handle_unstake
             >
-                "Unstake"
+                {move || TranslationKey::PagesStakeButtonUnstake.format(&[])}
             </button>
         </div>
     }

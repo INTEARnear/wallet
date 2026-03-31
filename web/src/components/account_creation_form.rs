@@ -30,7 +30,7 @@ use crate::contexts::accounts_context::{
     Account, AccountsContext, SecretKeyHolder, format_ledger_error,
 };
 use crate::contexts::config_context::ConfigContext;
-use crate::contexts::legal_consents_context::{LEGAL_CONSENTS_BLOCKING_MESSAGE, LegalConsents};
+use crate::contexts::legal_consents_context::LegalConsents;
 use crate::contexts::network_context::Network;
 use crate::contexts::security_log_context::add_security_log;
 use crate::contexts::transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext};
@@ -93,7 +93,11 @@ impl AccountCreateParent {
                         account_to_sign_with: Some(account),
                     })
                 } else {
-                    Err(format!("Subaccount of {subaccount_of} not found"))
+                    let parent_str = subaccount_of.to_string();
+                    Err(
+                        TranslationKey::ComponentsAccountCreationFormErrSubaccountParentNotFound
+                            .format(&[("parent", parent_str.as_str())]),
+                    )
                 }
             }
         }
@@ -226,7 +230,10 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
 
         let full_name = format!("{name}.{subaccount_of}");
         let Some(account_id) = full_name.parse::<AccountId>().ok() else {
-            set_error.set(Some("Invalid account name format".to_string()));
+            set_error.set(Some(
+                TranslationKey::ComponentsAccountCreationFormErrInvalidAccountNameFormat
+                    .format(&[]),
+            ));
             set_is_valid.set(None);
             set_is_loading.set(false);
             return;
@@ -244,7 +251,10 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
 
             if account_id == format!("{}.{subaccount_of}", account_name.get_untracked()) {
                 if account_exists {
-                    set_error.set(Some("Account already exists".to_string()));
+                    set_error.set(Some(
+                        TranslationKey::ComponentsAccountCreationFormErrAccountAlreadyExists
+                            .format(&[]),
+                    ));
                     set_is_valid.set(None);
                 } else {
                     set_is_valid.set(Some(account_id));
@@ -256,7 +266,9 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
 
     let do_create_account = move || {
         if !legal_consents.all_accepted_untracked() {
-            set_error.set(Some(LEGAL_CONSENTS_BLOCKING_MESSAGE.to_string()));
+            set_error.set(Some(
+                TranslationKey::ComponentsLegalConsentsBlockingMessage.format(&[]),
+            ));
             return;
         }
         let Some(account_id) = is_valid.get() else {
@@ -273,7 +285,10 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
             }
             AccountCreateRecoveryMethod::Ledger => {
                 let Some((path, public_key)) = ledger_current_key_data.get() else {
-                    set_error.set(Some("Please get the Ledger public key first".to_string()));
+                    set_error.set(Some(
+                        TranslationKey::ComponentsAccountCreationFormErrLedgerPublicKeyRequired
+                            .format(&[]),
+                    ));
                     return;
                 };
                 (
@@ -292,8 +307,9 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
             ..
         } = match parent_untracked().into_details(&accounts_context) {
             Ok(details) => details,
-            Err(e) => {
-                log::error!("Couldn't extract data from parent: {e}");
+            Err(error_message) => {
+                log::error!("Couldn't extract data from parent: {error_message}");
+                set_error.set(Some(error_message));
                 return;
             }
         };
@@ -340,21 +356,31 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                     let tx_details = match tx_details_rx.await {
                         Ok(tx_details) => tx_details,
                         Err(Canceled) => {
-                            return Err("Cancelled".to_string());
+                            return Err(TranslationKey::ComponentsAccountCreationFormErrCancelled
+                                .format(&[]));
                         }
                     };
                     let tx_details = match tx_details {
                         Ok(tx_details) => tx_details,
-                        Err(e) => {
-                            return Err(format!("Failed to create account: {e}"));
+                        Err(error_message) => {
+                            return Err(
+                                TranslationKey::ComponentsAccountCreationFormErrCreateAccountWithError
+                                    .format(&[("error", error_message.as_str())]),
+                            );
                         }
                     };
                     let Some(outcome) = tx_details.final_execution_outcome else {
-                        return Err("Transaction outcome not found".to_string());
+                        return Err(
+                            TranslationKey::ComponentsAccountCreationFormErrTransactionOutcomeMissing
+                                .format(&[]),
+                        );
                     };
                     match outcome.final_outcome.status {
                         FinalExecutionStatus::SuccessValue(_) => Ok(()),
-                        _ => Err("Transaction failed".to_string()),
+                        _ => Err(
+                            TranslationKey::ComponentsAccountCreationFormErrTransactionFailed
+                                .format(&[]),
+                        ),
                     }
                 })
             } else {
@@ -393,19 +419,30 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                 if success {
                                     Ok(())
                                 } else {
-                                    Err(format!(
-                                        "Failed to create account: Server returned error: {}",
+                                    let error_detail = format!(
+                                        "Server returned error: {}",
                                         data.get("message")
                                             .and_then(|s| s.as_str())
-                                            .unwrap_or("Unknown error")
-                                    ))
+                                            .unwrap_or("Unknown error"),
+                                    );
+                                    Err(
+                                        TranslationKey::ComponentsAccountCreationFormErrCreateAccountWithError
+                                            .format(&[("error", error_detail.as_str())]),
+                                    )
                                 }
                             }
-                            _ => {
-                                Err("Failed to create account: Couldn't parse response".to_string())
-                            }
+                            _ => Err(
+                                TranslationKey::ComponentsAccountCreationFormErrCreateAccountParseResponse
+                                    .format(&[]),
+                            ),
                         },
-                        Err(e) => Err(format!("Failed to create account: {e}")),
+                        Err(error) => {
+                            let error_string = error.to_string();
+                            Err(
+                                TranslationKey::ComponentsAccountCreationFormErrCreateAccountWithError
+                                    .format(&[("error", error_string.as_str())]),
+                            )
+                        },
                     }
                 })
             };
@@ -458,15 +495,21 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                     log::error!(
                                         "Failed to create account: Couldn't verify by getting access key after 3 attempts"
                                     );
-                                    set_error.set(Some("Failed to create account".to_string()));
+                                    set_error.set(Some(
+                                        TranslationKey::ComponentsAccountCreationFormErrVerifyAccessKeyFailed
+                                            .format(&[]),
+                                    ));
                                 }
                             }
                         }
                     }
                 }
-                Err(e) => {
-                    log::error!("Failed to create account: {e}");
-                    set_error.set(Some(format!("Failed to create account: {e}")));
+                Err(error_message) => {
+                    log::error!("Failed to create account: {error_message}");
+                    set_error.set(Some(
+                        TranslationKey::ComponentsAccountCreationFormErrCreateAccountWithError
+                            .format(&[("error", error_message.as_str())]),
+                    ));
                 }
             }
             set_is_creating.set(false);
@@ -528,11 +571,16 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                             ) {
                                 set_ledger_current_key_data(Some((path.clone(), public_key)));
                             } else {
-                                set_error.set(Some("Failed to parse public key".to_string()));
+                                set_error.set(Some(
+                                    TranslationKey::ComponentsAccountCreationFormErrParsePublicKey
+                                        .format(&[]),
+                                ));
                             }
                         } else {
-                            set_error
-                                .set(Some("Invalid public key length from Ledger".to_string()));
+                            set_error.set(Some(
+                                TranslationKey::ComponentsAccountCreationFormErrInvalidLedgerKeyLength
+                                    .format(&[]),
+                            ));
                         }
                     }
                     JsWalletResponse::LedgerConnectError { error } => {
@@ -629,10 +677,16 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                             view! {
                                 <div class="mb-6">
                                     <h2 class="text-white text-2xl font-semibold mb-4">
-                                        "Claim Your Gift"
+                                        {move || {
+                                            TranslationKey::ComponentsAccountCreationFormTitleClaimGift
+                                                .format(&[])
+                                        }}
                                     </h2>
                                     <p class="text-gray-400 text-sm mb-4">
-                                        "Create an account to claim this gift"
+                                        {move || {
+                                            TranslationKey::ComponentsAccountCreationFormSubtitleClaimGift
+                                                .format(&[])
+                                        }}
                                     </p>
                                     <GiftAmountDisplay />
                                 </div>
@@ -641,14 +695,20 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                         } else {
                             view! {
                                 <h2 class="text-white text-2xl font-semibold mb-6">
-                                    "Create New Account"
+                                    {move || {
+                                        TranslationKey::ComponentsAccountCreationFormTitleCreateNew
+                                            .format(&[])
+                                    }}
                                 </h2>
                             }
                                 .into_any()
                         }
                     }} <div class="mb-6">
                         <label class="block text-neutral-400 text-sm font-medium mb-2">
-                            "Account Name"
+                            {move || {
+                                TranslationKey::ComponentsAccountCreationFormLabelAccountName
+                                    .format(&[])
+                            }}
                         </label>
                         <div class="relative">
                             <input
@@ -851,21 +911,30 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                             } else if is_loading.get() {
                                 view! {
                                     <p class="text-neutral-400 text-sm mt-2 font-medium">
-                                        "Checking availability..."
+                                        {move || {
+                                            TranslationKey::ComponentsAccountCreationFormStatusCheckingName
+                                                .format(&[])
+                                        }}
                                     </p>
                                 }
                                     .into_any()
                             } else if is_valid.get().is_some() {
                                 view! {
                                     <p class="text-green-500 text-sm mt-2 font-medium">
-                                        "Name is available!"
+                                        {move || {
+                                            TranslationKey::ComponentsAccountCreationFormStatusNameAvailable
+                                                .format(&[])
+                                        }}
                                     </p>
                                 }
                                     .into_any()
                             } else {
                                 view! {
                                     <p class="text-neutral-400 text-sm mt-2 font-medium">
-                                        "Enter your account name"
+                                        {move || {
+                                            TranslationKey::ComponentsAccountCreationFormHintEnterAccountName
+                                                .format(&[])
+                                        }}
                                     </p>
                                 }
                                     .into_any()
@@ -882,8 +951,16 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                             if is_testnet {
                                 view! {
                                     <p class="text-yellow-500 text-sm mt-2 font-medium">
-                                        "This is a " <b>"testnet"</b>
-                                        " account. Tokens sent to this account are not real and hold no value"
+                                        {move || TranslationKey::ComponentsAccountCreationFormTestnetImportDisclaimer
+                                            .format_view(vec![("testnet",  view! {
+                                                <b>
+                                                    {move || {
+                                                        TranslationKey::ComponentsAccountCreationFormTestnetWord
+                                                            .format(&[])
+                                                    }}
+                                                </b>
+                                            }
+                                            .into_any())])}
                                     </p>
                                 }
                                     .into_any()
@@ -927,7 +1004,10 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                         />
                                     </div>
                                     <div class="text-white text-sm font-medium">
-                                        "Recovery Phrase"
+                                        {move || {
+                                            TranslationKey::ComponentsAccountCreationFormMethodRecoveryPhrase
+                                                .format(&[])
+                                        }}
                                     </div>
                                 </div>
                             </button>
@@ -962,7 +1042,12 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                             attr:class="text-purple-400"
                                         />
                                     </div>
-                                    <div class="text-white text-sm font-medium">"Ledger"</div>
+                                    <div class="text-white text-sm font-medium">
+                                        {move || {
+                                            TranslationKey::ComponentsAccountCreationFormMethodLedger
+                                                .format(&[])
+                                        }}
+                                    </div>
                                 </div>
                             </button>
                         </div>
@@ -982,7 +1067,10 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                             fallback=move || {
                                                 view! {
                                                     <p class="text-neutral-400 mb-4">
-                                                        "Connect your Ledger to continue"
+                                                        {move || {
+                                                            TranslationKey::ComponentsAccountCreationFormLedgerHintConnectToContinue
+                                                                .format(&[])
+                                                        }}
                                                     </p>
                                                 }
                                             }
@@ -1015,9 +1103,11 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                     }}
                                                     {move || {
                                                         if ledger_connection_in_progress.get() {
-                                                            "Connecting...".to_string()
+                                                            TranslationKey::ComponentsAccountCreationFormLedgerConnecting
+                                                                .format(&[])
                                                         } else {
-                                                            "Connect Ledger".to_string()
+                                                            TranslationKey::ComponentsAccountCreationFormLedgerConnect
+                                                                .format(&[])
                                                         }
                                                     }}
                                                 </span>
@@ -1040,7 +1130,14 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                         <Show
                                                             when=move || ledger_current_key_data.get().is_none()
                                                             fallback=move || {
-                                                                view! { <p class="text-green-400 mb-4">"Connected"</p> }
+                                                                view! {
+                                                                    <p class="text-green-400 mb-4">
+                                                                        {move || {
+                                                                            TranslationKey::ComponentsAccountCreationFormStatusLedgerConnected
+                                                                                .format(&[])
+                                                                        }}
+                                                                    </p>
+                                                                }
                                                             }
                                                         >
                                                             <button
@@ -1068,9 +1165,11 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                                                     }}
                                                                     {move || {
                                                                         if ledger_getting_public_key.get() {
-                                                                            "Confirm in your Ledger...".to_string()
+                                                                            TranslationKey::ComponentsAccountCreationFormLedgerConfirmOnDevice
+                                                                                .format(&[])
                                                                         } else {
-                                                                            "Connect Ledger".to_string()
+                                                                            TranslationKey::ComponentsAccountCreationFormLedgerConnect
+                                                                                .format(&[])
                                                                         }
                                                                     }}
                                                                 </span>
@@ -1118,7 +1217,7 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                             on:click=move |_| {
                                 if !legal_consents.all_accepted_untracked() {
                                     set_error
-                                        .set(Some(LEGAL_CONSENTS_BLOCKING_MESSAGE.to_string()));
+                                        .set(Some(TranslationKey::ComponentsLegalConsentsBlockingMessage.format(&[])));
                                     return;
                                 }
                                 do_create_account();
@@ -1155,9 +1254,11 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                                 }}
                                 {move || {
                                     if is_on_gift_page() {
-                                        "Create Account & Claim Gift"
+                                        TranslationKey::ComponentsAccountCreationFormButtonCreateAccountClaimGift
+                                            .format(&[])
                                     } else {
-                                        "Create Account"
+                                        TranslationKey::ComponentsAccountCreationFormButtonCreateAccount
+                                            .format(&[])
                                     }
                                 }}
                             </span>
@@ -1167,7 +1268,11 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                             <div class="w-full border-t border-neutral-800"></div>
                         </div>
                         <div class="relative flex justify-center text-sm">
-                            <span class="px-2 bg-neutral-950 text-neutral-400">"or"</span>
+                            <span class="px-2 bg-neutral-950 text-neutral-400">
+                                {move || {
+                                    TranslationKey::ComponentsAccountCreationFormDividerOr.format(&[])
+                                }}
+                            </span>
                         </div>
                     </div>
                     <button
@@ -1178,9 +1283,11 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                         <span class="relative">
                             {move || {
                                 if is_on_gift_page() {
-                                    "Log in & Claim Gift"
+                                    TranslationKey::ComponentsAccountCreationFormButtonLogInClaimGift
+                                        .format(&[])
                                 } else {
-                                    "Log in with Existing Account"
+                                    TranslationKey::ComponentsAccountCreationFormButtonLogInExistingAccount
+                                        .format(&[])
                                 }
                             }}
                         </span>

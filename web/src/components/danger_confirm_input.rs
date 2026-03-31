@@ -1,18 +1,33 @@
+use crate::translations::TranslationKey;
 use leptos::prelude::*;
 
 #[component]
 pub fn DangerConfirmInput(
     #[prop(into)] set_is_confirmed: WriteSignal<bool>,
-    #[prop(default = "CONFIRM")] expected_text: &'static str,
-    #[prop(default = "Type 'CONFIRM' to proceed:")] label_text: &'static str,
-    #[prop(default = "Type CONFIRM")] placeholder_text: &'static str,
+    #[prop(optional)] expected_text: Option<Signal<String>>,
+    #[prop(optional)] label_text: Option<Signal<String>>,
+    #[prop(optional)] placeholder_text: Option<Signal<String>>,
     #[prop(into)] warning_title: Signal<String>,
     #[prop(into)] warning_message: Signal<String>,
 ) -> impl IntoView {
+    let label_text = label_text.unwrap_or_else(|| {
+        Signal::derive(move || TranslationKey::ComponentsDangerConfirmInputLabelText.format(&[]))
+    });
+    let placeholder_text = placeholder_text.unwrap_or_else(|| {
+        Signal::derive(move || {
+            TranslationKey::ComponentsDangerConfirmInputPlaceholderText.format(&[])
+        })
+    });
+
     let (confirmation_text, set_confirmation_text) = signal(String::new());
 
     Effect::new(move || {
-        set_is_confirmed.set(confirmation_text.get() == expected_text);
+        let expected = match &expected_text {
+            Some(s) => s.get(),
+            None => TranslationKey::ComponentsDangerConfirmInputExpectedText.format(&[]),
+        };
+        let _ = confirmation_text.get();
+        set_is_confirmed.set(confirmation_text.get() == expected);
     });
 
     view! {

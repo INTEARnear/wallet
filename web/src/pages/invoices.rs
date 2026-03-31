@@ -9,6 +9,7 @@ use crate::components::copy_button::CopyButton;
 use crate::components::qrcode_display::QRCodeDisplay;
 use crate::contexts::accounts_context::AccountsContext;
 use crate::contexts::network_context::{Network, NetworkContext};
+use crate::translations::TranslationKey;
 
 #[component]
 pub fn Invoices() -> impl IntoView {
@@ -24,20 +25,26 @@ pub fn Invoices() -> impl IntoView {
 
         let amount_trim = amount.trim();
         if amount_trim.is_empty() {
-            set_amount_error.set(Some("Please enter USDC amount".to_string()));
+            set_amount_error.set(Some(
+                TranslationKey::PagesInvoicesErrorEnterAmount.format(&[("currency", "USDC")]),
+            ));
             return;
         }
 
         match amount_trim.parse::<BigDecimal>() {
             Ok(dec) => {
                 if dec <= 0 {
-                    set_amount_error.set(Some("Amount must be greater than 0".to_string()));
+                    set_amount_error.set(Some(
+                        TranslationKey::PagesInvoicesErrorAmountGtZero.format(&[]),
+                    ));
                 } else {
                     set_amount_error.set(None);
                 }
             }
             Err(_) => {
-                set_amount_error.set(Some("Please enter a valid amount".to_string()));
+                set_amount_error.set(Some(
+                    TranslationKey::PagesInvoicesErrorInvalidAmount.format(&[]),
+                ));
             }
         }
     };
@@ -81,17 +88,23 @@ pub fn Invoices() -> impl IntoView {
                             attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer no-mobile-ripple"
                         >
                             <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                            <span>"Back"</span>
+                            <span>
+                                {move || TranslationKey::PagesInvoicesBack.format(&[])}
+                            </span>
                         </A>
                         <div class="flex flex-col items-center justify-center h-full p-8 text-center">
                             <div class="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mb-4">
                                 <Icon icon=icondata::LuCircleX attr:class="w-8 h-8 text-red-500" />
                             </div>
                             <h2 class="text-xl font-bold text-white mb-2">
-                                "Invoices Only Available on Mainnet"
+                                {move || {
+                                    TranslationKey::PagesInvoicesMainnetOnlyTitle.format(&[])
+                                }}
                             </h2>
                             <p class="text-gray-400 max-w-md">
-                                "The invoice feature is only available on NEAR Mainnet. Please switch to a Mainnet account to create invoices."
+                                {move || {
+                                    TranslationKey::PagesInvoicesMainnetOnlyDescription.format(&[])
+                                }}
                             </p>
                         </div>
                     </div>
@@ -104,24 +117,32 @@ pub fn Invoices() -> impl IntoView {
                     attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer no-mobile-ripple"
                 >
                     <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                    <span>"Back"</span>
+                    <span>
+                        {move || TranslationKey::PagesInvoicesBack.format(&[])}
+                    </span>
                 </A>
                 <div class="text-center">
                     <div class="flex items-center justify-center gap-2 mb-2">
-                        <h1 class="text-2xl font-bold text-white">"Invoices"</h1>
+                        <h1 class="text-2xl font-bold text-white">
+                            {move || TranslationKey::PagesInvoicesPageTitle.format(&[])}
+                        </h1>
                         <span class="bg-yellow-500 text-black text-xs px-2 py-1 rounded font-semibold">
                             "BETA"
                         </span>
                     </div>
                     <p class="text-gray-400">
-                        "Create USDC invoices, payable from 25+ blockchains"
+                        {move || TranslationKey::PagesInvoicesSubtitle.format(&[])}
                     </p>
                 </div>
 
                 <div class="bg-neutral-900/30 rounded-2xl p-3 md:p-6 space-y-4 md:space-y-6 max-w-md mx-auto w-full">
                     <div class="space-y-4">
                         <div class="flex justify-between items-center">
-                            <h3 class="text-white font-medium">"Invoice Amount"</h3>
+                            <h3 class="text-white font-medium">
+                                {move || {
+                                    TranslationKey::PagesInvoicesInvoiceAmountLabel.format(&[])
+                                }}
+                            </h3>
                         </div>
 
                         <div class="flex flex-col gap-2">
@@ -170,7 +191,7 @@ pub fn Invoices() -> impl IntoView {
                         disabled=move || !is_valid()
                         on:click=handle_create_invoice
                     >
-                        "Create Invoice"
+                        {move || TranslationKey::PagesInvoicesCreateInvoice.format(&[])}
                     </button>
                 </div>
 
@@ -201,9 +222,11 @@ pub fn Invoices() -> impl IntoView {
                             attr:class="w-5 h-5 text-blue-400 shrink-0 mt-0.5"
                         />
                         <div class="text-sm text-blue-300">
-                            <p class="font-medium mb-1">"Beta Feature"</p>
+                            <p class="font-medium mb-1">
+                                {move || TranslationKey::PagesInvoicesBetaNoticeTitle.format(&[])}
+                            </p>
                             <p class="text-blue-400">
-                                "This feature is currently in beta. Please contact support if you encounter any issues."
+                                {move || TranslationKey::PagesInvoicesBetaNoticeBody.format(&[])}
                             </p>
                         </div>
                     </div>

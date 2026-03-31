@@ -218,7 +218,11 @@ where
         if website.is_empty() {
             return None;
         }
-        if let Some(error) = validate_max_length(website, "Website link", MAX_SOCIAL_LINK_LENGTH) {
+        let website_link_label =
+            TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchWebsiteLink.format(&[]);
+        if let Some(error) =
+            validate_max_length(website, &website_link_label, MAX_SOCIAL_LINK_LENGTH)
+        {
             return Some(error);
         }
         if !website.starts_with("https://") {
@@ -866,7 +870,10 @@ where
                             <div class="flex items-center gap-3 pb-3 border-b border-neutral-700">
                                 <img
                                     src=token_image.clone()
-                                    alt="Token"
+                                    alt=move || {
+                                        TranslationKey::PagesSettingsDeveloperCreateTokenTokenImageAlt
+                                            .format(&[])
+                                    }
                                     class="w-12 h-12 rounded-lg border border-neutral-600"
                                 />
                                 <div>

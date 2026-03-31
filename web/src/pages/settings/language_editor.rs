@@ -141,7 +141,10 @@ pub fn LanguageEditorPage() -> impl IntoView {
                                         set_import_error(None);
                                     }
                                     Err(e) => {
-                                        set_import_error(Some(format!("Invalid JSON: {e}")));
+                                        set_import_error(Some(
+                                            TranslationKey::PagesSettingsDeveloperLanguageEditorImportInvalidJson
+                                                .format(&[("error", &e.to_string())]),
+                                        ));
                                     }
                                 }
                             });

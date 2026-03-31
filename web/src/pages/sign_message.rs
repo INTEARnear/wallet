@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use crate::translations::TranslationKey;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use borsh::BorshSerialize;
 use chrono::{DateTime, Utc};
@@ -419,11 +420,13 @@ mod intents {
 #[component]
 fn NativeWithdrawView(native: intents::NativeWithdraw) -> impl IntoView {
     let formatted_amount = format_token_amount(native.amount.as_yoctonear(), 24, "NEAR");
+    let withdraw_label = TranslationKey::PagesSignMessageIntentNativeWithdrawLabel
+        .format(&[("receiver_id", native.receiver_id.as_ref())]);
 
     view! {
         <div class="space-y-2">
             <div class="text-sm text-neutral-300">
-                "Withdraw to " <span class="text-white">{native.receiver_id.to_string()}</span>
+                <span class="text-white">{withdraw_label}</span>
             </div>
             <div class="text-neutral-200 text-sm">{formatted_amount}</div>
         </div>
@@ -433,13 +436,18 @@ fn NativeWithdrawView(native: intents::NativeWithdraw) -> impl IntoView {
 #[component]
 fn StorageDepositView(storage: intents::StorageDeposit) -> impl IntoView {
     let formatted_amount = format_token_amount(storage.amount.as_yoctonear(), 24, "NEAR");
+    let label = TranslationKey::PagesSignMessageIntentStorageDepositLabel.format(&[
+        (
+            "deposit_for_account_id",
+            storage.deposit_for_account_id.as_ref(),
+        ),
+        ("contract_id", storage.contract_id.as_ref()),
+    ]);
 
     view! {
         <div class="space-y-2">
             <div class="text-sm text-neutral-300">
-                "Storage deposit for "
-                <span class="text-white">{storage.deposit_for_account_id.to_string()}</span> " on "
-                <span class="text-white">{storage.contract_id.to_string()}</span>
+                <span class="text-white">{label}</span>
             </div>
             <div class="text-neutral-200 text-sm">{formatted_amount}</div>
         </div>
@@ -449,21 +457,32 @@ fn StorageDepositView(storage: intents::StorageDeposit) -> impl IntoView {
 #[component]
 fn AuthCallView(call: intents::AuthCall) -> impl IntoView {
     let formatted_amount = format_token_amount(call.attached_deposit.as_yoctonear(), 24, "NEAR");
+    let call_label = TranslationKey::PagesSignMessageIntentContractCallLabel
+        .format(&[("contract_id", call.contract_id.as_ref())]);
 
     view! {
         <div class="space-y-2">
             <div class="text-sm text-neutral-300">
-                "Contract call to " <span class="text-white">{call.contract_id.to_string()}</span>
+                <span class="text-white">{call_label}</span>
             </div>
             {if call.attached_deposit.as_yoctonear() > 0 {
                 view! {
                     <div class="text-neutral-200 text-sm">
-                        "Attached deposit: " {formatted_amount}
+                        {move || {
+                            TranslationKey::PagesSignMessageIntentAttachedDeposit
+                                .format(&[("amount", &formatted_amount)])
+                        }}
                     </div>
                 }
                     .into_any()
             } else {
-                view! { <div class="text-neutral-400 text-sm">"No attached deposit"</div> }
+                view! {
+                    <div class="text-neutral-400 text-sm">
+                        {move || {
+                            TranslationKey::PagesSignMessageIntentNoAttachedDeposit.format(&[])
+                        }}
+                    </div>
+                }
                     .into_any()
             }}
         </div>
@@ -500,28 +519,46 @@ fn FtWithdrawView(ft: intents::FtWithdraw) -> impl IntoView {
         }
     });
 
+    let receiver_id = ft.receiver_id.to_string();
+
     view! {
         <div class="space-y-2">
             <div class="text-sm text-neutral-300">
-                "Withdraw "
-                <Suspense fallback=move || {
-                    view! { <span class="text-neutral-400">"loading..."</span> }
-                }>
-                    {move || {
-                        token_symbol_resource
-                            .get()
-                            .map(|symbol_opt| {
-                                if let Some(symbol) = symbol_opt {
-                                    view! { <span class="text-white">{symbol}</span> }.into_any()
-                                } else {
-                                    view! {
-                                        <span class="text-white">"[error loading ticker]"</span>
+                {move || {
+                    let symbol_view = view! {
+                        <Suspense fallback=move || {
+                            view! {
+                                <span class="text-neutral-400">
+                                    {move || TranslationKey::PagesSignMessageIntentLoadingTokenSymbol
+                                        .format(&[])}
+                                </span>
+                            }
+                        }>
+                            {move || {
+                                token_symbol_resource.get().map(|symbol_opt| {
+                                    if let Some(symbol) = symbol_opt {
+                                        view! { <span class="text-white">{symbol}</span> }.into_any()
+                                    } else {
+                                        view! {
+                                            <span class="text-white">
+                                                {move || TranslationKey::PagesSignMessageIntentTickerLoadError
+                                                    .format(&[])}
+                                            </span>
+                                        }
+                                            .into_any()
                                     }
-                                        .into_any()
-                                }
-                            })
-                    }}
-                </Suspense> " to " <span class="text-white">{ft.receiver_id.to_string()}</span>
+                                })
+                            }}
+                        </Suspense>
+                    }
+                    .into_any();
+                    let receiver_view =
+                        view! { <span class="text-white">{receiver_id.clone()}</span> }.into_any();
+                    TranslationKey::PagesSignMessageIntentFtWithdrawLine.format_view(vec![
+                        ("symbol", symbol_view),
+                        ("receiver_id", receiver_view),
+                    ])
+                }}
             </div>
             <TokenAmount
                 token_id=intents::TokenId::Nep141(intents::Nep141TokenId {
@@ -540,8 +577,10 @@ fn FtWithdrawView(ft: intents::FtWithdraw) -> impl IntoView {
                     );
                     view! {
                         <div class="text-sm text-neutral-400">
-                            "Includes Storage Deposit: "
-                            <span class="text-neutral-200">{formatted_deposit}</span>
+                            {move || {
+                                TranslationKey::PagesSignMessageIntentIncludesStorageDeposit
+                                    .format(&[])
+                            }} <span class="text-neutral-200">{formatted_deposit}</span>
                         </div>
                     }
                         .into_any()
@@ -695,7 +734,13 @@ fn TokenAmount(
     view! {
         <div class="text-neutral-200">
             <Suspense fallback=move || {
-                view! { <span class="text-neutral-400">"Loading..."</span> }
+                view! {
+                    <span class="text-neutral-400">
+                        {move || {
+                            TranslationKey::PagesSignMessageIntentLoadingTokenSymbol.format(&[])
+                        }}
+                    </span>
+                }
             }>
                 {move || {
                     token_info_resource
@@ -729,79 +774,86 @@ fn IntentItem(intent: intents::Intent, index: usize) -> impl IntoView {
         intents::Intent::AddPublicKey(add_key) => (
             icondata::LuKey,
             "text-green-400",
-            "Add Public Key".to_string(),
+            TranslationKey::PagesSignMessageIntentTitleAddPublicKey.format(&[]),
             add_key.public_key.to_string(),
         ),
         intents::Intent::RemovePublicKey(remove_key) => (
             icondata::LuKeyRound,
             "text-red-400",
-            "Remove Public Key".to_string(),
+            TranslationKey::PagesSignMessageIntentTitleRemovePublicKey.format(&[]),
             remove_key.public_key.to_string(),
         ),
         // Will have better formatting once apps start using this intent
         intents::Intent::InvalidateNonces(_invalidate) => (
             icondata::LuShield,
             "text-yellow-400",
-            "Invalidate Nonces".to_string(),
+            TranslationKey::PagesSignMessageIntentTitleInvalidateNonces.format(&[]),
             String::new(),
         ),
         intents::Intent::Transfer(transfer) => (
             icondata::LuSend,
             "text-blue-400",
-            format!("Transfer to {}", transfer.receiver_id),
+            TranslationKey::PagesSignMessageIntentTitleTransferTo
+                .format(&[("receiver_id", transfer.receiver_id.as_ref())]),
             String::new(),
         ),
         intents::Intent::FtWithdraw(_ft) => (
             icondata::LuArrowUpRight,
             "text-purple-400",
-            "Withdraw Token".to_string(),
+            TranslationKey::PagesSignMessageIntentTitleWithdrawToken.format(&[]),
             String::new(),
         ),
         // Will have better formatting once apps start using this intent
         intents::Intent::NftWithdraw(_nft) => (
             icondata::LuImage,
             "text-pink-400",
-            "Withdraw NFT".to_string(),
+            TranslationKey::PagesSignMessageIntentTitleWithdrawNft.format(&[]),
             String::new(),
         ),
         // Will have better formatting once apps start using this intent
         intents::Intent::MtWithdraw(_mt) => (
             icondata::LuImages,
             "text-indigo-400",
-            "Withdraw MT".to_string(),
+            TranslationKey::PagesSignMessageIntentTitleWithdrawMt.format(&[]),
             String::new(),
         ),
         intents::Intent::NativeWithdraw(_) => (
             icondata::LuCoins,
             "text-emerald-400",
-            "Withdraw NEAR".to_string(),
+            TranslationKey::PagesSignMessageIntentTitleWithdrawNear.format(&[]),
             String::new(),
         ),
         // Will have better formatting once apps start using this intent
         intents::Intent::StorageDeposit(storage) => (
             icondata::LuHardDrive,
             "text-cyan-400",
-            format!("Storage Deposit on {}", storage.contract_id),
+            TranslationKey::PagesSignMessageIntentTitleStorageDepositOn
+                .format(&[("contract_id", storage.contract_id.as_ref())]),
             String::new(),
         ),
         intents::Intent::TokenDiff(_diff) => (
             icondata::LuArrowLeftRight,
             "text-purple-400",
-            "Swap".to_string(),
+            TranslationKey::PagesSignMessageIntentTitleSwap.format(&[]),
             String::new(),
         ),
         // Will have better formatting once apps start using this intent
         intents::Intent::SetAuthByPredecessorId(auth) => (
             icondata::LuSettings,
             "text-gray-400",
-            "Set Auth by Predecessor".to_string(),
-            if auth.enabled { "Enabled" } else { "Disabled" }.to_string(),
+            TranslationKey::PagesSignMessageIntentTitleSetAuthByPredecessor.format(&[]),
+            if auth.enabled {
+                TranslationKey::PagesSignMessageIntentAuthEnabled.format(&[])
+            } else {
+                TranslationKey::PagesSignMessageIntentAuthDisabled.format(&[])
+            },
         ),
         // Will have better formatting once apps start using this intent
         intents::Intent::AuthCall(call) => (
             icondata::LuPhone,
             "text-violet-400",
-            format!("Auth Call to {}", call.contract_id),
+            TranslationKey::PagesSignMessageIntentTitleAuthCall
+                .format(&[("contract_id", call.contract_id.as_ref())]),
             String::new(),
         ),
     };
@@ -876,6 +928,28 @@ pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
         serde_json::from_str::<serde_json::Value>(&deserialized.message).is_ok()
     };
 
+    let duration_phrase = move |total_minutes: i64| -> String {
+        let total_minutes = total_minutes.max(0);
+        if total_minutes >= 24 * 60 {
+            let days = total_minutes / (24 * 60);
+            if days == 1 {
+                TranslationKey::PagesSignMessageDuration1Day.format(&[])
+            } else {
+                TranslationKey::PagesSignMessageDurationNDays.format(&[("n", &days.to_string())])
+            }
+        } else if total_minutes >= 60 {
+            let hours = total_minutes / 60;
+            if hours == 1 {
+                TranslationKey::PagesSignMessageDuration1Hour.format(&[])
+            } else {
+                TranslationKey::PagesSignMessageDurationNHours.format(&[("n", &hours.to_string())])
+            }
+        } else {
+            TranslationKey::PagesSignMessageDurationNMinutes
+                .format(&[("n", &total_minutes.to_string())])
+        }
+    };
+
     let get_warnings = move || -> Vec<Warning> {
         let mut warnings = Vec::new();
 
@@ -890,69 +964,39 @@ pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
             if deadline_diff.num_seconds() < 0 {
                 let past_duration = now.signed_duration_since(intents_msg.deadline);
                 let total_minutes = past_duration.num_minutes();
-                let text = if total_minutes >= 24 * 60 {
-                    let days = total_minutes / (24 * 60);
-                    if days == 1 {
-                        "1 day".to_string()
-                    } else {
-                        format!("{} days", days)
-                    }
-                } else if total_minutes >= 60 {
-                    let hours = total_minutes / 60;
-                    if hours == 1 {
-                        "1 hour".to_string()
-                    } else {
-                        format!("{} hours", hours)
-                    }
-                } else {
-                    format!("{} minutes", total_minutes)
-                };
+                let text = duration_phrase(total_minutes);
                 warnings.push(Warning {
-                            warning_type: WarningType::PastDeadline,
-                            message: format!("This request expired {} ago and will fail. Try again and next time sign it faster", text),
-                        });
+                    warning_type: WarningType::PastDeadline,
+                    message: TranslationKey::PagesSignMessageWarningRequestExpired
+                        .format(&[("duration", &text)]),
+                });
             }
 
             // Check for signer mismatch
             let current_account = accounts_context.accounts.get().selected_account_id;
             if Some(intents_msg.signer_id.clone()) != current_account {
+                let intent_signer = intents_msg.signer_id.to_string();
+                let connected_account = current_account
+                    .as_ref()
+                    .map(|a| a.to_string())
+                    .unwrap_or_else(|| TranslationKey::PagesSignMessageUnknownAccount.format(&[]));
                 warnings.push(Warning {
-                            warning_type: WarningType::SignerMismatch,
-                            message: format!(
-                                "This intent will be executed for account '{}' but you're connected with account {}",
-                                intents_msg.signer_id,
-                                current_account.as_ref().map(|a| a.to_string()).unwrap_or("unknown account".to_string())
-                            ),
-                        });
+                    warning_type: WarningType::SignerMismatch,
+                    message: TranslationKey::PagesSignMessageWarningSignerMismatch.format(&[
+                        ("intent_signer", &intent_signer),
+                        ("connected_account", &connected_account),
+                    ]),
+                });
             }
 
             // Check for long deadline (only if not in the past)
             if deadline_diff.num_minutes() > 10 {
                 let total_minutes = deadline_diff.num_minutes();
-                let text = if total_minutes >= 1440 {
-                    // 24 hours * 60 minutes
-                    let days = total_minutes / 1440;
-                    if days == 1 {
-                        "1 day".to_string()
-                    } else {
-                        format!("{} days", days)
-                    }
-                } else if total_minutes >= 60 {
-                    let hours = total_minutes / 60;
-                    if hours == 1 {
-                        "1 hour".to_string()
-                    } else {
-                        format!("{} hours", hours)
-                    }
-                } else {
-                    format!("{} minutes", total_minutes)
-                };
+                let text = duration_phrase(total_minutes);
                 warnings.push(Warning {
                     warning_type: WarningType::LongDeadline,
-                    message: format!(
-                        "This intent might be executed up to {} later after you sign it",
-                        text
-                    ),
+                    message: TranslationKey::PagesSignMessageWarningLongDeadline
+                        .format(&[("duration", &text)]),
                 });
             }
 
@@ -971,9 +1015,10 @@ pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
                         && add_key.public_key != wallet_public_key
                     {
                         warnings.push(Warning {
-                                        warning_type: WarningType::UnauthorizedPublicKey,
-                                        message: "This intent will add a public key that is NOT owned by your wallet. This could allow someone else to control your account!".to_string(),
-                                    });
+                            warning_type: WarningType::UnauthorizedPublicKey,
+                            message: TranslationKey::PagesSignMessageWarningUnauthorizedPublicKey
+                                .format(&[]),
+                        });
                         break; // Only show one warning even if multiple unauthorized keys
                     }
                 }
@@ -1084,15 +1129,20 @@ pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
         set_cli_copied(true);
         set_timeout(move || set_cli_copied(false), Duration::from_millis(2000));
     };
+
     view! {
         <div>
             <div class="flex items-center justify-between mb-2">
-                <p class="text-neutral-300 text-sm font-medium">"Asks you to sign the message:"</p>
+                <p class="text-neutral-300 text-sm font-medium">
+                    {move || { TranslationKey::PagesSignMessageAsksSignMessageHeading.format(&[]) }}
+                </p>
                 <div class="flex gap-2">
                     <button
                         class="text-xs text-blue-400 hover:text-blue-300 transition-colors p-2 bg-neutral-800 rounded flex items-center justify-center"
                         on:click=copy_message
-                        title="Copy message"
+                        title=move || {
+                            TranslationKey::PagesSignMessageTitleCopyMessage.format(&[])
+                        }
                     >
                         {move || {
                             if message_copied.get() {
@@ -1125,9 +1175,9 @@ pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
                             }
                             title=move || {
                                 if format_message.get() {
-                                    "Show raw message"
+                                    TranslationKey::PagesSignMessageTitleShowRawMessage.format(&[])
                                 } else {
-                                    "Format the message"
+                                    TranslationKey::PagesSignMessageTitleFormatMessage.format(&[])
                                 }
                             }
                         >
@@ -1152,7 +1202,12 @@ pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
                         let Some(message_data) = message.get() else {
                             return // Render rich intents UI
                             view! {
-                                <p class="text-neutral-400 text-sm">"Failed to load message"</p>
+                                <p class="text-neutral-400 text-sm">
+                                    {move || {
+                                        TranslationKey::PagesSignMessageFailedLoadMessage
+                                            .format(&[])
+                                    }}
+                                </p>
                             }
                                 .into_any();
                         };
@@ -1160,10 +1215,16 @@ pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
                             IntentsMessage,
                         >(&message_data.message) else {
                             return view! {
-                                <p class="text-neutral-400 text-sm">"Failed to parse intents"</p>
+                                <p class="text-neutral-400 text-sm">
+                                    {move || {
+                                        TranslationKey::PagesSignMessageFailedParseIntents
+                                            .format(&[])
+                                    }}
+                                </p>
                             }
                                 .into_any();
                         };
+                        let intents_msg_clone = intents_msg.clone();
 
                         view! {
                             <div class="space-y-4">
@@ -1171,7 +1232,12 @@ pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
                                     view! {
                                         <div class="flex items-center gap-2 text-neutral-400">
                                             <Icon icon=icondata::LuInfo width="16" height="16" />
-                                            <span class="text-sm">"Nothing will be done"</span>
+                                            <span class="text-sm">
+                                                {move || {
+                                                    TranslationKey::PagesSignMessageNothingWillBeDone
+                                                        .format(&[])
+                                                }}
+                                            </span>
                                         </div>
                                     }
                                         .into_any()
@@ -1212,11 +1278,16 @@ pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
                                                     attr:class="text-green-400"
                                                 />
                                                 <span class="text-neutral-300 text-sm font-medium">
-                                                    {format!("Intents ({}):", intents_msg.intents.len())}
+                                                    {move || {
+                                                        TranslationKey::PagesSignMessageIntentListHeader
+                                                            .format(
+                                                                &[("count", &intents_msg.intents.len().to_string())],
+                                                            )
+                                                    }}
                                                 </span>
                                             </div>
                                             <div class="space-y-2">
-                                                {intents_msg
+                                                {move || intents_msg_clone
                                                     .intents
                                                     .iter()
                                                     .enumerate()
@@ -1250,7 +1321,9 @@ pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
 
             <div class="flex flex-col gap-2 text-xs mt-2">
                 <div class="flex justify-between items-center">
-                    <span class="text-neutral-500">"Sign For:"</span>
+                    <span class="text-neutral-500">
+                        {move || { TranslationKey::PagesSignMessageSignForLabel.format(&[]) }}
+                    </span>
                     <div class="flex items-center gap-2">
                         <span class="text-neutral-300 font-mono wrap-anywhere">
                             {move || { message.get().map(|msg| msg.recipient).unwrap_or_default() }}
@@ -1258,7 +1331,9 @@ pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
                         <button
                             class="text-neutral-400 hover:text-neutral-300 transition-colors p-1 rounded"
                             on:click=copy_recipient
-                            title="Copy recipient"
+                            title=move || {
+                                TranslationKey::PagesSignMessageTitleCopyRecipient.format(&[])
+                            }
                         >
                             {move || {
                                 if recipient_copied.get() {
@@ -1287,9 +1362,15 @@ pub fn MessageDisplay(message: Signal<Option<MessageToSign>>) -> impl IntoView {
                 <button
                     class="text-xs text-blue-400 hover:text-blue-300 transition-colors px-3 py-1.5 bg-neutral-800 rounded flex items-center gap-2"
                     on:click=copy_cli
-                    title="Copy NEAR CLI command"
+                    title=move || { TranslationKey::PagesSignMessageTitleCopyNearCli.format(&[]) }
                 >
-                    {if cli_copied.get() { "Copied!" } else { "Copy CLI" }}
+                    {move || {
+                        if cli_copied.get() {
+                            TranslationKey::PagesSignMessageCopied.format(&[])
+                        } else {
+                            TranslationKey::PagesSignMessageCopyCli.format(&[])
+                        }
+                    }}
                 </button>
             </div>
         </div>
@@ -1588,7 +1669,7 @@ pub fn SignMessage() -> impl IntoView {
 
     let handle_cancel = move |_| {
         let message = SendMessage::Error {
-            message: "User rejected the signature".to_string(),
+            message: TranslationKey::PagesSignMessageUserRejectedSignature.format(&[]),
         };
         post_to_opener(message, true);
     };
@@ -1601,7 +1682,10 @@ pub fn SignMessage() -> impl IntoView {
                         view! {
                             <div class="flex flex-col items-center gap-4 text-center max-w-sm">
                                 <p class="text-red-400 text-lg font-semibold">
-                                    "Sign Request Error"
+                                    {move || {
+                                        TranslationKey::PagesSignMessageSignRequestErrorTitle
+                                            .format(&[])
+                                    }}
                                 </p>
                                 <p class="text-neutral-300 text-sm">{error_msg}</p>
                             </div>
@@ -1611,7 +1695,12 @@ pub fn SignMessage() -> impl IntoView {
                         view! {
                             <div class="flex flex-col items-center gap-4">
                                 <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-white"></div>
-                                <p class="text-white text-lg">"Receiving message to sign..."</p>
+                                <p class="text-white text-lg">
+                                    {move || {
+                                        TranslationKey::PagesSignMessageReceivingMessageToSign
+                                            .format(&[])
+                                    }}
+                                </p>
                             </div>
                         }
                             .into_any()
@@ -1620,7 +1709,9 @@ pub fn SignMessage() -> impl IntoView {
                     view! {
                         <div class="flex flex-col items-center gap-6 max-w-md w-full">
                             <h2 class="text-2xl font-bold text-white mb-2 wrap-anywhere">
-                                "Sign Message"
+                                {move || {
+                                    TranslationKey::PagesSignMessageTitleSignMessage.format(&[])
+                                }}
                             </h2>
                             <div class="flex flex-col gap-4 w-full">
                                 <div class="p-6 bg-neutral-800/50 backdrop-blur-sm rounded-xl border border-neutral-700/50 shadow-lg">
@@ -1629,7 +1720,11 @@ pub fn SignMessage() -> impl IntoView {
                                             <span class="text-neutral-300 text-lg">{"📝"}</span>
                                         </div>
                                         <div>
-                                            <p class="text-neutral-400 text-sm">"Request from"</p>
+                                            <p class="text-neutral-400 text-sm">
+                                                {move || {
+                                                    TranslationKey::PagesSignMessageRequestFromLabel.format(&[])
+                                                }}
+                                            </p>
                                             <p class="text-white font-medium wrap-anywhere">
                                                 {if let Some(app) = connected_app() {
                                                     let domain = app
@@ -1647,12 +1742,13 @@ pub fn SignMessage() -> impl IntoView {
                                                         || domain.ends_with(".local")
                                                         || domain.ends_with(".localhost")
                                                     {
-                                                        "🛠 Localhost".to_string()
+                                                        TranslationKey::PagesSignMessageLocalhostBadge.format(&[])
                                                     } else {
                                                         app.origin.to_string()
                                                     }
                                                 } else {
-                                                    "⚠️ Unknown, not connected".to_string()
+                                                    TranslationKey::PagesSignMessageUnknownNotConnected
+                                                        .format(&[])
                                                 }}
                                             </p>
                                         </div>
@@ -1675,13 +1771,17 @@ pub fn SignMessage() -> impl IntoView {
                                                     on:click=handle_verify
                                                     disabled=move || connected_app().is_none()
                                                 >
-                                                    "Confirm"
+                                                    {move || {
+                                                        TranslationKey::PagesSignMessageConfirm.format(&[])
+                                                    }}
                                                 </button>
                                                 <button
                                                     class="w-full px-6 py-3.5 bg-neutral-800 text-white font-medium rounded-xl hover:bg-neutral-700 transition-all duration-200 shadow-lg shadow-black/20 cursor-pointer"
                                                     on:click=handle_cancel
                                                 >
-                                                    "Cancel"
+                                                    {move || {
+                                                        TranslationKey::PagesSignMessageCancel.format(&[])
+                                                    }}
                                                 </button>
                                             </div>
                                         }
@@ -1694,9 +1794,17 @@ pub fn SignMessage() -> impl IntoView {
                                                 view! {
                                                     <div class="text-white text-center flex flex-col items-center gap-2 mt-2 border-t border-neutral-700 pt-2">
                                                         <Icon icon=icondata::LuUsb width="24" height="24" />
-                                                        <p class="text-sm font-bold">"Waiting for Ledger"</p>
+                                                        <p class="text-sm font-bold">
+                                                            {move || {
+                                                                TranslationKey::PagesSignMessageLedgerWaitingTitle
+                                                                    .format(&[])
+                                                            }}
+                                                        </p>
                                                         <p class="text-xs">
-                                                            "Please confirm the signature on your Ledger device."
+                                                            {move || {
+                                                                TranslationKey::PagesSignMessageLedgerWaitingBody
+                                                                    .format(&[])
+                                                            }}
                                                         </p>
                                                         <button
                                                             class="p-2 text-sm bg-neutral-700 rounded-md hover:bg-neutral-600 transition-colors cursor-pointer grow w-full"
@@ -1707,7 +1815,9 @@ pub fn SignMessage() -> impl IntoView {
                                                                     });
                                                             }
                                                         >
-                                                            "Retry"
+                                                            {move || {
+                                                                TranslationKey::PagesSignMessageLedgerRetry.format(&[])
+                                                            }}
                                                         </button>
                                                     </div>
                                                 }
@@ -1722,7 +1832,11 @@ pub fn SignMessage() -> impl IntoView {
                                                             height="24"
                                                             attr:class="text-red-500"
                                                         />
-                                                        <p class="text-sm font-bold">"Ledger Error"</p>
+                                                        <p class="text-sm font-bold">
+                                                            {move || {
+                                                                TranslationKey::PagesSignMessageLedgerErrorTitle.format(&[])
+                                                            }}
+                                                        </p>
                                                         <p class="text-xs max-w-xs wrap-break-word text-red-400">
                                                             {error.clone()}
                                                         </p>
@@ -1742,7 +1856,9 @@ pub fn SignMessage() -> impl IntoView {
                                                                         })
                                                                 }
                                                             >
-                                                                "Retry"
+                                                                {move || {
+                                                                    TranslationKey::PagesSignMessageLedgerRetry.format(&[])
+                                                                }}
                                                             </button>
                                                             <button
                                                                 class="p-2 text-sm bg-red-800 rounded-md hover:bg-red-700 transition-colors cursor-pointer grow w-full"
@@ -1750,7 +1866,9 @@ pub fn SignMessage() -> impl IntoView {
                                                                     ledger_signing_state.set(LedgerSigningState::Idle)
                                                                 }
                                                             >
-                                                                "Cancel"
+                                                                {move || {
+                                                                    TranslationKey::PagesSignMessageLedgerCancel.format(&[])
+                                                                }}
                                                             </button>
                                                         </div>
                                                     </div>

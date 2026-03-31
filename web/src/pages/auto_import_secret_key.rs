@@ -8,6 +8,7 @@ use crate::contexts::{
     network_context::Network,
     security_log_context::add_security_log,
 };
+use crate::translations::TranslationKey;
 
 #[component]
 pub fn AutoImportSecretKey() -> impl IntoView {
@@ -74,16 +75,24 @@ pub fn AutoImportSecretKey() -> impl IntoView {
                             <div class="bg-red-500/10 p-6 rounded-xl border border-red-500/20 w-full">
                                 <div class="flex items-center gap-2 text-red-400">
                                     <Icon icon=icondata::LuTriangleAlert width="20" height="20" />
-                                    <p class="text-white font-medium">"Account Already Imported"</p>
+                                    <p class="text-white font-medium">
+                                        {move || {
+                                            TranslationKey::PagesAutoImportSecretKeyAccountAlreadyImportedTitle
+                                                .format(&[])
+                                        }}
+                                    </p>
                                 </div>
                                 <p class="text-gray-400 text-sm mt-2">
-                                    "The account "{account_id}" is already in your wallet."
+                                    {move || {
+                                        TranslationKey::PagesAutoImportSecretKeyAccountAlreadyImportedDescription
+                                            .format(&[("account_id", account_id.as_str())])
+                                    }}
                                 </p>
                                 <button
                                     class="mt-4 w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900/50 cursor-pointer"
                                     on:click=move |_| navigate("/", Default::default())
                                 >
-                                    "Go Back"
+                                    {move || TranslationKey::PagesAutoImportSecretKeyGoBack.format(&[])}
                                 </button>
                             </div>
                         </div>
@@ -94,7 +103,7 @@ pub fn AutoImportSecretKey() -> impl IntoView {
                     view! {
                         <div class="flex flex-col items-center gap-6 max-w-md w-full">
                             <h2 class="text-2xl font-bold text-white mb-2 wrap-anywhere">
-                                Import Account
+                                {move || TranslationKey::PagesAutoImportSecretKeyTitle.format(&[])}
                             </h2>
                             <div class="flex flex-col gap-4 w-full">
                                 <div class="p-6 bg-neutral-800/50 backdrop-blur-sm rounded-xl border border-neutral-700/50 shadow-lg">
@@ -103,7 +112,12 @@ pub fn AutoImportSecretKey() -> impl IntoView {
                                             <span class="text-neutral-300 text-lg">{"🔑"}</span>
                                         </div>
                                         <div>
-                                            <p class="text-neutral-400 text-sm">"Account Name"</p>
+                                            <p class="text-neutral-400 text-sm">
+                                                {move || {
+                                                    TranslationKey::PagesAutoImportSecretKeyAccountNameLabel
+                                                        .format(&[])
+                                                }}
+                                            </p>
                                             <p class="text-white font-medium wrap-anywhere">
                                                 {move || {
                                                     if let Some((account_id, _)) = import_info() {
@@ -153,13 +167,19 @@ pub fn AutoImportSecretKey() -> impl IntoView {
                                                 class="absolute inset-0 transition-opacity duration-200 opacity-0 group-hover:opacity-100"
                                                 style="background: linear-gradient(90deg, #2563eb 0%, #7c3aed 100%)"
                                             ></div>
-                                            <span class="relative">"Import"</span>
+                                            <span class="relative">
+                                                {move || {
+                                                    TranslationKey::PagesAutoImportSecretKeyImport.format(&[])
+                                                }}
+                                            </span>
                                         </button>
                                         <button
                                             class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900/50 cursor-pointer"
                                             on:click=move |_| navigate_clone("/", Default::default())
                                         >
-                                            "Cancel"
+                                            {move || {
+                                                TranslationKey::PagesAutoImportSecretKeyCancel.format(&[])
+                                            }}
                                         </button>
                                     </div>
                                 </div>

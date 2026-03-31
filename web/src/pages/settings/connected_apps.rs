@@ -293,11 +293,13 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
 
     view! {
         <div class="flex flex-col gap-4 p-4">
-            <div class="text-xl font-semibold">"Connected Apps"</div>
+            <div class="text-xl font-semibold">
+                {move || TranslationKey::PagesSettingsConnectedAppsPageTitle.format(&[])}
+            </div>
 
             <div class="flex flex-col gap-4">
                 <div class="text-sm text-neutral-400">
-                    "Manage your connected applications and their permissions. You can revoke access or modify auto-confirmation settings here."
+                    {move || TranslationKey::PagesSettingsConnectedAppsIntro.format(&[])}
                 </div>
 
                 {move || {
@@ -317,7 +319,12 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                         .collect::<Vec<_>>();
                     if active_apps.is_empty() {
                         view! {
-                            <div class="text-center text-neutral-400 py-8">"No connected apps"</div>
+                            <div class="text-center text-neutral-400 py-8">
+                                {move || {
+                                    TranslationKey::PagesSettingsConnectedAppsEmptyNoApps
+                                        .format(&[])
+                                }}
+                            </div>
                         }
                             .into_any()
                     } else {
@@ -326,7 +333,7 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                             .map(|app| {
                                 let render_setting = move |
                                     setting: AutoconfirmSetting,
-                                    label: &'static str,
+                                    label: String,
                                     app: &ConnectedApp|
                                 {
                                     let account_id = app.account_id.clone();
@@ -342,12 +349,16 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                                                 )
                                                 class="px-2 py-1 text-xs rounded hover:bg-neutral-700 transition-colors cursor-pointer"
                                             >
-                                                "Revoke"
+                                                {move || {
+                                                    TranslationKey::PagesSettingsConnectedAppsButtonRevoke
+                                                        .format(&[])
+                                                }}
                                             </button>
                                         </div>
                                     }
                                 };
                                 let account_id = app.account_id.clone();
+                                let account_id_for_connected_line = app.account_id.clone();
                                 let auth_public_key = app.auth_public_key.clone();
                                 let requested_contract_id = app.requested_contract_id.clone();
                                 let requested_method_names = app.requested_method_names.clone();
@@ -365,27 +376,32 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                                                         {app.origin.clone()}
                                                     </div>
                                                     <div class="text-sm text-neutral-400">
-                                                        "Connected to "
-                                                        <span class="wrap-anywhere">
-                                                            {app.account_id.to_string()}
-                                                        </span>
+                                                        {move || {
+                                                            let account_view = view! {
+                                                                <span class="wrap-anywhere">{account_id_for_connected_line.as_str()}</span>
+                                                            }
+                                                                .into_any();
+                                                            TranslationKey::PagesSettingsConnectedAppsConnectedToLine
+                                                                .format_view(vec![("account_id", account_view)])
+                                                        }}
                                                     </div>
                                                     {move || {
                                                         if let Some(contract_id) = &requested_contract_id {
-                                                            let methods = if requested_method_names.is_empty() {
-                                                                format!(
-                                                                    "Can interact with {contract_id} without confirmation",
-                                                                )
+                                                            let contract_str = contract_id.to_string();
+                                                            let warn_text = if requested_method_names.is_empty() {
+                                                                TranslationKey::PagesSettingsConnectedAppsWarningInteractContract
+                                                                    .format(&[("contract_id", &contract_str)])
                                                             } else {
-                                                                format!(
-                                                                    "Can call {} on {contract_id} without confirmation",
-                                                                    requested_method_names.join(", "),
-                                                                )
+                                                                let methods = requested_method_names.join(", ");
+                                                                TranslationKey::PagesSettingsConnectedAppsWarningCallMethods
+                                                                    .format(
+                                                                        &[("methods", &methods), ("contract_id", &contract_str)],
+                                                                    )
                                                             };
                                                             view! {
                                                                 <div class="text-sm text-yellow-500 mt-1 flex items-center gap-1">
                                                                     <Icon icon=icondata::LuShieldAlert width="14" height="14" />
-                                                                    {methods}
+                                                                    {warn_text}
                                                                 </div>
                                                             }
                                                                 .into_any()
@@ -399,13 +415,19 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                                                 on:click=move |_| log_out(&account_id, &auth_public_key)
                                                 class="px-3 py-1.5 text-sm text-red-500 rounded hover:bg-neutral-800 transition-colors min-w-24 cursor-pointer"
                                             >
-                                                "Log out"
+                                                {move || {
+                                                    TranslationKey::PagesSettingsConnectedAppsButtonLogOut
+                                                        .format(&[])
+                                                }}
                                             </button>
                                         </div>
 
                                         <div class="mt-4 border-t border-neutral-800 pt-4">
                                             <div class="text-sm font-medium mb-2">
-                                                "Auto-confirmation settings"
+                                                {move || {
+                                                    TranslationKey::PagesSettingsConnectedAppsAutoConfirmHeading
+                                                        .format(&[])
+                                                }}
                                             </div>
                                             <div class="flex flex-col gap-2">
                                                 {move || {
@@ -416,7 +438,8 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                                                             .push(
                                                                 render_setting(
                                                                         AutoconfirmSetting::All,
-                                                                        "Auto-confirm all transactions",
+                                                                        TranslationKey::PagesSettingsConnectedAppsSettingAutoConfirmAll
+                                                                            .format(&[]),
                                                                         &app,
                                                                     )
                                                                     .into_any(),
@@ -427,14 +450,15 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                                                             .push(
                                                                 render_setting(
                                                                         AutoconfirmSetting::NonFinancial,
-                                                                        "Auto-confirm non-financial transactions",
+                                                                        TranslationKey::PagesSettingsConnectedAppsSettingAutoConfirmNonFinancial
+                                                                            .format(&[]),
                                                                         &app,
                                                                     )
                                                                     .into_any(),
                                                             );
                                                     }
-                                                    for receiver in app.autoconfirm_contracts {
-                                                        let receiver = receiver.clone();
+                                                    for receiver in app.autoconfirm_contracts.clone() {
+                                                        let receiver_for_display = receiver.clone();
                                                         let public_key = app.auth_public_key.clone();
                                                         let account_id = app.account_id.clone();
                                                         settings
@@ -442,10 +466,16 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                                                                 view! {
                                                                     <div class="flex items-center justify-between p-2 rounded bg-neutral-800">
                                                                         <span>
-                                                                            "Auto-confirm non-financial transactions for "
-                                                                            <span class="font-mono wrap-anywhere">
-                                                                                {receiver.to_string()}
-                                                                            </span>
+                                                                            {move || {
+                                                                                let receiver_view = view! {
+                                                                                    <span class="font-mono wrap-anywhere">
+                                                                                        {receiver_for_display.to_string()}
+                                                                                    </span>
+                                                                                }
+                                                                                    .into_any();
+                                                                                TranslationKey::PagesSettingsConnectedAppsSettingAutoConfirmNonFinancialFor
+                                                                                    .format_view(vec![("receiver", receiver_view)])
+                                                                            }}
                                                                         </span>
                                                                         <button
                                                                             on:click=move |_| disable_autoconfirm(
@@ -455,7 +485,10 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                                                                             )
                                                                             class="px-2 py-1 text-xs rounded hover:bg-neutral-700 transition-colors"
                                                                         >
-                                                                            "Revoke"
+                                                                            {move || {
+                                                                                TranslationKey::PagesSettingsConnectedAppsButtonRevoke
+                                                                                    .format(&[])
+                                                                            }}
                                                                         </button>
                                                                     </div>
                                                                 }
@@ -467,7 +500,10 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
                                                             .push(
                                                                 view! {
                                                                     <div class="text-sm text-neutral-400 p-2">
-                                                                        "Auto-confirmation is not enabled"
+                                                                        {move || {
+                                                                            TranslationKey::PagesSettingsConnectedAppsAutoConfirmDisabled
+                                                                                .format(&[])
+                                                                        }}
                                                                     </div>
                                                                 }
                                                                     .into_any(),

@@ -69,11 +69,15 @@ pub fn DeveloperSandbox() -> impl IntoView {
         let network = network();
         async move {
             let Some(network) = network else {
-                return Err("Network not found".to_string());
+                return Err(
+                    TranslationKey::PagesSettingsDeveloperSandboxNetworkNotFound.format(&[])
+                );
             };
 
             let Ok(url) = network.rpc_url.parse::<Url>() else {
-                return Err("Invalid RPC URL".to_string());
+                return Err(
+                    TranslationKey::PagesSettingsDeveloperSandboxErrInvalidRpcUrl.format(&[]),
+                );
             };
 
             let rpc_client = RpcClient::new(vec![url]);
@@ -95,11 +99,15 @@ pub fn DeveloperSandbox() -> impl IntoView {
         let network = network();
         async move {
             let Some(network) = network else {
-                return Err("Network not found".to_string());
+                return Err(
+                    TranslationKey::PagesSettingsDeveloperSandboxNetworkNotFound.format(&[])
+                );
             };
 
             let Ok(url) = network.rpc_url.parse::<Url>() else {
-                return Err("Invalid RPC URL".to_string());
+                return Err(
+                    TranslationKey::PagesSettingsDeveloperSandboxErrInvalidRpcUrl.format(&[]),
+                );
             };
 
             let rpc_client = RpcClient::new(vec![url]);
@@ -145,11 +153,15 @@ pub fn DeveloperSandbox() -> impl IntoView {
             };
 
             let Some(network) = network else {
-                return Err("Network not found".to_string());
+                return Err(
+                    TranslationKey::PagesSettingsDeveloperSandboxNetworkNotFound.format(&[])
+                );
             };
 
             let Ok(url) = network.rpc_url.parse::<Url>() else {
-                return Err("Invalid RPC URL".to_string());
+                return Err(
+                    TranslationKey::PagesSettingsDeveloperSandboxErrInvalidRpcUrl.format(&[]),
+                );
             };
 
             let rpc_client = RpcClient::new(vec![url]);
@@ -184,17 +196,24 @@ pub fn DeveloperSandbox() -> impl IntoView {
             };
 
             let Some(network) = network else {
-                return Err("Network not found".to_string());
+                return Err(
+                    TranslationKey::PagesSettingsDeveloperSandboxNetworkNotFound.format(&[])
+                );
             };
 
             let Ok(url) = network.rpc_url.parse::<Url>() else {
-                return Err("Invalid RPC URL".to_string());
+                return Err(
+                    TranslationKey::PagesSettingsDeveloperSandboxErrInvalidRpcUrl.format(&[]),
+                );
             };
 
             let rpc_client = RpcClient::new(vec![url]);
             match get_ft_metadata(account_id.clone(), rpc_client).await {
                 Ok(metadata) => Ok(Some((account_id, metadata))),
-                Err(e) => Err(format!("Failed to fetch token metadata: {}", e)),
+                Err(e) => Err(
+                    TranslationKey::PagesSettingsDeveloperSandboxErrFetchTokenMetadata
+                        .format(&[("error", &e.to_string())]),
+                ),
             }
         }
     });
@@ -1090,11 +1109,15 @@ fn TokenListItem(
 
         async move {
             let Some(network) = network else {
-                return Err("Network not found".to_string());
+                return Err(
+                    TranslationKey::PagesSettingsDeveloperSandboxNetworkNotFound.format(&[])
+                );
             };
 
             let Ok(url) = network.rpc_url.parse::<Url>() else {
-                return Err("Invalid RPC URL".to_string());
+                return Err(
+                    TranslationKey::PagesSettingsDeveloperSandboxErrInvalidRpcUrl.format(&[]),
+                );
             };
 
             let rpc_client = RpcClient::new(vec![url]);

@@ -15,9 +15,9 @@ use crate::{
     pages::stake::is_validator_supported,
     translations::TranslationKey,
     utils::{
-        StorageBalance, balance_to_decimal, decimal_to_balance, format_account_id_no_hide,
-        format_number_for_input, format_token_amount, format_token_amount_full_precision,
-        format_token_amount_no_hide, format_usd_value_no_hide,
+        StorageBalance, balance_to_decimal, decimal_to_balance, format_number_for_input,
+        format_token_amount, format_token_amount_full_precision, format_token_amount_no_hide,
+        format_usd_value_no_hide,
     },
 };
 use bigdecimal::{BigDecimal, FromPrimitive};
@@ -53,6 +53,19 @@ fn is_evm_implicit_account(account_id: &str) -> bool {
     account_id.starts_with("0x")
         && account_id.chars().skip(2).all(|c| c.is_ascii_hexdigit())
         && account_id.len() == 42
+}
+
+fn send_err_insufficient_cycle_message(index: usize) -> String {
+    match index % 8 {
+        0 => TranslationKey::PagesSendErrAmountInsufficientCycle1.format(&[]),
+        1 => TranslationKey::PagesSendErrAmountInsufficientCycle2.format(&[]),
+        2 => TranslationKey::PagesSendErrAmountInsufficientCycle3.format(&[]),
+        3 => TranslationKey::PagesSendErrAmountInsufficientCycle4.format(&[]),
+        4 => TranslationKey::PagesSendErrAmountInsufficientCycle5.format(&[]),
+        5 => TranslationKey::PagesSendErrAmountInsufficientCycle6.format(&[]),
+        6 => TranslationKey::PagesSendErrAmountInsufficientCycle7.format(&[]),
+        _ => TranslationKey::PagesSendErrAmountInsufficientCycle8.format(&[]),
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -106,7 +119,9 @@ fn ImportModal(
                 on:click=|ev| ev.stop_propagation()
             >
                 <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-white font-bold text-xl">"Import Recipients"</h3>
+                    <h3 class="text-white font-bold text-xl">
+                        {move || TranslationKey::PagesSendImportTitle.format(&[])}
+                    </h3>
                     <button
                         class="text-gray-400 hover:text-white cursor-pointer"
                         on:click=move |_| modal.set(None)
@@ -187,9 +202,9 @@ fn ImportModal(
                     >
                         {move || {
                             if is_loading() {
-                                "Loading...".to_string()
+                                TranslationKey::PagesSendImportAiLoading.format(&[])
                             } else {
-                                "Read with AI".to_string()
+                                TranslationKey::PagesSendImportAiRead.format(&[])
                             }
                         }}
                     </button>
@@ -208,8 +223,12 @@ fn ImportModal(
                         <table class="w-full text-left text-white">
                             <thead class="sticky top-0 bg-neutral-900 border-b border-neutral-700">
                                 <tr class="text-gray-400 text-sm">
-                                    <th class="py-2 px-3">"Account"</th>
-                                    <th class="py-2 px-3">"Amount"</th>
+                                    <th class="py-2 px-3">
+                                        {move || TranslationKey::PagesSendImportColAccount.format(&[])}
+                                    </th>
+                                    <th class="py-2 px-3">
+                                        {move || TranslationKey::PagesSendImportColAmount.format(&[])}
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -252,10 +271,12 @@ fn ImportModal(
                                         set_check_only_first.set(checked);
                                     }
                                 />
-                                <span>"Check only first 10 accounts"</span>
+                                <span>
+                                    {move || TranslationKey::PagesSendImportCheckFirst10.format(&[])}
+                                </span>
                             </label>
                             <p class="text-gray-400 text-xs mt-2">
-                                "For large lists, checking every single account can take time and be heavy on network (need to check whether it exists, its balance, whether it's a token or NFT contract address, etc. for each account), so we recommend turning this on if you're sure your list is correct"
+                                {move || TranslationKey::PagesSendImportCheckFirst10Help.format(&[])}
                             </p>
                         </div>
                     </Show>
@@ -333,7 +354,7 @@ fn ImportModal(
                             });
                         }
                     >
-                        "Use this list"
+                        {move || TranslationKey::PagesSendImportUseList.format(&[])}
                     </button>
                 </Show>
             </div>
@@ -534,28 +555,39 @@ pub fn SendToken() -> impl IntoView {
                     };
                     if ft_metadata_result.is_ok() {
                         set_recipient_warning.set(Some(RecipientWarning {
-                            message: "This is a token contract address, not someone's wallet address, sending tokens to it would likely result in asset loss".to_string(),
+                            message: TranslationKey::PagesSendWarningRecipientTokenContract
+                                .format(&[]),
                             link: Some(format!("/token/{}", recipient_for_validator_check)),
-                            link_text: Some("View token details".to_string()),
+                            link_text: Some(
+                                TranslationKey::PagesSendWarningRecipientTokenContractLink
+                                    .format(&[]),
+                            ),
                         }));
                     } else if nft_metadata_result.is_ok() {
                         set_recipient_warning.set(Some(RecipientWarning {
-                            message: "This is an NFT contract address, not someone's wallet address, sending tokens to it would likely result in asset loss".to_string(),
+                            message: TranslationKey::PagesSendWarningRecipientNftContract
+                                .format(&[]),
                             link: Some(format!("/nfts/{}", recipient_for_validator_check)),
-                            link_text: Some("View NFT collection".to_string()),
+                            link_text: Some(
+                                TranslationKey::PagesSendWarningRecipientNftContractLink
+                                    .format(&[]),
+                            ),
                         }));
                     } else if is_validator_supported(
                         &recipient_for_validator_check,
                         network.get_untracked(),
                     ) {
                         set_recipient_warning.set(Some(RecipientWarning {
-                            message: "This is a validator address. Sending tokens to validators will result in asset loss. Consider using the staking functionality instead".to_string(),
+                            message: TranslationKey::PagesSendWarningRecipientValidator.format(&[]),
                             link: Some(format!("/stake/{}/stake", recipient_for_validator_check)),
-                            link_text: Some("Stake instead".to_string()),
+                            link_text: Some(
+                                TranslationKey::PagesSendWarningRecipientValidatorLink.format(&[]),
+                            ),
                         }));
                     } else if recipient_is_evm_implicit && balance == 0 {
                         set_recipient_warning.set(Some(RecipientWarning {
-                            message: "This is an EVM-like address on NEAR blockchain. These addresses are supported, but they're incredibly rare, so you probably don't want to do this. Please use a bridge if you want to send tokens to Ethereum or other networks".to_string(),
+                            message: TranslationKey::PagesSendWarningRecipientEvmImplicit
+                                .format(&[]),
                             link: None,
                             link_text: None,
                         }));
@@ -583,7 +615,8 @@ pub fn SendToken() -> impl IntoView {
         if let Some(token) = token() {
             if let Ok(amount_decimal) = amount.parse::<BigDecimal>() {
                 if amount_decimal <= 0 {
-                    set_amount_error.set(Some("Amount must be greater than 0".to_string()));
+                    set_amount_error
+                        .set(Some(TranslationKey::PagesSendErrAmountGtZero.format(&[])));
                     set_balance_error_count.set(0);
                     return;
                 }
@@ -594,23 +627,13 @@ pub fn SendToken() -> impl IntoView {
                     let current_count = balance_error_count.get_untracked();
 
                     if current_count == 0 {
-                        set_amount_error.set(Some("Not enough balance".to_string()));
+                        set_amount_error.set(Some(send_err_insufficient_cycle_message(0)));
                         set_balance_error_count.set(1);
                     } else if let Ok(handle) = set_timeout_with_handle(
                         move || {
-                            let error_messages = [
-                                "Not enough balance",
-                                "Still not enough",
-                                "Your persistence won't increase your balance",
-                                "Try again?",
-                                "Minting new tokens...",
-                                "Minting failed. Still not enough balance",
-                                "Please stop trying",
-                                "It won't change anything",
-                            ];
-
-                            let message_index = current_count % error_messages.len();
-                            set_amount_error.set(Some(error_messages[message_index].to_string()));
+                            let message_index = current_count % 8;
+                            set_amount_error
+                                .set(Some(send_err_insufficient_cycle_message(message_index)));
                             set_balance_error_count.set(current_count + 1);
                         },
                         Duration::from_millis(750),
@@ -623,7 +646,7 @@ pub fn SendToken() -> impl IntoView {
                 set_amount_error.set(None);
                 set_balance_error_count.set(0);
             } else {
-                set_amount_error.set(Some("Please enter amount".to_string()));
+                set_amount_error.set(Some(TranslationKey::PagesSendErrAmountEnter.format(&[])));
                 set_balance_error_count.set(0);
             }
         }
@@ -687,7 +710,7 @@ pub fn SendToken() -> impl IntoView {
                     attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer no-mobile-ripple"
                 >
                     <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                    <span>"Back"</span>
+                    <span>{move || TranslationKey::PagesSendBack.format(&[])}</span>
                 </A>
                 <div class="flex gap-2">
                     {move || {
@@ -714,7 +737,9 @@ pub fn SendToken() -> impl IntoView {
                         attr:class="flex items-center gap-2 bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
                     >
                         <Icon icon=icondata::LuUsers width="16" height="16" />
-                        <span>"Multisend"</span>
+                        <span>
+                            {move || TranslationKey::PagesSendMultisend.format(&[])}
+                        </span>
                     </A>
                 </div>
             </div>
@@ -762,7 +787,9 @@ pub fn SendToken() -> impl IntoView {
 
                             <div class="flex flex-col gap-4">
                                 <div class="flex flex-col gap-2">
-                                    <label class="text-gray-400">"Recipient"</label>
+                                    <label class="text-gray-400">
+                                        {move || TranslationKey::PagesSendRecipientLabel.format(&[])}
+                                    </label>
                                     <input
                                         type="text"
                                         class="w-full focus:ring-2 bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 text-base"
@@ -837,35 +864,42 @@ pub fn SendToken() -> impl IntoView {
                                     }}
                                     {move || {
                                         if let Some(recipient_balance) = recipient_balance.get() {
+                                            let line = if let Ok(recipient) =
+                                                recipient.get().parse::<AccountId>()
+                                            {
+                                                let acc_str = recipient.to_string();
+                                                let bal_str = format_token_amount_no_hide(
+                                                    recipient_balance,
+                                                    token.token.metadata.decimals,
+                                                    &token.token.metadata.symbol,
+                                                );
+                                                TranslationKey::PagesSendRecipientHasBalance.format(&[
+                                                    ("account", acc_str.as_str()),
+                                                    ("balance", bal_str.as_str()),
+                                                ])
+                                            } else {
+                                                String::new()
+                                            };
                                             view! {
                                                 <p class="text-green-500 text-sm mt-2 font-medium">
-                                                    {move || {
-                                                        if let Ok(recipient) = recipient.get().parse::<AccountId>()
-                                                        {
-                                                            format_account_id_no_hide(&recipient)
-                                                        } else {
-                                                            ().into_any()
-                                                        }
-                                                    }}" has "
-                                                    {format_token_amount_no_hide(
-                                                        recipient_balance,
-                                                        token.token.metadata.decimals,
-                                                        &token.token.metadata.symbol,
-                                                    )}
+                                                    {line}
                                                 </p>
                                             }
                                                 .into_any()
                                         } else if is_loading_recipient.get() {
                                             view! {
                                                 <p class="text-gray-400 text-sm mt-2 font-medium">
-                                                    Checking...
+                                                    {move || TranslationKey::PagesSendChecking.format(
+                                                        &[],
+                                                    )}
                                                 </p>
                                             }
                                                 .into_any()
                                         } else if has_typed_recipient.get() {
                                             view! {
                                                 <p class="text-red-500 text-sm mt-2 font-medium">
-                                                    "Account does not exist"
+                                                    {move || TranslationKey::PagesSendAccountNotExist
+                                                        .format(&[])}
                                                 </p>
                                             }
                                                 .into_any()
@@ -876,7 +910,9 @@ pub fn SendToken() -> impl IntoView {
                                 </div>
 
                                 <div class="flex flex-col gap-2">
-                                    <label class="text-gray-400">"Amount"</label>
+                                    <label class="text-gray-400">
+                                        {move || TranslationKey::PagesSendAmountLabel.format(&[])}
+                                    </label>
                                     <div class="relative">
                                         <input
                                             type="text"
@@ -931,7 +967,7 @@ pub fn SendToken() -> impl IntoView {
                                                 check_amount(max_amount_str);
                                             }
                                         >
-                                            "MAX"
+                                            {move || TranslationKey::PagesSendMaxButton.format(&[])}
                                         </button>
                                     </div>
                                     {move || {
@@ -979,7 +1015,10 @@ pub fn SendToken() -> impl IntoView {
                                                 view! {
                                                     <>
                                                         <Icon icon=icondata::LuSend width="20" height="20" />
-                                                        <span>"Send"</span>
+                                                        <span>
+                                                            {move || TranslationKey::PagesSendSendButton
+                                                                .format(&[])}
+                                                        </span>
                                                     </>
                                                 }
                                                     .into_any()
@@ -997,7 +1036,9 @@ pub fn SendToken() -> impl IntoView {
                             <div class="bg-red-500/10 p-4 rounded-lg border border-red-500/20">
                                 <div class="flex items-center gap-2 text-red-400">
                                     <Icon icon=icondata::LuTriangleAlert width="20" height="20" />
-                                    <p class="text-white font-medium">"Token not found"</p>
+                                    <p class="text-white font-medium">
+                                        {move || TranslationKey::PagesSendTokenNotFound.format(&[])}
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -1092,26 +1133,28 @@ pub fn SendMultiToken() -> impl IntoView {
                     if let Some(rec) = r.get_mut(index) {
                         let amount_trim = value.trim();
                         if amount_trim.is_empty() {
-                            rec.amount_error = Some("Please enter amount".to_string());
+                            rec.amount_error =
+                                Some(TranslationKey::PagesSendErrAmountEnter.format(&[]));
                             return;
                         }
                         match amount_trim.parse::<BigDecimal>() {
                             Ok(dec) => {
                                 if dec <= 0 {
                                     rec.amount_error =
-                                        Some("Amount must be greater than 0".to_string());
+                                        Some(TranslationKey::PagesSendErrAmountGtZero.format(&[]));
                                     return;
                                 }
                                 let max_amount_dec =
                                     balance_to_decimal(token_data.balance, decimals);
                                 if dec > max_amount_dec {
-                                    rec.amount_error = Some("Not enough balance".to_string());
+                                    rec.amount_error = Some(send_err_insufficient_cycle_message(0));
                                 } else {
                                     rec.amount_error = None;
                                 }
                             }
                             Err(_) => {
-                                rec.amount_error = Some("Please enter amount".to_string());
+                                rec.amount_error =
+                                    Some(TranslationKey::PagesSendErrAmountEnter.format(&[]));
                             }
                         }
                     }
@@ -1271,19 +1314,35 @@ pub fn SendMultiToken() -> impl IntoView {
                     Token::Rhea(_) => (0, Err(()), Err(())),
                 };
                 let warning = if ft_res.is_ok() {
-                    Some(RecipientWarning { message: "This is a token contract address, not someone's wallet address, sending tokens to it would likely result in asset loss".into(), link: Some(format!("/token/{}", account_id_clone)), link_text: Some("View token details".into()) })
+                    Some(RecipientWarning {
+                        message: TranslationKey::PagesSendWarningRecipientTokenContract.format(&[]),
+                        link: Some(format!("/token/{account_id_clone}")),
+                        link_text: Some(
+                            TranslationKey::PagesSendWarningRecipientTokenContractLink.format(&[]),
+                        ),
+                    })
                 } else if nft_res.is_ok() {
-                    Some(RecipientWarning { message: "This is an NFT contract address, not someone's wallet address, sending tokens to it would likely result in asset loss".into(), link: Some(format!("/nfts/{}", account_id_clone)), link_text: Some("View NFT collection".into()) })
+                    Some(RecipientWarning {
+                        message: TranslationKey::PagesSendWarningRecipientNftContract.format(&[]),
+                        link: Some(format!("/nfts/{account_id_clone}")),
+                        link_text: Some(
+                            TranslationKey::PagesSendWarningRecipientNftContractLink.format(&[]),
+                        ),
+                    })
                 } else if crate::pages::stake::is_validator_supported(
                     &account_id_clone,
                     network_val,
                 ) {
-                    Some(RecipientWarning { message: "This is a validator address. Sending tokens to validators will result in asset loss.".into(), link: Some(format!("/stake/{}/stake", account_id_clone)), link_text: Some("Stake instead".into()) })
+                    Some(RecipientWarning {
+                        message: TranslationKey::PagesSendWarningRecipientValidator.format(&[]),
+                        link: Some(format!("/stake/{account_id_clone}/stake")),
+                        link_text: Some(
+                            TranslationKey::PagesSendWarningRecipientValidatorLink.format(&[]),
+                        ),
+                    })
                 } else if recipient_is_evm && bal_res == 0 {
                     Some(RecipientWarning {
-                        message:
-                            "This is an EVM-like address on NEAR blockchain. Please use a bridge."
-                                .into(),
+                        message: TranslationKey::PagesSendWarningRecipientEvmImplicit.format(&[]),
                         link: None,
                         link_text: None,
                     })
@@ -1396,10 +1455,10 @@ pub fn SendMultiToken() -> impl IntoView {
                 const MAX_SIZE: usize = 1024 * 1024; // 1MB
                 if file.size() as usize > MAX_SIZE {
                     #[allow(clippy::float_arithmetic)]
-                    let _ = window().alert_with_message(&format!(
-                        "File too large. Maximum size is 1MB, got {:.1}MB",
-                        file.size() / 1024.0 / 1024.0
-                    ));
+                    let size_mb = format!("{:.1}", file.size() / 1024.0 / 1024.0);
+                    let msg = TranslationKey::PagesSendFileTooLarge
+                        .format(&[("size_mb", size_mb.as_str())]);
+                    let _ = window().alert_with_message(&msg);
                     return;
                 } else {
                     set_file_error.set(None);
@@ -1447,14 +1506,16 @@ pub fn SendMultiToken() -> impl IntoView {
                     attr:class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer no-mobile-ripple"
                 >
                     <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                    <span>"Back"</span>
+                    <span>{move || TranslationKey::PagesSendBack.format(&[])}</span>
                 </A>
                 <A
                     href=move || format!("/send/{}", token_id())
                     attr:class="flex items-center gap-2 bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
                 >
                     <Icon icon=icondata::LuSend width="16" height="16" />
-                    <span>"Single Send"</span>
+                    <span>
+                        {move || TranslationKey::PagesSendSingleSend.format(&[])}
+                    </span>
                 </A>
             </div>
 
@@ -1498,18 +1559,22 @@ pub fn SendMultiToken() -> impl IntoView {
             }}
 
             <div class="flex items-center justify-between mb-2">
-                <h3 class="text-white text-lg font-medium">"Recipients"</h3>
+                <h3 class="text-white text-lg font-medium">
+                    {move || TranslationKey::PagesSendRecipientsHeading.format(&[])}
+                </h3>
                 <div class="flex gap-2">
                     <button
                         class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium cursor-pointer"
                         on:click=add_recipient
                     >
-                        <span>"+ Add Recipient"</span>
+                        <span>
+                            {move || TranslationKey::PagesSendAddRecipient.format(&[])}
+                        </span>
                     </button>
                     <button
                         class="bg-neutral-700 hover:bg-neutral-600 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1 cursor-pointer"
                         on:click=open_file_dialog
-                        title="Import from file"
+                        title=move || TranslationKey::PagesSendImportFromFileTooltip.format(&[])
                     >
                         <Icon icon=icondata::LuUpload width="14" height="14" />
                     </button>
@@ -1545,7 +1610,10 @@ pub fn SendMultiToken() -> impl IntoView {
                                             index < 50
                                                 || index > recipients.get().len().saturating_sub(50)
                                         }}>
-                                            <label class="text-gray-400">"Recipient"</label>
+                                            <label class="text-gray-400">
+                                                {move || TranslationKey::PagesSendRecipientLabel
+                                                    .format(&[])}
+                                            </label>
                                         </Show>
                                         <input
                                             type="text"
@@ -1621,7 +1689,8 @@ pub fn SendMultiToken() -> impl IntoView {
                                                 } else if let Some(Balance::MAX) = rec.recipient_balance {
                                                     view! {
                                                         <p class="text-green-500 text-sm font-medium">
-                                                            "Validation skipped"
+                                                            {move || TranslationKey::PagesSendValidationSkipped
+                                                                .format(&[])}
                                                         </p>
                                                     }
                                                         .into_any()
@@ -1635,38 +1704,46 @@ pub fn SendMultiToken() -> impl IntoView {
                                                             )
                                                         })
                                                         .unwrap_or_else(|| balance.to_string());
+                                                    let account_display =
+                                                        rec.recipient.parse::<AccountId>().map_or_else(
+                                                            |_| rec.recipient.clone(),
+                                                            |a| a.to_string(),
+                                                        );
+                                                    let line = TranslationKey::PagesSendRecipientHasBalance
+                                                        .format(&[
+                                                            ("account", account_display.as_str()),
+                                                            ("balance", formatted_balance.as_str()),
+                                                        ]);
                                                     view! {
-                                                        <p class="text-green-500 text-sm font-medium">
-                                                            {format!("{} has {}", rec.recipient, formatted_balance)}
-                                                        </p>
+                                                        <p class="text-green-500 text-sm font-medium">{line}</p>
                                                     }
                                                         .into_any()
                                                 } else if rec.is_loading_recipient {
                                                     view! {
                                                         <p class="text-gray-400 text-sm font-medium">
-                                                            "Checking..."
+                                                            {move || TranslationKey::PagesSendChecking.format(
+                                                                &[],
+                                                            )}
                                                         </p>
                                                     }
                                                         .into_any()
                                                 } else if rec.has_typed_recipient {
                                                     let is_dup = {
                                                         let lower = rec.recipient.to_lowercase();
-                                                        let mut seen = HashSet::new();
-                                                        for (idx, other) in recipients.get().iter().enumerate() {
-                                                            if idx == index {
-                                                                continue;
-                                                            }
-                                                            if seen.contains(&other.recipient.to_lowercase()) {
-                                                                continue;
-                                                            }
-                                                            seen.insert(other.recipient.to_lowercase());
-                                                        }
-                                                        seen.contains(&lower)
+                                                        recipients.get().iter().enumerate().any(
+                                                            |(idx, other)| {
+                                                                idx != index
+                                                                    && !other.recipient.is_empty()
+                                                                    && other.recipient.to_lowercase()
+                                                                        == lower
+                                                            },
+                                                        )
                                                     };
                                                     let msg = if is_dup {
-                                                        "Duplicate recipient"
+                                                        TranslationKey::PagesSendDuplicateRecipient
+                                                            .format(&[])
                                                     } else {
-                                                        "Account does not exist"
+                                                        TranslationKey::PagesSendAccountNotExist.format(&[])
                                                     };
                                                     view! {
                                                         <p class="text-red-500 text-sm font-medium">{msg}</p>
@@ -1685,7 +1762,9 @@ pub fn SendMultiToken() -> impl IntoView {
                                             index < 50
                                                 || index > recipients.get().len().saturating_sub(50)
                                         }}>
-                                            <label class="text-gray-400">"Amount"</label>
+                                            <label class="text-gray-400">
+                                                {move || TranslationKey::PagesSendAmountLabel.format(&[])}
+                                            </label>
                                         </Show>
                                         <input
                                             type="text"
@@ -1761,7 +1840,11 @@ pub fn SendMultiToken() -> impl IntoView {
                     >
                         {move || {
                             let hidden_count = recipients.get().len() - 50;
-                            format!("Show {} More Recipients", hidden_count)
+                            let count_str = hidden_count.to_string();
+                            TranslationKey::PagesSendShowMoreRecipients.format(&[(
+                                "count",
+                                count_str.as_str(),
+                            )])
                         }}
                     </button>
                 </div>
@@ -1770,11 +1853,20 @@ pub fn SendMultiToken() -> impl IntoView {
             <div class="bg-neutral-900/50 rounded-xl p-4 border border-neutral-700 mt-4">
                 <div class="flex items-center justify-between">
                     <div>
-                        <h4 class="text-white font-medium">"Summary"</h4>
+                        <h4 class="text-white font-medium">
+                            {move || TranslationKey::PagesSendSummary.format(&[])}
+                        </h4>
                         <p class="text-gray-400 text-sm mt-1">
                             {move || {
                                 let count = recipients.get().len();
-                                format!("{} recipient{}", count, if count == 1 { "" } else { "s" })
+                                if count == 1 {
+                                    TranslationKey::PagesSendSummaryRecipientCountOne.format(&[])
+                                } else {
+                                    let cs = count.to_string();
+                                    TranslationKey::PagesSendSummaryRecipientCountMany.format(&[
+                                        ("count", cs.as_str()),
+                                    ])
+                                }
                             }}
                         </p>
                         {move || {
@@ -1789,10 +1881,12 @@ pub fn SendMultiToken() -> impl IntoView {
                                     }
                                 }
                                 if !duplicates.is_empty() {
-                                    warnings
-                                        .push(
-                                            format!("Duplicate recipients: {}", duplicates.join(", ")),
-                                        );
+                                    let list = duplicates.join(", ");
+                                    warnings.push(
+                                        TranslationKey::PagesSendDuplicateRecipients.format(&[
+                                            ("list", list.as_str()),
+                                        ]),
+                                    );
                                 }
                             }
                             if let Some(t) = token() {
@@ -1803,7 +1897,9 @@ pub fn SendMultiToken() -> impl IntoView {
                                     .map(|d| decimal_to_balance(d, t.token.metadata.decimals))
                                     .sum();
                                 if total_raw > t.balance {
-                                    warnings.push("Total amount exceeds balance".to_string());
+                                    warnings.push(
+                                        TranslationKey::PagesSendErrTotalExceedsBalance.format(&[]),
+                                    );
                                 }
                                 if matches!(t.token.account_id, Token::Nep141(_)) {
                                     let recipient_count = recipients.get().len();
@@ -1819,19 +1915,26 @@ pub fn SendMultiToken() -> impl IntoView {
                                         .map(|token| token.balance)
                                         .unwrap_or(0);
                                     if near_balance < required_near.as_yoctonear() {
-                                        warnings
-                                            .push(
-                                                format!(
-                                                    "Insufficient NEAR for gas fees. We recommend having at least {} for {} recipient{}",
-                                                    format_token_amount_no_hide(
-                                                        required_near.as_yoctonear(),
-                                                        24,
-                                                        "NEAR",
-                                                    ),
-                                                    recipient_count,
-                                                    if recipient_count == 1 { "" } else { "s" },
-                                                ),
+                                        let amount_str = format_token_amount_no_hide(
+                                            required_near.as_yoctonear(),
+                                            24,
+                                            "NEAR",
+                                        );
+                                        if recipient_count == 1 {
+                                            warnings.push(
+                                                TranslationKey::PagesSendErrInsufficientNearGasOne
+                                                    .format(&[("amount", amount_str.as_str())]),
                                             );
+                                        } else {
+                                            let rcs = recipient_count.to_string();
+                                            warnings.push(
+                                                TranslationKey::PagesSendErrInsufficientNearGasMany
+                                                    .format(&[
+                                                        ("amount", amount_str.as_str()),
+                                                        ("count", rcs.as_str()),
+                                                    ]),
+                                            );
+                                        }
                                     }
                                 }
                             }
@@ -1874,7 +1977,7 @@ pub fn SendMultiToken() -> impl IntoView {
             >
                 <div class="flex items-center justify-center gap-2">
                     <Icon icon=icondata::LuSend width="20" height="20" />
-                    <span>"Send All"</span>
+                    <span>{move || TranslationKey::PagesSendSendAll.format(&[])}</span>
                 </div>
             </button>
         </div>
@@ -1902,7 +2005,7 @@ pub async fn execute_send(
                         "amount",
                         &format_token_amount_full_precision(transfer.amount, decimals, &symbol),
                     ),
-                    ("recipient", transfer.recipient.as_ref()),
+                    ("recipient", transfer.recipient.as_str()),
                 ]);
 
                 EnqueuedTransaction::create(
