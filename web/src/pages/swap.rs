@@ -486,6 +486,7 @@ pub fn Swap() -> impl IntoView {
             dexes: Some(selected_dexes.get()), // Use selected DEXes
             trader_account_id: Some(current_account.account_id),
             signing_public_key: Some(current_account.secret_key.public_key()),
+            referrer_id: Some("wallet.intear.near".parse().unwrap()),
         })
     };
 
@@ -2096,6 +2097,10 @@ pub struct SwapRequest {
     /// The public key to use for signing. Can be used for `add_public_key` method in
     /// NEAR Intents.
     pub signing_public_key: Option<PublicKey>,
+    /// The account ID of the referrer. If provided, the route will include referral
+    /// parameter for DEXes that support it (DexId::Rhea, DexId::NearIntents,
+    /// DexId::Aidols, DexId::Plach)
+    pub referrer_id: Option<AccountId>,
 }
 
 mod comma_separated {

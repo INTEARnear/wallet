@@ -1,4 +1,4 @@
-Last updated: March 21, 2026
+Last updated: April 1, 2026
 
 1. Overview
 
@@ -27,7 +27,6 @@ We use collected information solely to:
 4. Third-Party Services
 
 The Wallet may rely on third-party infrastructure and services:
-- RPC fallbacks: near.org, fastnear.com. Unless our own Intear RPC has technical issues, it will be used first, before fallbacks. Intear RPC does not store any logs beyond necessary information to run an RPC node on NEAR Protocol
 - Indexers: Token balances and account lookup by public key (during account import) are provided by fastnear.com
 - Live support chat: chatwoot.com
 
