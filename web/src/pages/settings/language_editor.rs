@@ -41,10 +41,10 @@ fn count_translated_in_node(
 }
 
 #[allow(clippy::float_arithmetic)]
-fn progress_bar_color(pct: f64) -> &'static str {
-    if pct >= 100.0 {
+fn progress_bar_color(percentage: f64) -> &'static str {
+    if percentage >= 100.0 {
         "bg-green-500"
-    } else if pct >= 50.0 {
+    } else if percentage >= 50.0 {
         "bg-yellow-500"
     } else {
         "bg-red-500"
@@ -83,7 +83,10 @@ pub fn LanguageEditorPage() -> impl IntoView {
                 <input
                     type="text"
                     class="flex-1 px-3 py-2 bg-neutral-700 border border-neutral-600 rounded text-base text-white"
-                    placeholder=move || TranslationKey::PagesSettingsDeveloperLanguageEditorLanguageNamePlaceholder.format(&[])
+                    placeholder=move || {
+                        TranslationKey::PagesSettingsDeveloperLanguageEditorLanguageNamePlaceholder
+                            .format(&[])
+                    }
                     prop:value=move || new_lang_name.get()
                     on:input=move |ev| set_new_lang_name(event_target_value(&ev))
                 />
@@ -108,7 +111,9 @@ pub fn LanguageEditorPage() -> impl IntoView {
         view! {
             <div class="flex flex-col gap-1 mt-1">
                 <label class="px-3 py-2 bg-neutral-700 hover:bg-neutral-600 border border-neutral-600 rounded text-sm text-gray-300 cursor-pointer text-center">
-                    {move || TranslationKey::PagesSettingsDeveloperLanguageEditorImportJson.format(&[])}
+                    {move || {
+                        TranslationKey::PagesSettingsDeveloperLanguageEditorImportJson.format(&[])
+                    }}
                     <input
                         type="file"
                         accept=".json"
@@ -141,10 +146,12 @@ pub fn LanguageEditorPage() -> impl IntoView {
                                         set_import_error(None);
                                     }
                                     Err(e) => {
-                                        set_import_error(Some(
-                                            TranslationKey::PagesSettingsDeveloperLanguageEditorImportInvalidJson
-                                                .format(&[("error", &e.to_string())]),
-                                        ));
+                                        set_import_error(
+                                            Some(
+                                                TranslationKey::PagesSettingsDeveloperLanguageEditorImportInvalidJson
+                                                    .format(&[("error", &e.to_string())]),
+                                            ),
+                                        );
                                     }
                                 }
                             });
@@ -165,7 +172,9 @@ pub fn LanguageEditorPage() -> impl IntoView {
 
     view! {
         <div class="flex flex-col gap-4 p-4">
-            <div class="text-xl font-semibold">{move || TranslationKey::PagesSettingsDeveloperLanguageEditorTitle.format(&[])}</div>
+            <div class="text-xl font-semibold">
+                {move || TranslationKey::PagesSettingsDeveloperLanguageEditorTitle.format(&[])}
+            </div>
             {move || {
                 let (lang, tree_path) = parsed_route();
                 if let Some(lang) = lang {
@@ -306,7 +315,10 @@ pub fn LanguageEditorPage() -> impl IntoView {
                                 }
                             >
                                 <Icon icon=icondata::LuChevronLeft attr:class="min-w-4 min-h-4" />
-                                {move || TranslationKey::PagesSettingsDeveloperLanguageEditorBack.format(&[])}
+                                {move || {
+                                    TranslationKey::PagesSettingsDeveloperLanguageEditorBack
+                                        .format(&[])
+                                }}
                             </button>
                             <div class="text-sm font-medium text-gray-300">{breadcrumb}</div>
                             <div class="flex flex-col gap-2">{items}</div>
@@ -327,7 +339,10 @@ pub fn LanguageEditorPage() -> impl IntoView {
                                     <div class="flex items-center gap-2">
                                         <span class="font-medium">{display.clone()}</span>
                                         <span class="text-xs px-1.5 py-0.5 bg-sky-900 text-sky-300 rounded">
-                                            {move || TranslationKey::PagesSettingsDeveloperLanguageEditorOfficial.format(&[])}
+                                            {move || {
+                                                TranslationKey::PagesSettingsDeveloperLanguageEditorOfficial
+                                                    .format(&[])
+                                            }}
                                         </span>
                                     </div>
                                     <div class="flex items-center gap-2">
@@ -362,7 +377,7 @@ pub fn LanguageEditorPage() -> impl IntoView {
                             } else {
                                 0.0
                             };
-                            let pct_str = format!("{percent:.3}%");
+                            let percentage_str = format!("{percent:.3}%");
                             let bar_width = format!("width: {percent:.3}%");
                             let bar_color = progress_bar_color(percent);
                             let nav = navigate.clone();
@@ -385,7 +400,7 @@ pub fn LanguageEditorPage() -> impl IntoView {
                                                 ></div>
                                             </div>
                                             <span class="text-sm text-gray-400 w-20 text-right">
-                                                {pct_str}
+                                                {percentage_str}
                                             </span>
                                             <Icon
                                                 icon=icondata::LuChevronRight
@@ -397,7 +412,12 @@ pub fn LanguageEditorPage() -> impl IntoView {
                                         class="p-2 text-blue-400 hover:text-blue-300 hover:bg-neutral-700 rounded cursor-pointer shrink-0"
                                         on:click=move |_| {
                                             let translations = translation_ctx.translations.get();
-                                            let lang_map = translations.get(&Language::Custom(lang_for_download.custom_name().to_string()));
+                                            let lang_map = translations
+                                                .get(
+                                                    &Language::Custom(
+                                                        lang_for_download.custom_name().to_string(),
+                                                    ),
+                                                );
                                             let mut export = BTreeMap::new();
                                             if let Some(map) = lang_map {
                                                 for (key, value) in map {
@@ -410,13 +430,20 @@ pub fn LanguageEditorPage() -> impl IntoView {
                                             let opts = BlobPropertyBag::new();
                                             opts.set_type("application/json");
                                             let blob = Blob::new_with_str_sequence_and_options(
-                                                &Array::of1(&wasm_bindgen::JsValue::from_str(&json)),
-                                                &opts,
-                                            ).unwrap();
-                                            let url = web_sys::Url::create_object_url_with_blob(&blob).unwrap();
-                                            let a: web_sys::HtmlAnchorElement = document().create_element("a").unwrap().unchecked_into();
+                                                    &Array::of1(&wasm_bindgen::JsValue::from_str(&json)),
+                                                    &opts,
+                                                )
+                                                .unwrap();
+                                            let url = web_sys::Url::create_object_url_with_blob(&blob)
+                                                .unwrap();
+                                            let a: web_sys::HtmlAnchorElement = document()
+                                                .create_element("a")
+                                                .unwrap()
+                                                .unchecked_into();
                                             a.set_href(&url);
-                                            a.set_download(&format!("{}.json", lang_for_download.custom_name()));
+                                            a.set_download(
+                                                &format!("{}.json", lang_for_download.custom_name()),
+                                            );
                                             a.click();
                                             web_sys::Url::revoke_object_url(&url).unwrap();
                                         }

@@ -118,8 +118,8 @@ pub struct SignedDelegateActionToSend {
 
 #[component]
 fn TransactionAction(
-    tx_idx: usize,
-    action_idx: usize,
+    tx_index: usize,
+    action_index: usize,
     action: SendTransactionsAction,
     expanded_actions: ReadSignal<HashSet<(usize, usize)>>,
     set_expanded_actions: WriteSignal<HashSet<(usize, usize)>>,
@@ -130,15 +130,15 @@ fn TransactionAction(
         SendTransactionsAction::Native(Action::FunctionCall(_))
             | SendTransactionsAction::WalletSelector(WalletSelectorAction::FunctionCall { .. })
     );
-    let is_expanded = move || expanded_actions.get().contains(&(tx_idx, action_idx));
+    let is_expanded = move || expanded_actions.get().contains(&(tx_index, action_index));
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let (json_copied, set_json_copied) = signal(false);
     let (cli_copied, set_cli_copied) = signal(false);
 
     let toggle_action = move |_| {
         set_expanded_actions.update(|set| {
-            if !set.remove(&(tx_idx, action_idx)) {
-                set.insert((tx_idx, action_idx));
+            if !set.remove(&(tx_index, action_index)) {
+                set.insert((tx_index, action_index));
             }
         });
     };
@@ -339,7 +339,7 @@ fn TransactionAction(
         <div class="flex flex-col gap-1">
             <div class="flex items-start gap-2">
                 <span class="text-neutral-400 text-sm min-w-6">
-                    {format!("{}.", action_idx + 1)}
+                    {format!("{}.", action_index + 1)}
                 </span>
                 <span class="text-neutral-300 text-sm flex-1">{format_action(&action)}</span>
                 {move || {
@@ -463,7 +463,7 @@ fn TransactionAction(
 #[component]
 fn TransactionItem<'a>(
     tx: &'a WalletSelectorTransaction,
-    tx_idx: usize,
+    tx_index: usize,
     expanded_actions: ReadSignal<HashSet<(usize, usize)>>,
     set_expanded_actions: WriteSignal<HashSet<(usize, usize)>>,
 ) -> impl IntoView + use<> {
@@ -471,7 +471,7 @@ fn TransactionItem<'a>(
         <div class="py-4 first:pt-0 last:pb-0">
             <div class="flex items-start gap-3 mb-2">
                 <div class="flex items-center justify-center w-6 h-6 rounded-full bg-neutral-700/50 text-sm text-neutral-300 font-medium">
-                    {(tx_idx + 1).to_string()}
+                    {(tx_index + 1).to_string()}
                 </div>
                 <div class="flex-1 max-w-full wrap-anywhere">
                     <p class="text-neutral-200 font-medium mb-1">
@@ -485,11 +485,11 @@ fn TransactionItem<'a>(
                             .actions
                             .iter()
                             .enumerate()
-                            .map(|(action_idx, action)| {
+                            .map(|(action_index, action)| {
                                 view! {
                                     <TransactionAction
-                                        tx_idx=tx_idx
-                                        action_idx=action_idx
+                                        tx_index=tx_index
+                                        action_index=action_index
                                         action=action.clone()
                                         expanded_actions=expanded_actions
                                         set_expanded_actions=set_expanded_actions
@@ -528,11 +528,11 @@ fn TransactionList(
                             {transactions
                                 .iter()
                                 .enumerate()
-                                .map(|(tx_idx, tx)| {
+                                .map(|(tx_index, tx)| {
                                     view! {
                                         <TransactionItem
                                             tx=tx
-                                            tx_idx=tx_idx
+                                            tx_index=tx_index
                                             expanded_actions=expanded_actions
                                             set_expanded_actions=set_expanded_actions
                                         />

@@ -615,352 +615,208 @@ pub fn Swap() -> impl IntoView {
     let RpcContext { client: rpc_client } = expect_context::<RpcContext>();
 
     view! {
-            <Show
-                when=move || network.get() == Network::Mainnet
-                fallback=move || {
-                    view! {
-                        <div class="flex flex-col items-center justify-center h-full p-8 text-center">
-                            <div class="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mb-4">
-                                <Icon icon=icondata::LuCircleX attr:class="w-8 h-8 text-red-500" />
-                            </div>
-                            <h2 class="text-xl font-bold text-white mb-2">
-                                {move || TranslationKey::PagesSwapMainnetOnlyTitle.format(&[])}
-                            </h2>
-                            <p class="text-gray-400 max-w-md mb-6">
-                                {move || TranslationKey::PagesSwapMainnetOnlyDescription.format(&[])}
-                            </p>
-                            <A
-                                href="/"
-                                attr:class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors cursor-pointer"
-                            >
-                                {move || TranslationKey::PagesSwapGoBack.format(&[])}
-                            </A>
+        <Show
+            when=move || network.get() == Network::Mainnet
+            fallback=move || {
+                view! {
+                    <div class="flex flex-col items-center justify-center h-full p-8 text-center">
+                        <div class="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mb-4">
+                            <Icon icon=icondata::LuCircleX attr:class="w-8 h-8 text-red-500" />
                         </div>
-                    }
+                        <h2 class="text-xl font-bold text-white mb-2">
+                            {move || TranslationKey::PagesSwapMainnetOnlyTitle.format(&[])}
+                        </h2>
+                        <p class="text-gray-400 max-w-md mb-6">
+                            {move || TranslationKey::PagesSwapMainnetOnlyDescription.format(&[])}
+                        </p>
+                        <A
+                            href="/"
+                            attr:class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors cursor-pointer"
+                        >
+                            {move || TranslationKey::PagesSwapGoBack.format(&[])}
+                        </A>
+                    </div>
                 }
-            >
-                <div class="max-w-lg mx-auto min-h-full flex flex-col">
-                    <div class="flex items-center justify-center flex-1">
-                        <div class="w-full mt-8">
-                            <div class="bg-neutral-900 rounded-2xl p-4 space-y-4 relative">
-                                <div class="absolute -top-4 right-4">
-                                    <button
-                                        class="flex items-center gap-1 bg-neutral-800 hover:bg-neutral-700 rounded-lg px-2 py-1 text-sm text-gray-400 hover:text-white transition-colors cursor-pointer"
-                                        on:click=move |_| {
-                                            set_show_slippage_settings
-                                                .set(!show_slippage_settings.get())
-                                        }
-                                    >
-                                        <Icon icon=icondata::LuSettings width="16" height="16" />
-                                        <span>{move || format!("{}", config.get().slippage)}</span>
-                                    </button>
+            }
+        >
+            <div class="max-w-lg mx-auto min-h-full flex flex-col">
+                <div class="flex items-center justify-center flex-1">
+                    <div class="w-full mt-8">
+                        <div class="bg-neutral-900 rounded-2xl p-4 space-y-4 relative">
+                            <div class="absolute -top-4 right-4">
+                                <button
+                                    class="flex items-center gap-1 bg-neutral-800 hover:bg-neutral-700 rounded-lg px-2 py-1 text-sm text-gray-400 hover:text-white transition-colors cursor-pointer"
+                                    on:click=move |_| {
+                                        set_show_slippage_settings
+                                            .set(!show_slippage_settings.get())
+                                    }
+                                >
+                                    <Icon icon=icondata::LuSettings width="16" height="16" />
+                                    <span>{move || format!("{}", config.get().slippage)}</span>
+                                </button>
 
-                                    <Show when=move || show_slippage_settings.get()>
-                                        <>
-                                            <div
-                                                class="fixed inset-0 z-5"
-                                                on:click=move |_| set_show_slippage_settings.set(false)
-                                            ></div>
-                                            <div
-                                                class="absolute top-8 right-0 bg-neutral-800 rounded-xl p-3 shadow-lg border border-neutral-700 z-10 w-48"
-                                                on:click=|ev| ev.stop_propagation()
-                                            >
-                                                <div class="text-white text-sm font-medium mb-3">
-                                                    {move || {
-                                                        TranslationKey::PagesSwapSlippageTolerance.format(&[])
-                                                    }}
-                                                </div>
-                                                <div class="mb-3">
-                                                    <button
-                                                        class=move || {
-                                                            format!(
-                                                                "w-full px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer {}",
-                                                                if matches!(config.get().slippage, Slippage::Auto { .. }) {
-                                                                    "bg-blue-500 text-white"
-                                                                } else {
-                                                                    "bg-neutral-700 hover:bg-neutral-600 text-gray-300"
-                                                                },
-                                                            )
-                                                        }
-                                                        on:click=move |_| {
-                                                            config
-                                                                .update(|c| {
-                                                                    c.slippage = Slippage::default();
-                                                                });
-                                                            set_custom_slippage_input.set("".to_string());
-                                                        }
-                                                    >
-                                                        {move || TranslationKey::PagesSwapSlippageAuto.format(&[])}
-                                                    </button>
-                                                </div>
-                                                <div class="grid grid-cols-2 gap-2 mb-3">
-                                                    {SLIPPAGE_PRESETS
-                                                        .into_iter()
-                                                        .map(|percentage| {
-                                                            let is_selected = move || {
-                                                                if let Slippage::Fixed { slippage } = config.get().slippage
-                                                                {
-                                                                    slippage
-                                                                        == BigDecimal::from_f64(percentage).unwrap()
-                                                                            / 100
-                                                                } else {
-                                                                    false
-                                                                }
-                                                            };
-                                                            view! {
-                                                                <button
-                                                                    class=move || {
-                                                                        format!(
-                                                                            "px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer {}",
-                                                                            if is_selected() {
-                                                                                "bg-blue-500 text-white"
-                                                                            } else {
-                                                                                "bg-neutral-700 hover:bg-neutral-600 text-gray-300"
-                                                                            },
-                                                                        )
-                                                                    }
-                                                                    on:click=move |_| {
-                                                                        config
-                                                                            .update(|c| {
-                                                                                c.slippage = Slippage::Fixed {
-                                                                                    slippage: BigDecimal::from_f64(percentage).unwrap()
-                                                                                        / 100,
-                                                                                };
-                                                                            });
-                                                                        set_custom_slippage_input.set("".to_string());
-                                                                    }
-                                                                >
-                                                                    {format!("{}%", percentage)}
-                                                                </button>
+                                <Show when=move || show_slippage_settings.get()>
+                                    <>
+                                        <div
+                                            class="fixed inset-0 z-5"
+                                            on:click=move |_| set_show_slippage_settings.set(false)
+                                        ></div>
+                                        <div
+                                            class="absolute top-8 right-0 bg-neutral-800 rounded-xl p-3 shadow-lg border border-neutral-700 z-10 w-48"
+                                            on:click=|ev| ev.stop_propagation()
+                                        >
+                                            <div class="text-white text-sm font-medium mb-3">
+                                                {move || {
+                                                    TranslationKey::PagesSwapSlippageTolerance.format(&[])
+                                                }}
+                                            </div>
+                                            <div class="mb-3">
+                                                <button
+                                                    class=move || {
+                                                        format!(
+                                                            "w-full px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer {}",
+                                                            if matches!(config.get().slippage, Slippage::Auto { .. }) {
+                                                                "bg-blue-500 text-white"
+                                                            } else {
+                                                                "bg-neutral-700 hover:bg-neutral-600 text-gray-300"
+                                                            },
+                                                        )
+                                                    }
+                                                    on:click=move |_| {
+                                                        config
+                                                            .update(|c| {
+                                                                c.slippage = Slippage::default();
+                                                            });
+                                                        set_custom_slippage_input.set("".to_string());
+                                                    }
+                                                >
+                                                    {move || TranslationKey::PagesSwapSlippageAuto.format(&[])}
+                                                </button>
+                                            </div>
+                                            <div class="grid grid-cols-2 gap-2 mb-3">
+                                                {SLIPPAGE_PRESETS
+                                                    .into_iter()
+                                                    .map(|percentage| {
+                                                        let is_selected = move || {
+                                                            if let Slippage::Fixed { slippage } = config.get().slippage
+                                                            {
+                                                                slippage == BigDecimal::from_f64(percentage).unwrap() / 100
+                                                            } else {
+                                                                false
                                                             }
-                                                        })
-                                                        .collect_view()}
-                                                </div>
-                                                <div class="space-y-2">
-                                                    <div class="text-gray-400 text-xs">
-                                                        {move || TranslationKey::PagesSwapSlippageCustom.format(&[])}
-                                                    </div>
-                                                    <div class="flex gap-2">
-                                                        <input
-                                                            type="text"
-                                                            class="flex-1 bg-neutral-700 text-white rounded-lg px-2 py-1 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 w-36"
-                                                            placeholder="0-100"
-                                                            prop:value=custom_slippage_input
-                                                            on:input=move |ev| {
-                                                                let value = event_target_value(&ev);
-                                                                set_custom_slippage_input.set(value.clone());
-                                                                if let Ok(percentage) = value.parse::<BigDecimal>() {
-                                                                    let percentage = percentage
-                                                                        .clamp(
-                                                                            BigDecimal::from_str("0.01").unwrap(),
-                                                                            BigDecimal::from(100),
-                                                                        );
+                                                        };
+                                                        view! {
+                                                            <button
+                                                                class=move || {
+                                                                    format!(
+                                                                        "px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer {}",
+                                                                        if is_selected() {
+                                                                            "bg-blue-500 text-white"
+                                                                        } else {
+                                                                            "bg-neutral-700 hover:bg-neutral-600 text-gray-300"
+                                                                        },
+                                                                    )
+                                                                }
+                                                                on:click=move |_| {
                                                                     config
                                                                         .update(|c| {
                                                                             c.slippage = Slippage::Fixed {
-                                                                                slippage: percentage / 100,
+                                                                                slippage: BigDecimal::from_f64(percentage).unwrap() / 100,
                                                                             };
                                                                         });
+                                                                    set_custom_slippage_input.set("".to_string());
                                                                 }
-                                                            }
-                                                        />
-                                                        <span class="text-gray-400 text-sm self-center">"%"</span>
-                                                    </div>
+                                                            >
+                                                                {format!("{}%", percentage)}
+                                                            </button>
+                                                        }
+                                                    })
+                                                    .collect_view()}
+                                            </div>
+                                            <div class="space-y-2">
+                                                <div class="text-gray-400 text-xs">
+                                                    {move || {
+                                                        TranslationKey::PagesSwapSlippageCustom.format(&[])
+                                                    }}
                                                 </div>
-                                                <div class="mt-3 text-xs text-gray-400">
-                                                    {move || TranslationKey::PagesSwapSlippageHelp.format(&[])}
+                                                <div class="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        class="flex-1 bg-neutral-700 text-white rounded-lg px-2 py-1 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 w-36"
+                                                        placeholder="0-100"
+                                                        prop:value=custom_slippage_input
+                                                        on:input=move |ev| {
+                                                            let value = event_target_value(&ev);
+                                                            set_custom_slippage_input.set(value.clone());
+                                                            if let Ok(percentage) = value.parse::<BigDecimal>() {
+                                                                let percentage = percentage
+                                                                    .clamp(
+                                                                        BigDecimal::from_str("0.01").unwrap(),
+                                                                        BigDecimal::from(100),
+                                                                    );
+                                                                config
+                                                                    .update(|c| {
+                                                                        c.slippage = Slippage::Fixed {
+                                                                            slippage: percentage / 100,
+                                                                        };
+                                                                    });
+                                                            }
+                                                        }
+                                                    />
+                                                    <span class="text-gray-400 text-sm self-center">"%"</span>
                                                 </div>
                                             </div>
-                                        </>
-                                    </Show>
-                                </div>
-
-                                <div class="space-y-3">
-                                    <div class="flex justify-between items-center">
-                                        <label class="text-gray-400 text-sm">
-                                            {move || TranslationKey::PagesSwapLabelFrom.format(&[])}
-                                        </label>
-                                        {move || {
-                                            if let Some(token) = token_in.get() {
-                                                view! {
-                                                    <span class="text-gray-400 text-sm">
-                                                        {format_token_amount(
-                                                            token.balance,
-                                                            token.token.metadata.decimals,
-                                                            &token.token.metadata.symbol,
-                                                        )}
-                                                    </span>
-                                                }
-                                                    .into_any()
-                                            } else {
-                                                ().into_any()
-                                            }
-                                        }}
-                                    </div>
-
-                                    <div class="flex gap-3">
-                                        <TokenSelector
-                                            selected_token=token_in
-                                            on_select=move |token: TokenData| {
-                                                set_token_in.set(Some(token));
-                                                set_amount_entered.set("".to_string());
-                                                get_routes_action.clear();
-                                            }
-                                            placeholder=move || {
-                                                TranslationKey::PagesSwapSelectToken.format(&[])
-                                            }
-                                            allow_native_near=true
-                                        />
-
-                                        <div class="flex-1 relative">
-                                            <div class="relative">
-                                                <input
-                                                    type="text"
-                                                    class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 transition-all duration-200 text-base"
-                                                    style=move || get_input_style(true)
-                                                    prop:placeholder=move || {
-                                                        let no_input = validated_amount_entered.get().is_none();
-                                                        let no_routes_found = match get_routes_action.value().get()
-                                                        {
-                                                            Some(Ok(routes)) => routes.routes.is_empty(),
-                                                            _ => false,
-                                                        };
-                                                        if no_routes_found {
-                                                            return "-".to_string();
-                                                        }
-                                                        match swap_mode_memo.get() {
-                                                            SwapMode::ExactIn => "0.0".to_string(),
-                                                            SwapMode::ExactOut if no_input => "0.0".to_string(),
-                                                            SwapMode::ExactOut => {
-                                                                TranslationKey::PagesSwapLoading.format(&[])
-                                                            }
-                                                        }
-                                                    }
-                                                    prop:value=move || {
-                                                        match swap_mode_memo.get() {
-                                                            SwapMode::ExactIn => amount_entered.get(),
-                                                            SwapMode::ExactOut => {
-                                                                get_estimated_amount().unwrap_or_default()
-                                                            }
-                                                        }
-                                                    }
-                                                    on:input=move |ev| {
-                                                        let value = event_target_value(&ev);
-                                                        handle_amount_change(value, SwapMode::ExactIn);
-                                                    }
-                                                />
-                                                <button
-                                                    class="absolute right-2 top-1/2 -translate-y-1/2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm px-3 py-1 rounded-lg transition-colors duration-200 no-mobile-ripple"
-                                                    on:click=move |_| {
-                                                        if let Some(token) = token_in.get() {
-                                                            let max_amount_decimal = balance_to_decimal(
-                                                                token.balance,
-                                                                token.token.metadata.decimals,
-                                                            );
-                                                            let gas_cost_decimal = match token.token.account_id {
-                                                                Token::Near => BigDecimal::from_str("0.05").unwrap(),
-                                                                Token::Nep141(_) => BigDecimal::from_u32(0).unwrap(),
-                                                                Token::Rhea(_) => unreachable!(),
-                                                            };
-                                                            let final_amount = (max_amount_decimal - gas_cost_decimal)
-                                                                .max(BigDecimal::from(0));
-                                                            let amount_str = round_precision_or_significant(
-                                                                final_amount,
-                                                            );
-                                                            handle_amount_change(amount_str, SwapMode::ExactIn);
-                                                        }
-                                                    }
-                                                >
-                                                    {move || TranslationKey::PagesSwapMaxButton.format(&[])}
-                                                </button>
+                                            <div class="mt-3 text-xs text-gray-400">
+                                                {move || TranslationKey::PagesSwapSlippageHelp.format(&[])}
                                             </div>
-                                            {move || {
-                                                if let Some(token) = token_in.get() {
-                                                    let amount_to_use = match swap_mode_memo.get() {
-                                                        SwapMode::ExactIn => amount_entered.get(),
-                                                        SwapMode::ExactOut => {
-                                                            get_estimated_amount().unwrap_or_default()
-                                                        }
-                                                    };
-                                                    if let Ok(amount_decimal) = amount_to_use
-                                                        .parse::<BigDecimal>()
-                                                    {
-                                                        let price_decimal = token.token.price_usd_hardcoded.clone();
-                                                        let usd_value_decimal = amount_decimal * price_decimal;
-
-                                                        view! {
-                                                            <div class="absolute right-3 -bottom-5 text-xs text-gray-400">
-                                                                {format_usd_value_no_hide(usd_value_decimal)}
-                                                            </div>
-                                                        }
-                                                            .into_any()
-                                                    } else {
-                                                        ().into_any()
-                                                    }
-                                                } else {
-                                                    ().into_any()
-                                                }
-                                            }}
                                         </div>
-                                    </div>
+                                    </>
+                                </Show>
+                            </div>
+
+                            <div class="space-y-3">
+                                <div class="flex justify-between items-center">
+                                    <label class="text-gray-400 text-sm">
+                                        {move || TranslationKey::PagesSwapLabelFrom.format(&[])}
+                                    </label>
+                                    {move || {
+                                        if let Some(token) = token_in.get() {
+                                            view! {
+                                                <span class="text-gray-400 text-sm">
+                                                    {format_token_amount(
+                                                        token.balance,
+                                                        token.token.metadata.decimals,
+                                                        &token.token.metadata.symbol,
+                                                    )}
+                                                </span>
+                                            }
+                                                .into_any()
+                                        } else {
+                                            ().into_any()
+                                        }
+                                    }}
                                 </div>
 
-                                <div class="flex justify-center">
-                                    <button
-                                        class="bg-neutral-800 hover:bg-neutral-700 rounded-full p-2 transition-colors cursor-pointer"
-                                        on:click=handle_reverse
-                                    >
-                                        <Icon
-                                            icon=icondata::LuArrowUpDown
-                                            width="20"
-                                            height="20"
-                                            attr:class="text-white"
-                                        />
-                                    </button>
-                                </div>
+                                <div class="flex gap-3">
+                                    <TokenSelector
+                                        selected_token=token_in
+                                        on_select=move |token: TokenData| {
+                                            set_token_in.set(Some(token));
+                                            set_amount_entered.set("".to_string());
+                                            get_routes_action.clear();
+                                        }
+                                        placeholder=move || {
+                                            TranslationKey::PagesSwapSelectToken.format(&[])
+                                        }
+                                        allow_native_near=true
+                                    />
 
-                                <div class="space-y-3 mb-8">
-                                    <div class="flex justify-between items-center">
-                                        <label class="text-gray-400 text-sm">
-                                            {move || TranslationKey::PagesSwapLabelTo.format(&[])}
-                                        </label>
-                                        {move || {
-                                            if let Some(token) = token_out.get() {
-                                                view! {
-                                                    <span class="text-gray-400 text-sm">
-                                                        {format_token_amount(
-                                                            token.balance,
-                                                            token.token.metadata.decimals,
-                                                            &token.token.metadata.symbol,
-                                                        )}
-                                                    </span>
-                                                }
-                                                    .into_any()
-                                            } else {
-                                                ().into_any()
-                                            }
-                                        }}
-                                    </div>
-
-                                    <div class="flex gap-3">
-                                        <TokenSelector
-                                            selected_token=token_out
-                                            on_select=move |token: TokenData| {
-                                                set_token_out.set(Some(token));
-                                                set_amount_entered.set("".to_string());
-                                                get_routes_action.clear();
-                                            }
-                                            placeholder=move || {
-                                                TranslationKey::PagesSwapSelectToken.format(&[])
-                                            }
-                                            allow_native_near=true
-                                        />
-
-                                        <div class="flex-1 relative">
+                                    <div class="flex-1 relative">
+                                        <div class="relative">
                                             <input
                                                 type="text"
                                                 class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 transition-all duration-200 text-base"
-                                                style=move || get_input_style(false)
+                                                style=move || get_input_style(true)
                                                 prop:placeholder=move || {
                                                     let no_input = validated_amount_entered.get().is_none();
                                                     let no_routes_found = match get_routes_action.value().get()
@@ -972,799 +828,951 @@ pub fn Swap() -> impl IntoView {
                                                         return "-".to_string();
                                                     }
                                                     match swap_mode_memo.get() {
-                                                        SwapMode::ExactIn if no_input => "0.0".to_string(),
-                                                        SwapMode::ExactIn => {
+                                                        SwapMode::ExactIn => "0.0".to_string(),
+                                                        SwapMode::ExactOut if no_input => "0.0".to_string(),
+                                                        SwapMode::ExactOut => {
                                                             TranslationKey::PagesSwapLoading.format(&[])
                                                         }
-                                                        SwapMode::ExactOut => "0.0".to_string(),
                                                     }
                                                 }
                                                 prop:value=move || {
                                                     match swap_mode_memo.get() {
-                                                        SwapMode::ExactOut => amount_entered.get(),
-                                                        SwapMode::ExactIn => {
+                                                        SwapMode::ExactIn => amount_entered.get(),
+                                                        SwapMode::ExactOut => {
                                                             get_estimated_amount().unwrap_or_default()
                                                         }
                                                     }
                                                 }
                                                 on:input=move |ev| {
                                                     let value = event_target_value(&ev);
-                                                    handle_amount_change(value, SwapMode::ExactOut);
+                                                    handle_amount_change(value, SwapMode::ExactIn);
                                                 }
                                             />
-                                            {move || {
-                                                if let Some(token) = token_out.get() {
-                                                    let amount_to_use = match swap_mode_memo.get() {
-                                                        SwapMode::ExactOut => amount_entered.get(),
-                                                        SwapMode::ExactIn => {
-                                                            get_estimated_amount().unwrap_or_default()
-                                                        }
-                                                    };
-                                                    if let Ok(amount_decimal) = amount_to_use
-                                                        .parse::<BigDecimal>()
-                                                    {
-                                                        let price_decimal = token.token.price_usd_hardcoded.clone();
-                                                        let usd_value_decimal = amount_decimal * price_decimal;
+                                            <button
+                                                class="absolute right-2 top-1/2 -translate-y-1/2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm px-3 py-1 rounded-lg transition-colors duration-200 no-mobile-ripple"
+                                                on:click=move |_| {
+                                                    if let Some(token) = token_in.get() {
+                                                        let max_amount_decimal = balance_to_decimal(
+                                                            token.balance,
+                                                            token.token.metadata.decimals,
+                                                        );
+                                                        let gas_cost_decimal = match token.token.account_id {
+                                                            Token::Near => BigDecimal::from_str("0.05").unwrap(),
+                                                            Token::Nep141(_) => BigDecimal::from_u32(0).unwrap(),
+                                                            Token::Rhea(_) => unreachable!(),
+                                                        };
+                                                        let final_amount = (max_amount_decimal - gas_cost_decimal)
+                                                            .max(BigDecimal::from(0));
+                                                        let amount_str = round_precision_or_significant(
+                                                            final_amount,
+                                                        );
+                                                        handle_amount_change(amount_str, SwapMode::ExactIn);
+                                                    }
+                                                }
+                                            >
+                                                {move || TranslationKey::PagesSwapMaxButton.format(&[])}
+                                            </button>
+                                        </div>
+                                        {move || {
+                                            if let Some(token) = token_in.get() {
+                                                let amount_to_use = match swap_mode_memo.get() {
+                                                    SwapMode::ExactIn => amount_entered.get(),
+                                                    SwapMode::ExactOut => {
+                                                        get_estimated_amount().unwrap_or_default()
+                                                    }
+                                                };
+                                                if let Ok(amount_decimal) = amount_to_use
+                                                    .parse::<BigDecimal>()
+                                                {
+                                                    let price_decimal = token.token.price_usd_hardcoded.clone();
+                                                    let usd_value_decimal = amount_decimal * price_decimal;
 
+                                                    view! {
+                                                        <div class="absolute right-3 -bottom-5 text-xs text-gray-400">
+                                                            {format_usd_value_no_hide(usd_value_decimal)}
+                                                        </div>
+                                                    }
+                                                        .into_any()
+                                                } else {
+                                                    ().into_any()
+                                                }
+                                            } else {
+                                                ().into_any()
+                                            }
+                                        }}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="flex justify-center">
+                                <button
+                                    class="bg-neutral-800 hover:bg-neutral-700 rounded-full p-2 transition-colors cursor-pointer"
+                                    on:click=handle_reverse
+                                >
+                                    <Icon
+                                        icon=icondata::LuArrowUpDown
+                                        width="20"
+                                        height="20"
+                                        attr:class="text-white"
+                                    />
+                                </button>
+                            </div>
+
+                            <div class="space-y-3 mb-8">
+                                <div class="flex justify-between items-center">
+                                    <label class="text-gray-400 text-sm">
+                                        {move || TranslationKey::PagesSwapLabelTo.format(&[])}
+                                    </label>
+                                    {move || {
+                                        if let Some(token) = token_out.get() {
+                                            view! {
+                                                <span class="text-gray-400 text-sm">
+                                                    {format_token_amount(
+                                                        token.balance,
+                                                        token.token.metadata.decimals,
+                                                        &token.token.metadata.symbol,
+                                                    )}
+                                                </span>
+                                            }
+                                                .into_any()
+                                        } else {
+                                            ().into_any()
+                                        }
+                                    }}
+                                </div>
+
+                                <div class="flex gap-3">
+                                    <TokenSelector
+                                        selected_token=token_out
+                                        on_select=move |token: TokenData| {
+                                            set_token_out.set(Some(token));
+                                            set_amount_entered.set("".to_string());
+                                            get_routes_action.clear();
+                                        }
+                                        placeholder=move || {
+                                            TranslationKey::PagesSwapSelectToken.format(&[])
+                                        }
+                                        allow_native_near=true
+                                    />
+
+                                    <div class="flex-1 relative">
+                                        <input
+                                            type="text"
+                                            class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 transition-all duration-200 text-base"
+                                            style=move || get_input_style(false)
+                                            prop:placeholder=move || {
+                                                let no_input = validated_amount_entered.get().is_none();
+                                                let no_routes_found = match get_routes_action.value().get()
+                                                {
+                                                    Some(Ok(routes)) => routes.routes.is_empty(),
+                                                    _ => false,
+                                                };
+                                                if no_routes_found {
+                                                    return "-".to_string();
+                                                }
+                                                match swap_mode_memo.get() {
+                                                    SwapMode::ExactIn if no_input => "0.0".to_string(),
+                                                    SwapMode::ExactIn => {
+                                                        TranslationKey::PagesSwapLoading.format(&[])
+                                                    }
+                                                    SwapMode::ExactOut => "0.0".to_string(),
+                                                }
+                                            }
+                                            prop:value=move || {
+                                                match swap_mode_memo.get() {
+                                                    SwapMode::ExactOut => amount_entered.get(),
+                                                    SwapMode::ExactIn => {
+                                                        get_estimated_amount().unwrap_or_default()
+                                                    }
+                                                }
+                                            }
+                                            on:input=move |ev| {
+                                                let value = event_target_value(&ev);
+                                                handle_amount_change(value, SwapMode::ExactOut);
+                                            }
+                                        />
+                                        {move || {
+                                            if let Some(token) = token_out.get() {
+                                                let amount_to_use = match swap_mode_memo.get() {
+                                                    SwapMode::ExactOut => amount_entered.get(),
+                                                    SwapMode::ExactIn => {
+                                                        get_estimated_amount().unwrap_or_default()
+                                                    }
+                                                };
+                                                if let Ok(amount_decimal) = amount_to_use
+                                                    .parse::<BigDecimal>()
+                                                {
+                                                    let price_decimal = token.token.price_usd_hardcoded.clone();
+                                                    let usd_value_decimal = amount_decimal * price_decimal;
+
+                                                    view! {
+                                                        <div class="absolute right-3 -bottom-5 text-xs text-gray-400">
+                                                            {format_usd_value_no_hide(usd_value_decimal)}
+                                                        </div>
+                                                    }
+                                                        .into_any()
+                                                } else {
+                                                    ().into_any()
+                                                }
+                                            } else {
+                                                ().into_any()
+                                            }
+                                        }}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {move || {
+                                let has_amount = validated_amount_entered.get().is_some();
+                                let is_loading = get_routes_action.pending().get()
+                                    && get_routes_action.value().get().is_none();
+                                if !has_amount {
+                                    view! {
+                                        <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-center gap-3 w-full min-h-[56px]">
+                                            <span class="text-gray-400 font-medium text-sm">
+                                                {move || TranslationKey::PagesSwapEnterAmount.format(&[])}
+                                            </span>
+                                        </div>
+                                    }
+                                        .into_any()
+                                } else if is_loading {
+                                    view! {
+                                        <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-center gap-3 w-full min-h-[56px]">
+                                            <span class="text-white font-medium text-sm">
+                                                {move || {
+                                                    TranslationKey::PagesSwapFetchingBestRoute.format(&[])
+                                                }}
+                                            </span>
+                                        </div>
+                                    }
+                                        .into_any()
+                                } else if let Some(Ok(routes)) = get_routes_action.value().get() {
+                                    if let Some(best_route) = routes.routes.first() {
+                                        view! {
+                                            <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-between gap-3 w-full min-h-[56px]">
+                                                {match best_route.dex_id {
+                                                    DexId::Aidols => {
                                                         view! {
-                                                            <div class="absolute right-3 -bottom-5 text-xs text-gray-400">
-                                                                {format_usd_value_no_hide(usd_value_decimal)}
+                                                            <img
+                                                                src="/aidols.svg"
+                                                                alt=move || pages_swap_dex_label(DexId::Aidols)
+                                                                class="w-auto h-8"
+                                                            />
+                                                        }
+                                                            .into_any()
+                                                    }
+                                                    DexId::Rhea => {
+                                                        view! {
+                                                            <img
+                                                                src="/rhea.svg"
+                                                                alt=move || pages_swap_dex_label(DexId::Rhea)
+                                                                class="w-auto h-8"
+                                                            />
+                                                        }
+                                                            .into_any()
+                                                    }
+                                                    DexId::RheaDcl => {
+                                                        view! {
+                                                            <img
+                                                                src="/rhea.svg"
+                                                                alt=move || pages_swap_dex_label(DexId::RheaDcl)
+                                                                class="w-auto h-8"
+                                                            />
+                                                        }
+                                                            .into_any()
+                                                    }
+                                                    DexId::Wrap => {
+                                                        view! {
+                                                            <span class="text-white font-medium text-sm">
+                                                                {move || {
+                                                                    TranslationKey::PagesSwapRouteWrapDirectly.format(&[])
+                                                                }}
+                                                            </span>
+                                                        }
+                                                            .into_any()
+                                                    }
+                                                    DexId::MetaPool => {
+                                                        view! {
+                                                            <img
+                                                                src="/metapool.svg"
+                                                                alt=move || pages_swap_dex_label(DexId::MetaPool)
+                                                                class="w-auto h-8"
+                                                            />
+                                                        }
+                                                            .into_any()
+                                                    }
+                                                    DexId::Linear => {
+                                                        view! {
+                                                            <img
+                                                                src="/linear.svg"
+                                                                alt=move || pages_swap_dex_label(DexId::Linear)
+                                                                class="w-auto h-8"
+                                                            />
+                                                        }
+                                                            .into_any()
+                                                    }
+                                                    DexId::XRhea => {
+                                                        view! {
+                                                            <div class="flex items-center gap-2">
+                                                                <img
+                                                                    src="/rhea.svg"
+                                                                    alt=move || pages_swap_dex_label(DexId::XRhea)
+                                                                    class="w-auto h-8"
+                                                                />
+                                                                <span class="text-white font-medium text-sm">
+                                                                    {move || {
+                                                                        TranslationKey::PagesSwapRouteStakeRhea.format(&[])
+                                                                    }}
+                                                                </span>
                                                             </div>
+                                                        }
+                                                            .into_any()
+                                                    }
+                                                    DexId::RNear => {
+                                                        view! {
+                                                            <div class="flex items-center gap-2">
+                                                                <img
+                                                                    src="/rhea.svg"
+                                                                    alt=move || pages_swap_dex_label(DexId::RNear)
+                                                                    class="w-auto h-8"
+                                                                />
+                                                                <span class="text-white font-medium text-sm">
+                                                                    {move || {
+                                                                        TranslationKey::PagesSwapRouteStakeNear.format(&[])
+                                                                    }}
+                                                                </span>
+                                                            </div>
+                                                        }
+                                                            .into_any()
+                                                    }
+                                                    DexId::Plach => {
+                                                        view! {
+                                                            <div class="flex items-center gap-2">
+                                                                <img
+                                                                    src="/intear.svg"
+                                                                    alt=move || pages_swap_dex_label(DexId::Plach)
+                                                                    class="w-auto h-8"
+                                                                />
+                                                                <span class="text-white font-medium text-sm">
+                                                                    {move || TranslationKey::PagesSwapRoutePlach.format(&[])}
+                                                                </span>
+                                                            </div>
+                                                        }
+                                                            .into_any()
+                                                    }
+                                                }} <div class="flex items-center gap-2">
+                                                    <span class="text-white font-medium text-sm">
+                                                        {move || TranslationKey::PagesSwapBestRoute.format(&[])}
+                                                    </span>
+                                                    {if !best_route.has_slippage {
+                                                        view! {
+                                                            <span class="hidden md:inline bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded-full">
+                                                                {move || {
+                                                                    TranslationKey::PagesSwapBadgeNoSlippage.format(&[])
+                                                                }}
+                                                            </span>
                                                         }
                                                             .into_any()
                                                     } else {
                                                         ().into_any()
-                                                    }
-                                                } else {
-                                                    ().into_any()
-                                                }
-                                            }}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {move || {
-                                    let has_amount = validated_amount_entered.get().is_some();
-                                    let is_loading = get_routes_action.pending().get()
-                                        && get_routes_action.value().get().is_none();
-                                    if !has_amount {
-                                        view! {
-                                            <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-center gap-3 w-full min-h-[56px]">
-                                                <span class="text-gray-400 font-medium text-sm">
-                                                    {move || TranslationKey::PagesSwapEnterAmount.format(&[])}
-                                                </span>
-                                            </div>
-                                        }
-                                            .into_any()
-                                    } else if is_loading {
-                                        view! {
-                                            <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-center gap-3 w-full min-h-[56px]">
-                                                <span class="text-white font-medium text-sm">
-                                                    {move || TranslationKey::PagesSwapFetchingBestRoute.format(&[])}
-                                                </span>
-                                            </div>
-                                        }
-                                            .into_any()
-                                    } else if let Some(Ok(routes)) = get_routes_action.value().get() {
-                                        if let Some(best_route) = routes.routes.first() {
-                                            view! {
-                                                <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-between gap-3 w-full min-h-[56px]">
-                                                    {match best_route.dex_id {
-                                                        DexId::Aidols => {
-                                                            view! {
-                                                                <img
-                                                                    src="/aidols.svg"
-                                                                    alt=move || pages_swap_dex_label(DexId::Aidols)
-                                                                    class="w-auto h-8"
-                                                                />
-                                                            }
-                                                                .into_any()
-                                                        }
-                                                        DexId::Rhea => {
-                                                            view! {
-                                                                <img
-                                                                    src="/rhea.svg"
-                                                                    alt=move || pages_swap_dex_label(DexId::Rhea)
-                                                                    class="w-auto h-8"
-                                                                />
-                                                            }
-                                                                .into_any()
-                                                        }
-                                                        DexId::RheaDcl => {
-                                                            view! {
-                                                                <img
-                                                                    src="/rhea.svg"
-                                                                    alt=move || pages_swap_dex_label(DexId::RheaDcl)
-                                                                    class="w-auto h-8"
-                                                                />
-                                                            }
-                                                                .into_any()
-                                                        }
-                                                        DexId::Wrap => {
-                                                            view! {
-                                                                <span class="text-white font-medium text-sm">
-                                                                    {move || TranslationKey::PagesSwapRouteWrapDirectly
-                                                                        .format(&[])}
-                                                                </span>
-                                                            }
-                                                                .into_any()
-                                                        }
-                                                        DexId::MetaPool => {
-                                                            view! {
-                                                                <img
-                                                                    src="/metapool.svg"
-                                                                    alt=move || pages_swap_dex_label(DexId::MetaPool)
-                                                                    class="w-auto h-8"
-                                                                />
-                                                            }
-                                                                .into_any()
-                                                        }
-                                                        DexId::Linear => {
-                                                            view! {
-                                                                <img
-                                                                    src="/linear.svg"
-                                                                    alt=move || pages_swap_dex_label(DexId::Linear)
-                                                                    class="w-auto h-8"
-                                                                />
-                                                            }
-                                                                .into_any()
-                                                        }
-                                                        DexId::XRhea => {
-                                                            view! {
-                                                                <div class="flex items-center gap-2">
-                                                                    <img
-                                                                        src="/rhea.svg"
-                                                                        alt=move || pages_swap_dex_label(DexId::XRhea)
-                                                                        class="w-auto h-8"
-                                                                    />
-                                                                    <span class="text-white font-medium text-sm">
-                                                                        {move || TranslationKey::PagesSwapRouteStakeRhea
-                                                                            .format(&[])}
-                                                                    </span>
-                                                                </div>
-                                                            }
-                                                                .into_any()
-                                                        }
-                                                        DexId::RNear => {
-                                                            view! {
-                                                                <div class="flex items-center gap-2">
-                                                                    <img
-                                                                        src="/rhea.svg"
-                                                                        alt=move || pages_swap_dex_label(DexId::RNear)
-                                                                        class="w-auto h-8"
-                                                                    />
-                                                                    <span class="text-white font-medium text-sm">
-                                                                        {move || TranslationKey::PagesSwapRouteStakeNear
-                                                                            .format(&[])}
-                                                                    </span>
-                                                                </div>
-                                                            }
-                                                                .into_any()
-                                                        }
-                                                        DexId::Plach => {
-                                                            view! {
-                                                                <div class="flex items-center gap-2">
-                                                                    <img
-                                                                        src="/intear.svg"
-                                                                        alt=move || pages_swap_dex_label(DexId::Plach)
-                                                                        class="w-auto h-8"
-                                                                    />
-                                                                    <span class="text-white font-medium text-sm">
-                                                                        {move || TranslationKey::PagesSwapRoutePlach.format(
-                                                                            &[],
-                                                                        )}
-                                                                    </span>
-                                                                </div>
-                                                            }
-                                                                .into_any()
-                                                        }
-                                                    }} <div class="flex items-center gap-2">
-                                                        <span class="text-white font-medium text-sm">
-                                                            {move || TranslationKey::PagesSwapBestRoute.format(&[])}
-                                                        </span>
-                                                        {if !best_route.has_slippage {
-                                                            view! {
-                                                                <span class="hidden md:inline bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded-full">
-                                                                    {move || TranslationKey::PagesSwapBadgeNoSlippage
-                                                                        .format(&[])}
-                                                                </span>
-                                                            }
-                                                                .into_any()
-                                                        } else {
-                                                            ().into_any()
-    }}
-                                                    </div>
-                                                </div>
-                                            }
-                                                .into_any()
-                                        } else {
-                                            view! {
-                                                <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-center gap-3 w-full min-h-[56px]">
-                                                    <div class="text-center">
-                                                        <div class="text-red-400 text-sm font-medium mb-1">
-                                                            {move || TranslationKey::PagesSwapNoRoutesTitle.format(&[])}
-                                                        </div>
-                                                        <div class="text-red-300 text-xs">
-                                                            {move || {
-                                                                match swap_mode_memo.get() {
-                                                                    SwapMode::ExactOut => {
-                                                                        TranslationKey::PagesSwapNoRoutesHintExactOut
-                                                                            .format(&[])
-                                                                    }
-                                                                    SwapMode::ExactIn => {
-                                                                        TranslationKey::PagesSwapNoRoutesHintExactIn
-                                                                            .format(&[])
-                                                                    }
-                                                                }
-                                                            }}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            }
-                                                .into_any()
-                                        }
-                                    } else if let Some(Err(error)) = get_routes_action.value().get() {
-                                        view! {
-                                            <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-center gap-3 w-full min-h-[56px]">
-                                                <span class="text-red-400 font-medium text-sm text-center">
-                                                    {move || {
-                                                        TranslationKey::PagesSwapRouterConnectionError.format(&[
-                                                            ("error", &error),
-                                                        ])
                                                     }}
-                                                </span>
+                                                </div>
                                             </div>
                                         }
                                             .into_any()
                                     } else {
-                                        // Fallback case
                                         view! {
                                             <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-center gap-3 w-full min-h-[56px]">
-                                                <span class="text-gray-400 font-medium text-sm">
-                                                    {move || TranslationKey::PagesSwapEnterAmount.format(&[])}
-                                                </span>
+                                                <div class="text-center">
+                                                    <div class="text-red-400 text-sm font-medium mb-1">
+                                                        {move || TranslationKey::PagesSwapNoRoutesTitle.format(&[])}
+                                                    </div>
+                                                    <div class="text-red-300 text-xs">
+                                                        {move || {
+                                                            match swap_mode_memo.get() {
+                                                                SwapMode::ExactOut => {
+                                                                    TranslationKey::PagesSwapNoRoutesHintExactOut.format(&[])
+                                                                }
+                                                                SwapMode::ExactIn => {
+                                                                    TranslationKey::PagesSwapNoRoutesHintExactIn.format(&[])
+                                                                }
+                                                            }
+                                                        }}
+                                                    </div>
+                                                </div>
                                             </div>
                                         }
                                             .into_any()
                                     }
-                                }}
-
-                                <button
-                                    class="w-full bg-linear-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 disabled:opacity-50 disabled:from-neutral-600 disabled:to-neutral-700 text-white rounded-xl px-4 py-4 font-medium transition-all cursor-pointer disabled:cursor-not-allowed"
-                                    disabled=move || {
-                                        token_in.get().is_none() || token_out.get().is_none()
-                                            || amount_entered.get().is_empty()
-                                            || validated_amount_entered.get().is_none()
-                                            || !has_sufficient_balance.get()
-                                            || match get_routes_action.value().get() {
-                                                Some(Ok(routes)) => routes.routes.is_empty(),
-                                                _ => true,
-                                            }
+                                } else if let Some(Err(error)) = get_routes_action.value().get() {
+                                    view! {
+                                        <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-center gap-3 w-full min-h-[56px]">
+                                            <span class="text-red-400 font-medium text-sm text-center">
+                                                {move || {
+                                                    TranslationKey::PagesSwapRouterConnectionError
+                                                        .format(&[("error", &error)])
+                                                }}
+                                            </span>
+                                        </div>
                                     }
-                                    on:click=move |_| {
-                                        if let Some(Ok(routes)) = get_routes_action.value().get()
-                                            && let Some(best_route) = routes.routes.first()
-                                        {
-                                            let Some(validated_amount_entered) = validated_amount_entered
-                                                .get() else {
-                                                log::error!(
-                                                    "No validated amount entered, yet clicked swap"
+                                        .into_any()
+                                } else {
+                                    // Fallback case
+                                    view! {
+                                        <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-center gap-3 w-full min-h-[56px]">
+                                            <span class="text-gray-400 font-medium text-sm">
+                                                {move || TranslationKey::PagesSwapEnterAmount.format(&[])}
+                                            </span>
+                                        </div>
+                                    }
+                                        .into_any()
+                                }
+                            }}
+
+                            <button
+                                class="w-full bg-linear-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 disabled:opacity-50 disabled:from-neutral-600 disabled:to-neutral-700 text-white rounded-xl px-4 py-4 font-medium transition-all cursor-pointer disabled:cursor-not-allowed"
+                                disabled=move || {
+                                    token_in.get().is_none() || token_out.get().is_none()
+                                        || amount_entered.get().is_empty()
+                                        || validated_amount_entered.get().is_none()
+                                        || !has_sufficient_balance.get()
+                                        || match get_routes_action.value().get() {
+                                            Some(Ok(routes)) => routes.routes.is_empty(),
+                                            _ => true,
+                                        }
+                                }
+                                on:click=move |_| {
+                                    if let Some(Ok(routes)) = get_routes_action.value().get()
+                                        && let Some(best_route) = routes.routes.first()
+                                    {
+                                        let Some(validated_amount_entered) = validated_amount_entered
+                                            .get() else {
+                                            log::error!(
+                                                "No validated amount entered, yet clicked swap"
+                                            );
+                                            return;
+                                        };
+                                        let Some(token_in) = token_in.get() else {
+                                            log::error!("No token in selected, yet clicked swap");
+                                            return;
+                                        };
+                                        let Some(token_out) = token_out.get() else {
+                                            log::error!("No token out selected, yet clicked swap");
+                                            return;
+                                        };
+                                        let (
+                                            amount_in,
+                                            estimated_amount_out,
+                                            worst_case_amount_in,
+                                            worst_case_amount_out,
+                                        ) = match swap_mode_memo.get() {
+                                            SwapMode::ExactIn => {
+                                                match (
+                                                    best_route.estimated_amount,
+                                                    best_route.worst_case_amount,
+                                                ) {
+                                                    (
+                                                        Amount::AmountOut(estimated),
+                                                        Amount::AmountOut(worst_case),
+                                                    ) => {
+                                                        (
+                                                            validated_amount_entered,
+                                                            estimated,
+                                                            validated_amount_entered,
+                                                            worst_case,
+                                                        )
+                                                    }
+                                                    _ => {
+                                                        log::error!("Invalid route amounts for ExactIn mode");
+                                                        return;
+                                                    }
+                                                }
+                                            }
+                                            SwapMode::ExactOut => {
+                                                match (
+                                                    best_route.estimated_amount,
+                                                    best_route.worst_case_amount,
+                                                ) {
+                                                    (
+                                                        Amount::AmountIn(estimated_in),
+                                                        Amount::AmountIn(worst_case_in),
+                                                    ) => {
+                                                        (
+                                                            estimated_in,
+                                                            validated_amount_entered,
+                                                            worst_case_in,
+                                                            validated_amount_entered,
+                                                        )
+                                                    }
+                                                    _ => {
+                                                        log::error!("Invalid route amounts for ExactOut mode");
+                                                        return;
+                                                    }
+                                                }
+                                            }
+                                        };
+                                        let requires_impact_confirmation = {
+                                            let token_in_info = &token_in.token;
+                                            let token_out_info = &token_out.token;
+                                            if !token_in_info.price_usd_hardcoded.is_zero()
+                                                && !token_out_info.price_usd_hardcoded.is_zero()
+                                            {
+                                                let amount_in_decimal = balance_to_decimal(
+                                                    amount_in,
+                                                    token_in_info.metadata.decimals,
                                                 );
-                                                return;
-                                            };
-                                            let Some(token_in) = token_in.get() else {
-                                                log::error!("No token in selected, yet clicked swap");
-                                                return;
-                                            };
-                                            let Some(token_out) = token_out.get() else {
-                                                log::error!("No token out selected, yet clicked swap");
-                                                return;
-                                            };
-                                            let (
-                                                amount_in,
-                                                estimated_amount_out,
-                                                worst_case_amount_in,
-                                                worst_case_amount_out,
-                                            ) = match swap_mode_memo.get() {
-                                                SwapMode::ExactIn => {
-                                                    match (
-                                                        best_route.estimated_amount,
-                                                        best_route.worst_case_amount,
-                                                    ) {
-                                                        (
-                                                            Amount::AmountOut(estimated),
-                                                            Amount::AmountOut(worst_case),
-                                                        ) => {
-                                                            (
-                                                                validated_amount_entered,
-                                                                estimated,
-                                                                validated_amount_entered,
-                                                                worst_case,
-                                                            )
-                                                        }
-                                                        _ => {
-                                                            log::error!("Invalid route amounts for ExactIn mode");
-                                                            return;
-                                                        }
-                                                    }
-                                                }
-                                                SwapMode::ExactOut => {
-                                                    match (
-                                                        best_route.estimated_amount,
-                                                        best_route.worst_case_amount,
-                                                    ) {
-                                                        (
-                                                            Amount::AmountIn(estimated_in),
-                                                            Amount::AmountIn(worst_case_in),
-                                                        ) => {
-                                                            (
-                                                                estimated_in,
-                                                                validated_amount_entered,
-                                                                worst_case_in,
-                                                                validated_amount_entered,
-                                                            )
-                                                        }
-                                                        _ => {
-                                                            log::error!("Invalid route amounts for ExactOut mode");
-                                                            return;
-                                                        }
-                                                    }
-                                                }
-                                            };
-                                            let requires_impact_confirmation = {
-                                                let token_in_info = &token_in.token;
-                                                let token_out_info = &token_out.token;
-                                                if !token_in_info.price_usd_hardcoded.is_zero()
-                                                    && !token_out_info.price_usd_hardcoded.is_zero()
+                                                let estimated_amount_out_decimal = balance_to_decimal(
+                                                    estimated_amount_out,
+                                                    token_out_info.metadata.decimals,
+                                                );
+                                                let input_usd_value = &amount_in_decimal
+                                                    * &token_in_info.price_usd_hardcoded;
+                                                let output_usd_value = &estimated_amount_out_decimal
+                                                    * &token_out_info.price_usd_hardcoded;
+                                                if !input_usd_value.is_zero() && !output_usd_value.is_zero()
                                                 {
-                                                    let amount_in_decimal = balance_to_decimal(
-                                                        amount_in,
-                                                        token_in_info.metadata.decimals,
-                                                    );
-                                                    let estimated_amount_out_decimal = balance_to_decimal(
-                                                        estimated_amount_out,
-                                                        token_out_info.metadata.decimals,
-                                                    );
-                                                    let input_usd_value =
-                                                        &amount_in_decimal * &token_in_info.price_usd_hardcoded;
-                                                    let output_usd_value = &estimated_amount_out_decimal
-                                                        * &token_out_info.price_usd_hardcoded;
-                                                    if !input_usd_value.is_zero()
-                                                        && !output_usd_value.is_zero()
-                                                    {
-                                                        let difference = &input_usd_value - &output_usd_value;
-                                                        if difference.sign() == Sign::Plus {
-                                                            ((difference / &input_usd_value)
-                                                                * 100)
-                                                                > 10
-                                                        } else {
-                                                            false
-                                                        }
+                                                    let difference = &input_usd_value - &output_usd_value;
+                                                    if difference.sign() == Sign::Plus {
+                                                        ((difference / &input_usd_value) * 100) > 10
                                                     } else {
                                                         false
                                                     }
                                                 } else {
                                                     false
                                                 }
-                                            };
-                                            if config.get().swap_confirmation_enabled
-                                                || requires_impact_confirmation
-                                            {
-                                                let confirmation = SwapConfirmation {
-                                                    token_in: token_in.token.clone(),
-                                                    token_out: token_out.token.clone(),
-                                                    amount_in,
-                                                    estimated_amount_out,
-                                                    worst_case_amount_in,
-                                                    worst_case_amount_out,
-                                                    route: best_route.clone(),
-                                                    swap_mode: swap_mode_memo.get(),
-                                                };
-                                                let confirmation_clone = confirmation.clone();
-                                                modal
-                                                    .set(
-                                                        Some(
-                                                            Box::new(move || {
-                                                                view! {
-                                                                    <SwapConfirmationModal
-                                                                        confirmation=confirmation_clone.clone()
-                                                                        accounts=accounts
-                                                                        add_transaction=add_transaction
-                                                                        overlay_mode=overlay_mode
-                                                                        rpc_client=rpc_client
-                                                                    />
-                                                                }
-                                                                    .into_any()
-                                                            }),
-                                                        ),
-                                                    );
                                             } else {
-                                                let Some(selected_account_id) = accounts
-                                                    .get_untracked()
-                                                    .selected_account_id else {
-                                                    return;
-                                                };
-                                                let Some(selected_account) = accounts
-                                                    .get_untracked()
-                                                    .accounts
-                                                    .into_iter()
-                                                    .find(|account| account.account_id == selected_account_id)
-                                                else {
-                                                    return;
-                                                };
-                                                log::info!("Swapping with route: {best_route:?}");
-                                                spawn_local(
-                                                    execute_route(
-                                                        validated_amount_entered,
-                                                        swap_mode_memo.get(),
-                                                        token_in.token,
-                                                        token_out.token,
-                                                        best_route.clone(),
-                                                        selected_account,
-                                                        add_transaction,
-                                                        overlay_mode,
-                                                        rpc_client.get_untracked(),
-                                                        modal,
+                                                false
+                                            }
+                                        };
+                                        if config.get().swap_confirmation_enabled
+                                            || requires_impact_confirmation
+                                        {
+                                            let confirmation = SwapConfirmation {
+                                                token_in: token_in.token.clone(),
+                                                token_out: token_out.token.clone(),
+                                                amount_in,
+                                                estimated_amount_out,
+                                                worst_case_amount_in,
+                                                worst_case_amount_out,
+                                                route: best_route.clone(),
+                                                swap_mode: swap_mode_memo.get(),
+                                            };
+                                            let confirmation_clone = confirmation.clone();
+                                            modal
+                                                .set(
+                                                    Some(
+                                                        Box::new(move || {
+                                                            view! {
+                                                                <SwapConfirmationModal
+                                                                    confirmation=confirmation_clone.clone()
+                                                                    accounts=accounts
+                                                                    add_transaction=add_transaction
+                                                                    overlay_mode=overlay_mode
+                                                                    rpc_client=rpc_client
+                                                                />
+                                                            }
+                                                                .into_any()
+                                                        }),
                                                     ),
                                                 );
-                                                set_swap_mode.set(SwapMode::ExactIn);
-                                                set_amount_entered.set("".to_string());
-                                            }
+                                        } else {
+                                            let Some(selected_account_id) = accounts
+                                                .get_untracked()
+                                                .selected_account_id else {
+                                                return;
+                                            };
+                                            let Some(selected_account) = accounts
+                                                .get_untracked()
+                                                .accounts
+                                                .into_iter()
+                                                .find(|account| account.account_id == selected_account_id)
+                                            else {
+                                                return;
+                                            };
+                                            log::info!("Swapping with route: {best_route:?}");
+                                            spawn_local(
+                                                execute_route(
+                                                    validated_amount_entered,
+                                                    swap_mode_memo.get(),
+                                                    token_in.token,
+                                                    token_out.token,
+                                                    best_route.clone(),
+                                                    selected_account,
+                                                    add_transaction,
+                                                    overlay_mode,
+                                                    rpc_client.get_untracked(),
+                                                    modal,
+                                                ),
+                                            );
+                                            set_swap_mode.set(SwapMode::ExactIn);
+                                            set_amount_entered.set("".to_string());
                                         }
                                     }
-                                >
-                                    {move || {
-                                        if (get_routes_action.pending().get()
-                                            && get_routes_action.value().get().is_none()
-                                            && validated_amount_entered.get().is_some())
-                                            || get_routes_action
-                                                .value()
-                                                .get()
-                                                .and_then(|routes| routes.ok())
-                                                .map(|routes| { routes.routes.is_empty() })
-                                                .unwrap_or(false)
-                                        {
-                                            view! {
-                                                <div class="flex items-center justify-center gap-2">
-                                                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                                                    <span>
-                                                        {move || TranslationKey::PagesSwapLoading.format(&[])}
-                                                    </span>
-                                                </div>
-                                            }
-                                                .into_any()
-                                        } else {
-                                            view! {
+                                }
+                            >
+                                {move || {
+                                    if (get_routes_action.pending().get()
+                                        && get_routes_action.value().get().is_none()
+                                        && validated_amount_entered.get().is_some())
+                                        || get_routes_action
+                                            .value()
+                                            .get()
+                                            .and_then(|routes| routes.ok())
+                                            .map(|routes| { routes.routes.is_empty() })
+                                            .unwrap_or(false)
+                                    {
+                                        view! {
+                                            <div class="flex items-center justify-center gap-2">
+                                                <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                                                 <span>
-                                                    {move || TranslationKey::PagesSwapButtonSwap.format(&[])}
+                                                    {move || TranslationKey::PagesSwapLoading.format(&[])}
                                                 </span>
-                                            }
-                                                .into_any()
+                                            </div>
                                         }
-                                    }}
+                                            .into_any()
+                                    } else {
+                                        view! {
+                                            <span>
+                                                {move || TranslationKey::PagesSwapButtonSwap.format(&[])}
+                                            </span>
+                                        }
+                                            .into_any()
+                                    }
+                                }}
+                            </button>
+
+                            // Advanced Options Section
+                            <div>
+                                <button
+                                    class="w-full flex items-center justify-end gap-1 text-left cursor-pointer transition-colors no-mobile-ripple"
+                                    on:click=move |_| {
+                                        set_show_advanced_options.set(!show_advanced_options.get())
+                                    }
+                                >
+                                    <span class="text-gray-400 text-sm hover:text-gray-300">
+                                        {move || {
+                                            TranslationKey::PagesSwapAdvancedOptions.format(&[])
+                                        }}
+                                    </span>
+                                    <Icon
+                                        icon=icondata::LuChevronDown
+                                        width="16"
+                                        height="16"
+                                        attr:class="text-gray-400 transition-transform"
+                                        attr:style=move || {
+                                            format!(
+                                                "transform: rotate({}deg);",
+                                                if show_advanced_options.get() { 180 } else { 0 },
+                                            )
+                                        }
+                                    />
                                 </button>
 
-                                // Advanced Options Section
-                                <div>
-                                    <button
-                                        class="w-full flex items-center justify-end gap-1 text-left cursor-pointer transition-colors no-mobile-ripple"
-                                        on:click=move |_| {
-                                            set_show_advanced_options.set(!show_advanced_options.get())
-                                        }
-                                    >
-                                        <span class="text-gray-400 text-sm hover:text-gray-300">
-                                            {move || TranslationKey::PagesSwapAdvancedOptions.format(&[])}
-                                        </span>
-                                        <Icon
-                                            icon=icondata::LuChevronDown
-                                            width="16"
-                                            height="16"
-                                            attr:class="text-gray-400 transition-transform"
-                                            attr:style=move || {
-                                                format!(
-                                                    "transform: rotate({}deg);",
-                                                    if show_advanced_options.get() { 180 } else { 0 },
-                                                )
-                                            }
-                                        />
-                                    </button>
-
-                                    <Show when=move || show_advanced_options.get()>
-                                        <div class="bg-neutral-800 rounded-lg p-4 space-y-4 mt-2">
-                                            <div>
-                                                <div class="text-gray-400 text-sm mb-2">
-                                                    {move || TranslationKey::PagesSwapSectionConfirmation.format(&[])}
-                                                </div>
-                                                <label class="flex items-center gap-2 cursor-pointer">
-                                                    <input
-                                                        type="checkbox"
-                                                        class="w-4 h-4 text-blue-600 bg-neutral-700 border-neutral-600 rounded focus:ring-blue-500 focus:ring-2"
-                                                        prop:checked=move || config.get().swap_confirmation_enabled
-                                                        on:change=move |ev| {
-                                                            let checked = event_target_checked(&ev);
-                                                            config
-                                                                .update(|c| {
-                                                                    c.swap_confirmation_enabled = checked;
-                                                                });
-                                                        }
-                                                    />
-                                                    <span class="text-gray-300 text-sm">
-                                                        {move || TranslationKey::PagesSwapCheckboxAskConfirmation
-                                                            .format(&[])}
-                                                    </span>
-                                                </label>
+                                <Show when=move || show_advanced_options.get()>
+                                    <div class="bg-neutral-800 rounded-lg p-4 space-y-4 mt-2">
+                                        <div>
+                                            <div class="text-gray-400 text-sm mb-2">
+                                                {move || {
+                                                    TranslationKey::PagesSwapSectionConfirmation.format(&[])
+                                                }}
                                             </div>
-                                            {move || {
-                                                if let Some(Ok(routes)) = get_routes_action.value().get() {
-                                                    if let Some(best_route) = routes.routes.first() {
-                                                        let current_mode = swap_mode_memo.get();
-                                                        match best_route.worst_case_amount {
-                                                            Amount::AmountIn(amount) => {
-                                                                if let (Some(token_in), SwapMode::ExactOut) = (
-                                                                    token_in.get(),
-                                                                    current_mode,
-                                                                ) {
-                                                                    let formatted_amount = balance_to_decimal(
-                                                                        amount,
-                                                                        token_in.token.metadata.decimals,
-                                                                    );
-                                                                    let formatted_amount = round_precision_or_significant(
-                                                                        formatted_amount,
-                                                                    );
-                                                                    view! {
-                                                                        <div>
-                                                                            <div class="text-gray-400 text-xs mb-1">
-                                                                                {move || TranslationKey::PagesSwapLabelMaximumSpent
-                                                                                    .format(&[])}
-                                                                            </div>
-                                                                            <div class="text-white text-sm">
-                                                                                {format!(
-                                                                                    "{} {}",
-                                                                                    formatted_amount,
-                                                                                    token_in.token.metadata.symbol,
-                                                                                )}
-                                                                            </div>
+                                            <label class="flex items-center gap-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    class="w-4 h-4 text-blue-600 bg-neutral-700 border-neutral-600 rounded focus:ring-blue-500 focus:ring-2"
+                                                    prop:checked=move || config.get().swap_confirmation_enabled
+                                                    on:change=move |ev| {
+                                                        let checked = event_target_checked(&ev);
+                                                        config
+                                                            .update(|c| {
+                                                                c.swap_confirmation_enabled = checked;
+                                                            });
+                                                    }
+                                                />
+                                                <span class="text-gray-300 text-sm">
+                                                    {move || {
+                                                        TranslationKey::PagesSwapCheckboxAskConfirmation.format(&[])
+                                                    }}
+                                                </span>
+                                            </label>
+                                        </div>
+                                        {move || {
+                                            if let Some(Ok(routes)) = get_routes_action.value().get() {
+                                                if let Some(best_route) = routes.routes.first() {
+                                                    let current_mode = swap_mode_memo.get();
+                                                    match best_route.worst_case_amount {
+                                                        Amount::AmountIn(amount) => {
+                                                            if let (Some(token_in), SwapMode::ExactOut) = (
+                                                                token_in.get(),
+                                                                current_mode,
+                                                            ) {
+                                                                let formatted_amount = balance_to_decimal(
+                                                                    amount,
+                                                                    token_in.token.metadata.decimals,
+                                                                );
+                                                                let formatted_amount = round_precision_or_significant(
+                                                                    formatted_amount,
+                                                                );
+                                                                view! {
+                                                                    <div>
+                                                                        <div class="text-gray-400 text-xs mb-1">
+                                                                            {move || {
+                                                                                TranslationKey::PagesSwapLabelMaximumSpent.format(&[])
+                                                                            }}
                                                                         </div>
-                                                                    }
-                                                                        .into_any()
-                                                                } else {
-                                                                    ().into_any()
-                                                                }
-                                                            }
-                                                            Amount::AmountOut(amount) => {
-                                                                if let (Some(token_out), SwapMode::ExactIn) = (
-                                                                    token_out.get(),
-                                                                    current_mode,
-                                                                ) {
-                                                                    let formatted_amount = balance_to_decimal(
-                                                                        amount,
-                                                                        token_out.token.metadata.decimals,
-                                                                    );
-                                                                    let formatted_amount = round_precision_or_significant(
-                                                                        formatted_amount,
-                                                                    );
-                                                                    view! {
-                                                                        <div>
-                                                                            <div class="text-gray-400 text-xs mb-1">
-                                                                                {move || TranslationKey::PagesSwapLabelMinimumReceived
-                                                                                    .format(&[])}
-                                                                            </div>
-                                                                            <div class="text-white text-sm">
-                                                                                {format!(
-                                                                                    "{} {}",
-                                                                                    formatted_amount,
-                                                                                    token_out.token.metadata.symbol,
-                                                                                )}
-                                                                            </div>
+                                                                        <div class="text-white text-sm">
+                                                                            {format!(
+                                                                                "{} {}",
+                                                                                formatted_amount,
+                                                                                token_in.token.metadata.symbol,
+                                                                            )}
                                                                         </div>
-                                                                    }
-                                                                        .into_any()
-                                                                } else {
-                                                                    ().into_any()
+                                                                    </div>
                                                                 }
+                                                                    .into_any()
+                                                            } else {
+                                                                ().into_any()
                                                             }
                                                         }
-                                                    } else {
-                                                        view! {
-                                                            <div>
-                                                                <div class="text-gray-400 text-xs mb-1">
-                                                                    {move || TranslationKey::PagesSwapLabelMinimumReceived
-                                                                        .format(&[])}
-                                                                </div>
-                                                                <div class="text-white text-sm">"-"</div>
-                                                            </div>
+                                                        Amount::AmountOut(amount) => {
+                                                            if let (Some(token_out), SwapMode::ExactIn) = (
+                                                                token_out.get(),
+                                                                current_mode,
+                                                            ) {
+                                                                let formatted_amount = balance_to_decimal(
+                                                                    amount,
+                                                                    token_out.token.metadata.decimals,
+                                                                );
+                                                                let formatted_amount = round_precision_or_significant(
+                                                                    formatted_amount,
+                                                                );
+                                                                view! {
+                                                                    <div>
+                                                                        <div class="text-gray-400 text-xs mb-1">
+                                                                            {move || {
+                                                                                TranslationKey::PagesSwapLabelMinimumReceived.format(&[])
+                                                                            }}
+                                                                        </div>
+                                                                        <div class="text-white text-sm">
+                                                                            {format!(
+                                                                                "{} {}",
+                                                                                formatted_amount,
+                                                                                token_out.token.metadata.symbol,
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                }
+                                                                    .into_any()
+                                                            } else {
+                                                                ().into_any()
+                                                            }
                                                         }
-                                                            .into_any()
                                                     }
                                                 } else {
                                                     view! {
                                                         <div>
                                                             <div class="text-gray-400 text-xs mb-1">
-                                                                {move || TranslationKey::PagesSwapLabelMinimumReceived
-                                                                    .format(&[])}
+                                                                {move || {
+                                                                    TranslationKey::PagesSwapLabelMinimumReceived.format(&[])
+                                                                }}
                                                             </div>
                                                             <div class="text-white text-sm">"-"</div>
                                                         </div>
                                                     }
                                                         .into_any()
                                                 }
-                                            }}
-                                            <div>
-                                                <div class="text-gray-400 text-sm mb-2">
-                                                    {move || TranslationKey::PagesSwapSectionExchanges.format(&[])}
-                                                </div>
-                                                <div class="grid grid-cols-2 gap-2">
-                                                    {move || {
-                                                        let all_dexes = vec![
-                                                            DexId::Rhea,
-                                                            DexId::RheaDcl,
-                                                            DexId::Aidols,
-                                                            DexId::Wrap,
-                                                            DexId::MetaPool,
-                                                            DexId::Linear,
-                                                            DexId::XRhea,
-                                                            DexId::RNear,
-                                                            DexId::Plach,
-                                                        ];
-                                                        all_dexes
-                                                            .into_iter()
-                                                            .map(|dex| {
-                                                                let is_selected = move || {
-                                                                    selected_dexes.get().contains(&dex)
-                                                                };
+                                            } else {
+                                                view! {
+                                                    <div>
+                                                        <div class="text-gray-400 text-xs mb-1">
+                                                            {move || {
+                                                                TranslationKey::PagesSwapLabelMinimumReceived.format(&[])
+                                                            }}
+                                                        </div>
+                                                        <div class="text-white text-sm">"-"</div>
+                                                    </div>
+                                                }
+                                                    .into_any()
+                                            }
+                                        }}
+                                        <div>
+                                            <div class="text-gray-400 text-sm mb-2">
+                                                {move || {
+                                                    TranslationKey::PagesSwapSectionExchanges.format(&[])
+                                                }}
+                                            </div>
+                                            <div class="grid grid-cols-2 gap-2">
+                                                {move || {
+                                                    let all_dexes = vec![
+                                                        DexId::Rhea,
+                                                        DexId::RheaDcl,
+                                                        DexId::Aidols,
+                                                        DexId::Wrap,
+                                                        DexId::MetaPool,
+                                                        DexId::Linear,
+                                                        DexId::XRhea,
+                                                        DexId::RNear,
+                                                        DexId::Plach,
+                                                    ];
+                                                    all_dexes
+                                                        .into_iter()
+                                                        .map(|dex| {
+                                                            let is_selected = move || {
+                                                                selected_dexes.get().contains(&dex)
+                                                            };
 
-                                                                view! {
-                                                                    <button
-                                                                        class=move || {
-                                                                            format!(
-                                                                                "px-3 py-2 rounded-lg text-xs transition-colors cursor-pointer {}",
-                                                                                if is_selected() {
-                                                                                    "bg-blue-500 text-white"
+                                                            view! {
+                                                                <button
+                                                                    class=move || {
+                                                                        format!(
+                                                                            "px-3 py-2 rounded-lg text-xs transition-colors cursor-pointer {}",
+                                                                            if is_selected() {
+                                                                                "bg-blue-500 text-white"
+                                                                            } else {
+                                                                                "bg-neutral-700 hover:bg-neutral-600 text-gray-300"
+                                                                            },
+                                                                        )
+                                                                    }
+                                                                    on:click=move |_| {
+                                                                        set_selected_dexes
+                                                                            .update(|dexes| {
+                                                                                if dexes.contains(&dex) {
+                                                                                    dexes.retain(|d| *d != dex);
                                                                                 } else {
-                                                                                    "bg-neutral-700 hover:bg-neutral-600 text-gray-300"
-                                                                                },
-                                                                            )
-                                                                        }
-                                                                        on:click=move |_| {
-                                                                            set_selected_dexes
-                                                                                .update(|dexes| {
-                                                                                    if dexes.contains(&dex) {
-                                                                                        dexes.retain(|d| *d != dex);
-                                                                                    } else {
-                                                                                        dexes.push(dex);
-                                                                                    }
-                                                                                });
-                                                                            get_routes_action.clear();
-                                                                        }
-                                                                    >
-                                                                        {move || pages_swap_dex_label(dex)}
-                                                                    </button>
-                                                                }
-                                                            })
-                                                            .collect_view()
-                                                    }}
-                                                </div>
+                                                                                    dexes.push(dex);
+                                                                                }
+                                                                            });
+                                                                        get_routes_action.clear();
+                                                                    }
+                                                                >
+                                                                    {move || pages_swap_dex_label(dex)}
+                                                                </button>
+                                                            }
+                                                        })
+                                                        .collect_view()
+                                                }}
                                             </div>
                                         </div>
-                                    </Show>
-                                </div>
+                                    </div>
+                                </Show>
+                            </div>
 
-                                {move || {
-                                    let input_usd = if let Some(token_in_data) = token_in.get() {
-                                        let amount_to_use = match swap_mode_memo.get() {
-                                            SwapMode::ExactIn => amount_entered.get(),
-                                            SwapMode::ExactOut => {
-                                                get_estimated_amount().unwrap_or_default()
-                                            }
-                                        };
-                                        if let Ok(amount_decimal) = amount_to_use.parse::<BigDecimal>()
-                                        {
-                                            Some(
-                                                amount_decimal
-                                                    * token_in_data.token.price_usd_hardcoded.clone(),
-                                            )
-                                        } else {
-                                            None
+                            {move || {
+                                let input_usd = if let Some(token_in_data) = token_in.get() {
+                                    let amount_to_use = match swap_mode_memo.get() {
+                                        SwapMode::ExactIn => amount_entered.get(),
+                                        SwapMode::ExactOut => {
+                                            get_estimated_amount().unwrap_or_default()
                                         }
+                                    };
+                                    if let Ok(amount_decimal) = amount_to_use.parse::<BigDecimal>()
+                                    {
+                                        Some(
+                                            amount_decimal
+                                                * token_in_data.token.price_usd_hardcoded.clone(),
+                                        )
                                     } else {
                                         None
-                                    };
-                                    let output_usd = if let Some(token_out_data) = token_out.get() {
-                                        let amount_to_use = match swap_mode_memo.get() {
-                                            SwapMode::ExactOut => amount_entered.get(),
-                                            SwapMode::ExactIn => {
-                                                get_estimated_amount().unwrap_or_default()
-                                            }
-                                        };
-                                        if let Ok(amount_decimal) = amount_to_use.parse::<BigDecimal>()
-                                        {
-                                            Some(
-                                                amount_decimal
-                                                    * token_out_data.token.price_usd_hardcoded.clone(),
-                                            )
-                                        } else {
-                                            None
+                                    }
+                                } else {
+                                    None
+                                };
+                                let output_usd = if let Some(token_out_data) = token_out.get() {
+                                    let amount_to_use = match swap_mode_memo.get() {
+                                        SwapMode::ExactOut => amount_entered.get(),
+                                        SwapMode::ExactIn => {
+                                            get_estimated_amount().unwrap_or_default()
                                         }
+                                    };
+                                    if let Ok(amount_decimal) = amount_to_use.parse::<BigDecimal>()
+                                    {
+                                        Some(
+                                            amount_decimal
+                                                * token_out_data.token.price_usd_hardcoded.clone(),
+                                        )
                                     } else {
                                         None
-                                    };
-                                    if let (Some(input_usd_val), Some(output_usd_val)) = (
-                                        input_usd,
-                                        output_usd,
-                                    ) {
-                                        if !input_usd_val.is_zero() && !output_usd_val.is_zero() {
-                                            let difference = &input_usd_val - &output_usd_val;
-                                            if difference.sign() != Sign::Plus {
-                                                return ().into_any();
-                                            }
-                                            let percentage_diff = (&difference / &input_usd_val)
-                                                * 100;
-                                            let five_percent = 5;
-                                            let two_percent = 2;
-                                            if percentage_diff > five_percent {
-                                                let pct = format!("{:.1}", percentage_diff);
-                                                view! {
-                                                    <div class="bg-red-900/20 border border-red-500/30 rounded-lg px-4 py-3 text-center">
-                                                        <div class="text-red-400 text-sm font-medium mb-1">
-                                                            {move || TranslationKey::PagesSwapHighPriceImpactTitle
-                                                                .format(&[])}
-                                                        </div>
-                                                        <div class="text-red-300 text-xs">
-                                                            {move || {
-                                                                TranslationKey::PagesSwapPriceImpactRedDetail.format(&[
-                                                                    ("percent", pct.as_str()),
-                                                                ])
-                                                            }}
-                                                        </div>
+                                    }
+                                } else {
+                                    None
+                                };
+                                if let (Some(input_usd_val), Some(output_usd_val)) = (
+                                    input_usd,
+                                    output_usd,
+                                ) {
+                                    if !input_usd_val.is_zero() && !output_usd_val.is_zero() {
+                                        let difference = &input_usd_val - &output_usd_val;
+                                        if difference.sign() != Sign::Plus {
+                                            return ().into_any();
+                                        }
+                                        let percentage_diff = (&difference / &input_usd_val) * 100;
+                                        let five_percent = 5;
+                                        let two_percent = 2;
+                                        if percentage_diff > five_percent {
+                                            let percentage = format!("{:.1}", percentage_diff);
+                                            view! {
+                                                <div class="bg-red-900/20 border border-red-500/30 rounded-lg px-4 py-3 text-center">
+                                                    <div class="text-red-400 text-sm font-medium mb-1">
+                                                        {move || {
+                                                            TranslationKey::PagesSwapHighPriceImpactTitle.format(&[])
+                                                        }}
                                                     </div>
-                                                }
-                                                    .into_any()
-                                            } else if percentage_diff > two_percent {
-                                                let pct = format!("{:.2}", percentage_diff);
-                                                view! {
-                                                    <div class="bg-yellow-900/20 border border-yellow-500/30 rounded-lg px-4 py-3 text-center">
-                                                        <div class="text-yellow-400 text-sm font-medium mb-1">
-                                                            {move || TranslationKey::PagesSwapHighPriceImpactTitle
-                                                                .format(&[])}
-                                                        </div>
-                                                        <div class="text-yellow-300 text-xs">
-                                                            {move || {
-                                                                TranslationKey::PagesSwapPriceImpactYellowDetail
-                                                                    .format(&[("percent", pct.as_str())])
-                                                            }}
-                                                        </div>
+                                                    <div class="text-red-300 text-xs">
+                                                        {move || {
+                                                            TranslationKey::PagesSwapPriceImpactRedDetail
+                                                                .format(&[("percent", percentage.as_str())])
+                                                        }}
                                                     </div>
-                                                }
-                                                    .into_any()
-                                            } else {
-                                                ().into_any()
+                                                </div>
                                             }
+                                                .into_any()
+                                        } else if percentage_diff > two_percent {
+                                            let percentage = format!("{:.2}", percentage_diff);
+                                            view! {
+                                                <div class="bg-yellow-900/20 border border-yellow-500/30 rounded-lg px-4 py-3 text-center">
+                                                    <div class="text-yellow-400 text-sm font-medium mb-1">
+                                                        {move || {
+                                                            TranslationKey::PagesSwapHighPriceImpactTitle.format(&[])
+                                                        }}
+                                                    </div>
+                                                    <div class="text-yellow-300 text-xs">
+                                                        {move || {
+                                                            TranslationKey::PagesSwapPriceImpactYellowDetail
+                                                                .format(&[("percent", percentage.as_str())])
+                                                        }}
+                                                    </div>
+                                                </div>
+                                            }
+                                                .into_any()
                                         } else {
                                             ().into_any()
                                         }
                                     } else {
                                         ().into_any()
                                     }
-                                }}
-                            </div>
-
-                            <a
-                                href="http://t.me/bettearbot?start=smile-trade"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                class="block mt-4 hover:opacity-80 transition-opacity border border-neutral-700 rounded-lg"
-                            >
-                                <img
-                                    src="/bettear-ad.png"
-                                    alt=move || TranslationKey::PagesSwapBettearAdAlt.format(&[])
-                                    class="w-full h-auto"
-                                />
-                            </a>
+                                } else {
+                                    ().into_any()
+                                }
+                            }}
                         </div>
+
+                        <a
+                            href="http://t.me/bettearbot?start=smile-trade"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="block mt-4 hover:opacity-80 transition-opacity border border-neutral-700 rounded-lg"
+                        >
+                            <img
+                                src="/bettear-ad.png"
+                                alt=move || TranslationKey::PagesSwapBettearAdAlt.format(&[])
+                                class="w-full h-auto"
+                            />
+                        </a>
                     </div>
                 </div>
-            </Show>
-        }
+            </div>
+        </Show>
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2342,8 +2350,10 @@ fn SwapSuccessModal(result: SwapResult) -> impl IntoView {
                                 <Show when=move || {
                                     result.token_in.account_id == Token::Near
                                 }>
-                                    {move || TranslationKey::PagesSwapSuccessModalIncludingGasNote
-                                        .format(&[])}
+                                    {move || {
+                                        TranslationKey::PagesSwapSuccessModalIncludingGasNote
+                                            .format(&[])
+                                    }}
                                 </Show>
                             </div>
                             <div class="flex items-center gap-3">
@@ -2391,7 +2401,9 @@ fn SwapSuccessModal(result: SwapResult) -> impl IntoView {
 
                         <div class="bg-neutral-800 rounded-lg p-4">
                             <div class="text-gray-400 text-sm mb-2">
-                                {move || TranslationKey::PagesSwapSuccessModalYouReceived.format(&[])}
+                                {move || {
+                                    TranslationKey::PagesSwapSuccessModalYouReceived.format(&[])
+                                }}
                             </div>
                             <div class="flex items-center gap-3">
                                 {match result.token_out.metadata.icon {
@@ -2558,7 +2570,10 @@ fn SwapConfirmationModal(
                         // From section
                         <div class="bg-neutral-800 rounded-lg p-4">
                             <div class="text-gray-400 text-sm mb-2">
-                                {move || TranslationKey::PagesSwapConfirmationModalYoureSwapping.format(&[])}
+                                {move || {
+                                    TranslationKey::PagesSwapConfirmationModalYoureSwapping
+                                        .format(&[])
+                                }}
                             </div>
                             <div class="flex items-center gap-3">
                                 {match token_in.metadata.icon {
@@ -2609,7 +2624,9 @@ fn SwapConfirmationModal(
                         // To section
                         <div class="bg-neutral-800 rounded-lg p-4">
                             <div class="text-gray-400 text-sm mb-2">
-                                {move || TranslationKey::PagesSwapConfirmationModalToReceive.format(&[])}
+                                {move || {
+                                    TranslationKey::PagesSwapConfirmationModalToReceive.format(&[])
+                                }}
                             </div>
                             <div class="flex items-center gap-3">
                                 {match token_out.metadata.icon {
@@ -2651,14 +2668,19 @@ fn SwapConfirmationModal(
                         // Transaction details
                         <div class="bg-neutral-800 rounded-lg p-4 space-y-3">
                             <div class="text-gray-400 text-sm font-medium">
-                                {move || TranslationKey::PagesSwapConfirmationModalTransactionDetails
-                                    .format(&[])}
+                                {move || {
+                                    TranslationKey::PagesSwapConfirmationModalTransactionDetails
+                                        .format(&[])
+                                }}
                             </div>
 
                             // DEX info
                             <div class="flex justify-between items-center">
                                 <span class="text-gray-400 text-sm">
-                                    {move || TranslationKey::PagesSwapConfirmationModalExchange.format(&[])}
+                                    {move || {
+                                        TranslationKey::PagesSwapConfirmationModalExchange
+                                            .format(&[])
+                                    }}
                                 </span>
                                 <div class="flex items-center gap-2">
                                     {match route.dex_id {
@@ -2695,8 +2717,9 @@ fn SwapConfirmationModal(
                                         DexId::Wrap => {
                                             view! {
                                                 <span class="text-white text-sm">
-                                                    {move || TranslationKey::PagesSwapRouteWrapDirectly
-                                                        .format(&[])}
+                                                    {move || {
+                                                        TranslationKey::PagesSwapRouteWrapDirectly.format(&[])
+                                                    }}
                                                 </span>
                                             }
                                                 .into_any()
@@ -2730,8 +2753,9 @@ fn SwapConfirmationModal(
                                                         class="w-auto h-5"
                                                     />
                                                     <span class="text-white text-sm">
-                                                        {move || TranslationKey::PagesSwapRouteStakeRhea
-                                                            .format(&[])}
+                                                        {move || {
+                                                            TranslationKey::PagesSwapRouteStakeRhea.format(&[])
+                                                        }}
                                                     </span>
                                                 </div>
                                             }
@@ -2746,8 +2770,9 @@ fn SwapConfirmationModal(
                                                         class="w-auto h-5"
                                                     />
                                                     <span class="text-white text-sm">
-                                                        {move || TranslationKey::PagesSwapRouteStakeNear
-                                                            .format(&[])}
+                                                        {move || {
+                                                            TranslationKey::PagesSwapRouteStakeNear.format(&[])
+                                                        }}
                                                     </span>
                                                 </div>
                                             }
@@ -2762,9 +2787,7 @@ fn SwapConfirmationModal(
                                                         class="w-auto h-5"
                                                     />
                                                     <span class="text-white text-sm">
-                                                        {move || TranslationKey::PagesSwapRoutePlach.format(
-                                                            &[],
-                                                        )}
+                                                        {move || TranslationKey::PagesSwapRoutePlach.format(&[])}
                                                     </span>
                                                 </div>
                                             }
@@ -2783,7 +2806,8 @@ fn SwapConfirmationModal(
                                                 .format(&[])
                                         }
                                         SwapMode::ExactOut => {
-                                            TranslationKey::PagesSwapConfirmationModalMaximumSpent.format(&[])
+                                            TranslationKey::PagesSwapConfirmationModalMaximumSpent
+                                                .format(&[])
                                         }
                                     }}
                                 </span>
@@ -2805,8 +2829,10 @@ fn SwapConfirmationModal(
                                             view! {
                                                 <div class="flex justify-between items-center">
                                                     <span class="text-gray-400 text-sm">
-                                                        {move || TranslationKey::PagesSwapConfirmationModalPriceImpact
-                                                            .format(&[])}
+                                                        {move || {
+                                                            TranslationKey::PagesSwapConfirmationModalPriceImpact
+                                                                .format(&[])
+                                                        }}
                                                     </span>
                                                     <span class=move || {
                                                         format!(
@@ -2870,9 +2896,8 @@ fn SwapConfirmationModal(
                                                 .format(&[])
                                         })
                                         warning_message=Signal::derive(move || {
-                                            TranslationKey::PagesSwapPriceImpactDangerHighWarningBody.format(&[
-                                                ("impact", impact_fmt.as_str()),
-                                            ])
+                                            TranslationKey::PagesSwapPriceImpactDangerHighWarningBody
+                                                .format(&[("impact", impact_fmt.as_str())])
                                         })
                                     />
                                 }
@@ -2888,7 +2913,9 @@ fn SwapConfirmationModal(
                             class="flex-1 bg-neutral-700 hover:bg-neutral-600 text-white rounded-xl px-4 py-3 font-medium transition-colors cursor-pointer"
                             on:click=move |_| modal.set(None)
                         >
-                            {move || TranslationKey::PagesSwapConfirmationModalButtonCancel.format(&[])}
+                            {move || {
+                                TranslationKey::PagesSwapConfirmationModalButtonCancel.format(&[])
+                            }}
                         </button>
                         <button
                             class="flex-1 bg-linear-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-xl px-4 py-3 font-medium transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-blue-500 disabled:hover:to-purple-500"
@@ -2939,7 +2966,10 @@ fn SwapConfirmationModal(
                                 }
                             }
                         >
-                            {move || TranslationKey::PagesSwapConfirmationModalButtonConfirmSwap.format(&[])}
+                            {move || {
+                                TranslationKey::PagesSwapConfirmationModalButtonConfirmSwap
+                                    .format(&[])
+                            }}
                         </button>
                     </div>
                 </div>

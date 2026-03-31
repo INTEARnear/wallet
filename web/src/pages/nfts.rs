@@ -175,13 +175,13 @@ pub async fn fetch_nfts_for_owner(
     loop {
         let batch_requests: Vec<_> = (0..PAGES_PER_BATCH)
             .map(|i| {
-                let idx = from_index + i * PAGE_LIMIT;
+                let index = from_index + i * PAGE_LIMIT;
                 (
                     contract_id.clone(),
                     "nft_tokens_for_owner",
                     serde_json::json!({
                         "account_id": account_id.to_string(),
-                        "from_index": idx.to_string(),
+                        "from_index": index.to_string(),
                         "limit": PAGE_LIMIT,
                     }),
                     QueryFinality::Finality(Finality::DoomSlug),
@@ -304,15 +304,15 @@ pub async fn fetch_nfts(
     let mut extra_indices: Vec<usize> = Vec::new();
     let mut extra_futures = Vec::new();
 
-    for (idx, token_data) in nft_data.tokens.iter().enumerate() {
+    for (index, token_data) in nft_data.tokens.iter().enumerate() {
         let first_page_tokens = first_page_results
-            .get(idx)
+            .get(index)
             .and_then(|r| r.as_ref().ok())
             .cloned()
             .unwrap_or_default();
 
         if first_page_tokens.len() == 100 {
-            extra_indices.push(idx);
+            extra_indices.push(index);
             extra_futures.push(fetch_nfts_for_owner(
                 token_data.contract_id.clone(),
                 account_id.clone(),
@@ -326,8 +326,8 @@ pub async fn fetch_nfts(
 
     if !extra_futures.is_empty() {
         let extra_tokens_vec = futures_util::future::join_all(extra_futures).await;
-        for (idx, extra_tokens) in extra_indices.into_iter().zip(extra_tokens_vec) {
-            tokens_results[idx] = extra_tokens;
+        for (index, extra_tokens) in extra_indices.into_iter().zip(extra_tokens_vec) {
+            tokens_results[index] = extra_tokens;
         }
     }
 
@@ -429,12 +429,12 @@ pub fn NftCollection() -> impl IntoView {
     let toggle_hide_collection = move |_| {
         if let Ok(cid) = contract_id().parse::<AccountId>() {
             config.update(move |cfg| {
-                if let Some(idx) = cfg
+                if let Some(index) = cfg
                     .hidden_nfts
                     .iter()
                     .position(|h| matches!(h, HiddenNft::Collection(id) if id == &cid))
                 {
-                    cfg.hidden_nfts.remove(idx);
+                    cfg.hidden_nfts.remove(index);
                 } else {
                     cfg.hidden_nfts.push(HiddenNft::Collection(cid.clone()));
                 }
@@ -2124,10 +2124,10 @@ pub fn NftTokenDetails() -> impl IntoView {
         move |_| {
             if let (Ok(cid), tid) = (contract_id().parse::<AccountId>(), token_id()) {
                 config.update(move |cfg| {
-                    if let Some(idx) = cfg.hidden_nfts.iter().position(
+                    if let Some(index) = cfg.hidden_nfts.iter().position(
                         |h| matches!(h, HiddenNft::Token(id, t) if id == &cid && t == &tid),
                     ) {
-                        cfg.hidden_nfts.remove(idx);
+                        cfg.hidden_nfts.remove(index);
                     } else {
                         cfg.hidden_nfts
                             .push(HiddenNft::Token(cid.clone(), tid.clone()));

@@ -188,19 +188,14 @@ pub fn History() -> impl IntoView {
                                                 <h2 class="text-white text-lg font-semibold px-4 py-2 bg-neutral-950 sticky top-0 z-10">
                                                     {move || {
                                                         if date_label == "Today" {
-                                                            TranslationKey::PagesHistoryGroupToday
-                                                                .format(&[])
+                                                            TranslationKey::PagesHistoryGroupToday.format(&[])
                                                         } else if date_label == "Yesterday" {
-                                                            TranslationKey::PagesHistoryGroupYesterday
-                                                                .format(&[])
+                                                            TranslationKey::PagesHistoryGroupYesterday.format(&[])
                                                         } else {
-                                                            chrono::NaiveDate::parse_from_str(
-                                                                &date_label,
-                                                                "%B %d, %Y",
-                                                            )
-                                                            .unwrap()
-                                                            .format("%B %d")
-                                                            .to_string()
+                                                            chrono::NaiveDate::parse_from_str(&date_label, "%B %d, %Y")
+                                                                .unwrap()
+                                                                .format("%B %d")
+                                                                .to_string()
                                                         }
                                                     }}
                                                 </h2>
@@ -244,12 +239,11 @@ pub fn History() -> impl IntoView {
                                                                                 view! {
                                                                                     <div>
                                                                                         {move || {
-                                                                                            TranslationKey::PagesHistoryRowUnknown
-                                                                                                .format(&[])
+                                                                                            TranslationKey::PagesHistoryRowUnknown.format(&[])
                                                                                         }}
                                                                                     </div>
                                                                                 }
-                                                                                .into_any()
+                                                                                    .into_any()
                                                                             }
                                                                         }}
                                                                     </div>
@@ -261,10 +255,7 @@ pub fn History() -> impl IntoView {
                                                                                 formatted_datetime.clone()
                                                                             } else {
                                                                                 TranslationKey::PagesHistoryTimeAgo
-                                                                                    .format(&[(
-                                                                                        "duration",
-                                                                                        &time_ago,
-                                                                                    )])
+                                                                                    .format(&[("duration", &time_ago)])
                                                                             }
                                                                         }}
                                                                     </div>
@@ -371,11 +362,7 @@ fn display_transaction(
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let RpcContext { client, .. } = expect_context::<RpcContext>();
     let Some(me) = accounts().selected_account_id else {
-        return view! {
-            <div>
-                {move || TranslationKey::PagesHistoryNoSelectedAccount.format(&[])}
-            </div>
-        }
+        return view! { <div>{move || TranslationKey::PagesHistoryNoSelectedAccount.format(&[])}</div> }
         .into_any();
     };
     let mut actions_config = ActionsConfig::default();
@@ -417,30 +404,20 @@ fn display_transaction(
             }
             if actions.is_empty() {
                 if transaction.final_outcome.transaction.actions.is_empty() {
-                    view! {
-                        <div>
-                            {move || TranslationKey::PagesHistoryEmptyTransaction.format(&[])}
-                        </div>
-                    }
+                    view! { <div>{move || TranslationKey::PagesHistoryEmptyTransaction.format(&[])}</div> }
                     .into_any()
                 } else {
-                    view! {
-                        <div>
-                            {move || TranslationKey::PagesHistoryRowAppInteraction.format(&[])}
-                        </div>
-                    }
+                    view! { <div>{move || TranslationKey::PagesHistoryRowAppInteraction.format(&[])}</div> }
                     .into_any()
                 }
             } else {
                 view! { <div class="flex flex-col gap-2">{actions}</div> }.into_any()
             }
         }
-        TransactionType::FtReceiver => view! {
-            <div>
-                {move || TranslationKey::PagesHistoryReceiveToken.format(&[])}
-            </div>
+        TransactionType::FtReceiver => {
+            view! { <div>{move || TranslationKey::PagesHistoryReceiveToken.format(&[])}</div> }
+                .into_any()
         }
-        .into_any(),
     }
 }
 
@@ -491,9 +468,10 @@ fn add_account_actions(
                                 />
                                 <span>
                                     {move || {
-                                        TranslationKey::PagesHistoryCreateAccount.format_view(
-                                            vec![("account_id", format_account_id(&receiver_id))],
-                                        )
+                                        TranslationKey::PagesHistoryCreateAccount
+                                            .format_view(
+                                                vec![("account_id", format_account_id(&receiver_id))],
+                                            )
                                     }}
                                 </span>
                             </div>
@@ -517,16 +495,12 @@ fn add_account_actions(
                                 <span>
                                     {move || {
                                         TranslationKey::PagesHistoryDeleteAccountWithBeneficiary
-                                            .format_view(vec![
-                                                (
-                                                    "receiver_id",
-                                                    format_account_id(&receiver_id),
-                                                ),
-                                                (
-                                                    "beneficiary_id",
-                                                    format_account_id(&beneficiary_id),
-                                                ),
-                                            ])
+                                            .format_view(
+                                                vec![
+                                                    ("receiver_id", format_account_id(&receiver_id)),
+                                                    ("beneficiary_id", format_account_id(&beneficiary_id)),
+                                                ],
+                                            )
                                     }}
                                 </span>
                             </div>
@@ -611,11 +585,13 @@ fn add_key_actions(
                                 <span class="text-sm text-neutral-400 pl-12">
                                     {move || {
                                         let methods_fragment = if method_names.is_empty() {
-                                            view! { {move || {
-                                                TranslationKey::PagesHistoryAddFunctionCallKeyAllMethods
-                                                    .format(&[])
-                                            }} }
-                                            .into_any()
+                                            view! {
+                                                {move || {
+                                                    TranslationKey::PagesHistoryAddFunctionCallKeyAllMethods
+                                                        .format(&[])
+                                                }}
+                                            }
+                                                .into_any()
                                         } else {
                                             let methods_list = methods_list.clone();
                                             view! {
@@ -627,10 +603,7 @@ fn add_key_actions(
                                                     <div class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 p-2 bg-neutral-800 text-white text-sm rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
                                                         {move || {
                                                             TranslationKey::PagesHistoryAddFunctionCallKeyMethodsTooltip
-                                                                .format(&[(
-                                                                    "methods",
-                                                                    methods_list.as_str(),
-                                                                )])
+                                                                .format(&[("methods", methods_list.as_str())])
                                                         }}
                                                     </div>
                                                 </span>
@@ -641,43 +614,49 @@ fn add_key_actions(
                                                     }}
                                                 </span>
                                             }
-                                            .into_any()
+                                                .into_any()
                                         };
                                         let allowance_fragment = match allowance {
                                             Some(allowance) => {
-                                                let amt = format_token_amount(
+                                                let amount = format_token_amount(
                                                     allowance.as_yoctonear(),
                                                     24,
                                                     "NEAR",
                                                 );
-                                                view! { {move || {
-                                                    TranslationKey::PagesHistoryAddFunctionCallKeyAllowanceUpTo
-                                                        .format(&[("amount", amt.as_str())])
-                                                }} }
-                                                .into_any()
+                                                view! {
+                                                    {move || {
+                                                        TranslationKey::PagesHistoryAddFunctionCallKeyAllowanceUpTo
+                                                            .format(&[("amount", amount.as_str())])
+                                                    }}
+                                                }
+                                                    .into_any()
                                             }
                                             None => {
-                                                view! { {move || {
-                                                    TranslationKey::PagesHistoryAddFunctionCallKeyAllowanceUnlimited
-                                                        .format(&[])
-                                                }} }
-                                                .into_any()
+                                                view! {
+                                                    {move || {
+                                                        TranslationKey::PagesHistoryAddFunctionCallKeyAllowanceUnlimited
+                                                            .format(&[])
+                                                    }}
+                                                }
+                                                    .into_any()
                                             }
                                         };
-                                        let contract_fragment =
-                                            match receiver_id.parse::<AccountId>() {
-                                                Ok(id) => format_account_id(id.as_ref()),
-                                                Err(_) => {
-                                                    view! { <span>{receiver_id.as_str()}</span> }
-                                                        .into_any()
-                                                }
-                                            };
+                                        let contract_fragment = match receiver_id
+                                            .parse::<AccountId>()
+                                        {
+                                            Ok(id) => format_account_id(id.as_ref()),
+                                            Err(_) => {
+                                                view! { <span>{receiver_id.as_str()}</span> }.into_any()
+                                            }
+                                        };
                                         TranslationKey::PagesHistoryAddFunctionCallKeyDescription
-                                            .format_view(vec![
-                                                ("methods", methods_fragment),
-                                                ("contract", contract_fragment),
-                                                ("allowance", allowance_fragment),
-                                            ])
+                                            .format_view(
+                                                vec![
+                                                    ("methods", methods_fragment),
+                                                    ("contract", contract_fragment),
+                                                    ("allowance", allowance_fragment),
+                                                ],
+                                            )
                                     }}
                                 </span>
                             </div>
@@ -760,10 +739,9 @@ fn add_staking_actions(
                                     />
                                     <span>
                                         {move || {
-                                            let amt =
-                                                format_token_amount(amount, 24, "NEAR");
+                                            let amount = format_token_amount(amount, 24, "NEAR");
                                             TranslationKey::PagesHistoryStakeNear
-                                                .format(&[("amount", amt.as_str())])
+                                                .format(&[("amount", amount.as_str())])
                                         }}
                                     </span>
                                 </div>
@@ -786,10 +764,9 @@ fn add_staking_actions(
                                     />
                                     <span>
                                         {move || {
-                                            let amt =
-                                                format_token_amount(amount, 24, "NEAR");
+                                            let amount = format_token_amount(amount, 24, "NEAR");
                                             TranslationKey::PagesHistoryStartUnstakingNear
-                                                .format(&[("amount", amt.as_str())])
+                                                .format(&[("amount", amount.as_str())])
                                         }}
                                     </span>
                                 </div>
@@ -812,9 +789,9 @@ fn add_staking_actions(
                                 />
                                 <span>
                                     {move || {
-                                        let amt = format_token_amount(amount, 24, "NEAR");
+                                        let amount = format_token_amount(amount, 24, "NEAR");
                                         TranslationKey::PagesHistoryWithdrawNear
-                                            .format(&[("amount", amt.as_str())])
+                                            .format(&[("amount", amount.as_str())])
                                     }}
                                 </span>
                             </div>
@@ -868,13 +845,13 @@ fn add_near_actions(
                                     />
                                     <span>
                                         {move || {
-                                            let amt = format_token_amount(
+                                            let amount = format_token_amount(
                                                 deposit.as_yoctonear(),
                                                 24,
                                                 "NEAR",
                                             );
                                             TranslationKey::PagesHistoryTransferNear
-                                                .format(&[("amount", amt.as_str())])
+                                                .format(&[("amount", amount.as_str())])
                                         }}
                                     </span>
                                 </div>
@@ -910,13 +887,13 @@ fn add_near_actions(
                                         />
                                         <span>
                                             {move || {
-                                                let amt = format_token_amount(
+                                                let amount = format_token_amount(
                                                     incoming_deposit.as_yoctonear(),
                                                     24,
                                                     "NEAR",
                                                 );
                                                 TranslationKey::PagesHistoryStorageDepositRefundNear
-                                                    .format(&[("amount", amt.as_str())])
+                                                    .format(&[("amount", amount.as_str())])
                                             }}
                                         </span>
                                     </div>
@@ -937,13 +914,13 @@ fn add_near_actions(
                                         />
                                         <span>
                                             {move || {
-                                                let amt = format_token_amount(
+                                                let amount = format_token_amount(
                                                     incoming_deposit.as_yoctonear(),
                                                     24,
                                                     "NEAR",
                                                 );
                                                 TranslationKey::PagesHistoryReceiveNear
-                                                    .format(&[("amount", amt.as_str())])
+                                                    .format(&[("amount", amount.as_str())])
                                             }}
                                         </span>
                                     </div>
@@ -1002,13 +979,10 @@ fn add_storage_actions(
                                             24,
                                             "NEAR",
                                         );
-                                        let line =
-                                            TranslationKey::PagesHistoryStorageDepositNear.format(
-                                                &[("amount", amount.as_str())],
-                                            );
-                                        let tip =
-                                            TranslationKey::PagesHistoryStorageDepositTooltip
-                                                .format(&[]);
+                                        let line = TranslationKey::PagesHistoryStorageDepositNear
+                                            .format(&[("amount", amount.as_str())]);
+                                        let tip = TranslationKey::PagesHistoryStorageDepositTooltip
+                                            .format(&[]);
                                         view! {
                                             {line}
                                             <Tooltip text=tip />
@@ -1066,9 +1040,9 @@ fn add_wrap_actions(
                             />
                             <span>
                                 {move || {
-                                    let amt = format_token_amount(amount, 24, "NEAR");
+                                    let amount = format_token_amount(amount, 24, "NEAR");
                                     TranslationKey::PagesHistoryWrapNear
-                                        .format(&[("amount", amt.as_str())])
+                                        .format(&[("amount", amount.as_str())])
                                 }}
                             </span>
                         </div>
@@ -1093,9 +1067,9 @@ fn add_wrap_actions(
                             />
                             <span>
                                 {move || {
-                                    let amt = format_token_amount(amount, 24, "NEAR");
+                                    let amount = format_token_amount(amount, 24, "NEAR");
                                     TranslationKey::PagesHistoryUnwrapNear
-                                        .format(&[("amount", amt.as_str())])
+                                        .format(&[("amount", amount.as_str())])
                                 }}
                             </span>
                         </div>
@@ -1270,9 +1244,7 @@ fn add_dex_actions(
                 view! {
                     <div class="flex items-center gap-2">
                         <img src=swap_exchange_logo width="40" height="40" />
-                        <span>
-                            {move || TranslationKey::PagesHistorySwap.format(&[])}
-                        </span>
+                        <span>{move || TranslationKey::PagesHistorySwap.format(&[])}</span>
                     </div>
                 }
                 .into_any(),
@@ -1370,24 +1342,18 @@ fn add_ft_actions(
                                                                 <div class="flex flex-col gap-1">
                                                                     <span>
                                                                         {move || {
-                                                                            let amt = format_token_amount(
+                                                                            let amount = format_token_amount(
                                                                                 transfer.amount,
                                                                                 metadata.decimals,
                                                                                 &metadata.symbol,
                                                                             );
                                                                             TranslationKey::PagesHistoryFtSendTo
-                                                                                .format_view(vec![
-                                                                                    (
-                                                                                        "amount",
-                                                                                        amt.into_any(),
-                                                                                    ),
-                                                                                    (
-                                                                                        "recipient",
-                                                                                        format_account_id(
-                                                                                            &new_owner_id,
-                                                                                        ),
-                                                                                    ),
-                                                                                ])
+                                                                                .format_view(
+                                                                                    vec![
+                                                                                        ("amount", amount.into_any()),
+                                                                                        ("recipient", format_account_id(&new_owner_id)),
+                                                                                    ],
+                                                                                )
                                                                         }}
                                                                     </span>
                                                                     <span class="text-xs">{memo}</span>
@@ -1445,31 +1411,25 @@ fn add_ft_actions(
                                                             </span>
                                                         }
                                                             .into_any()
-                                                        } else {
-                                                            let memo = transfer.memo.clone();
-                                                            let sender_id = transfer.old_owner_id.clone();
-                                                            view! {
-                                                                <div class="flex flex-col gap-1">
+                                                    } else {
+                                                        let memo = transfer.memo.clone();
+                                                        let sender_id = transfer.old_owner_id.clone();
+                                                        view! {
+                                                            <div class="flex flex-col gap-1">
                                                                 <span>
                                                                     {move || {
-                                                                        let amt = format_token_amount(
+                                                                        let amount = format_token_amount(
                                                                             transfer.amount,
                                                                             metadata.decimals,
                                                                             &metadata.symbol,
                                                                         );
                                                                         TranslationKey::PagesHistoryFtReceiveFrom
-                                                                            .format_view(vec![
-                                                                                (
-                                                                                    "amount",
-                                                                                    amt.into_any(),
-                                                                                ),
-                                                                                (
-                                                                                    "sender",
-                                                                                    format_account_id(
-                                                                                        &sender_id,
-                                                                                    ),
-                                                                                ),
-                                                                            ])
+                                                                            .format_view(
+                                                                                vec![
+                                                                                    ("amount", amount.into_any()),
+                                                                                    ("sender", format_account_id(&sender_id)),
+                                                                                ],
+                                                                            )
                                                                     }}
                                                                 </span>
                                                                 <span class="text-xs">{memo}</span>
@@ -1549,16 +1509,13 @@ fn add_ft_actions(
                                                                 <div class="flex flex-col gap-1">
                                                                     <span>
                                                                         {move || {
-                                                                            let amt = format_token_amount(
+                                                                            let amount = format_token_amount(
                                                                                 mint.amount,
                                                                                 metadata.decimals,
                                                                                 &metadata.symbol,
                                                                             );
                                                                             TranslationKey::PagesHistoryFtMint
-                                                                                .format(&[(
-                                                                                    "amount",
-                                                                                    amt.as_str(),
-                                                                                )])
+                                                                                .format(&[("amount", amount.as_str())])
                                                                         }}
                                                                     </span>
                                                                     <span class="text-xs">{memo}</span>
@@ -1640,16 +1597,13 @@ fn add_ft_actions(
                                                                 <div class="flex flex-col gap-1">
                                                                     <span>
                                                                         {move || {
-                                                                            let amt = format_token_amount(
+                                                                            let amount = format_token_amount(
                                                                                 burn.amount,
                                                                                 metadata.decimals,
                                                                                 &metadata.symbol,
                                                                             );
                                                                             TranslationKey::PagesHistoryFtBurn
-                                                                                .format(&[(
-                                                                                    "amount",
-                                                                                    amt.as_str(),
-                                                                                )])
+                                                                                .format(&[("amount", amount.as_str())])
                                                                         }}
                                                                     </span>
                                                                     <span class="text-xs">{memo}</span>
@@ -1713,8 +1667,7 @@ fn add_nft_actions(
                                             let new_owner_id = transfer.new_owner_id.clone();
                                             if let Some(Ok(metadata)) = metadata.get() {
                                                 let metadata = metadata.clone();
-                                                let nft_count =
-                                                    transfer.token_ids.len();
+                                                let nft_count = transfer.token_ids.len();
                                                 let collection_name = metadata.name.clone();
                                                 view! {
                                                     <img
@@ -1747,22 +1700,13 @@ fn add_nft_actions(
                                                                     <span>
                                                                         {move || {
                                                                             TranslationKey::PagesHistoryNftSendTo
-                                                                                .format_view(vec![
-                                                                                    (
-                                                                                        "count",
-                                                                                        nft_count.into_any(),
-                                                                                    ),
-                                                                                    (
-                                                                                        "collection",
-                                                                                        collection_name.clone().into_any(),
-                                                                                    ),
-                                                                                    (
-                                                                                        "recipient",
-                                                                                        format_account_id(
-                                                                                            &new_owner_id,
-                                                                                        ),
-                                                                                    ),
-                                                                                ])
+                                                                                .format_view(
+                                                                                    vec![
+                                                                                        ("count", nft_count.into_any()),
+                                                                                        ("collection", collection_name.clone().into_any()),
+                                                                                        ("recipient", format_account_id(&new_owner_id)),
+                                                                                    ],
+                                                                                )
                                                                         }}
                                                                     </span>
                                                                     <span class="text-xs">{memo}</span>
@@ -1794,8 +1738,7 @@ fn add_nft_actions(
                                         let old_owner_id = transfer.old_owner_id.clone();
                                         if let Some(Ok(metadata)) = metadata.get() {
                                             let metadata = metadata.clone();
-                                            let nft_count =
-                                                transfer.token_ids.len();
+                                            let nft_count = transfer.token_ids.len();
                                             let collection_name = metadata.name.clone();
                                             view! {
                                                 <img
@@ -1828,22 +1771,13 @@ fn add_nft_actions(
                                                                 <span>
                                                                     {move || {
                                                                         TranslationKey::PagesHistoryNftReceiveFrom
-                                                                            .format_view(vec![
-                                                                                (
-                                                                                    "count",
-                                                                                    nft_count.into_any(),
-                                                                                ),
-                                                                                (
-                                                                                    "collection",
-                                                                                    collection_name.clone().into_any(),
-                                                                                ),
-                                                                                (
-                                                                                    "sender",
-                                                                                    format_account_id(
-                                                                                        &old_owner_id,
-                                                                                    ),
-                                                                                ),
-                                                                            ])
+                                                                            .format_view(
+                                                                                vec![
+                                                                                    ("count", nft_count.into_any()),
+                                                                                    ("collection", collection_name.clone().into_any()),
+                                                                                    ("sender", format_account_id(&old_owner_id)),
+                                                                                ],
+                                                                            )
                                                                     }}
                                                                 </span>
                                                                 <span class="text-xs">{memo}</span>
@@ -1881,8 +1815,7 @@ fn add_nft_actions(
                                         {move || {
                                             if let Some(Ok(metadata)) = metadata.get() {
                                                 let metadata = metadata.clone();
-                                                let nft_count =
-                                                    mint.token_ids.len();
+                                                let nft_count = mint.token_ids.len();
                                                 let collection_name = metadata.name.clone();
                                                 view! {
                                                     <img
@@ -1915,16 +1848,12 @@ fn add_nft_actions(
                                                                     <span>
                                                                         {move || {
                                                                             TranslationKey::PagesHistoryNftMint
-                                                                                .format(&[
-                                                                                    (
-                                                                                        "count",
-                                                                                        &nft_count.to_string(),
-                                                                                    ),
-                                                                                    (
-                                                                                        "collection",
-                                                                                        &collection_name.clone(),
-                                                                                    ),
-                                                                                ])
+                                                                                .format(
+                                                                                    &[
+                                                                                        ("count", &nft_count.to_string()),
+                                                                                        ("collection", &collection_name.clone()),
+                                                                                    ],
+                                                                                )
                                                                         }}
                                                                     </span>
                                                                     <span class="text-xs">{memo}</span>
@@ -1964,8 +1893,7 @@ fn add_nft_actions(
                                         {move || {
                                             if let Some(Ok(metadata)) = metadata.get() {
                                                 let metadata = metadata.clone();
-                                                let nft_count =
-                                                    burn.token_ids.len();
+                                                let nft_count = burn.token_ids.len();
                                                 let collection_name = metadata.name.clone();
                                                 view! {
                                                     <img
@@ -1998,16 +1926,12 @@ fn add_nft_actions(
                                                                     <span>
                                                                         {move || {
                                                                             TranslationKey::PagesHistoryNftBurn
-                                                                                .format(&[
-                                                                                    (
-                                                                                        "count",
-                                                                                        &nft_count.to_string(),
-                                                                                    ),
-                                                                                    (
-                                                                                        "collection",
-                                                                                        &collection_name.clone(),
-                                                                                    ),
-                                                                                ])
+                                                                                .format(
+                                                                                    &[
+                                                                                        ("count", &nft_count.to_string()),
+                                                                                        ("collection", &collection_name.clone()),
+                                                                                    ],
+                                                                                )
                                                                         }}
                                                                     </span>
                                                                     <span class="text-xs">{memo}</span>
@@ -2108,10 +2032,7 @@ fn add_harvestmoon_actions(
                                                         .format(&[])
                                                 } else {
                                                     TranslationKey::PagesHistoryHarvestMoonRecruitN
-                                                        .format(&[(
-                                                            "count",
-                                                            &args.count.to_string(),
-                                                        )])
+                                                        .format(&[("count", &args.count.to_string())])
                                                 }
                                             }}
                                         </span>
@@ -2167,8 +2088,7 @@ fn add_harvestmoon_actions(
                                     />
                                     <span>
                                         {move || {
-                                            TranslationKey::PagesHistoryHarvestMoonHarvest
-                                                .format(&[])
+                                            TranslationKey::PagesHistoryHarvestMoonHarvest.format(&[])
                                         }}
                                     </span>
                                 </div>
@@ -2243,10 +2163,7 @@ fn add_lnc_actions(
                                         <span>
                                             {move || {
                                                 TranslationKey::PagesHistoryLearnClubNlBalance
-                                                    .format(&[(
-                                                        "amount",
-                                                        nlearns_line.as_str(),
-                                                    )])
+                                                    .format(&[("amount", nlearns_line.as_str())])
                                             }}
                                         </span>
                                         <span class="text-xs">{log}</span>

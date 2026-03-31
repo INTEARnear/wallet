@@ -83,14 +83,14 @@ fn supports_feature(
     current_version: CryptoHash,
     feature_introduced_in_version: CryptoHash,
 ) -> bool {
-    let current_idx = SMART_WALLET_VERSIONS
+    let current_index = SMART_WALLET_VERSIONS
         .iter()
         .position(|(hash, _, _)| *hash == current_version);
-    let feature_idx = SMART_WALLET_VERSIONS
+    let feature_index = SMART_WALLET_VERSIONS
         .iter()
         .position(|(hash, _, _)| *hash == feature_introduced_in_version);
 
-    match (current_idx, feature_idx) {
+    match (current_index, feature_index) {
         (Some(current), Some(feature)) => current <= feature,
         _ => false,
     }
@@ -1617,12 +1617,12 @@ pub fn AccountSettings() -> impl IntoView {
                                             == CURRENT_SMART_WALLET_VERSION;
                                         let latest_version_info = &SMART_WALLET_VERSIONS[0];
                                         let cumulative_changes: Vec<TranslationKey> = if let Some(
-                                            current_idx,
+                                            current_index,
                                         ) = SMART_WALLET_VERSIONS
                                             .iter()
                                             .position(|(hash, _, _)| *hash == current_version.0)
                                         {
-                                            SMART_WALLET_VERSIONS[0..current_idx]
+                                            SMART_WALLET_VERSIONS[0..current_index]
                                                 .iter()
                                                 .flat_map(|(_, _, changes)| changes.iter().copied())
                                                 .collect()

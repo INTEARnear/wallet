@@ -252,7 +252,7 @@ fn parse_accounts_from_json(
     for account in accounts {
         if let (Some(account_id), Some(amount)) = (
             account.get("account_id").and_then(|id| id.as_str()),
-            account.get("amount").and_then(|amt| amt.as_f64()),
+            account.get("amount").and_then(|amount| amount.as_f64()),
         ) {
             map.entry(account_id.to_string())
                 .and_modify(|e| *e += amount)

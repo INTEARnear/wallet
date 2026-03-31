@@ -316,8 +316,8 @@ fn ImportModal(
                             if check_only_first_val && import_table_data.len() > MANY_ROWS {
                                 set_recipients
                                     .update(|recipients| {
-                                        for (idx, recipient) in recipients.iter_mut().enumerate() {
-                                            if idx >= MANY_ROWS {
+                                        for (index, recipient) in recipients.iter_mut().enumerate() {
+                                            if index >= MANY_ROWS {
                                                 recipient.account_exists = true;
                                                 recipient.amount_error = None;
                                                 recipient.recipient_balance = Some(Balance::MAX);
@@ -332,17 +332,17 @@ fn ImportModal(
                             import_table.set(vec![]);
                             spawn_local(async move {
                                 'outer: for batch in batches {
-                                    for (idx, (account_id, amount)) in batch {
-                                        if check_only_first_val && idx >= MANY_ROWS {
+                                    for (index, (account_id, amount)) in batch {
+                                        if check_only_first_val && index >= MANY_ROWS {
                                             break 'outer;
                                         } else {
                                             trigger_validation(
-                                                idx,
+                                                index,
                                                 RecipientField::Recipient,
                                                 account_id.to_string(),
                                             );
                                             trigger_validation(
-                                                idx,
+                                                index,
                                                 RecipientField::Amount,
                                                 amount.to_string(),
                                             );
