@@ -21,6 +21,7 @@ translation_keys! {
     languages {
         English("en", "English", ["en"]),
         Ukrainian("uk", "Українська", ["uk"]),
+        Vietnamese("vi", "Tiếng Việt (bởi Kent)", ["vi"]),
     }
 
     keys {
