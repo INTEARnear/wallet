@@ -7,7 +7,7 @@ use wasm_bindgen::prelude::Closure;
 use web_sys::js_sys::Array;
 use web_sys::{Blob, BlobPropertyBag};
 
-use crate::contexts::translation_context::Translation;
+use crate::contexts::translation_context::TranslationContext;
 use crate::translations::{
     BuiltInLanguage, CUSTOM_TRANSLATIONS, Language, TRANSLATION_TREE, TranslationKey,
     TranslationNode,
@@ -55,7 +55,7 @@ const BASE_PATH: &str = "/settings/developer/language_editor";
 
 #[component]
 pub fn LanguageEditorPage() -> impl IntoView {
-    let translation_ctx = expect_context::<Translation>();
+    let translation_ctx = expect_context::<TranslationContext>();
     let params = use_params_map();
     let navigate = use_navigate();
     let (new_lang_name, set_new_lang_name) = signal(String::new());
@@ -141,8 +141,7 @@ pub fn LanguageEditorPage() -> impl IntoView {
                                 match serde_json::from_str::<HashMap<String, String>>(&text) {
                                     Ok(data) => {
                                         let language = Language::Custom(lang_name.clone());
-                                        let ctx = expect_context::<Translation>();
-                                        ctx.import_language(&language, data);
+                                        translation_ctx.import_language(&language, data);
                                         set_import_error(None);
                                     }
                                     Err(e) => {

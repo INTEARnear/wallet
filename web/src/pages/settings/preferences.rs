@@ -7,7 +7,7 @@ use crate::components::{
     toggle_switch::ToggleSwitch,
 };
 use crate::contexts::config_context::{BackgroundGroup, ConfigContext, HiddenNft, LedgerMode};
-use crate::contexts::translation_context::Translation;
+use crate::contexts::translation_context::TranslationContext;
 use crate::pages::swap::Slippage;
 use crate::translations::{BuiltInLanguage, Language, TranslationKey};
 use crate::utils::{is_android, is_tauri, tauri_invoke_no_args};
@@ -61,12 +61,20 @@ pub fn LedgerSelector(#[prop(optional, into)] on_change: Option<Callback<()>>) -
                 <Show when=move || {
                     !ledger_variants.read().iter().any(|mode| *mode == current_mode.get())
                 }>
-                    <span class="text-red-400 text-xs font-medium">{move || TranslationKey::PagesSettingsPreferencesLedgerNotConnected.format(&[])}</span>
+                    <span class="text-red-400 text-xs font-medium">
+                        {move || {
+                            TranslationKey::PagesSettingsPreferencesLedgerNotConnected.format(&[])
+                        }}
+                    </span>
                 </Show>
             </div>
 
             <Suspense fallback=move || {
-                view! { <div class="text-sm text-gray-400">{move || TranslationKey::PagesSettingsPreferencesLedgerLoading.format(&[])}</div> }
+                view! {
+                    <div class="text-sm text-gray-400">
+                        {move || TranslationKey::PagesSettingsPreferencesLedgerLoading.format(&[])}
+                    </div>
+                }
             }>
                 <div class="space-y-2">
                     {move || {
@@ -106,7 +114,10 @@ pub fn LedgerSelector(#[prop(optional, into)] on_change: Option<Callback<()>>) -
                 </div>
 
                 <div class="text-sm text-gray-400">
-                    {move || TranslationKey::PagesSettingsPreferencesLedgerSelectConnectionMethod.format(&[])}
+                    {move || {
+                        TranslationKey::PagesSettingsPreferencesLedgerSelectConnectionMethod
+                            .format(&[])
+                    }}
                 </div>
                 <Show when=move || !has_ble_permissions.get()>
                     <button
@@ -115,7 +126,10 @@ pub fn LedgerSelector(#[prop(optional, into)] on_change: Option<Callback<()>>) -
                             let _promise_detached = tauri_invoke_no_args("request_ble_permissions");
                         }
                     >
-                        {move || TranslationKey::PagesSettingsPreferencesLedgerEnableBluetooth.format(&[])}
+                        {move || {
+                            TranslationKey::PagesSettingsPreferencesLedgerEnableBluetooth
+                                .format(&[])
+                        }}
                     </button>
                 </Show>
             </Suspense>
@@ -141,7 +155,7 @@ pub fn PreferencesSettings() -> impl IntoView {
 
     let (custom_slippage_input, set_custom_slippage_input) = signal("".to_string());
 
-    let translation_ctx = expect_context::<Translation>();
+    let translation_ctx = expect_context::<TranslationContext>();
 
     let language_options = Signal::derive(move || {
         let mut options: Vec<SelectOption> = BuiltInLanguage::all()
@@ -169,10 +183,14 @@ pub fn PreferencesSettings() -> impl IntoView {
     let window_width = use_window_size().width;
     view! {
         <div class="flex flex-col gap-4 p-4">
-            <div class="text-xl font-semibold">{move || TranslationKey::PagesSettingsPreferencesTitle.format(&[])}</div>
+            <div class="text-xl font-semibold">
+                {move || TranslationKey::PagesSettingsPreferencesTitle.format(&[])}
+            </div>
 
             <div class="mt-2">
-                <div class="text-lg font-medium text-gray-300 mb-4">{move || TranslationKey::PagesSettingsPreferencesHeaderLanguage.format(&[])}</div>
+                <div class="text-lg font-medium text-gray-300 mb-4">
+                    {move || TranslationKey::PagesSettingsPreferencesHeaderLanguage.format(&[])}
+                </div>
                 <div class="bg-neutral-800 rounded-xl">
                     <Select
                         options=language_options
@@ -193,10 +211,14 @@ pub fn PreferencesSettings() -> impl IntoView {
             </div>
 
             <div class="space-y-1 mt-4">
-                <div class="text-lg font-medium text-gray-300">{move || TranslationKey::PagesSettingsPreferencesHeaderOptions.format(&[])}</div>
+                <div class="text-lg font-medium text-gray-300">
+                    {move || TranslationKey::PagesSettingsPreferencesHeaderOptions.format(&[])}
+                </div>
                 <Show when=move || is_tauri() && !is_android()>
                     <ToggleSwitch
-                        label=Signal::derive(move || TranslationKey::PagesSettingsPreferencesToggleHideToTray.format(&[]))
+                        label=Signal::derive(move || {
+                            TranslationKey::PagesSettingsPreferencesToggleHideToTray.format(&[])
+                        })
                         value=hide_to_tray
                         disabled=Signal::derive(|| false)
                         on_toggle=move || {
@@ -208,7 +230,9 @@ pub fn PreferencesSettings() -> impl IntoView {
                         }
                     />
                     <ToggleSwitch
-                        label=Signal::derive(move || TranslationKey::PagesSettingsPreferencesToggleAutostart.format(&[]))
+                        label=Signal::derive(move || {
+                            TranslationKey::PagesSettingsPreferencesToggleAutostart.format(&[])
+                        })
                         value=autostart
                         disabled=Signal::derive(|| false)
                         on_toggle=move || {
@@ -221,7 +245,9 @@ pub fn PreferencesSettings() -> impl IntoView {
                     />
                 </Show>
                 <ToggleSwitch
-                    label=Signal::derive(move || TranslationKey::PagesSettingsPreferencesToggleRealtimeBalances.format(&[]))
+                    label=Signal::derive(move || {
+                        TranslationKey::PagesSettingsPreferencesToggleRealtimeBalances.format(&[])
+                    })
                     value=realtime_updates
                     disabled=updates_disabled
                     on_toggle=move || {
@@ -236,7 +262,9 @@ pub fn PreferencesSettings() -> impl IntoView {
                     }
                 />
                 <ToggleSwitch
-                    label=Signal::derive(move || TranslationKey::PagesSettingsPreferencesToggleSoundEffects.format(&[]))
+                    label=Signal::derive(move || {
+                        TranslationKey::PagesSettingsPreferencesToggleSoundEffects.format(&[])
+                    })
                     value=play_sound
                     disabled=sound_disabled
                     on_toggle=move || {
@@ -250,7 +278,9 @@ pub fn PreferencesSettings() -> impl IntoView {
                     }
                 />
                 <ToggleSwitch
-                    label=Signal::derive(move || TranslationKey::PagesSettingsPreferencesToggleRealtimePrices.format(&[]))
+                    label=Signal::derive(move || {
+                        TranslationKey::PagesSettingsPreferencesToggleRealtimePrices.format(&[])
+                    })
                     value=realtime_prices
                     disabled=prices_disabled
                     on_toggle=move || {
@@ -262,7 +292,9 @@ pub fn PreferencesSettings() -> impl IntoView {
                     }
                 />
                 <ToggleSwitch
-                    label=Signal::derive(move || TranslationKey::PagesSettingsPreferencesToggleHideAmounts.format(&[]))
+                    label=Signal::derive(move || {
+                        TranslationKey::PagesSettingsPreferencesToggleHideAmounts.format(&[])
+                    })
                     value=amounts_hidden
                     disabled=Signal::derive(|| false)
                     on_toggle=move || {
@@ -275,7 +307,10 @@ pub fn PreferencesSettings() -> impl IntoView {
                 />
                 <Show when=is_android>
                     <ToggleSwitch
-                        label=Signal::derive(move || TranslationKey::PagesSettingsPreferencesToggleDisableScreenshots.format(&[]))
+                        label=Signal::derive(move || {
+                            TranslationKey::PagesSettingsPreferencesToggleDisableScreenshots
+                                .format(&[])
+                        })
                         value=prevent_screenshots
                         disabled=Signal::derive(|| false)
                         on_toggle=move || {
@@ -291,15 +326,23 @@ pub fn PreferencesSettings() -> impl IntoView {
             </div>
 
             // Ledger hardware wallet settings
-            <div class="text-lg font-medium text-gray-300 mt-6">{move || TranslationKey::PagesSettingsPreferencesHeaderLedger.format(&[])}</div>
+            <div class="text-lg font-medium text-gray-300 mt-6">
+                {move || TranslationKey::PagesSettingsPreferencesHeaderLedger.format(&[])}
+            </div>
             <LedgerSelector />
 
             // Slippage settings section
             <div class="mt-2">
-                <div class="text-lg font-medium text-gray-300 mb-4">{move || TranslationKey::PagesSettingsPreferencesHeaderSlippageTolerance.format(&[])}</div>
+                <div class="text-lg font-medium text-gray-300 mb-4">
+                    {move || {
+                        TranslationKey::PagesSettingsPreferencesHeaderSlippageTolerance.format(&[])
+                    }}
+                </div>
                 <div class="bg-neutral-800 rounded-xl p-4 space-y-4">
                     <div class="text-sm text-gray-400 mb-3">
-                        {move || TranslationKey::PagesSettingsPreferencesSlippageCurrent.format(&[])}
+                        {move || {
+                            TranslationKey::PagesSettingsPreferencesSlippageCurrent.format(&[])
+                        }}
                         <span class="text-white font-medium">
                             {move || format!("{}", config_context.config.get().slippage)}
                         </span>
@@ -352,7 +395,12 @@ pub fn PreferencesSettings() -> impl IntoView {
                     </div>
 
                     <div class="space-y-2">
-                        <div class="text-gray-400 text-sm">{move || TranslationKey::PagesSettingsPreferencesSlippageCustomLabel.format(&[])}</div>
+                        <div class="text-gray-400 text-sm">
+                            {move || {
+                                TranslationKey::PagesSettingsPreferencesSlippageCustomLabel
+                                    .format(&[])
+                            }}
+                        </div>
                         <div class="flex gap-2">
                             <input
                                 type="text"
@@ -380,7 +428,12 @@ pub fn PreferencesSettings() -> impl IntoView {
                             />
                             <span class="text-gray-400 text-sm self-center shrink-0">"%"</span>
                             <div class="h-6 w-px bg-neutral-500 self-center shrink-0"></div>
-                            <span class="text-gray-400 text-sm self-center shrink-0">{move || TranslationKey::PagesSettingsPreferencesSlippageAutoPrefixOr.format(&[])}</span>
+                            <span class="text-gray-400 text-sm self-center shrink-0">
+                                {move || {
+                                    TranslationKey::PagesSettingsPreferencesSlippageAutoPrefixOr
+                                        .format(&[])
+                                }}
+                            </span>
                             <button
                                 class="px-3 min-w-20 shrink-0 py-2 rounded-lg text-sm transition-colors cursor-pointer"
                                 style=move || {
@@ -402,13 +455,18 @@ pub fn PreferencesSettings() -> impl IntoView {
                                     set_custom_slippage_input.set("".to_string());
                                 }
                             >
-                                {move || TranslationKey::PagesSettingsPreferencesSlippageAutoButton.format(&[])}
+                                {move || {
+                                    TranslationKey::PagesSettingsPreferencesSlippageAutoButton
+                                        .format(&[])
+                                }}
                             </button>
                         </div>
                     </div>
 
                     <div class="text-xs text-gray-400">
-                        {move || TranslationKey::PagesSettingsPreferencesSlippageDescription.format(&[])}
+                        {move || {
+                            TranslationKey::PagesSettingsPreferencesSlippageDescription.format(&[])
+                        }}
                     </div>
                 </div>
             </div>
@@ -422,11 +480,17 @@ pub fn PreferencesSettings() -> impl IntoView {
                     view! {
                         <div class="mt-6">
                             <div class="text-lg font-medium text-gray-300 mb-4">
-                                {move || TranslationKey::PagesSettingsPreferencesHeaderBackgroundTheme.format(&[])}
+                                {move || {
+                                    TranslationKey::PagesSettingsPreferencesHeaderBackgroundTheme
+                                        .format(&[])
+                                }}
                             </div>
                             <div class="bg-neutral-800 rounded-xl p-4 space-y-4">
                                 <div class="text-sm text-gray-400 mb-3">
-                                    {move || TranslationKey::PagesSettingsPreferencesBackgroundChooseStyle.format(&[])}
+                                    {move || {
+                                        TranslationKey::PagesSettingsPreferencesBackgroundChooseStyle
+                                            .format(&[])
+                                    }}
                                 </div>
 
                                 <div class="space-y-2">
@@ -457,7 +521,10 @@ pub fn PreferencesSettings() -> impl IntoView {
                                                 >
                                                     <span>{group.display_name()}</span>
                                                     <span class="text-xs opacity-75">
-                                                        {move || TranslationKey::PagesSettingsPreferencesBackgroundCount.format(&[("count", &group.get_count().to_string())])}
+                                                        {move || {
+                                                            TranslationKey::PagesSettingsPreferencesBackgroundCount
+                                                                .format(&[("count", &group.get_count().to_string())])
+                                                        }}
                                                     </span>
                                                 </button>
                                             }
@@ -473,14 +540,19 @@ pub fn PreferencesSettings() -> impl IntoView {
 
             // Hidden NFTs management
             <div class="mt-6">
-                <div class="text-lg font-medium text-gray-300 mb-4">{move || TranslationKey::PagesSettingsPreferencesHeaderHiddenNfts.format(&[])}</div>
+                <div class="text-lg font-medium text-gray-300 mb-4">
+                    {move || TranslationKey::PagesSettingsPreferencesHeaderHiddenNfts.format(&[])}
+                </div>
                 <div class="bg-neutral-800 rounded-xl p-4 space-y-4">
                     {move || {
                         let hidden_list = config_context.config.get().hidden_nfts.clone();
                         if hidden_list.is_empty() {
                             view! {
                                 <div class="text-sm text-gray-400">
-                                    {move || TranslationKey::PagesSettingsPreferencesHiddenNftsEmpty.format(&[])}
+                                    {move || {
+                                        TranslationKey::PagesSettingsPreferencesHiddenNftsEmpty
+                                            .format(&[])
+                                    }}
                                 </div>
                             }
                                 .into_any()
