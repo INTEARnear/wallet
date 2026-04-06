@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use translation_macros::translation_keys;
 
 use crate::contexts::config_context::ConfigContext;
-use crate::contexts::translation_context::Translation;
 
 pub enum TranslationNode {
     Group(TranslationGroup),
@@ -1697,9 +1696,12 @@ impl TranslationKey {
         match &language {
             Language::BuiltIn(b) => b.resolve(self, args),
             Language::Custom(_) => {
-                let t = expect_context::<Translation>();
-                let translations = t.translations.get();
-                match translations.get(&language).and_then(|m| m.get(&self)) {
+                match CUSTOM_TRANSLATIONS
+                    .lock()
+                    .unwrap()
+                    .get(&language)
+                    .and_then(|m| m.get(&self))
+                {
                     Some(template) => format_template(template, args),
                     None => BuiltInLanguage::default().resolve(self, args),
                 }
@@ -1713,15 +1715,13 @@ impl TranslationKey {
             .unwrap_or_else(|| CURRENT_LANGUAGE.lock().unwrap().clone());
         let template = match &language {
             Language::BuiltIn(b) => b.template(self).to_string(),
-            Language::Custom(_) => {
-                let t = expect_context::<Translation>();
-                let translations = t.translations.get();
-                translations
-                    .get(&language)
-                    .and_then(|m| m.get(&self))
-                    .cloned()
-                    .unwrap_or_else(|| BuiltInLanguage::default().template(self).to_string())
-            }
+            Language::Custom(_name) => CUSTOM_TRANSLATIONS
+                .lock()
+                .unwrap()
+                .get(&language)
+                .and_then(|m| m.get(&self))
+                .cloned()
+                .unwrap_or_else(|| BuiltInLanguage::default().template(self).to_string()),
         };
         format_template_view(&template, args)
     }

@@ -34,11 +34,11 @@ struct BroadcastMsg {
 }
 
 #[derive(Clone, Copy)]
-pub struct Translation {
+pub struct TranslationContext {
     pub translations: RwSignal<HashMap<Language, HashMap<TranslationKey, String>>>,
 }
 
-impl Translation {
+impl TranslationContext {
     pub fn set_translation(&self, language: &Language, key: TranslationKey, value: String) {
         let language = language.clone();
         let key_str = key.key().to_string();
@@ -402,5 +402,5 @@ pub fn provide_translation_context() {
         onmessage.forget();
     }
 
-    provide_context(Translation { translations });
+    provide_context(TranslationContext { translations });
 }
