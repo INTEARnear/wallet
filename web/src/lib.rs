@@ -144,7 +144,6 @@ pub fn App() -> impl IntoView {
     }
     // Don't drop the closure
     warning_closure.forget();
-    panic!("test");
 
     provide_modal_context();
     provide_config_context();
