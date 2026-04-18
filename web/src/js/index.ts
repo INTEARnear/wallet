@@ -187,6 +187,12 @@ window.addEventListener('message', async (event) => {
 
 window.addEventListener("message", (event) => {
     if (event.data.type === "chatwoot-open") {
+        const openIntearWalletSupport = (window as any).openIntearWalletSupport;
+        if (typeof openIntearWalletSupport === "function") {
+            openIntearWalletSupport(event.data.accountId);
+            return;
+        }
+
         if ((window as any).$chatwoot) {
             (window as any).$chatwoot.toggle('open');
             (window as any).$chatwoot.setConversationCustomAttributes({ account_id: event.data.accountId })

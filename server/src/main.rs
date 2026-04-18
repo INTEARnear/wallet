@@ -63,6 +63,218 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <link rel="manifest" href="/manifest.json" />
                 <script>
                     r#"
+                        const consoleOutputBuffer = [];
+                        const consoleMethodNames = ['log', 'info', 'warn', 'error', 'debug'];
+                        const serializeConsoleValue = (value) => {
+                            if (value instanceof Error) {
+                                return [value.name + ': ' + value.message, value.stack]
+                                    .filter(Boolean)
+                                    .join('\n');
+                            }
+
+                            if (typeof value === 'string') {
+                                return value;
+                            }
+
+                            if (typeof value === 'undefined') {
+                                return 'undefined';
+                            }
+
+                            if (value === null) {
+                                return 'null';
+                            }
+
+                            if (value instanceof Element) {
+                                return value.outerHTML;
+                            }
+
+                            if (typeof value === 'object') {
+                                const seenObjects = new WeakSet();
+                                try {
+                                    return JSON.stringify(
+                                        value,
+                                        (_key, nestedValue) => {
+                                            if (nestedValue instanceof Error) {
+                                                return {
+                                                    name: nestedValue.name,
+                                                    message: nestedValue.message,
+                                                    stack: nestedValue.stack,
+                                                };
+                                            }
+                                            if (
+                                                nestedValue instanceof Element
+                                            ) {
+                                                return nestedValue.outerHTML;
+                                            }
+                                            if (
+                                                typeof nestedValue === 'object'
+                                                && nestedValue !== null
+                                            ) {
+                                                if (seenObjects.has(nestedValue)) {
+                                                    return '[Circular]';
+                                                }
+                                                seenObjects.add(nestedValue);
+                                            }
+                                            return nestedValue;
+                                        },
+                                        2,
+                                    );
+                                } catch (_error) {
+                                    return Object.prototype.toString.call(value);
+                                }
+                            }
+
+                            return String(value);
+                        };
+                        const pushConsoleOutput = (level, args) => {
+                            const serializedMessage = Array.from(args)
+                                .map((value) => serializeConsoleValue(value))
+                                .filter((value) => !value.includes('%c') && !value.includes('display: block;'))
+                                .join(' ');
+                            if (serializedMessage !== '') {
+                                consoleOutputBuffer.push(
+                                    '['
+                                        + new Date().toISOString()
+                                        + '] ['
+                                        + level.toUpperCase()
+                                        + '] '
+                                        + serializedMessage,
+                                );
+                            }
+                        };
+                        window.__intearWalletConsoleOutput = consoleOutputBuffer;
+                        for (const methodName of consoleMethodNames) {
+                            const originalMethod = console[methodName].bind(console);
+                            console[methodName] = (...args) => {
+                                pushConsoleOutput(methodName, args);
+                                originalMethod(...args);
+                            };
+                        }
+                        window.addEventListener('error', (event) => {
+                            pushConsoleOutput('error', [
+                                'Unhandled error:',
+                                event.message,
+                                event.filename
+                                    ? 'at '
+                                        + event.filename
+                                        + ':'
+                                        + event.lineno
+                                        + ':'
+                                        + event.colno
+                                    : '',
+                                event.error ?? '',
+                            ]);
+                        });
+                        window.addEventListener('unhandledrejection', (event) => {
+                            pushConsoleOutput('error', [
+                                'Unhandled promise rejection:',
+                                event.reason,
+                            ]);
+                        });
+                        window.copyIntearWalletConsoleOutput = async () => {
+                            const report = consoleOutputBuffer.length === 0
+                                ? 'Console output is empty.'
+                                : consoleOutputBuffer.join('\n\n');
+
+                            if (navigator.clipboard && navigator.clipboard.writeText) {
+                                await navigator.clipboard.writeText(report);
+                                return;
+                            }
+
+                            const textarea = document.createElement('textarea');
+                            textarea.value = report;
+                            textarea.setAttribute('readonly', '');
+                            textarea.style.position = 'fixed';
+                            textarea.style.opacity = '0';
+                            document.body.appendChild(textarea);
+                            textarea.focus();
+                            textarea.select();
+                            const copied = document.execCommand('copy');
+                            document.body.removeChild(textarea);
+
+                            if (!copied) {
+                                throw new Error('Clipboard copy failed');
+                            }
+                        };
+                        const chatwootBaseUrl = 'https://app.chatwoot.com';
+                        const ensureChatwootStarted = () => {
+                            if (window.__intearWalletChatwootStarted || !window.chatwootSDK) {
+                                return;
+                            }
+                            window.chatwootSDK.run({
+                                websiteToken: 'eUJ4pSCSbXv2dhMiwvX2rjud',
+                                baseUrl: chatwootBaseUrl,
+                            });
+                            window.__intearWalletChatwootStarted = true;
+                        };
+                        const waitForChatwootAndOpen = () => {
+                            const intervalId = setInterval(() => {
+                                ensureChatwootStarted();
+                                if (window.$chatwoot) {
+                                    window.$chatwoot.toggleBubbleVisibility('hide');
+                                    window.$chatwoot.toggle('open');
+                                    clearInterval(intervalId);
+                                }
+                            }, 50);
+                            setTimeout(() => clearInterval(intervalId), 10000);
+                        };
+                        window.openIntearWalletSupport = () => {
+                            if (window.$chatwoot) {
+                                window.$chatwoot.toggleBubbleVisibility('hide');
+                                window.$chatwoot.toggle('open');
+                                return;
+                            }
+
+                            const existingScript = document.getElementById('chatwoot-sdk');
+                            if (!existingScript) {
+                                const script = document.createElement('script');
+                                const firstScript = document.getElementsByTagName('script')[0];
+                                script.id = 'chatwoot-sdk';
+                                script.src = chatwootBaseUrl + '/packs/js/sdk.js';
+                                script.async = true;
+                                script.onload = ensureChatwootStarted;
+                                firstScript.parentNode?.insertBefore(script, firstScript);
+                            }
+
+                            waitForChatwootAndOpen();
+                        };
+                        window.reportIntearWalletLoadingError = async () => {
+                            const statusLabel = document.getElementById('report-error-status');
+                            const resultSection = document.getElementById('report-error-result');
+                            const reportButton = document.getElementById('report-error-button');
+
+                            if (reportButton) {
+                                reportButton.setAttribute('disabled', 'disabled');
+                                reportButton.textContent = 'Copying...';
+                            }
+
+                            try {
+                                await window.copyIntearWalletConsoleOutput();
+                                if (statusLabel) {
+                                    statusLabel.textContent =
+                                        'Error information copied. Please send this to our support';
+                                }
+                                if (resultSection) {
+                                    resultSection.style.display = 'block';
+                                    resultSection.style.opacity = '1';
+                                }
+                            } catch (error) {
+                                if (statusLabel) {
+                                    statusLabel.textContent =
+                                        'Could not copy error information automatically. Please open support chat and describe the issue.';
+                                }
+                                if (resultSection) {
+                                    resultSection.style.display = 'block';
+                                    resultSection.style.opacity = '1';
+                                }
+                                console.error('Failed to copy console output:', error);
+                            } finally {
+                                if (reportButton) {
+                                    reportButton.removeAttribute('disabled');
+                                    reportButton.textContent = 'Report Error';
+                                }
+                            }
+                        };
                         setTimeout(() => {
                             document.getElementById('app-loader').style.opacity = '1';
                         }, 500);
@@ -105,6 +317,35 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                         >
                             "Click here"
                         </button>
+                        <div
+                            id="report-error-section"
+                            style="margin-top: 12px; opacity: 0; transition: opacity 0.5s ease-in-out; display: none;"
+                        >
+                            <button
+                                id="report-error-button"
+                                onclick="window.reportIntearWalletLoadingError()"
+                                style="background: rgba(0, 0, 0, 0.2); color: white; border: 1px solid rgba(255,255,255,0.12); padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; transition: background 0.2s;"
+                            >
+                                "Report Error"
+                            </button>
+                            <div
+                                id="report-error-result"
+                                style="margin-top: 12px; text-align: center; opacity: 0; transition: opacity 0.5s ease-in-out; display: none;"
+                            >
+                                <p
+                                    id="report-error-status"
+                                    style="color: rgba(255,255,255,0.7); margin-bottom: 12px; font-size: 14px;"
+                                >
+                                    "Error information copied. Please send this to our support"
+                                </p>
+                                <button
+                                    onclick="window.openIntearWalletSupport()"
+                                    style="background: rgba(0, 0, 0, 0.2); color: white; border: 1px solid rgba(255,255,255,0.12); padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; transition: background 0.2s;"
+                                >
+                                    "Open Support Chat"
+                                </button>
+                            </div>
+                        </div>
                     </div>
                     <script>
                         r#"
@@ -115,6 +356,13 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                                     cacheSection.style.opacity = '1';
                                 }
                             }, 10000);
+                            setTimeout(() => {
+                                const reportErrorSection = document.getElementById('report-error-section');
+                                if (reportErrorSection) {
+                                    reportErrorSection.style.display = 'block';
+                                    reportErrorSection.style.opacity = '1';
+                                }
+                            }, 20000);
                         "#
                     </script>
                 </div>
