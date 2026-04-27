@@ -32,6 +32,9 @@ translation_keys! {
                 DeveloperTab,
                 SupportResources,
                 LiveChat,
+                FooterTerms,
+                FooterPrivacy,
+                FooterLicense,
                 Preferences {
                     Title,
                     HeaderLanguage,

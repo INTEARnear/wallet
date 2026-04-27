@@ -1,4 +1,4 @@
-Last updated: April 1, 2026
+Last updated: April 27, 2026
 
 1. Overview
 
@@ -9,7 +9,7 @@ This Privacy Policy explains how we collect, use, and handle information when yo
 We collect only limited information necessary to operate the Wallet, which may include:
 
 - Public blockchain data including account IDs, transactions
-- User-provided inputs (account ID you provided when creating a wallet, or other data submitted through use of the - Wallet)
+- User-provided inputs (account ID you provided when creating a wallet, or other data submitted through use of the Wallet)
 - Technical data (IP address, device/browser type, other request data). This data comes transiently with every web request, and is not stored or logged
 - Temporary encrypted session data to support application functionality, such as migration to a different device, cross-device connection to dApps, connection of dApps to the native Wallet app, your password (if you enabled "Remember Password" feature). This data is immediately disposed of when it's been used and no longer necessary for work of the app
 
@@ -26,15 +26,15 @@ We use collected information solely to:
 
 4. Third-Party Services
 
-The Wallet may rely on third-party infrastructure and services:
-- Indexers: Token balances and account lookup by public key (during account import) are provided by fastnear.com
-- Live support chat: chatwoot.com
+The Wallet may rely on third-party infrastructure and services when you use these specific features:
+- Indexers: Token balances (IP is anonymized) and account lookup by public key (during account import; not anonymized) are provided by Fastnear (https://fastnear.com/privacy)
+- Live support chat: chatwoot.com (https://www.chatwoot.com/privacy-policy)
 
-These providers may process limited technical data as required to perform their functions. We don't control the third-party service providers and their privacy practices.
+These providers may process limited technical data as required to perform their functions. It's your responsibility to keep updated with their privacy policies when you use these features.
 
 5. Data Sharing
 
-We do not sell or share personal data.
+We do not sell or share personal data, unless we have strong evidence of you using our services for illegal purposes.
 
 6. Your Responsibilities
 

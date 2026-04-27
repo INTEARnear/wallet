@@ -21,9 +21,14 @@ fn document_link_button(
             class="text-sky-400 hover:text-sky-300 transition-colors cursor-pointer"
             on:click=move |ev| {
                 ev.prevent_default();
-                modal.set(Some(Box::new(move || {
-                    view! { <DocumentViewerModal doc=doc /> }.into_any()
-                })));
+                modal
+                    .set(
+                        Some(
+                            Box::new(move || {
+                                view! { <LegalDocumentViewerModal doc=doc /> }.into_any()
+                            }),
+                        ),
+                    );
             }
         >
             {move || legal_document_display_title(doc)}
@@ -33,7 +38,7 @@ fn document_link_button(
 }
 
 #[component]
-fn DocumentViewerModal(doc: LegalDocument) -> impl IntoView {
+pub fn LegalDocumentViewerModal(doc: LegalDocument) -> impl IntoView {
     let ModalContext { modal } = expect_context::<ModalContext>();
     view! {
         <div
@@ -78,9 +83,8 @@ fn StaleDocumentModal(doc: LegalDocument, remaining: Vec<LegalDocument>) -> impl
                     <h3 class="text-white font-semibold text-base">
                         {move || {
                             let doc_title = legal_document_display_title(doc);
-                            TranslationKey::ComponentsLegalConsentsStaleDocumentHeading.format(&[
-                                ("document_title", doc_title.as_str()),
-                            ])
+                            TranslationKey::ComponentsLegalConsentsStaleDocumentHeading
+                                .format(&[("document_title", doc_title.as_str())])
                         }}
                     </h3>
                     <p class="text-neutral-400 text-xs mt-1">
@@ -244,8 +248,10 @@ fn DenyModal(stale_docs: Vec<LegalDocument>) -> impl IntoView {
                                         {if let Some(phrase) = seed_phrase {
                                             view! {
                                                 <SecretField
-                                                    label=move || TranslationKey::ComponentsLegalConsentsLabelSeedPhrase
-                                                        .format(&[])
+                                                    label=move || {
+                                                        TranslationKey::ComponentsLegalConsentsLabelSeedPhrase
+                                                            .format(&[])
+                                                    }
                                                     value=phrase
                                                 />
                                             }
@@ -259,8 +265,10 @@ fn DenyModal(stale_docs: Vec<LegalDocument>) -> impl IntoView {
                                             view! {
                                                 <div class="space-y-1">
                                                     <div class="text-neutral-400 text-xs font-medium">
-                                                        {move || TranslationKey::ComponentsLegalConsentsLabelLedgerHdPath
-                                                            .format(&[])}
+                                                        {move || {
+                                                            TranslationKey::ComponentsLegalConsentsLabelLedgerHdPath
+                                                                .format(&[])
+                                                        }}
                                                     </div>
                                                     <div class="flex items-center gap-2">
                                                         <code class="text-white text-xs font-mono flex-1 break-all">
@@ -276,8 +284,10 @@ fn DenyModal(stale_docs: Vec<LegalDocument>) -> impl IntoView {
                                         } else {
                                             view! {
                                                 <SecretField
-                                                    label=move || TranslationKey::ComponentsLegalConsentsLabelPrivateKey
-                                                        .format(&[])
+                                                    label=move || {
+                                                        TranslationKey::ComponentsLegalConsentsLabelPrivateKey
+                                                            .format(&[])
+                                                    }
                                                     value=secret_str
                                                 />
                                             }
@@ -371,20 +381,22 @@ pub fn LegalConsentsSection(#[prop(default = false)] short: bool) -> impl IntoVi
                         <span>
                             {move || {
                                 TranslationKey::ComponentsLegalConsentsCheckboxAcceptCombined
-                                    .format_view(vec![
-                                        (
-                                            "terms",
-                                            document_link_button(modal, LegalDocument::Terms),
-                                        ),
-                                        (
-                                            "privacy",
-                                            document_link_button(modal, LegalDocument::Privacy),
-                                        ),
-                                        (
-                                            "license",
-                                            document_link_button(modal, LegalDocument::License),
-                                        ),
-                                    ])
+                                    .format_view(
+                                        vec![
+                                            (
+                                                "terms",
+                                                document_link_button(modal, LegalDocument::Terms),
+                                            ),
+                                            (
+                                                "privacy",
+                                                document_link_button(modal, LegalDocument::Privacy),
+                                            ),
+                                            (
+                                                "license",
+                                                document_link_button(modal, LegalDocument::License),
+                                            ),
+                                        ],
+                                    )
                             }}
                         </span>
                     </label>
@@ -411,12 +423,12 @@ pub fn LegalConsentsSection(#[prop(default = false)] short: bool) -> impl IntoVi
                         />
                         <span>
                             {move || {
-                                TranslationKey::ComponentsLegalConsentsCheckboxAcceptLine.format_view(
-                                    vec![(
-                                        "doc",
-                                        document_link_button(modal, LegalDocument::Terms),
-                                    )],
-                                )
+                                TranslationKey::ComponentsLegalConsentsCheckboxAcceptLine
+                                    .format_view(
+                                        vec![
+                                            ("doc", document_link_button(modal, LegalDocument::Terms)),
+                                        ],
+                                    )
                             }}
                         </span>
                     </label>
@@ -435,12 +447,12 @@ pub fn LegalConsentsSection(#[prop(default = false)] short: bool) -> impl IntoVi
                         />
                         <span>
                             {move || {
-                                TranslationKey::ComponentsLegalConsentsCheckboxAcceptLine.format_view(
-                                    vec![(
-                                        "doc",
-                                        document_link_button(modal, LegalDocument::Privacy),
-                                    )],
-                                )
+                                TranslationKey::ComponentsLegalConsentsCheckboxAcceptLine
+                                    .format_view(
+                                        vec![
+                                            ("doc", document_link_button(modal, LegalDocument::Privacy)),
+                                        ],
+                                    )
                             }}
                         </span>
                     </label>
@@ -459,12 +471,12 @@ pub fn LegalConsentsSection(#[prop(default = false)] short: bool) -> impl IntoVi
                         />
                         <span>
                             {move || {
-                                TranslationKey::ComponentsLegalConsentsCheckboxAcceptLine.format_view(
-                                    vec![(
-                                        "doc",
-                                        document_link_button(modal, LegalDocument::License),
-                                    )],
-                                )
+                                TranslationKey::ComponentsLegalConsentsCheckboxAcceptLine
+                                    .format_view(
+                                        vec![
+                                            ("doc", document_link_button(modal, LegalDocument::License)),
+                                        ],
+                                    )
                             }}
                         </span>
                     </label>

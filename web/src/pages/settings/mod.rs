@@ -1,4 +1,7 @@
+use crate::components::legal_consents::LegalDocumentViewerModal;
 use crate::contexts::accounts_context::AccountsContext;
+use crate::contexts::legal_consents_context::LegalDocument;
+use crate::contexts::modal_context::ModalContext;
 use crate::translations::TranslationKey;
 use crate::utils::serialize_to_js_value;
 use leptos::{html::Div, prelude::*};
@@ -41,6 +44,29 @@ pub fn open_live_chat(selected_account_id: AccountId) {
     if let Ok(location_origin) = window().location().origin() {
         let _ = window().post_message(&serialize_to_js_value(&message).unwrap(), &location_origin);
     }
+}
+
+fn legal_document_footer_link(document: LegalDocument, label: TranslationKey) -> AnyView {
+    let ModalContext { modal } = expect_context::<ModalContext>();
+    view! {
+        <button
+            type="button"
+            class="text-xs text-neutral-400 hover:text-white transition-colors cursor-pointer"
+            on:click=move |_| {
+                modal
+                    .set(
+                        Some(
+                            Box::new(move || {
+                                view! { <LegalDocumentViewerModal doc=document /> }.into_any()
+                            }),
+                        ),
+                    );
+            }
+        >
+            {move || label.format(&[])}
+        </button>
+    }
+    .into_any()
 }
 
 #[component]
@@ -143,12 +169,18 @@ pub fn Settings() -> impl IntoView {
             </div>
             <div>
                 <div class="flex flex-col items-center gap-4 p-4 border-t border-neutral-800">
-                    <div class="text-sm font-semibold">{move || TranslationKey::PagesSettingsSupportResources.format(&[])}</div>
+                    <div class="text-sm font-semibold">
+                        {move || TranslationKey::PagesSettingsSupportResources.format(&[])}
+                    </div>
                     <button
                         class="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-colors cursor-pointer text-sm font-medium"
                         on:click=move |_| {
                             open_live_chat(
-                                accounts_context.accounts.get_untracked().selected_account_id.unwrap(),
+                                accounts_context
+                                    .accounts
+                                    .get_untracked()
+                                    .selected_account_id
+                                    .unwrap(),
                             )
                         }
                     >
@@ -180,6 +212,20 @@ pub fn Settings() -> impl IntoView {
                         >
                             <img src="/x.svg" alt="X" class="w-6 h-6" />
                         </a>
+                    </div>
+                    <div class="flex flex-row flex-wrap justify-center gap-x-4 gap-y-2">
+                        {legal_document_footer_link(
+                            LegalDocument::Terms,
+                            TranslationKey::PagesSettingsFooterTerms,
+                        )}
+                        {legal_document_footer_link(
+                            LegalDocument::Privacy,
+                            TranslationKey::PagesSettingsFooterPrivacy,
+                        )}
+                        {legal_document_footer_link(
+                            LegalDocument::License,
+                            TranslationKey::PagesSettingsFooterLicense,
+                        )}
                     </div>
                 </div>
             </div>
