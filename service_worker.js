@@ -1,4 +1,4 @@
-const CACHE_NAME = 'intear-wallet-72f7219';
+const CACHE_NAME = 'intear-wallet-7aab05c';
 const DOMAIN = self.location.hostname;
 
 self.addEventListener('install', (event) => {
