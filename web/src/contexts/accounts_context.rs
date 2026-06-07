@@ -28,7 +28,7 @@ use wasm_bindgen::{JsCast, closure::Closure};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::js_sys::Reflect;
 
-use crate::contexts::config_context::LedgerMode;
+use crate::contexts::config_context::{AddressBookEntry, LedgerMode};
 use crate::contexts::security_log_context::reencrypt_security_logs;
 use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
 use crate::translations::TranslationKey;
@@ -1091,40 +1091,73 @@ pub fn provide_accounts_context() {
         }
     });
 
+    let view_as = move |id_str: String| {
+        let Ok(account_id) = id_str.parse::<AccountId>() else {
+            web_sys::console::error_1(&"Invalid account id".into());
+            return;
+        };
+
+        let current_state = accounts.get_untracked();
+        if current_state
+            .accounts
+            .iter()
+            .any(|acc| acc.account_id == account_id)
+        {
+            return;
+        }
+
+        let zero_secret_key = SecretKey::ED25519(ED25519SecretKey([0u8; 64]));
+
+        let mut new_state = current_state.clone();
+        new_state.accounts.push(Account {
+            account_id: account_id.clone(),
+            secret_key: SecretKeyHolder::SecretKey(zero_secret_key),
+            seed_phrase: None,
+            network: Network::Mainnet,
+            exported: false,
+        });
+        new_state.selected_account_id = Some(account_id);
+
+        set_accounts(new_state);
+    };
+
     if is_debug_enabled() {
+        if let Ok(search) = window().location().search() {
+            if let Some(id_str) = search
+                .trim_start_matches('?')
+                .split('&')
+                .filter_map(|param| param.split_once('='))
+                .find_map(|(key, value)| (key == "view_as").then(|| value.to_string()))
+            {
+                view_as(id_str);
+                let ConfigContext { config, .. } = expect_context::<ConfigContext>();
+                config.update(|config| {
+                    if config.address_book.is_empty() {
+                        config.address_book = [
+                            ("alice.near", "Alice"),
+                            ("bob.near", "Bob"),
+                            ("influencer.near", "Influencer"),
+                        ]
+                        .into_iter()
+                        .filter_map(|(account_id, name)| {
+                            Some(AddressBookEntry {
+                                account_id: account_id.parse().ok()?,
+                                name: name.to_string(),
+                            })
+                        })
+                        .collect();
+                    }
+                });
+            }
+        }
+
         let view_as_closure = Closure::wrap(Box::new(move |id_val: JsValue| {
             let Some(id_str) = id_val.as_string() else {
                 web_sys::console::error_1(&"view_as expects a string".into());
                 return;
             };
 
-            let Ok(account_id) = id_str.parse::<AccountId>() else {
-                web_sys::console::error_1(&"Invalid account id".into());
-                return;
-            };
-
-            let current_state = accounts.get_untracked();
-            if current_state
-                .accounts
-                .iter()
-                .any(|acc| acc.account_id == account_id)
-            {
-                return;
-            }
-
-            let zero_secret_key = SecretKey::ED25519(ED25519SecretKey([0u8; 64]));
-
-            let mut new_state = current_state.clone();
-            new_state.accounts.push(Account {
-                account_id: account_id.clone(),
-                secret_key: SecretKeyHolder::SecretKey(zero_secret_key),
-                seed_phrase: None,
-                network: Network::Mainnet,
-                exported: false,
-            });
-            new_state.selected_account_id = Some(account_id);
-
-            set_accounts(new_state);
+            view_as(id_str);
         }) as Box<dyn FnMut(JsValue)>);
 
         let _ = Reflect::set(

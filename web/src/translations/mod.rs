@@ -29,6 +29,7 @@ translation_keys! {
             Settings {
                 SecurityTab,
                 PreferencesTab,
+                AddressBookTab,
                 DeveloperTab,
                 SupportResources,
                 LiveChat,
@@ -115,6 +116,18 @@ translation_keys! {
                         GroupingMin2,
                         GroupingOff,
                     },
+                },
+                AddressBook {
+                    Title,
+                    Description,
+                    AddTitle,
+                    NamePlaceholder,
+                    AddressPlaceholder,
+                    AddButton,
+                    SavedTitle,
+                    Empty,
+                    InvalidAddress,
+                    DuplicateAddress,
                 },
                 Security {
                     Title,
@@ -996,6 +1009,9 @@ translation_keys! {
                 ErrInsufficientNearGasOne,
                 ErrInsufficientNearGasMany,
                 FileTooLarge,
+                AddressBookSelectPlaceholder,
+                AddressBookEmptyHint,
+                AddressBookRequired,
                 ConfirmModal {
                     Title,
                     Subtitle,

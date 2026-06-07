@@ -212,6 +212,14 @@ pub struct WalletConfig {
     pub custom_router_url: Option<String>,
     #[serde(default)]
     pub language: Language,
+    #[serde(default)]
+    pub address_book: Vec<AddressBookEntry>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+pub struct AddressBookEntry {
+    pub account_id: AccountId,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -731,6 +739,7 @@ impl Default for WalletConfig {
             ledger_mode: LedgerMode::default(),
             number_config: NumberConfig::default(),
             language: Language::default(),
+            address_book: vec![],
         }
     }
 }

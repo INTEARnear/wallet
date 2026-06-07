@@ -13,6 +13,7 @@ use leptos_router::{
 use leptos_use::use_event_listener;
 
 mod account;
+mod address_book;
 mod connected_apps;
 mod create_token_modals;
 mod developer;
@@ -25,6 +26,7 @@ mod security_log;
 
 pub use crate::components::ToggleSwitch;
 pub use account::{AccountSettings, JsWalletRequest, JsWalletResponse};
+pub use address_book::AddressBookSettings;
 pub use connected_apps::ConnectedAppsSettings;
 pub use developer::DeveloperSettings;
 pub use developer_create_token::DeveloperCreateToken;
@@ -140,6 +142,28 @@ pub fn Settings() -> impl IntoView {
                     <span style=move || {
                         if is_active("/settings/preferences") { "font-weight: bold;" } else { "" }
                     }>{move || TranslationKey::PagesSettingsPreferencesTab.format(&[])}</span>
+                </A>
+                <A
+                    href="/settings/address-book"
+                    attr:class="flex items-center gap-3 p-3 transition-colors relative shrink-0"
+                    attr:style=move || {
+                        if is_active("/settings/address-book") {
+                            "border-bottom: 2px solid white;"
+                        } else {
+                            ""
+                        }
+                    }
+                    class:hover:bg-neutral-900=move || !is_active("/settings/address-book")
+                >
+                    <Icon
+                        icon=icondata::LuBookUser
+                        width="20"
+                        height="20"
+                        attr:class="min-w-5 min-h-5"
+                    />
+                    <span style=move || {
+                        if is_active("/settings/address-book") { "font-weight: bold;" } else { "" }
+                    }>{move || TranslationKey::PagesSettingsAddressBookTab.format(&[])}</span>
                 </A>
                 <A
                     href="/settings/developer"

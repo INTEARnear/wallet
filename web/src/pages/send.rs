@@ -1,4 +1,5 @@
 use crate::{
+    components::select::{Select, SelectOption},
     components::send_modals::{
         SendConfirmationData, SendConfirmationModal, SendConfirmationTransfer, SendErrorModal,
         SendResult, SendSuccessModal,
@@ -52,6 +53,16 @@ fn is_evm_implicit_account(account_id: &str) -> bool {
     account_id.starts_with("0x")
         && account_id.chars().skip(2).all(|c| c.is_ascii_hexdigit())
         && account_id.len() == 42
+}
+
+fn is_in_address_book(
+    config: &crate::contexts::config_context::WalletConfig,
+    account: &str,
+) -> bool {
+    config
+        .address_book
+        .iter()
+        .any(|entry| entry.account_id.as_str() == account)
 }
 
 fn send_err_insufficient_cycle_message(index: usize) -> String {
@@ -392,6 +403,32 @@ pub fn SendToken() -> impl IntoView {
     let (balance_error_timeout, set_balance_error_timeout) = signal::<Option<TimeoutHandle>>(None);
     let ModalContext { modal } = expect_context::<ModalContext>();
 
+    let address_book_options = Signal::derive(move || {
+        config
+            .get()
+            .address_book
+            .into_iter()
+            .map(|entry| {
+                let account_id = entry.account_id.to_string();
+                let label_account_id = account_id.clone();
+                let name = entry.name;
+                SelectOption::new(account_id, move || {
+                    view! {
+                        <span class="flex flex-col text-left min-w-0">
+                            <span class="text-white truncate">
+                                {if name.is_empty() { label_account_id.clone() } else { name.clone() }}
+                            </span>
+                            <span class="text-gray-400 text-xs truncate">{label_account_id.clone()}</span>
+                        </span>
+                    }
+                    .into_any()
+                })
+            })
+            .collect::<Vec<_>>()
+    });
+
+    let has_address_book_entries = Signal::derive(move || !config.get().address_book.is_empty());
+
     let token = move || {
         tokens
             .get()
@@ -655,6 +692,9 @@ pub fn SendToken() -> impl IntoView {
         if recipient_balance.get().is_none() || amount_error.get().is_some() {
             return;
         }
+        if !is_in_address_book(&config.get_untracked(), &recipient.get_untracked()) {
+            return;
+        }
 
         let Ok(recipient) = recipient.get().parse::<AccountId>() else {
             panic!(
@@ -770,9 +810,8 @@ pub fn SendToken() -> impl IntoView {
                                     <label class="text-gray-400">
                                         {move || TranslationKey::PagesSendRecipientLabel.format(&[])}
                                     </label>
-                                    <input
-                                        type="text"
-                                        class="w-full focus:ring-2 bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 text-base"
+                                    <div
+                                        class="rounded-xl"
                                         style=move || {
                                             if has_typed_recipient.get() {
                                                 if recipient_balance.get().is_none()
@@ -794,16 +833,30 @@ pub fn SendToken() -> impl IntoView {
                                                 "border: 2px solid transparent"
                                             }
                                         }
-                                        placeholder="account.near"
-                                        prop:value=recipient
-                                        on:input=move |ev| {
-                                            let value = event_target_value(&ev).to_lowercase();
-                                            set_recipient.set(value.clone());
-                                            set_is_loading_recipient.set(true);
-                                            set_recipient_balance.set(None);
-                                            check_recipient(value);
-                                        }
-                                    />
+                                    >
+                                        <Select
+                                            options=address_book_options
+                                            placeholder=TranslationKey::PagesSendAddressBookSelectPlaceholder
+                                                .format(&[])
+                                            disabled=Signal::derive(move || !has_address_book_entries.get())
+                                            filter_enabled=true
+                                            on_change=Callback::new(move |value: String| {
+                                                let value = value.to_lowercase();
+                                                set_recipient.set(value.clone());
+                                                set_is_loading_recipient.set(true);
+                                                set_recipient_balance.set(None);
+                                                check_recipient(value);
+                                            })
+                                        />
+                                    </div>
+                                    <Show when=move || !has_address_book_entries.get()>
+                                        <A
+                                            href="/settings/address-book"
+                                            attr:class="text-blue-400 hover:text-blue-300 text-sm font-medium underline"
+                                        >
+                                            {move || TranslationKey::PagesSendAddressBookEmptyHint.format(&[])}
+                                        </A>
+                                    </Show>
                                     {move || {
                                         if let Some(warning) = recipient_warning.get() {
                                             view! {
@@ -981,6 +1034,10 @@ pub fn SendToken() -> impl IntoView {
                                         recipient_balance.get().is_none()
                                             || amount_error.get().is_some()
                                             || is_loading_recipient.get() || !has_typed_amount.get()
+                                            || !is_in_address_book(
+                                                &config.get(),
+                                                &recipient.get(),
+                                            )
                                     }
                                     on:click=handle_send
                                 >
@@ -1039,6 +1096,7 @@ pub fn SendMultiToken() -> impl IntoView {
     let RpcContext { client, .. } = expect_context::<RpcContext>();
     let NetworkContext { network, .. } = expect_context::<NetworkContext>();
     let ModalContext { modal } = expect_context::<ModalContext>();
+    let ConfigContext { config, .. } = expect_context::<ConfigContext>();
 
     let (recipients, set_recipients) = signal(vec![MultiSendRecipient::default()]);
     let (file_error, set_file_error) = signal::<Option<String>>(None);
@@ -1066,6 +1124,32 @@ pub fn SendMultiToken() -> impl IntoView {
                 Token::Rhea(_) => false,
             })
     };
+
+    let address_book_options = Signal::derive(move || {
+        config
+            .get()
+            .address_book
+            .into_iter()
+            .map(|entry| {
+                let account_id = entry.account_id.to_string();
+                let label_account_id = account_id.clone();
+                let name = entry.name;
+                SelectOption::new(account_id, move || {
+                    view! {
+                        <span class="flex flex-col text-left min-w-0">
+                            <span class="text-white truncate">
+                                {if name.is_empty() { label_account_id.clone() } else { name.clone() }}
+                            </span>
+                            <span class="text-gray-400 text-xs truncate">{label_account_id.clone()}</span>
+                        </span>
+                    }
+                    .into_any()
+                })
+            })
+            .collect::<Vec<_>>()
+    });
+
+    let has_address_book_entries = Signal::derive(move || !config.get().address_book.is_empty());
 
     let add_recipient = move |_: leptos::ev::MouseEvent| {
         set_recipients.update(|r| r.push(MultiSendRecipient::default()));
@@ -1147,6 +1231,15 @@ pub fn SendMultiToken() -> impl IntoView {
             }
 
             if !is_valid_account_id(&value) {
+                set_recipients.update(|r| {
+                    if let Some(rec) = r.get_mut(index) {
+                        rec.is_loading_recipient = false;
+                    }
+                });
+                return;
+            }
+
+            if !is_in_address_book(&config.get_untracked(), &value) {
                 set_recipients.update(|r| {
                     if let Some(rec) = r.get_mut(index) {
                         rec.is_loading_recipient = false;
@@ -1354,6 +1447,9 @@ pub fn SendMultiToken() -> impl IntoView {
             if !rec.account_exists {
                 return;
             }
+            if !is_in_address_book(&config.get_untracked(), &rec.recipient) {
+                return;
+            }
             if let Ok(amount_dec) = rec.amount.parse::<BigDecimal>() {
                 let amount_raw = decimal_to_balance(amount_dec, token_data.token.metadata.decimals);
                 transfers.push(SendConfirmationTransfer {
@@ -1402,10 +1498,12 @@ pub fn SendMultiToken() -> impl IntoView {
                 }
             }
 
-            let all_valid = recipients
-                .get()
-                .iter()
-                .all(|r| r.account_exists && r.amount_error.is_none() && !r.amount.is_empty());
+            let all_valid = recipients.get().iter().all(|r| {
+                r.account_exists
+                    && r.amount_error.is_none()
+                    && !r.amount.is_empty()
+                    && is_in_address_book(&config.get(), &r.recipient)
+            });
             all_valid && !exceeds_balance && !has_dup
         } else {
             false
@@ -1596,8 +1694,11 @@ pub fn SendMultiToken() -> impl IntoView {
                                             </label>
                                         </Show>
                                         <input
-                                            type="text"
-                                            class="w-full focus:ring-2 bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 text-base min-w-0"
+                                            type="hidden"
+                                            prop:value=rec.recipient.clone()
+                                        />
+                                        <div
+                                            class="rounded-xl min-w-0"
                                             style=move || {
                                                 let recs = recipients.get();
                                                 if let Some(r) = recs.get(index) {
@@ -1623,14 +1724,32 @@ pub fn SendMultiToken() -> impl IntoView {
                                                     "border: 2px solid transparent"
                                                 }
                                             }
-                                            placeholder="account.near"
-                                            prop:value=rec.recipient
-                                            on:input=move |ev| update_recipient_field(
-                                                index,
-                                                RecipientField::Recipient,
-                                                event_target_value(&ev).to_lowercase(),
-                                            )
-                                        />
+                                        >
+                                            <Select
+                                                options=address_book_options
+                                                placeholder=TranslationKey::PagesSendAddressBookSelectPlaceholder
+                                                    .format(&[])
+                                                disabled=Signal::derive(move || !has_address_book_entries.get())
+                                                initial_value=rec.recipient.clone()
+                                                filter_enabled=true
+                                                on_change=Callback::new(move |value: String| {
+                                                    update_recipient_field(
+                                                        index,
+                                                        RecipientField::Recipient,
+                                                        value.to_lowercase(),
+                                                    );
+                                                })
+                                            />
+                                        </div>
+                                        <Show when=move || !has_address_book_entries.get()>
+                                            <A
+                                                href="/settings/address-book"
+                                                attr:class="text-blue-400 hover:text-blue-300 text-sm font-medium underline"
+                                            >
+                                                {move || TranslationKey::PagesSendAddressBookEmptyHint
+                                                    .format(&[])}
+                                            </A>
+                                        </Show>
                                         {move || {
                                             if let Some(rec) = recipients.get().get(index).cloned() {
                                                 if let Some(warning) = rec.recipient_warning.clone() {
@@ -1719,7 +1838,13 @@ pub fn SendMultiToken() -> impl IntoView {
                                                             },
                                                         )
                                                     };
-                                                    let msg = if is_dup {
+                                                    let msg = if !is_in_address_book(
+                                                        &config.get(),
+                                                        &rec.recipient,
+                                                    ) {
+                                                        TranslationKey::PagesSendAddressBookRequired
+                                                            .format(&[])
+                                                    } else if is_dup {
                                                         TranslationKey::PagesSendDuplicateRecipient
                                                             .format(&[])
                                                     } else {
