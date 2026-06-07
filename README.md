@@ -51,3 +51,5 @@ Feel free to create an issue or PR with the feature you want added in the wallet
 
 - [`history.rs`](src/pages/history.rs): Add custom rendering of interactions with your dapp on the History page.
 - [`explore_components.rs`](src/components/explore_components.rs), [`learn.rs`](src/data/learn.rs), and [`protocols.rs`](src/data/protocols.rs): Add your dapp / article / custom sections on the Explore page.
+
+Any contributions are welcome, except ones of exceptionally low quality and high confidence (usually AI generated ones). AI usage is allowed for UI (layout, styles), but not for app logic code or translations. As this is a wallet, a security-sensitive project, all important code must be written and checked by a human, and if your code looks so bad it's beyond any reasonable doubt that you know what you're doing, I'm not going to endlessly ask you to fix that, I'm just going to block you from ever opening a PR again.
