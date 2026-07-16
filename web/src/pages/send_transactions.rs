@@ -989,6 +989,7 @@ pub fn SendTransactions() -> impl IntoView {
                                     .map(|action| action.into())
                                     .collect(),
                                 receiver_id: transaction.receiver_id,
+                                block_height_ttl: transaction.block_height_ttl,
                                 sender: Some(signed_delegate_tx),
                             },
                         )

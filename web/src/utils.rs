@@ -17,7 +17,7 @@ use near_min_api::{
     },
     utils::dec_format,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use std::{fmt::Display, ops::Deref, str::FromStr, sync::Arc, time::Duration};
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use web_sys::js_sys::{Array, Function, Object, Promise, Reflect};
@@ -961,6 +961,83 @@ pub struct WalletSelectorTransaction {
     pub signer_id: AccountId,
     pub receiver_id: AccountId,
     pub actions: Vec<SendTransactionsAction>,
+    #[serde(default, deserialize_with = "deserialize_block_height_ttl")]
+    pub block_height_ttl: Option<u64>,
+}
+
+const MAX_SAFE_BLOCK_HEIGHT_TTL: u64 = 9_007_199_254_740_991;
+
+pub(crate) fn validate_block_height_ttl(block_height_ttl: u64) -> Result<u64, String> {
+    if block_height_ttl == 0 || block_height_ttl > MAX_SAFE_BLOCK_HEIGHT_TTL {
+        return Err("blockHeightTtl must be a positive safe integer".to_string());
+    }
+    Ok(block_height_ttl)
+}
+
+fn deserialize_block_height_ttl<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    let block_height_ttl = value
+        .as_u64()
+        .ok_or_else(|| D::Error::custom("blockHeightTtl must be a positive safe integer"))?;
+    validate_block_height_ttl(block_height_ttl)
+        .map(Some)
+        .map_err(D::Error::custom)
+}
+
+#[cfg(test)]
+mod wallet_selector_transaction_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn transaction(block_height_ttl: Option<serde_json::Value>) -> serde_json::Value {
+        let mut transaction = json!({
+            "signerId": "alice.near",
+            "receiverId": "wrap.near",
+            "actions": [],
+        });
+        if let Some(block_height_ttl) = block_height_ttl {
+            transaction["blockHeightTtl"] = block_height_ttl;
+        }
+        transaction
+    }
+
+    #[test]
+    fn deserializes_camel_case_block_height_ttl() {
+        let transaction: WalletSelectorTransaction =
+            serde_json::from_value(transaction(Some(json!(300)))).unwrap();
+        assert_eq!(transaction.block_height_ttl, Some(300));
+    }
+
+    #[test]
+    fn permits_legacy_requests_without_block_height_ttl() {
+        let transaction: WalletSelectorTransaction =
+            serde_json::from_value(transaction(None)).unwrap();
+        assert_eq!(transaction.block_height_ttl, None);
+    }
+
+    #[test]
+    fn rejects_invalid_block_height_ttl_values() {
+        for value in [
+            json!(0),
+            json!(-1),
+            json!(1.5),
+            json!("300"),
+            serde_json::Value::Null,
+            json!(MAX_SAFE_BLOCK_HEIGHT_TTL + 1),
+        ] {
+            let error =
+                serde_json::from_value::<WalletSelectorTransaction>(transaction(Some(value)))
+                    .unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("blockHeightTtl must be a positive safe integer")
+            );
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
