@@ -839,7 +839,7 @@ async fn create_account(
                         }))
                     }
                     _ => {
-                        tracing::error!("Transaction failed: {:?}", outcome.status);
+                        tracing::error!("Transaction failed. Status: {:?} Outcome: {:?}", outcome.status, outcome.transaction_outcome);
                         Ok(Json(CreateAccountResponse {
                             success: false,
                             message: format!("Transaction failed: {:?}", outcome.status),
