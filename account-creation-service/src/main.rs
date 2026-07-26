@@ -670,20 +670,16 @@ async fn create_account(
     let relayer_id = headers
         .get("x-relayer-id")
         .and_then(|h| h.to_str().ok())
-        .ok_or_else(|| {
-            (
-                StatusCode::BAD_REQUEST,
-                "Missing x-relayer-id header".to_string(),
-            )
-        })?;
+        .ok_or((
+            StatusCode::BAD_REQUEST,
+            "Missing x-relayer-id header".to_string(),
+        ))?;
 
     let configs = app_state.configs.read().await;
-    let config = configs.get(relayer_id).ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            format!("Relayer not found: {}", relayer_id),
-        )
-    })?;
+    let config = configs.get(relayer_id).ok_or((
+        StatusCode::NOT_FOUND,
+        format!("Relayer not found: {}", relayer_id),
+    ))?;
 
     check_account_creation_limit(&app_state, relayer_id, config.max_accounts_created_per_day)
         .await?;
