@@ -20,7 +20,7 @@ use near_min_api::{
         near_crypto::{PublicKey, SecretKey},
     },
 };
-use rand::seq::SliceRandom;
+use rand::{Rng, seq::SliceRandom};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::serde_as;
 use std::{
@@ -670,20 +670,16 @@ async fn create_account(
     let relayer_id = headers
         .get("x-relayer-id")
         .and_then(|h| h.to_str().ok())
-        .ok_or_else(|| {
-            (
-                StatusCode::BAD_REQUEST,
-                "Missing x-relayer-id header".to_string(),
-            )
-        })?;
+        .ok_or((
+            StatusCode::BAD_REQUEST,
+            "Missing x-relayer-id header".to_string(),
+        ))?;
 
     let configs = app_state.configs.read().await;
-    let config = configs.get(relayer_id).ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            format!("Relayer not found: {}", relayer_id),
-        )
-    })?;
+    let config = configs.get(relayer_id).ok_or((
+        StatusCode::NOT_FOUND,
+        format!("Relayer not found: {}", relayer_id),
+    ))?;
 
     check_account_creation_limit(&app_state, relayer_id, config.max_accounts_created_per_day)
         .await?;
@@ -697,16 +693,13 @@ async fn create_account(
         payload.account_id
     );
 
-    let (relayer_key, queue) = loop {
-        let key = state
-            .relayer_keys
-            .choose(&mut rand::thread_rng())
-            .expect("No private keys available");
-        let public_key = key.public_key();
-        if let Some(queue) = state.key_queues.get(&public_key) {
-            break (key.clone(), queue.clone());
-        }
-    };
+    let index = rand::thread_rng().gen_range(0..state.relayer_keys.len());
+    let relayer_key = state.relayer_keys[index].clone();
+    let public_key = relayer_key.public_key();
+    let queue = state
+        .key_queues
+        .get(&public_key)
+        .expect("Key missing from queues; this is a bug");
 
     let _guard = queue.lock().await;
 
