@@ -681,6 +681,14 @@ async fn create_account(
         format!("Relayer not found: {}", relayer_id),
     ))?;
 
+    // Validate payload before any operations
+    if config.factory.is_none() && !payload.account_id.is_sub_account_of(&config.relayer_id) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Account ID is not a subaccount of relayer ID".to_string(),
+        ));
+    }
+
     check_account_creation_limit(&app_state, relayer_id, config.max_accounts_created_per_day)
         .await?;
 
@@ -773,15 +781,7 @@ async fn create_account(
         nonce: access_key.nonce + 1,
         receiver_id: match state.factory {
             Some(factory) => factory,
-            None => {
-                if !payload.account_id.is_sub_account_of(&state.relayer_id) {
-                    return Err((
-                        StatusCode::BAD_REQUEST,
-                        "Account ID is not a subaccount of relayer ID".to_string(),
-                    ));
-                }
-                payload.account_id.clone()
-            }
+            None => payload.account_id.clone(),
         },
         block_hash: state
             .rpc_client
