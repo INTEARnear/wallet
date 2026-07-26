@@ -1778,22 +1778,19 @@ async fn check_otc_balances(state: &RelayerState, intear_dex: &AccountId, relaye
             })
             .unwrap();
 
-        let block_hash = match state
+        let block_hash = state
             .rpc_client
             .block(BlockReference::Finality(Finality::Final))
             .await
             .map(|block| block.header.hash)
-        {
-            Ok(hash) => hash,
-            Err(e) => {
+            .map_err(|e| {
                 tracing::error!(
                     "[{}] Failed to fetch block hash for withdrawal: {}",
                     relayer_id,
                     e
                 );
-                return;
-            }
-        };
+            })
+            .unwrap();
 
         let withdraw_action = Action::FunctionCall(Box::new(FunctionCallAction {
             method_name: "dex_call".to_string(),
