@@ -1031,7 +1031,7 @@ async fn swap_for_gas(
         amount_in: U128::from("0.3 NEAR".parse::<NearToken>().unwrap().as_yoctonear()),
         amount_out: U128::from(match inverse_route.estimated_amount {
             Amount::AmountIn(_) => unreachable!(),
-            Amount::AmountOut(amount) => amount / 10 * 9, // 10% fee
+            Amount::AmountOut(amount) => amount * 9 / 10, // 10% fee
         }),
         validity: OtcValidity {
             expiry: Some(OtcExpiryCondition::Timestamp {
