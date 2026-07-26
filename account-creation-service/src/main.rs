@@ -20,7 +20,7 @@ use near_min_api::{
         near_crypto::{PublicKey, SecretKey},
     },
 };
-use rand::seq::SliceRandom;
+use rand::{Rng, seq::SliceRandom};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::serde_as;
 use std::{
@@ -693,16 +693,13 @@ async fn create_account(
         payload.account_id
     );
 
-    let (relayer_key, queue) = loop {
-        let key = state
-            .relayer_keys
-            .choose(&mut rand::thread_rng())
-            .expect("No private keys available");
-        let public_key = key.public_key();
-        if let Some(queue) = state.key_queues.get(&public_key) {
-            break (key.clone(), queue.clone());
-        }
-    };
+    let index = rand::thread_rng().gen_range(0..state.relayer_keys.len());
+    let relayer_key = state.relayer_keys[index].clone();
+    let public_key = relayer_key.public_key();
+    let queue = state
+        .key_queues
+        .get(&public_key)
+        .expect("Key missing from queues; this is a bug");
 
     let _guard = queue.lock().await;
 
