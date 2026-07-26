@@ -1513,38 +1513,33 @@ impl FromStr for AssetId {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "near" => Ok(AssetId::Near),
-            _ => match s.split_once(':') {
-                Some(("nep141", contract_id)) => {
-                    Ok(AssetId::Nep141(contract_id.parse().map_err(|e| {
-                        format!("Invalid account id {contract_id}: {e}")
-                    })?))
-                }
-                Some(("nep245", rest)) => {
-                    if let Some((contract_id, token_id)) = rest.split_once(':') {
+            _ => {
+                let parts: Vec<&str> = s.split(':').collect();
+                match parts.as_slice() {
+                    ["nep141", contract_id] => {
+                        Ok(AssetId::Nep141(contract_id.parse().map_err(|e| {
+                            format!("Invalid account id {contract_id}: {e}")
+                        })?))
+                    }
+                    ["nep245", contract_id, token_id] => {
                         Ok(AssetId::Nep245(
                             contract_id
                                 .parse()
                                 .map_err(|e| format!("Invalid account id {contract_id}: {e}"))?,
                             token_id.to_string(),
                         ))
-                    } else {
-                        Err(format!("Invalid asset id: {s}"))
                     }
-                }
-                Some(("nep171", rest)) => {
-                    if let Some((contract_id, token_id)) = rest.split_once(':') {
+                    ["nep171", contract_id, token_id] => {
                         Ok(AssetId::Nep171(
                             contract_id
                                 .parse()
                                 .map_err(|e| format!("Invalid account id {contract_id}: {e}"))?,
                             token_id.to_string(),
                         ))
-                    } else {
-                        Err(format!("Invalid asset id: {s}"))
                     }
+                    _ => Err(format!("Invalid asset id: {s}")),
                 }
-                _ => Err(format!("Invalid asset id: {s}")),
-            },
+            }
         }
     }
 }
