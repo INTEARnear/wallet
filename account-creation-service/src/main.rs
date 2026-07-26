@@ -839,7 +839,11 @@ async fn create_account(
                         }))
                     }
                     _ => {
-                        tracing::error!("Transaction failed. Status: {:?} Outcome: {:?}", outcome.status, outcome.transaction_outcome);
+                        tracing::error!(
+                            "Transaction failed. Status: {:?} Outcome: {:?}",
+                            outcome.status,
+                            outcome.transaction_outcome
+                        );
                         Ok(Json(CreateAccountResponse {
                             success: false,
                             message: format!("Transaction failed: {:?}", outcome.status),
@@ -1521,22 +1525,18 @@ impl FromStr for AssetId {
                             format!("Invalid account id {contract_id}: {e}")
                         })?))
                     }
-                    ["nep245", contract_id, token_id] => {
-                        Ok(AssetId::Nep245(
-                            contract_id
-                                .parse()
-                                .map_err(|e| format!("Invalid account id {contract_id}: {e}"))?,
-                            token_id.to_string(),
-                        ))
-                    }
-                    ["nep171", contract_id, token_id] => {
-                        Ok(AssetId::Nep171(
-                            contract_id
-                                .parse()
-                                .map_err(|e| format!("Invalid account id {contract_id}: {e}"))?,
-                            token_id.to_string(),
-                        ))
-                    }
+                    ["nep245", contract_id, token_id] => Ok(AssetId::Nep245(
+                        contract_id
+                            .parse()
+                            .map_err(|e| format!("Invalid account id {contract_id}: {e}"))?,
+                        token_id.to_string(),
+                    )),
+                    ["nep171", contract_id, token_id] => Ok(AssetId::Nep171(
+                        contract_id
+                            .parse()
+                            .map_err(|e| format!("Invalid account id {contract_id}: {e}"))?,
+                        token_id.to_string(),
+                    )),
                     _ => Err(format!("Invalid asset id: {s}")),
                 }
             }
@@ -1761,7 +1761,7 @@ async fn check_otc_balances(state: &RelayerState, intear_dex: &AccountId, relaye
             .first()
             .expect("No private keys available");
 
-        let access_key = match state
+        let access_key = state
             .rpc_client
             .get_access_key(
                 state.relayer_id.clone(),
@@ -1769,17 +1769,14 @@ async fn check_otc_balances(state: &RelayerState, intear_dex: &AccountId, relaye
                 QueryFinality::Finality(Finality::None),
             )
             .await
-        {
-            Ok(key) => key,
-            Err(e) => {
+            .map_err(|e| {
                 tracing::error!(
                     "[{}] Failed to get access key for withdrawal: {}",
                     relayer_id,
                     e
                 );
-                return;
-            }
-        };
+            })
+            .unwrap();
 
         let block_hash = match state
             .rpc_client
