@@ -1,4 +1,6 @@
 mod router;
+#[cfg(test)]
+mod test;
 
 use axum::{
     Router,
