@@ -596,22 +596,7 @@ impl StateChanges {
                     ));
                 }
                 // The next variants considered as unnecessary as too low level
-                TrieKey::ReceivedData { .. } => {}
-                TrieKey::PostponedReceiptId { .. } => {}
-                TrieKey::PendingDataCount { .. } => {}
-                TrieKey::PostponedReceipt { .. } => {}
-                TrieKey::DelayedReceiptIndices => {}
-                TrieKey::DelayedReceipt { .. } => {}
-                TrieKey::PromiseYieldIndices => {}
-                TrieKey::PromiseYieldTimeout { .. } => {}
-                TrieKey::PromiseYieldReceipt { .. } => {}
-                TrieKey::BufferedReceiptIndices => {}
-                TrieKey::BufferedReceipt { .. } => {}
-                TrieKey::BandwidthSchedulerState => {}
-                TrieKey::BufferedReceiptGroupsQueueData { .. } => {}
-                TrieKey::BufferedReceiptGroupsQueueItem { .. } => {}
-                // Global contract code is not a part of account, so ignoring it as well.
-                TrieKey::GlobalContractCode { .. } => {}
+                _ => {}
             }
         }
 
