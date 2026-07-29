@@ -1,8 +1,4 @@
 import IntearWalletConnector from "./intearwallet-connect.js";
-import {
-    canonicalizeSignedDelegateActions,
-    withBlockHeightTtl,
-} from "./delegate-actions.js";
 
 const selectorStorage = {
     get: async (key) => {
@@ -137,24 +133,26 @@ class IntearWalletAdapter {
             throw new Error("Account is not connected");
         }
         let transactions = delegateActions.map(da => {
-            return withBlockHeightTtl({
+            return {
                 signerId,
                 receiverId: da.receiverId,
                 actions: da.actions,
-            }, da.blockHeightTtl);
+                ...(da.blockHeightTtl !== undefined && { blockHeightTtl: da.blockHeightTtl }),
+            };
         });
         transactions = transactions.map(t => {
             t.actions.forEach(fixAction);
-            return withBlockHeightTtl({
+            return {
                 signerId: t.signerId ?? this.near.connectedAccount.accountId,
                 receiverId: t.receiverId,
                 actions: t.actions,
-            }, t.blockHeightTtl);
+                ...(t.blockHeightTtl !== undefined && { blockHeightTtl: t.blockHeightTtl }),
+            };
         });
         const result = await this.near.connectedAccount.sendTransactions(transactions, true);
         if (result !== null) {
             return {
-                signedDelegateActions: canonicalizeSignedDelegateActions(result.signedDelegateActions)
+                signedDelegateActions: result.signedDelegateActions.map(sda => sda.borshSerializedBase64)
             };
         } else {
             throw new Error("User rejected the transactions");

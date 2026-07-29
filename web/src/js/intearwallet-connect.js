@@ -1,5 +1,3 @@
-import { withBlockHeightTtl } from "./delegate-actions.js";
-
 /**
  * The native wallet URL for Intear Wallet desktop/mobile apps.
  * Use this as the walletUrl option to connect via the native app instead of web popup.
@@ -404,11 +402,12 @@ class ConnectedAccount {
         const publicKeyBytes = base64Decode(privateKeyJwk.x);
         const publicKeyBase58 = base58Encode(publicKeyBytes);
         const publicKey = `ed25519:${publicKeyBase58}`;
-        const serializableTransactions = transactions.map(tx => withBlockHeightTtl({
+        const serializableTransactions = transactions.map(tx => ({
             signerId: tx.signerId,
             receiverId: tx.receiverId,
             actions: tx.actions,
-        }, onlySignDelegate ? tx.blockHeightTtl : undefined));
+            ...(onlySignDelegate && tx.blockHeightTtl !== undefined && { blockHeightTtl: tx.blockHeightTtl }),
+        }));
         const transactionsJson = JSON.stringify(serializableTransactions);
         const nonce = Date.now();
         const messageToHash = `${nonce}|${transactionsJson}`;
