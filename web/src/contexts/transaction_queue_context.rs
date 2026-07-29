@@ -8,7 +8,7 @@ use near_min_api::types::{
     HandlerError, InvalidTxError, NearToken, NonDelegateAction, RpcErrorKind,
     RpcRequestValidationErrorKind, RpcStatusError, RpcTransactionError, ServerError,
     SignedDelegateAction, SignedTransaction, Transaction, TransactionV0, TxExecutionError,
-    TxExecutionStatus, near_crypto::PublicKey,
+    TxExecutionStatus,
 };
 use near_min_api::{ExperimentalTxDetails, PendingTransaction, QueryFinality, RpcClient};
 use rand::Rng;
@@ -21,7 +21,7 @@ use crate::contexts::accounts_context::Account;
 use crate::contexts::config_context::{ConfigContext, LedgerMode};
 use crate::contexts::network_context::Network;
 use crate::contexts::tokens_context::{Token, TokenData, TokensContext};
-use crate::utils::{sign_nep366, validate_block_height_ttl};
+use crate::utils::sign_nep366;
 
 use super::accounts_context::AccountsContext;
 use super::rpc_context::RpcContext;
@@ -316,15 +316,32 @@ impl TransactionType {
                     }
                 };
 
-                let delegate_action = build_delegate_action(
-                    signer.account_id.clone(),
-                    receiver_id.clone(),
-                    &actions,
-                    access_key.nonce + 1 + current_index_in_queue as u64,
-                    recent_block_header.height,
-                    block_height_ttl,
-                    signer.secret_key.public_key(),
-                )?;
+                let block_height_ttl = block_height_ttl.unwrap_or(100);
+                if block_height_ttl == 0 {
+                    return Err("blockHeightTtl must be positive".to_string());
+                }
+                let max_block_height = recent_block_header
+                    .height
+                    .checked_add(block_height_ttl)
+                    .ok_or_else(|| {
+                        "final block height plus blockHeightTtl exceeds the supported range"
+                            .to_string()
+                    })?;
+
+                let delegate_action = DelegateAction {
+                    sender_id: signer.account_id.clone(),
+                    receiver_id: receiver_id.clone(),
+                    actions: actions
+                        .iter()
+                        .map(|a| NonDelegateAction::try_from(a.clone()))
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(|e| {
+                            format!("Failed to convert action to non-delegate action: {e}")
+                        })?,
+                    nonce: access_key.nonce + 1 + current_index_in_queue as u64,
+                    max_block_height,
+                    public_key: signer.secret_key.public_key(),
+                };
                 let Ok(signature) = sign_nep366(
                     signer.secret_key,
                     &delegate_action,
@@ -345,89 +362,6 @@ impl TransactionType {
                 Ok(TransactionResult::SignedDelegateAction)
             }
         }
-    }
-}
-
-const LEGACY_DELEGATE_ACTION_BLOCK_HEIGHT_TTL: u64 = 100;
-
-fn delegate_action_max_block_height(
-    final_block_height: u64,
-    block_height_ttl: Option<u64>,
-) -> Result<u64, String> {
-    let block_height_ttl = validate_block_height_ttl(
-        block_height_ttl.unwrap_or(LEGACY_DELEGATE_ACTION_BLOCK_HEIGHT_TTL),
-    )?;
-    final_block_height
-        .checked_add(block_height_ttl)
-        .ok_or_else(|| {
-            "final block height plus blockHeightTtl exceeds the supported range".to_string()
-        })
-}
-
-fn build_delegate_action(
-    sender_id: AccountId,
-    receiver_id: AccountId,
-    actions: &[Action],
-    nonce: u64,
-    final_block_height: u64,
-    block_height_ttl: Option<u64>,
-    public_key: PublicKey,
-) -> Result<DelegateAction, String> {
-    Ok(DelegateAction {
-        sender_id,
-        receiver_id,
-        actions: actions
-            .iter()
-            .map(|action| NonDelegateAction::try_from(action.clone()))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| format!("Failed to convert action to non-delegate action: {error}"))?,
-        nonce,
-        max_block_height: delegate_action_max_block_height(final_block_height, block_height_ttl)?,
-        public_key,
-    })
-}
-
-#[cfg(test)]
-mod delegate_action_max_block_height_tests {
-    use super::*;
-    use borsh::BorshDeserialize;
-    use near_min_api::types::near_crypto::{KeyType, Signature};
-
-    #[test]
-    fn constructed_signed_delegate_uses_requested_ttl_from_pinned_final_height() {
-        let delegate_action = build_delegate_action(
-            "alice.near".parse().unwrap(),
-            "wrap.near".parse().unwrap(),
-            &[],
-            1,
-            1_000,
-            Some(300),
-            PublicKey::empty(KeyType::ED25519),
-        )
-        .unwrap();
-        let signed_delegate_action = SignedDelegateAction {
-            delegate_action,
-            signature: Signature::empty(KeyType::ED25519),
-        };
-        let serialized = borsh::to_vec(&signed_delegate_action).unwrap();
-        let decoded = SignedDelegateAction::try_from_slice(&serialized).unwrap();
-
-        assert_eq!(
-            decoded.delegate_action.max_block_height, 1_300,
-            "runtime delegate construction must add the requested TTL to final height",
-        );
-    }
-
-    #[test]
-    fn retains_legacy_default_when_ttl_is_missing() {
-        assert_eq!(delegate_action_max_block_height(1_000, None), Ok(1_100));
-    }
-
-    #[test]
-    fn rejects_invalid_or_overflowing_ttl() {
-        assert!(delegate_action_max_block_height(1_000, Some(0)).is_err());
-        assert!(delegate_action_max_block_height(1_000, Some(9_007_199_254_740_992)).is_err());
-        assert!(delegate_action_max_block_height(u64::MAX, Some(1)).is_err());
     }
 }
 
