@@ -124,52 +124,11 @@ impl RpcClient {
             for url in &self.urls {
                 match jsonrpc_request(&self.client, url, method, &params).await {
                     Ok(response) => return Ok(response),
-                    Err(
-                        e @ Error::JsonRpc(RpcError {
-                            error_struct:
-                                // Trying to add all cases that can happen because of node's issues,
-                                // including nodes configured to not store all blocks, or with limits.
-                                // This is because the user might have mroe than one RPC, and the
-                                // second one might work. Or if a transaction is pending / not finalized
-                                // yet, but will probably be available after exponential backoff.
-                                Some(RpcErrorKind::HandlerError(
-                                    HandlerError::RpcQueryError(
-                                        RpcQueryError::GarbageCollectedBlock { .. }
-                                        | RpcQueryError::UnknownBlock { .. }
-                                        | RpcQueryError::UnavailableShard { .. }
-                                        | RpcQueryError::NoSyncedBlocks
-                                        | RpcQueryError::TooLargeContractState { .. },
-                                    )
-                                    | HandlerError::RpcReceiptError(
-                                        RpcReceiptError::UnknownReceipt { .. }
-                                    )
-                                    | HandlerError::RpcStatusError(
-                                        RpcStatusError::NodeIsSyncing
-                                        | RpcStatusError::NoNewBlocks { .. }
-                                    )
-                                    | HandlerError::RpcTransactionError(
-                                        RpcTransactionError::DoesNotTrackShard
-                                        | RpcTransactionError::RequestRouted { .. }
-                                        | RpcTransactionError::UnknownTransaction { .. }
-                                        | RpcTransactionError::TimeoutError
-                                    )
-                                    | HandlerError::RpcLightClientProofError(
-                                        RpcLightClientProofError::UnknownBlock
-                                        | RpcLightClientProofError::InconsistentState { .. }
-                                        | RpcLightClientProofError::NotConfirmed { .. }
-                                        | RpcLightClientProofError::UnknownTransactionOrReceipt { .. }
-                                        | RpcLightClientProofError::UnavailableShard { .. }
-                                    )
-                                )),
-                            ..
-                        }) | e @ Error::Reqwest(_),
-                    ) => {
+                    Err(e) if e.is_retryable_rpc_error() => {
                         error = Some(e);
                         continue;
                     }
-                    Err(e) => {
-                        return Err(e);
-                    }
+                    Err(e) => return Err(e),
                 }
             }
 
@@ -687,4 +646,48 @@ pub enum Error {
     NoRpcUrls,
     #[error("Query error: {0:?}")]
     OtherQueryError(String),
+}
+
+impl Error {
+    /// Whether this error is worth retrying on a different RPC node or after backoff.
+    ///
+    /// Trying to add all cases that can happen because of node's issues,
+    /// including nodes configured to not store all blocks, or with limits.
+    /// This is because the user might have more than one RPC, and the
+    /// second one might work. Or if a transaction is pending / not finalized
+    /// yet, but will probably be available after exponential backoff.
+    fn is_retryable_rpc_error(&self) -> bool {
+        matches!(
+            self,
+            Error::Reqwest(_)
+                | Error::JsonRpc(RpcError {
+                    error_struct: Some(RpcErrorKind::HandlerError(
+                        HandlerError::RpcQueryError(
+                            RpcQueryError::GarbageCollectedBlock { .. }
+                                | RpcQueryError::UnknownBlock { .. }
+                                | RpcQueryError::UnavailableShard { .. }
+                                | RpcQueryError::NoSyncedBlocks
+                                | RpcQueryError::TooLargeContractState { .. },
+                        ) | HandlerError::RpcReceiptError(RpcReceiptError::UnknownReceipt { .. })
+                            | HandlerError::RpcStatusError(
+                                RpcStatusError::NodeIsSyncing | RpcStatusError::NoNewBlocks { .. }
+                            )
+                            | HandlerError::RpcTransactionError(
+                                RpcTransactionError::DoesNotTrackShard
+                                    | RpcTransactionError::RequestRouted { .. }
+                                    | RpcTransactionError::UnknownTransaction { .. }
+                                    | RpcTransactionError::TimeoutError
+                            )
+                            | HandlerError::RpcLightClientProofError(
+                                RpcLightClientProofError::UnknownBlock
+                                    | RpcLightClientProofError::InconsistentState { .. }
+                                    | RpcLightClientProofError::NotConfirmed { .. }
+                                    | RpcLightClientProofError::UnknownTransactionOrReceipt { .. }
+                                    | RpcLightClientProofError::UnavailableShard { .. }
+                            )
+                    )),
+                    ..
+                })
+        )
+    }
 }
