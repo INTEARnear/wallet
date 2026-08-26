@@ -38,10 +38,6 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
   readonly memory: WebAssembly.Memory;
   readonly hydrate: () => void;
-  readonly rustsecp256k1_v0_8_1_context_create: (a: number) => number;
-  readonly rustsecp256k1_v0_8_1_context_destroy: (a: number) => void;
-  readonly rustsecp256k1_v0_8_1_default_error_callback_fn: (a: number, b: number) => void;
-  readonly rustsecp256k1_v0_8_1_default_illegal_callback_fn: (a: number, b: number) => void;
   readonly __wbg_intounderlyingbytesource_free: (a: number, b: number) => void;
   readonly __wbg_intounderlyingsink_free: (a: number, b: number) => void;
   readonly __wbg_intounderlyingsource_free: (a: number, b: number) => void;
@@ -62,20 +58,20 @@ export interface InitOutput {
   readonly __wbindgen_export_4: WebAssembly.Table;
   readonly __wbindgen_free: (a: number, b: number, c: number) => void;
   readonly __wbindgen_export_6: WebAssembly.Table;
-  readonly closure2598_externref_shim: (a: number, b: number, c: any) => void;
+  readonly closure13270_externref_shim: (a: number, b: number, c: any) => void;
   readonly wasm_bindgen_4be2b48c741033d9___convert__closures_____invoke______: (a: number, b: number) => void;
-  readonly closure13053_externref_shim: (a: number, b: number, c: any) => void;
+  readonly wasm_bindgen_4be2b48c741033d9___convert__closures_____invoke______10: (a: number, b: number) => void;
   readonly wasm_bindgen_4be2b48c741033d9___convert__closures_____invoke______11: (a: number, b: number) => void;
-  readonly closure13150_externref_shim: (a: number, b: number, c: any) => void;
-  readonly closure13227_externref_shim: (a: number, b: number, c: any) => void;
-  readonly closure12356_externref_shim: (a: number, b: number, c: any) => void;
-  readonly wasm_bindgen_4be2b48c741033d9___convert__closures_____invoke______15: (a: number, b: number) => void;
-  readonly wasm_bindgen_4be2b48c741033d9___convert__closures_____invoke______16: (a: number, b: number) => void;
-  readonly closure2596_externref_shim: (a: number, b: number, c: any) => void;
-  readonly closure2597_externref_shim: (a: number, b: number, c: any, d: any) => void;
-  readonly closure12291_externref_shim: (a: number, b: number, c: any) => void;
+  readonly closure13097_externref_shim: (a: number, b: number, c: any) => void;
+  readonly closure13193_externref_shim: (a: number, b: number, c: any) => void;
+  readonly closure12370_externref_shim: (a: number, b: number, c: any) => void;
+  readonly closure2598_externref_shim: (a: number, b: number, c: any) => void;
+  readonly closure2600_externref_shim: (a: number, b: number, c: any) => void;
+  readonly closure2599_externref_shim: (a: number, b: number, c: any, d: any) => void;
+  readonly wasm_bindgen_4be2b48c741033d9___convert__closures_____invoke______18: (a: number, b: number) => void;
+  readonly closure12302_externref_shim: (a: number, b: number, c: any) => void;
   readonly wasm_bindgen_4be2b48c741033d9___convert__closures_____invoke______20: (a: number, b: number) => void;
-  readonly closure13243_externref_shim: (a: number, b: number, c: any, d: any) => void;
+  readonly closure13286_externref_shim: (a: number, b: number, c: any, d: any) => void;
   readonly __wbindgen_start: () => void;
 }
 
