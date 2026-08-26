@@ -1,6 +1,9 @@
+use std::collections::HashSet;
+
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_use::{use_event_listener, use_window};
+use near_min_api::types::near_crypto::{PublicKey, PublicKeyHandle};
 use near_min_api::types::{AccountId, near_crypto::SecretKey};
 
 use crate::components::account_selector::{
@@ -23,17 +26,20 @@ use crate::translations::TranslationKey;
 use crate::utils::serialize_to_js_value;
 
 async fn find_accounts_by_public_key(
-    public_key: near_min_api::types::near_crypto::PublicKey,
+    public_key: PublicKey,
     accounts_context: &AccountsContext,
-) -> (Vec<(AccountId, Network)>, bool) {
-    let mut all_accounts = vec![];
+) -> (HashSet<(AccountId, Network)>, bool) {
+    let public_key_handle = PublicKeyHandle::from(public_key);
+    let mut all_accounts = HashSet::new();
 
     let mut has_accounts_with_same_public_key = false;
     for (network, api_url) in [
-        (Network::Mainnet, "https://api.fastnear.com"),
-        (Network::Testnet, "https://test.api.fastnear.com"),
+        (Network::Mainnet, "https://api.fastnear.com/v0"),
+        (Network::Mainnet, "https://account-indexer.intea.rs"),
+        (Network::Testnet, "https://test.api.fastnear.com/v0"),
+        (Network::Mainnet, "https://account-indexer-testnet.intea.rs"),
     ] {
-        let url = format!("{api_url}/v0/public_key/{public_key}");
+        let url = format!("{api_url}/public_key/{public_key_handle}");
         if let Ok(response) = reqwest::get(url).await
             && let Ok(data) = response.json::<serde_json::Value>().await
             && let Some(account_ids) = data.get("account_ids").and_then(|ids| ids.as_array())
@@ -156,7 +162,8 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                         find_accounts_by_public_key(public_key, &accounts_context)
                                             .await;
 
-                                    set_available_accounts.set(all_accounts.clone());
+                                    set_available_accounts
+                                        .set(all_accounts.clone().into_iter().collect());
                                     set_selected_accounts.set(vec![]);
                                     if all_accounts.is_empty() {
                                         if has_existing {
@@ -233,7 +240,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
             let (all_accounts, has_existing) =
                 find_accounts_by_public_key(public_key, &accounts_context).await;
 
-            set_available_accounts.set(all_accounts.clone());
+            set_available_accounts.set(all_accounts.clone().into_iter().collect());
             set_selected_accounts.set(vec![]);
             if all_accounts.is_empty() {
                 if has_existing {
@@ -283,7 +290,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
             let (all_accounts, has_existing) =
                 find_accounts_by_public_key(public_key, &accounts_context).await;
 
-            set_available_accounts.set(all_accounts.clone());
+            set_available_accounts.set(all_accounts.clone().into_iter().collect());
             set_selected_accounts.set(vec![]);
             if all_accounts.is_empty() {
                 if has_existing {

@@ -591,6 +591,9 @@ pub fn Connect() -> impl IntoView {
                                     Signature::SECP256K1(signature) => {
                                         BASE64_STANDARD.encode(<[u8; 65]>::from(signature))
                                     }
+                                    Signature::MLDSA65(signature) => {
+                                        BASE64_STANDARD.encode(signature.0.as_ref())
+                                    }
                                 },
                                 state: message_to_sign.state.clone(),
                             }),

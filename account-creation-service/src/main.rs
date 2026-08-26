@@ -1057,6 +1057,9 @@ async fn swap_for_gas(
         near_min_api::types::near_crypto::Signature::SECP256K1(signature) => {
             <[u8; 65]>::from(signature).to_vec()
         }
+        near_min_api::types::near_crypto::Signature::MLDSA65(signature) => {
+            signature.0.as_ref().to_vec()
+        }
     };
     let authorized_trade_intent = OtcAuthorizedTradeIntent {
         trade_intent,

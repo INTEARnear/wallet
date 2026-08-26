@@ -9,7 +9,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 futures-timer = { version = "3", features = ["wasm-bindgen"] }
-near-crypto = "0.34.1"
+near-crypto = "0.37.3"
 bs58 = "0.5"
 sha2 = "0.10"
 borsh = "1.6"

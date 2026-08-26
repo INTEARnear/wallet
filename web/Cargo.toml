@@ -96,4 +96,6 @@ crates = [
     # Need to add async interruptions to not block the main
     # thread for too long and make it abortable
     "argon2",
+    # Doesn't support wasm
+    "near-crypto",
 ]

@@ -1,0 +1,588 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index f798957..c4c93c9 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -34,11 +34,11 @@ ignored = ["rand"]
+ default = ["rand"]
+ protocol_schema = ["near-schema-checker-lib/protocol_schema"]
+ rand = [
+-    "secp256k1/rand",
++    "k256/getrandom",
+     "rand/getrandom",
++    "getrandom/wasm_js",
+     "ed25519-dalek/rand_core",
+ ]
+-rand-std = ["secp256k1/rand-std"]
+ 
+ [lib]
+ name = "near_crypto"
+@@ -59,10 +59,6 @@ name = "verify_distribution"
+ path = "benches/verify_distribution.rs"
+ harness = false
+ 
+-[dependencies.aws-lc-rs]
+-version = "=1.16.2"
+-features = ["unstable"]
+-
+ [dependencies.blake2]
+ version = "0.10.6"
+ features = ["reset"]
+@@ -102,6 +98,16 @@ default-features = false
+ version = "0.4.2"
+ features = ["serde"]
+ 
++[dependencies.k256]
++version = "0.14.0"
++features = ["ecdsa", "std", "precomputed-tables"]
++default-features = false
++
++[dependencies.ml-dsa]
++version = "0.1.1"
++features = ["alloc", "getrandom"]
++default-features = false
++
+ [dependencies.near-account-id]
+ version = "2.0.0"
+ features = [
+@@ -129,14 +135,6 @@ version = "1.2.1"
+ features = ["chrono04"]
+ optional = true
+ 
+-[dependencies.secp256k1]
+-version = "0.27.0"
+-features = [
+-    "recovery",
+-    "alloc",
+-]
+-default-features = false
+-
+ [dependencies.serde]
+ version = "1.0.136"
+ features = [
+@@ -161,6 +159,10 @@ version = "2.2"
+ [dependencies.thiserror]
+ version = "2.0"
+ 
++[dependencies.getrandom]
++version = "0.4"
++optional = true
++
+ [dev-dependencies.bolero]
+ version = "0.10.0"
+ features = ["arbitrary"]
+diff --git a/Cargo.toml.orig b/Cargo.toml.orig
+index e0f9aa7..3784779 100644
+--- a/Cargo.toml.orig
++++ b/Cargo.toml.orig
+@@ -12,7 +12,6 @@ publish = true
+ workspace = true
+ 
+ [dependencies]
+-aws-lc-rs.workspace = true
+ blake2.workspace = true
+ borsh.workspace = true
+ bs58.workspace = true
+@@ -24,9 +23,10 @@ curve25519-dalek = { workspace = true, features = [
+ derive_more = { workspace = true, features = ["as_ref", "from", "into"] }
+ ed25519-dalek = { workspace = true, features = ["hazmat"] }
+ hex.workspace = true
++k256 = { version = "0.14.0", default-features = false, features = ["ecdsa", "std", "precomputed-tables"] }
++ml-dsa = { version = "0.1.1", default-features = false, features = ["alloc", "getrandom"] }
+ near-account-id.workspace = true
+ primitive-types.workspace = true
+-secp256k1 = { workspace = true, features = ["recovery", "alloc"] }
+ serde.workspace = true
+ serde_json.workspace = true
+ stdx.workspace = true
+@@ -36,6 +36,7 @@ near-config-utils.workspace = true
+ near-schema-checker-lib.workspace = true
+ rand = { workspace = true, optional = true }
+ schemars = {workspace = true, optional = true }
++getrandom = { version = "0.4", optional = true }
+ 
+ [dev-dependencies]
+ bolero.workspace = true
+@@ -59,8 +60,7 @@ harness = false
+ 
+ [features]
+ default = ["rand"]
+-rand = ["secp256k1/rand", "rand/getrandom", "ed25519-dalek/rand_core"]
+-rand-std = ["secp256k1/rand-std"]
++rand = ["k256/getrandom", "rand/getrandom", "getrandom/wasm_js", "ed25519-dalek/rand_core"]
+ protocol_schema = [
+     "near-schema-checker-lib/protocol_schema",
+ ]
+diff --git a/benches/ml_dsa_worst_case.rs b/benches/ml_dsa_worst_case.rs
+index 2c3ce34..79e77aa 100644
+--- a/benches/ml_dsa_worst_case.rs
++++ b/benches/ml_dsa_worst_case.rs
+@@ -1,8 +1,8 @@
+ //! ML-DSA-65 worst-case verify investigation.
+ //!
+-//! Walk-through of the AWS-LC `mld_sign_verify_internal` shows that the only
++//! Per FIPS 204 ML-DSA.Verify_internal (Algorithm 8), the only
+ //! signature-data-dependent compute on the *valid-shape* path is
+-//! `polyveck_use_hint`, whose work is proportional to `weight(h)` and bounded
++//! `UseHint`, whose work is proportional to `weight(h)` and bounded
+ //! by `ω = 55`. Everything else is constant-time.
+ //!
+ //! This bench answers two questions:
+diff --git a/src/signature.rs b/src/signature.rs
+index 59d11a0..6e2bc72 100644
+--- a/src/signature.rs
++++ b/src/signature.rs
+@@ -1,22 +1,27 @@
+ use crate::hash_domain::HashDomainTag;
+ use crate::util::try_fixed_array;
+-use aws_lc_rs::signature::UnparsedPublicKey;
+-use aws_lc_rs::unstable::signature::{ML_DSA_65, ML_DSA_65_SIGNING, PqdsaKeyPair};
+ use borsh::{BorshDeserialize, BorshSerialize};
+ use ed25519_dalek::ed25519::signature::{Signer, Verifier};
++use k256::ecdsa::signature::hazmat::PrehashVerifier;
++use k256::ecdsa::{
++    RecoveryId, Signature as K256Signature, SigningKey as K256SigningKey,
++    VerifyingKey as K256VerifyingKey,
++};
++use ml_dsa::{
++    EncodedSignature, EncodedVerifyingKey, ExpandedSigningKey, ExpandedSigningKeyBytes, Generate,
++    MlDsa65, Seed, Signature as MlDsaSignature, Signer as MlDsaSigner, SigningKey, VerifyingKey,
++    Verifier as MlDsaVerifier,
++};
+ use near_schema_checker_lib::ProtocolSchema;
+ use primitive_types::U256;
+-use secp256k1::Message;
+ use std::convert::AsRef;
+ use std::fmt::{Debug, Display, Formatter};
+ use std::hash::{Hash, Hasher};
+ use std::io::{Error, ErrorKind, Read, Write};
+ use std::str::FromStr;
+-use std::sync::LazyLock;
+-
+-pub static SECP256K1: LazyLock<secp256k1::Secp256k1<secp256k1::All>> =
+-    LazyLock::new(secp256k1::Secp256k1::new);
+ 
++/// secp256k1 raw private key scalar length in bytes.
++const SECP256K1_SECRET_KEY_LENGTH: usize = 32;
+ /// ML-DSA-65 public key length in bytes.
+ pub const ML_DSA_65_PUBLIC_KEY_LENGTH: usize = 1952;
+ /// ML-DSA-65 raw private key length in bytes.
+@@ -747,11 +752,38 @@ impl Debug for MlDsa65SecretKey {
+     }
+ }
+ 
++/// Raw secp256k1 private key scalar (32 bytes).
++///
++/// Stored as raw bytes (rather than a live `k256::ecdsa::SigningKey`)
++/// because `SigningKey` deliberately does not implement `PartialEq`/`Eq` -
++/// comparing secret key material in non-constant-time is a foot-gun the
++/// type intentionally rules out. See [`secp256k1_signing_key`] for
++/// reconstructing the live key on demand.
++#[derive(Clone, PartialEq, Eq)]
++pub struct Secp256K1SecretKey(pub [u8; SECP256K1_SECRET_KEY_LENGTH]);
++
++impl Debug for Secp256K1SecretKey {
++    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
++        // Avoid printing key material; show only the type tag.
++        f.write_str("Secp256K1SecretKey(<redacted>)")
++    }
++}
++
++/// Reconstruct the [`K256SigningKey`] from an already-validated raw scalar
++/// (see [`Secp256K1SecretKey`]). Only ever called with bytes that were
++/// already validated by `K256SigningKey::from_slice` when the
++/// `Secp256K1SecretKey` was constructed (`SecretKey::from_str`,
++/// `SecretKey::from_random`, or the deterministic seed helper in
++/// `test_utils.rs`), so this can't fail in practice.
++fn secp256k1_signing_key(secret_key: &Secp256K1SecretKey) -> K256SigningKey {
++    K256SigningKey::from_slice(&secret_key.0).expect("Secp256K1SecretKey is always a valid scalar")
++}
++
+ /// Secret key container supporting different curves.
+ #[derive(Clone, Eq, PartialEq, Debug)]
+ pub enum SecretKey {
+     ED25519(ED25519SecretKey),
+-    SECP256K1(secp256k1::SecretKey),
++    SECP256K1(Secp256K1SecretKey),
+     MLDSA65(MlDsa65SecretKey),
+ }
+ 
+@@ -766,17 +798,20 @@ impl SecretKey {
+ 
+     #[cfg(feature = "rand")]
+     pub fn from_random(key_type: KeyType) -> SecretKey {
+-        use secp256k1::rand::rngs::OsRng;
++        use rand::rngs::OsRng;
+ 
+         match key_type {
+             KeyType::ED25519 => {
+                 let keypair = ed25519_dalek::SigningKey::generate(&mut OsRng);
+                 SecretKey::ED25519(ED25519SecretKey(keypair.to_keypair_bytes()))
+             }
+-            KeyType::SECP256K1 => SecretKey::SECP256K1(secp256k1::SecretKey::new(&mut OsRng)),
++            KeyType::SECP256K1 => {
++                let signing_key = K256SigningKey::generate();
++                SecretKey::SECP256K1(Secp256K1SecretKey(signing_key.to_bytes().into()))
++            }
+             KeyType::MLDSA65 => {
+-                let kp =
+-                    PqdsaKeyPair::generate(&ML_DSA_65_SIGNING).expect("ML-DSA-65 keygen failed");
++                let seed = SigningKey::<MlDsa65>::generate().to_seed();
++                let kp = ExpandedSigningKey::<MlDsa65>::from_seed(&seed);
+                 SecretKey::MLDSA65(ml_dsa_65_secret_from_keypair(&kp))
+             }
+         }
+@@ -790,24 +825,19 @@ impl SecretKey {
+             }
+ 
+             SecretKey::SECP256K1(secret_key) => {
+-                let signature = SECP256K1.sign_ecdsa_recoverable(
+-                    &secp256k1::Message::from_slice(data).expect("32 bytes"),
+-                    secret_key,
+-                );
+-                let (rec_id, data) = signature.serialize_compact();
++                assert_eq!(data.len(), 32, "32 bytes");
++                let signing_key = secp256k1_signing_key(secret_key);
++                let (sig, recovery_id) = signing_key.sign_prehash_recoverable(data);
+                 let mut buf = [0; 65];
+-                buf[0..64].copy_from_slice(&data[0..64]);
+-                buf[64] = rec_id.to_i32() as u8;
++                buf[0..64].copy_from_slice(sig.to_bytes().as_slice());
++                buf[64] = recovery_id.to_byte();
+                 Signature::SECP256K1(Secp256K1Signature(buf))
+             }
+ 
+             SecretKey::MLDSA65(secret_key) => {
+-                let kp = PqdsaKeyPair::from_raw_private_key(&ML_DSA_65_SIGNING, &secret_key.0[..])
+-                    .expect("invalid ML-DSA-65 raw private key");
+-                let mut sig_buf = Box::new([0u8; ML_DSA_65_SIGNATURE_LENGTH]);
+-                let n = kp.sign(data, sig_buf.as_mut()).expect("ML-DSA-65 sign failed");
+-                debug_assert_eq!(n, ML_DSA_65_SIGNATURE_LENGTH);
+-                Signature::MLDSA65(MlDsa65Signature(sig_buf))
++                let kp = ml_dsa_65_expand(secret_key);
++                let sig: MlDsaSignature<MlDsa65> = kp.sign(data);
++                Signature::MLDSA65(MlDsa65Signature(Box::new(sig.encode().0)))
+             }
+         }
+     }
+@@ -818,20 +848,16 @@ impl SecretKey {
+                 secret_key.0[ed25519_dalek::SECRET_KEY_LENGTH..].try_into().unwrap(),
+             )),
+             SecretKey::SECP256K1(secret_key) => {
+-                let pk = secp256k1::PublicKey::from_secret_key(&SECP256K1, secret_key);
+-                let serialized = pk.serialize_uncompressed();
++                let signing_key = secp256k1_signing_key(secret_key);
++                let serialized = signing_key.verifying_key().to_sec1_point(false);
+                 let mut public_key = Secp256K1PublicKey([0; 64]);
+-                public_key.0.copy_from_slice(&serialized[1..65]);
++                public_key.0.copy_from_slice(&serialized.as_bytes()[1..65]);
+                 PublicKey::SECP256K1(public_key)
+             }
+             SecretKey::MLDSA65(secret_key) => {
+-                let kp = PqdsaKeyPair::from_raw_private_key(&ML_DSA_65_SIGNING, &secret_key.0[..])
+-                    .expect("invalid ML-DSA-65 raw private key");
+-                use aws_lc_rs::signature::KeyPair;
+-                let pk_bytes: &[u8] = kp.public_key().as_ref();
+-                let mut buf = Box::new([0u8; ML_DSA_65_PUBLIC_KEY_LENGTH]);
+-                buf.copy_from_slice(pk_bytes);
+-                PublicKey::MLDSA65(MlDsa65PublicKey(buf))
++                let kp = ml_dsa_65_expand(secret_key);
++                let pk = kp.verifying_key();
++                PublicKey::MLDSA65(MlDsa65PublicKey(Box::new(pk.encode().0)))
+             }
+         }
+     }
+@@ -844,17 +870,44 @@ impl SecretKey {
+     }
+ }
+ 
++/// Reconstruct the [`ExpandedSigningKey`] from an already-validated 4032-byte
++/// raw expanded private key (see [`MlDsa65SecretKey`]).
++///
++/// # Panics
++/// `ExpandedSigningKey::from_expanded` does not validate its input and can
++/// panic on malformed bytes. Only call this with bytes that either came from
++/// this module's own key generation, or were already validated once via
++/// [`ml_dsa_65_expand_checked`] (e.g. by `SecretKey::from_str`).
++// `from_expanded` is deprecated in favor of the 32-byte seed format, but this
++// crate keeps the 4032-byte expanded key as its `SecretKey::MLDSA65` wire
++// format for backward compatibility.
++#[allow(deprecated)]
++fn ml_dsa_65_expand(secret_key: &MlDsa65SecretKey) -> ExpandedSigningKey<MlDsa65> {
++    let enc = ExpandedSigningKeyBytes::<MlDsa65>::cast_from_core(secret_key.0.as_ref());
++    ExpandedSigningKey::from_expanded(enc)
++}
++
++/// Like [`ml_dsa_65_expand`], but for raw bytes of unknown provenance (e.g.
++/// parsed from a user-supplied key string): converts a panic from
++/// `ExpandedSigningKey::from_expanded` on malformed input into a
++/// [`ParseKeyError`](crate::errors::ParseKeyError) instead of aborting the
++/// process. A caught panic still prints its message to stderr via the
++/// default panic hook.
++fn ml_dsa_65_expand_checked(
++    data: &[u8; ML_DSA_65_SECRET_KEY_LENGTH],
++) -> Result<ExpandedSigningKey<MlDsa65>, crate::errors::ParseKeyError> {
++    std::panic::catch_unwind(|| ml_dsa_65_expand(&MlDsa65SecretKey(Box::new(*data)))).map_err(
++        |_| crate::errors::ParseKeyError::InvalidData {
++            error_message: "malformed ML-DSA-65 private key".to_string(),
++        },
++    )
++}
++
+ /// Helper: extract the 4032-byte raw private key from a freshly-generated keypair.
+ #[cfg(feature = "rand")]
+-fn ml_dsa_65_secret_from_keypair(kp: &PqdsaKeyPair) -> MlDsa65SecretKey {
+-    use aws_lc_rs::encoding::{AsRawBytes, PqdsaPrivateKeyRaw};
+-    let raw: PqdsaPrivateKeyRaw<'static> =
+-        kp.private_key().as_raw_bytes().expect("ML-DSA-65 raw private export failed");
+-    let bytes: &[u8] = raw.as_ref();
+-    debug_assert_eq!(bytes.len(), ML_DSA_65_SECRET_KEY_LENGTH);
+-    let mut buf = Box::new([0u8; ML_DSA_65_SECRET_KEY_LENGTH]);
+-    buf.copy_from_slice(bytes);
+-    MlDsa65SecretKey(buf)
++#[allow(deprecated)]
++fn ml_dsa_65_secret_from_keypair(kp: &ExpandedSigningKey<MlDsa65>) -> MlDsa65SecretKey {
++    MlDsa65SecretKey(Box::new(kp.to_expanded().0))
+ }
+ 
+ /// Helper: build an `MlDsa65SecretKey` from a 32-byte seed (deterministic).
+@@ -862,21 +915,12 @@ fn ml_dsa_65_secret_from_keypair(kp: &PqdsaKeyPair) -> MlDsa65SecretKey {
+ fn ml_dsa_65_secret_from_seed(
+     seed: &[u8; ML_DSA_65_SEED_LENGTH],
+ ) -> Result<MlDsa65SecretKey, crate::errors::ParseKeyError> {
+-    use aws_lc_rs::encoding::{AsRawBytes, PqdsaPrivateKeyRaw};
+-    let kp = PqdsaKeyPair::from_seed(&ML_DSA_65_SIGNING, &seed[..]).map_err(|err| {
+-        crate::errors::ParseKeyError::InvalidData { error_message: err.to_string() }
+-    })?;
+-    let raw: PqdsaPrivateKeyRaw<'static> = kp.private_key().as_raw_bytes().map_err(|err| {
+-        crate::errors::ParseKeyError::InvalidData { error_message: err.to_string() }
+-    })?;
+-    let bytes: &[u8] = raw.as_ref();
+-    let arr: [u8; ML_DSA_65_SECRET_KEY_LENGTH] = try_fixed_array(bytes)?;
+-    Ok(MlDsa65SecretKey(Box::new(arr)))
++    let seed = Seed::cast_from_core(seed);
++    let kp = ExpandedSigningKey::<MlDsa65>::from_seed(seed);
++    Ok(ml_dsa_65_secret_from_keypair(&kp))
+ }
+ 
+ /// Build an [`MlDsa65SecretKey`] from a 32-byte seed.
+-///
+-/// Wraps `aws_lc_rs::unstable::signature::PqdsaKeyPair::from_seed`.
+ #[cfg(feature = "rand")]
+ pub fn ml_dsa_65_from_seed(
+     seed: &[u8; ML_DSA_65_SEED_LENGTH],
+@@ -888,7 +932,7 @@ impl std::fmt::Display for SecretKey {
+     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+         let (key_type, key_data) = match self {
+             SecretKey::ED25519(secret_key) => (KeyType::ED25519, &secret_key.0[..]),
+-            SecretKey::SECP256K1(secret_key) => (KeyType::SECP256K1, &secret_key[..]),
++            SecretKey::SECP256K1(secret_key) => (KeyType::SECP256K1, &secret_key.0[..]),
+             SecretKey::MLDSA65(secret_key) => (KeyType::MLDSA65, &secret_key.0[..]),
+         };
+         write!(f, "{}:{}", key_type, Bs58(key_data))
+@@ -903,19 +947,18 @@ impl FromStr for SecretKey {
+         Ok(match key_type {
+             KeyType::ED25519 => Self::ED25519(ED25519SecretKey(decode_bs58(key_data)?)),
+             KeyType::SECP256K1 => {
+-                let data = decode_bs58::<{ secp256k1::constants::SECRET_KEY_SIZE }>(key_data)?;
+-                let sk = secp256k1::SecretKey::from_slice(&data)
++                let data = decode_bs58::<SECP256K1_SECRET_KEY_LENGTH>(key_data)?;
++                K256SigningKey::from_slice(&data)
+                     .map_err(|err| Self::Err::InvalidData { error_message: err.to_string() })?;
+-                Self::SECP256K1(sk)
++                Self::SECP256K1(Secp256K1SecretKey(data))
+             }
+             KeyType::MLDSA65 => {
+                 let data = decode_bs58::<ML_DSA_65_SECRET_KEY_LENGTH>(key_data)?;
+                 // Mirror SECP256K1: validate the bytes form a valid
+-                // private key by handing them to the library. Catches
++                // private key before accepting them. Catches
+                 // malformed-but-correct-length blobs at parse time
+                 // rather than blowing up later in `sign()`.
+-                PqdsaKeyPair::from_raw_private_key(&ML_DSA_65_SIGNING, &data[..])
+-                    .map_err(|err| Self::Err::InvalidData { error_message: err.to_string() })?;
++                ml_dsa_65_expand_checked(&data)?;
+                 Self::MLDSA65(MlDsa65SecretKey(Box::new(data)))
+             }
+         })
+@@ -980,24 +1023,25 @@ impl Secp256K1Signature {
+         &self,
+         msg: [u8; 32],
+     ) -> Result<Secp256K1PublicKey, crate::errors::ParseSignatureError> {
+-        let recoverable_sig = secp256k1::ecdsa::RecoverableSignature::from_compact(
+-            &self.0[0..64],
+-            secp256k1::ecdsa::RecoveryId::from_i32(i32::from(self.0[64])).unwrap(),
+-        )
+-        .map_err(|err| crate::errors::ParseSignatureError::InvalidData {
+-            error_message: err.to_string(),
++        let recovery_id =
++            RecoveryId::from_byte(self.0[64]).ok_or_else(|| {
++                crate::errors::ParseSignatureError::InvalidData {
++                    error_message: "invalid recovery id".to_string(),
++                }
++            })?;
++        let sig = K256Signature::from_slice(&self.0[0..64]).map_err(|err| {
++            crate::errors::ParseSignatureError::InvalidData { error_message: err.to_string() }
+         })?;
+-        let msg = Message::from_slice(&msg).unwrap();
+ 
+-        let res = SECP256K1
+-            .recover_ecdsa(&msg, &recoverable_sig)
+-            .map_err(|err| crate::errors::ParseSignatureError::InvalidData {
++        let recovered = K256VerifyingKey::recover_from_prehash(&msg, &sig, recovery_id).map_err(
++            |err| crate::errors::ParseSignatureError::InvalidData {
+                 error_message: err.to_string(),
+-            })?
+-            .serialize_uncompressed();
++            },
++        )?;
++        let res = recovered.to_sec1_point(false);
+ 
+         // Can not fail
+-        let pk = Secp256K1PublicKey::try_from(&res[1..65]).unwrap();
++        let pk = Secp256K1PublicKey::try_from(&res.as_bytes()[1..65]).unwrap();
+ 
+         Ok(pk)
+     }
+@@ -1092,39 +1136,40 @@ impl Signature {
+                 }
+             }
+             (Signature::SECP256K1(signature), PublicKey::SECP256K1(public_key)) => {
+-                // cspell:ignore rsig pdata
+-                let rec_id =
+-                    match secp256k1::ecdsa::RecoveryId::from_i32(i32::from(signature.0[64])) {
+-                        Ok(r) => r,
+-                        Err(_) => return false,
+-                    };
+-                let rsig = match secp256k1::ecdsa::RecoverableSignature::from_compact(
+-                    &signature.0[0..64],
+-                    rec_id,
+-                ) {
+-                    Ok(r) => r,
++                // cspell:ignore pdata
++                // Recovery id isn't used for verification, but a signature
++                // carrying an out-of-range one is still rejected here, to
++                // match the previous (recoverable-signature-based) behavior.
++                if RecoveryId::from_byte(signature.0[64]).is_none() {
++                    return false;
++                }
++                if data.len() != 32 {
++                    return false;
++                }
++                let sig = match K256Signature::from_slice(&signature.0[0..64]) {
++                    Ok(s) => s,
+                     Err(_) => return false,
+                 };
+-                let sig = rsig.to_standard();
+                 let pdata: [u8; 65] = {
+                     // code borrowed from https://github.com/openethereum/openethereum/blob/98b7c07171cd320f32877dfa5aa528f585dc9a72/ethkey/src/signature.rs#L210
+                     let mut temp = [4u8; 65];
+                     temp[1..65].copy_from_slice(&public_key.0);
+                     temp
+                 };
+-                let message = match secp256k1::Message::from_slice(data) {
+-                    Ok(m) => m,
+-                    Err(_) => return false,
+-                };
+-                let pub_key = match secp256k1::PublicKey::from_slice(&pdata) {
++                let verifying_key = match K256VerifyingKey::from_sec1_bytes(&pdata) {
+                     Ok(p) => p,
+                     Err(_) => return false,
+                 };
+-                SECP256K1.verify_ecdsa(&message, &sig, &pub_key).is_ok()
++                verifying_key.verify_prehash(data, &sig).is_ok()
+             }
+             (Signature::MLDSA65(signature), PublicKey::MLDSA65(public_key)) => {
+-                let unparsed = UnparsedPublicKey::new(&ML_DSA_65, &public_key.0[..]);
+-                unparsed.verify(data, &signature.0[..]).is_ok()
++                let pk_enc = EncodedVerifyingKey::<MlDsa65>::cast_from_core(public_key.0.as_ref());
++                let verifying_key = VerifyingKey::<MlDsa65>::decode(pk_enc);
++                let sig_enc = EncodedSignature::<MlDsa65>::cast_from_core(signature.0.as_ref());
++                match MlDsaSignature::<MlDsa65>::decode(sig_enc) {
++                    Some(sig) => verifying_key.verify(data, &sig).is_ok(),
++                    None => false,
++                }
+             }
+             _ => false,
+         }
+@@ -1436,6 +1481,12 @@ mod tests {
+         let expected = "\"secp256k1:5N5CB9H1dmB9yraLGCo4ZCQTcF24zj4v2NT14MHdH3aVhRoRXrX3AhprHr2w6iXNBZDmjMS1Ntzjzq8Bv6iBvwth6\"";
+         assert_eq!(serde_json::to_string(&signature).unwrap(), expected);
+         assert_eq!(signature, serde_json::from_str(expected).unwrap());
++
++        let Signature::SECP256K1(secp256k1_signature) = &signature else { unreachable!() };
++        let recovered = secp256k1_signature
++            .recover(data.try_into().unwrap())
++            .expect("recovery must succeed for a well-formed signature");
++        assert_eq!(PublicKey::SECP256K1(recovered), pk, "recovered pubkey must match the signer's");
+         let signature_str: String = signature.to_string();
+         let signature2: Signature = signature_str.parse().unwrap();
+         assert_eq!(signature, signature2);
+@@ -1735,11 +1786,11 @@ mod tests {
+     }
+ 
+     /// Known-Answer Test pinning the (seed → public key) mapping and the
+-    /// sign/verify round-trip on a fixed message. If `aws-lc-rs` ever
+-    /// changes the bytes it emits for ML-DSA-65 keygen, or makes verify
+-    /// reject something it used to accept (or vice versa), this test
+-    /// fails - preventing a silent fork between nodes on different
+-    /// `aws-lc-rs` versions.
++    /// sign/verify round-trip on a fixed message. If the underlying
++    /// ML-DSA-65 implementation (or a future backend swap) ever changes
++    /// the bytes it emits for keygen, or makes verify reject something
++    /// it used to accept (or vice versa), this test fails - preventing a
++    /// silent fork between nodes on different implementations/versions.
+     ///
+     /// Only the public key is byte-pinned: ML-DSA-65 signatures *can*
+     /// be non-deterministic in some library configurations, but verify
+@@ -1757,7 +1808,7 @@ mod tests {
+         assert_eq!(
+             pk.to_string(),
+             KAT_PUBKEY,
+-            "seed → pubkey mapping changed; possible aws-lc-rs upgrade fork"
++            "seed → pubkey mapping changed; possible ML-DSA-65 backend/version fork"
+         );
+         let sig = sk.sign(KAT_MESSAGE);
+         assert!(sig.verify(KAT_MESSAGE, &pk), "self-produced signature must verify");
+diff --git a/src/test_utils.rs b/src/test_utils.rs
+index 4446d54..cce4252 100644
+--- a/src/test_utils.rs
++++ b/src/test_utils.rs
+@@ -17,15 +17,21 @@ fn ed25519_key_pair_from_seed(seed: &str) -> ed25519_dalek::SigningKey {
+ }
+ 
+ #[cfg(feature = "rand")]
+-fn secp256k1_secret_key_from_seed(seed: &str) -> secp256k1::SecretKey {
+-    use secp256k1::rand::SeedableRng;
++fn secp256k1_secret_key_from_seed(seed: &str) -> crate::signature::Secp256K1SecretKey {
++    use rand::{RngCore, SeedableRng};
+ 
+     let seed_bytes = seed.as_bytes();
+     let len = std::cmp::min(32, seed_bytes.len());
+     let mut seed: [u8; 32] = [b' '; 32];
+     seed[..len].copy_from_slice(&seed_bytes[..len]);
+-    let mut rng = secp256k1::rand::rngs::StdRng::from_seed(seed);
+-    secp256k1::SecretKey::new(&mut rng)
++    let mut rng = rand::rngs::StdRng::from_seed(seed);
++    loop {
++        let mut candidate = [0u8; 32];
++        rng.fill_bytes(&mut candidate);
++        if k256::ecdsa::SigningKey::from_slice(&candidate).is_ok() {
++            return crate::signature::Secp256K1SecretKey(candidate);
++        }
++    }
+ }
+ 
+ /// Derive a deterministic 32-byte seed from a free-form `&str` for
+diff --git a/src/vrf.rs b/src/vrf.rs
+index d33ae01..228d94a 100644
+--- a/src/vrf.rs
++++ b/src/vrf.rs
+@@ -124,7 +124,7 @@ traits!(SecretKey, 32, |s| s.0.as_bytes(), "secret key");
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+-    use secp256k1::rand::rngs::OsRng;
++    use rand::rngs::OsRng;
+     use serde::{Deserialize, Serialize};
+     use serde_json::{from_str, to_string};
+ 
