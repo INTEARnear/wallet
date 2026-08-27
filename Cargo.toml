@@ -43,6 +43,7 @@ members = [
     "web",
     "src-tauri",
     "translation-macros",
+    "intear-seed-phrase",
 ]
 resolver = "3"
 

@@ -4,9 +4,9 @@ use futures_util::TryFutureExt;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use near_min_api::types::{
-    AccountId, Action, ActionErrorKind, BlockReference, CryptoHash, DelegateAction, Finality,
-    HandlerError, InvalidTxError, NearToken, NonDelegateAction, RpcErrorKind,
-    RpcRequestValidationErrorKind, RpcStatusError, RpcTransactionError, ServerError,
+    AccountId, Action, ActionErrorKind, BlockReference, CryptoHash, DelegateAction,
+    DepositCostFailureReason, Finality, HandlerError, InvalidTxError, NearToken, NonDelegateAction,
+    RpcErrorKind, RpcRequestValidationErrorKind, RpcStatusError, RpcTransactionError, ServerError,
     SignedDelegateAction, SignedTransaction, Transaction, TransactionV0, TxExecutionError,
     TxExecutionStatus,
 };
@@ -417,6 +417,19 @@ fn format_tx_error(error: &near_min_api::Error) -> String {
                                                 format!("Delegate action nonce {delegate_nonce} is too large - must be less than {upper_bound}"),
                                             ActionErrorKind::GlobalContractDoesNotExist { identifier } =>
                                                 format!("Global contract not found: {identifier:?}"),
+                                            ActionErrorKind::GasKeyDoesNotExist { account_id, public_key } =>
+                                                format!("Gas key {public_key} does not exist for account {account_id}"),
+                                            ActionErrorKind::InsufficientGasKeyBalance { account_id, public_key, balance, required } =>
+                                                format!("Gas key {public_key} for account {account_id} has insufficient balance: {balance} available, {required} required"),
+                                            ActionErrorKind::GasKeyBalanceTooHigh { account_id, public_key, balance } => {
+                                                if let Some(pk) = public_key {
+                                                    format!("Gas key {pk} for account {account_id} has balance {balance} which is too high to burn on deletion")
+                                                } else {
+                                                    format!("Account {account_id} has total gas key balance {balance} which is too high to burn on deletion")
+                                                }
+                                            }
+                                            ActionErrorKind::DelegateActionInvalidNonceIndex { nonce_index, num_nonces } =>
+                                                format!("Delegate action nonce index {nonce_index} must be smaller than the gas key nonce count {num_nonces}"),
                                         }),
                                         TxExecutionError::InvalidTxError(e) => match e {
                                             InvalidTxError::InvalidAccessKeyError(access_key_error) =>
@@ -455,6 +468,17 @@ fn format_tx_error(error: &near_min_api::Error) -> String {
                                                 format!("Shard {shard_id} is congested"),
                                             InvalidTxError::ShardStuck { shard_id, missed_chunks: _ } =>
                                                 format!("Shard {shard_id} is stuck"),
+                                            InvalidTxError::InvalidNonceIndex { tx_nonce_index, num_nonces } =>
+                                                format!("Invalid nonce index {tx_nonce_index:?} for key with {num_nonces} nonces"),
+                                            InvalidTxError::NotEnoughGasKeyBalance { signer_id, balance, cost } =>
+                                                format!("Gas key for {signer_id} does not have enough balance {balance} for gas cost {cost}"),
+                                            InvalidTxError::NotEnoughBalanceForDeposit { signer_id, balance, cost, reason } =>
+                                                match reason {
+                                                    DepositCostFailureReason::NotEnoughBalance =>
+                                                        format!("Sender {signer_id} does not have enough balance ({balance}) to cover deposit cost ({cost})"),
+                                                    DepositCostFailureReason::LackBalanceForState =>
+                                                        format!("Sender {signer_id} would not have enough balance for storage after covering deposit (required {cost} more)"),
+                                                },
                                         },
                                     },
                                 }

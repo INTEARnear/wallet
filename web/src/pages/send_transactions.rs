@@ -10,10 +10,11 @@ use near_min_api::{
     types::{
         AccessKeyPermission, AccountId, Action, AddKeyAction, CryptoHash, DeleteAccountAction,
         DeleteKeyAction, DeployContractAction, DeployGlobalContractAction,
-        FinalExecutionOutcomeViewEnum, FunctionCallAction, FunctionCallPermission,
-        GlobalContractDeployMode, GlobalContractIdentifier, NearGas, NearToken,
-        SignedDelegateAction, StakeAction, TransferAction, UseGlobalContractAction,
-        near_crypto::{PublicKey, Signature},
+        DeterministicStateInitAction, FinalExecutionOutcomeViewEnum, FunctionCallAction,
+        FunctionCallPermission, GlobalContractDeployMode, GlobalContractIdentifier, NearGas,
+        NearToken, SignedDelegateAction, StakeAction, TransferAction, TransferToGasKeyAction,
+        UseGlobalContractAction, WithdrawFromGasKeyAction,
+        near_crypto::{PublicKey, PublicKeyHandle, Signature},
     },
 };
 use serde::{Deserialize, Serialize};
@@ -251,15 +252,23 @@ fn TransactionAction(
                 public_key,
                 access_key,
             }) => match &access_key.permission {
-                AccessKeyPermission::FullAccess => {
+                AccessKeyPermission::FullAccess | AccessKeyPermission::GasKeyFullAccess(_) => {
                     TranslationKey::PagesSendTransactionsActionAddFullAccessKey
-                        .format(&[("public_key", &public_key.to_string())])
+                        .format(&[("public_key", &PublicKeyHandle::from(public_key).to_string())])
                 }
                 AccessKeyPermission::FunctionCall(FunctionCallPermission {
                     receiver_id,
                     allowance,
                     method_names,
-                }) => {
+                })
+                | AccessKeyPermission::GasKeyFunctionCall(
+                    _,
+                    FunctionCallPermission {
+                        receiver_id,
+                        allowance,
+                        method_names,
+                    },
+                ) => {
                     let methods = if method_names.is_empty() {
                         TranslationKey::PagesSendTransactionsActionMethodsAny.format(&[])
                     } else {
@@ -272,7 +281,7 @@ fn TransactionAction(
                         })
                         .unwrap_or_default();
                     TranslationKey::PagesSendTransactionsActionAddFunctionCallKey.format(&[
-                        ("public_key", &public_key.to_string()),
+                        ("public_key", &PublicKeyHandle::from(public_key).to_string()),
                         ("receiver_id", &receiver_id.to_string()),
                         ("methods", &methods),
                         ("allowance_suffix", &allowance_suffix),
@@ -332,7 +341,26 @@ fn TransactionAction(
                     ("amount", &amount),
                 ])
             }
-            Action::Delegate(_) => panic!("Delegate actions are not supported"),
+            Action::Delegate(_) | Action::DelegateV2(_) => {
+                panic!("Delegate actions are not supported")
+            }
+            Action::DeterministicStateInit(box DeterministicStateInitAction {
+                deposit, ..
+            }) => TranslationKey::PagesSendTransactionsActionDeterministicStateInit
+                .format(&[("deposit", &deposit.exact_amount_display())]),
+            Action::TransferToGasKey(box TransferToGasKeyAction {
+                public_key,
+                deposit,
+            }) => TranslationKey::PagesSendTransactionsActionTransferToGasKey.format(&[
+                ("deposit", &deposit.exact_amount_display()),
+                ("public_key", &public_key.to_string()),
+            ]),
+            Action::WithdrawFromGasKey(box WithdrawFromGasKeyAction { public_key, amount }) => {
+                TranslationKey::PagesSendTransactionsActionWithdrawFromGasKey.format(&[
+                    ("amount", &amount.exact_amount_display()),
+                    ("public_key", &public_key.to_string()),
+                ])
+            }
         }
     };
     view! {

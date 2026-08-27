@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::Duration;
 
-use bip39::Mnemonic;
 use chrono::Utc;
 use leptos::ev::{mousemove, mouseup, scroll, touchcancel, touchend, touchmove};
 use leptos::{prelude::*, task::spawn_local};
@@ -15,14 +14,10 @@ use leptos_use::{
     UseEventListenerOptions, UseIntervalFnOptions, use_event_listener,
     use_event_listener_with_options, use_interval_fn, use_interval_fn_with_options,
 };
+use near_min_api::types::AccountId;
 use near_min_api::types::Finality;
-use near_min_api::types::{
-    AccountId,
-    near_crypto::{ED25519SecretKey, SecretKey},
-};
 use near_min_api::{Error, QueryFinality};
 use serde::Deserialize;
-use slipped10::BIP32Path;
 use web_sys::TouchEvent;
 
 use crate::components::account_creation_form::AccountCreationForm;
@@ -88,48 +83,6 @@ pub enum LoginMethod {
     SeedPhrase,
     PrivateKey,
     Ledger,
-}
-
-pub const HD_PATH: &str = "m/44'/397'/0'";
-
-pub fn seed_phrase_to_key(seed_phrase: &str) -> Option<SecretKey> {
-    let path = HD_PATH.parse().unwrap();
-    let password = None;
-    get_secret_key_from_seed(path, seed_phrase, password)
-}
-
-pub fn mnemonic_to_key(mnemonic: Mnemonic) -> Option<SecretKey> {
-    let path = HD_PATH.parse().unwrap();
-    let password = None;
-    get_secret_key_from_mnemonic(path, mnemonic, password)
-}
-
-fn get_secret_key_from_seed(
-    seed_phrase_hd_path: BIP32Path,
-    master_seed_phrase: &str,
-    password: Option<&str>,
-) -> Option<SecretKey> {
-    let master_mnemonic = bip39::Mnemonic::parse(master_seed_phrase.to_lowercase()).ok()?;
-    get_secret_key_from_mnemonic(seed_phrase_hd_path, master_mnemonic, password)
-}
-
-fn get_secret_key_from_mnemonic(
-    seed_phrase_hd_path: BIP32Path,
-    master_mnemonic: bip39::Mnemonic,
-    password: Option<&str>,
-) -> Option<SecretKey> {
-    let master_seed = master_mnemonic.to_seed(password.unwrap_or_default());
-    let derived_private_key = slipped10::derive_key_from_path(
-        &master_seed,
-        slipped10::Curve::Ed25519,
-        &seed_phrase_hd_path,
-    )
-    .ok()?;
-
-    let signing_key = ed25519_dalek::SigningKey::from_bytes(&derived_private_key.key);
-    let secret_key = ED25519SecretKey(signing_key.to_keypair_bytes());
-
-    Some(SecretKey::ED25519(secret_key))
 }
 
 fn get_account_gradient(account_id: &str, brightness: f32) -> String {

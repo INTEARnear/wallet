@@ -59,9 +59,8 @@ chrono = "0.4.40"
 futures-timer = { version = "3", features = ["wasm-bindgen"] }
 cached = { version = "0.55.1", features = ["wasm", "async"] }
 base64 = "0.22.1"
-bip39 = { version = "2.1.0", features = ["rand"] }
 ed25519-dalek = { version = "2.1.1", default-features = false }
-slipped10 = "0.4.6"
+intear-seed-phrase = { path = "../intear-seed-phrase" }
 argon2 = "0.5.3"
 aes-gcm = "0.10.3"
 leptos-use = { version = "0.16.3", features = [

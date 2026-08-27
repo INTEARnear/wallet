@@ -527,7 +527,8 @@ fn add_key_actions(
     for action in transaction.final_outcome.transaction.actions.iter() {
         match action {
             ActionView::AddKey { access_key, .. } => match &access_key.permission {
-                AccessKeyPermissionView::FullAccess => {
+                AccessKeyPermissionView::FullAccess
+                | AccessKeyPermissionView::GasKeyFullAccess { .. } => {
                     actions.push(
                         view! {
                             <div class="flex flex-col gap-1">
@@ -560,6 +561,12 @@ fn add_key_actions(
                     allowance,
                     receiver_id,
                     method_names,
+                }
+                | AccessKeyPermissionView::GasKeyFunctionCall {
+                    allowance,
+                    receiver_id,
+                    method_names,
+                    ..
                 } => {
                     let allowance = *allowance;
                     let receiver_id = receiver_id.clone();

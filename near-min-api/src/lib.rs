@@ -507,6 +507,8 @@ impl RpcClient {
             request: QueryRequest::ViewState {
                 account_id,
                 prefix: prefix.to_vec().into(),
+                after_key: None,
+                limit: None,
                 include_proof: false,
             },
             finality,

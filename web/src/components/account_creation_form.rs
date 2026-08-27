@@ -14,12 +14,12 @@ use near_min_api::types::{
 };
 use near_min_api::{
     QueryFinality,
-    types::{AccessKeyPermissionView, AccessKeyView, AccountId, Finality},
+    types::{AccessKeyPermissionView, AccessKeyView, AccountId, Finality, near_crypto::KeyType},
 };
 use web_sys::KeyboardEvent;
 
 use crate::components::account_selector::{
-    AccountCreateParent, AccountCreateRecoveryMethod, ModalState, mnemonic_to_key,
+    AccountCreateParent, AccountCreateRecoveryMethod, ModalState,
 };
 use crate::components::derivation_path_input::DerivationPathInput;
 use crate::components::gift_amount_display::GiftAmountDisplay;
@@ -277,11 +277,9 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
 
         let (secret_key, seed_phrase) = match recovery_method_untracked() {
             AccountCreateRecoveryMethod::RecoveryPhrase => {
-                let mnemonic = bip39::Mnemonic::generate(12).unwrap();
-                (
-                    SecretKeyHolder::SecretKey(mnemonic_to_key(mnemonic.clone()).unwrap()),
-                    Some(mnemonic.to_string()),
-                )
+                let (seed_phrase, secret_key) =
+                    intear_seed_phrase::generate(KeyType::ED25519).unwrap();
+                (SecretKeyHolder::SecretKey(secret_key), Some(seed_phrase))
             }
             AccountCreateRecoveryMethod::Ledger => {
                 let Some((path, public_key)) = ledger_current_key_data.get() else {

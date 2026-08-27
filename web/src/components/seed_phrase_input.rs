@@ -1,4 +1,3 @@
-use bip39::Language;
 use leptos::{html::Input, prelude::*};
 use wasm_bindgen::JsCast;
 use web_sys::Event;
@@ -34,8 +33,7 @@ pub fn SeedPhraseInput(#[prop(into)] on_change: Callback<String>) -> impl IntoVi
         if word.is_empty() {
             return false;
         }
-        Language::English
-            .word_list()
+        intear_seed_phrase::english_wordlist()
             .iter()
             .any(|&w| w == word.to_lowercase().as_str())
     };
@@ -46,8 +44,7 @@ pub fn SeedPhraseInput(#[prop(into)] on_change: Callback<String>) -> impl IntoVi
         }
 
         let prefix_lower = prefix.to_lowercase();
-        let matches: Vec<&str> = Language::English
-            .word_list()
+        let matches: Vec<&str> = intear_seed_phrase::english_wordlist()
             .iter()
             .filter(|&word| word.starts_with(&prefix_lower))
             .copied()

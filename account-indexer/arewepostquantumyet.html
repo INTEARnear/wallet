@@ -1,0 +1,2733 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Are we post-quantum yet?</title>
+  <style>
+    :root {
+      --paper: #efe8d8;
+      --ink: #1c1710;
+      --muted: #7a7266;
+      --rule: #1c1710;
+      --pq: #c11f0e;
+      --ochre: #9a5b0a;
+      --wine: #7a1830;
+      --safe: #1b6b38;
+      --all: rgba(28, 23, 16, 0.3);
+      --all-strong: rgba(28, 23, 16, 0.5);
+      --serif: Didot, "Bodoni 72", "Bodoni MT", "Palatino Linotype", Palatino, serif;
+      --sans: "Franklin Gothic Medium", "News Gothic MT", "Avenir Next Condensed", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      max-width: 100%;
+      overflow-x: clip;
+      background: var(--paper);
+      color: var(--ink);
+    }
+
+    body {
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.45;
+      background-image:
+        repeating-linear-gradient(30deg,
+          transparent 0,
+          transparent 27px,
+          rgba(28, 23, 16, 0.03) 27px,
+          rgba(28, 23, 16, 0.03) 28px),
+        repeating-linear-gradient(-30deg,
+          transparent 0,
+          transparent 27px,
+          rgba(28, 23, 16, 0.03) 27px,
+          rgba(28, 23, 16, 0.03) 28px);
+    }
+
+    .sheet {
+      max-width: 1080px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 1.75rem 1.35rem 3.5rem;
+    }
+
+    .masthead {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: baseline;
+      gap: 0.75rem;
+      font-size: 0.72rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .masthead-left {
+      justify-self: start;
+    }
+
+    .masthead-center {
+      justify-self: center;
+      color: var(--muted);
+    }
+
+    .masthead-right {
+      justify-self: end;
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
+    #live-label {
+      display: inline-block;
+      min-width: 11ch;
+      text-align: right;
+    }
+
+    .live-dot {
+      width: 0.55rem;
+      height: 0.55rem;
+      background: var(--pq);
+      flex: none;
+    }
+
+    .live-dot.is-down {
+      background: var(--muted);
+    }
+
+    .rules {
+      margin: 0.7rem 0 0;
+      height: 5px;
+      border-top: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+    }
+
+    h1 {
+      font-family: var(--serif);
+      font-weight: 400;
+      font-size: clamp(1.85rem, 4.6vw, 3rem);
+      letter-spacing: -0.02em;
+      line-height: 1.05;
+      text-align: center;
+      margin: 1.6rem 0 0;
+      font-style: italic;
+    }
+
+    .hero {
+      text-align: center;
+      margin: 1.15rem 0 0;
+    }
+
+    .hero-figure {
+      font-family: var(--mono);
+      font-size: clamp(3.4rem, 12vw, 7.6rem);
+      font-variant-numeric: tabular-nums;
+      font-weight: 500;
+      letter-spacing: -0.07em;
+      line-height: 0.86;
+      white-space: nowrap;
+      min-height: 0.86em;
+      margin: 0;
+    }
+
+    .verdict {
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 400;
+      font-size: clamp(1.2rem, 2.6vw, 1.65rem);
+      min-height: 1.35em;
+      min-width: 12ch;
+      margin: 1.05rem auto 0;
+      text-align: center;
+      overflow-wrap: anywhere;
+      padding: 0 0.2rem;
+    }
+
+    .verdict.is-yes {
+      color: var(--pq);
+    }
+
+    .progress {
+      max-width: 32rem;
+      margin: 0.9rem auto 0;
+      padding: 0 1.5rem;
+    }
+
+    .progress-track {
+      position: relative;
+      height: 3px;
+      background: rgba(28, 23, 16, 0.18);
+    }
+
+    .progress-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 100%;
+      background: var(--pq);
+      transform: scaleX(0);
+      transform-origin: left center;
+    }
+
+    .progress-mark {
+      position: absolute;
+      top: -3px;
+      width: 1px;
+      height: 9px;
+      background: var(--ink);
+      transform: translateX(-50%);
+    }
+
+    .progress-labels {
+      position: relative;
+      margin-top: 0.4rem;
+      min-height: 1em;
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.01em;
+      color: var(--muted);
+    }
+
+    .progress-labels span {
+      position: absolute;
+      top: 0;
+      transform: translateX(-50%);
+      white-space: nowrap;
+    }
+
+    .progress-labels span.is-reached {
+      color: var(--ink);
+    }
+
+    .lede-hour {
+      margin: 1.15rem 0 0;
+      min-height: 1.4em;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .grain {
+      display: flex;
+      justify-content: flex-end;
+      align-items: baseline;
+      gap: 0.45rem;
+      margin: 0;
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .grain button {
+      font: inherit;
+      letter-spacing: inherit;
+      text-transform: inherit;
+      color: var(--muted);
+      background: none;
+      border: 0;
+      border-bottom: 1px solid transparent;
+      padding: 0.15rem 0;
+      min-width: 7ch;
+      text-align: center;
+      cursor: pointer;
+    }
+
+    .grain button.is-on {
+      color: var(--ink);
+      border-bottom-color: var(--ink);
+    }
+
+    .grain-rule {
+      color: var(--muted);
+    }
+
+    .charts {
+      margin-top: 3.6rem;
+      display: grid;
+      gap: 3rem;
+      min-width: 0;
+    }
+
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 1rem;
+      margin-bottom: 0.45rem;
+    }
+
+    .panel-tools {
+      display: flex;
+      align-items: baseline;
+      justify-content: flex-end;
+      gap: 1.15rem;
+      flex-wrap: wrap;
+    }
+
+    .panel-title {
+      font-family: var(--serif);
+      font-size: 1.35rem;
+      font-weight: 400;
+      font-style: italic;
+      margin: 0;
+    }
+
+    .legend {
+      display: flex;
+      gap: 1rem;
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .swatch {
+      display: inline-block;
+      width: 0.7rem;
+      height: 0.7rem;
+      margin-right: 0.35rem;
+      vertical-align: -0.05rem;
+    }
+
+    .swatch-all {
+      background: var(--all-strong);
+    }
+
+    .swatch-pq {
+      background: var(--pq);
+    }
+
+    .chart-frame {
+      position: relative;
+      width: 100%;
+      max-width: 100%;
+      aspect-ratio: 3.35 / 1;
+      min-height: 170px;
+      max-height: 260px;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .chart-frame canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: crosshair;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    .validator-stage {
+      margin: 4rem 0 0;
+      width: 100vw;
+      max-width: 100vw;
+      margin-left: calc(50% - 50vw);
+      overflow: hidden;
+    }
+
+    .validator-tape {
+      overflow: hidden;
+      padding: 0.35rem 0 0.15rem;
+      mask-image: linear-gradient(to right,
+        transparent 0,
+        #000 4rem,
+        #000 calc(100% - 4rem),
+        transparent 100%);
+    }
+
+    .validator-tape-track {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      align-items: flex-start;
+      width: max-content;
+      animation: validator-scroll 180s linear infinite;
+    }
+
+    .validator-tape-set {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      align-items: flex-start;
+      gap: 2.1rem;
+      padding-right: 2.1rem;
+      flex: 0 0 auto;
+    }
+
+    .validator-tape:hover .validator-tape-track,
+    .validator-tape:focus-within .validator-tape-track {
+      animation-play-state: paused;
+    }
+
+    @keyframes validator-scroll {
+      from {
+        transform: translateX(0);
+      }
+
+      to {
+        transform: translateX(-50%);
+      }
+    }
+
+    .validator-chip {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 0.48rem;
+      width: 8.6rem;
+      flex: 0 0 8.6rem;
+      margin: 0;
+      padding: 0.15rem 0 0;
+      border: 0;
+      background: none;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+
+    .validator-chip:focus-visible {
+      outline: 1px solid var(--ink);
+      outline-offset: 4px;
+    }
+
+    .validator-dot {
+      width: 2.55rem;
+      height: 2.55rem;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: rgba(28, 23, 16, 0.16);
+      color: var(--paper);
+      flex: none;
+    }
+
+    .validator-dot.is-safe {
+      background: var(--safe);
+    }
+
+    .validator-dot.is-pre {
+      background: var(--pq);
+    }
+
+    .validator-dot svg {
+      display: none;
+      width: 1.05rem;
+      height: 1.05rem;
+    }
+
+    .validator-dot.is-safe .validator-dot-check,
+    .validator-dot.is-pre .validator-dot-x {
+      display: block;
+    }
+
+    .validator-chip-id {
+      max-width: 100%;
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      line-height: 1.3;
+      color: var(--muted);
+      text-align: center;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .validator-chip:hover .validator-chip-id,
+    .validator-chip:focus-visible .validator-chip-id {
+      color: var(--ink);
+    }
+
+    .validator-copy {
+      margin-top: 2.4rem;
+      max-width: 42rem;
+    }
+
+    .validator-progress {
+      max-width: none;
+      margin: 0.85rem 0 1.05rem;
+      padding: 0;
+    }
+
+    .validator-progress .progress-fill {
+      background: var(--safe);
+    }
+
+    .validator-caption {
+      margin: 0.45rem 0 0.95rem;
+      min-height: 1.2em;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.02em;
+    }
+
+    .validator-copy > p:not(.validator-caption) {
+      margin: 0 0 0.8rem;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    .validator-copy > p:last-child {
+      margin-bottom: 0;
+    }
+
+    .swatch-dot {
+      border-radius: 50%;
+    }
+
+    .swatch-safe {
+      background: var(--safe);
+    }
+
+    .swatch-pre {
+      background: var(--pq);
+    }
+
+    .chain-sigs {
+      margin-top: 4rem;
+      max-width: 42rem;
+    }
+
+    .chain-sigs-kicker {
+      display: block;
+      font-size: 0.68rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--pq);
+      margin: 0 0 0.2rem;
+    }
+
+    .chain-sigs h2 {
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 400;
+      font-size: 1.35rem;
+      margin: 0 0 0.75rem;
+    }
+
+    .chain-sigs > p {
+      margin: 0;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    footer {
+      margin-top: 4rem;
+      padding-top: 0.85rem;
+      border-top: 1px solid var(--rule);
+      display: grid;
+      gap: 0.35rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+      max-width: 42rem;
+    }
+
+    footer a {
+      color: var(--ink);
+    }
+
+    .article {
+      margin-top: 4rem;
+      max-width: 42rem;
+    }
+
+    .article h2 {
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 400;
+      font-size: 1.35rem;
+      margin: 0 0 0.75rem;
+    }
+
+    .article p {
+      margin: 0 0 0.8rem;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    .article p:last-child {
+      margin-bottom: 0;
+    }
+
+    .article-warn {
+      margin: 1.15rem 0 1.05rem;
+      padding: 0.65rem 0 0.7rem 0.95rem;
+      border-left: 3px solid var(--pq);
+    }
+
+    .article-warn-kicker {
+      display: block;
+      font-size: 0.68rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--pq);
+      margin-bottom: 0.28rem;
+    }
+
+    .article-warn p {
+      margin: 0;
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+
+    .article-warn a {
+      color: var(--ink);
+    }
+
+    .method {
+      margin: 0;
+      border: 1px solid var(--ink);
+    }
+
+    .method-tabs {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 1px;
+      padding-bottom: 1px;
+      background: var(--ink);
+    }
+
+    .method-tabs button {
+      font: inherit;
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      line-height: 1.2;
+      color: var(--ink);
+      background: var(--paper);
+      border: 0;
+      border-radius: 0;
+      padding: 0.72rem 0.5rem;
+      min-width: 0;
+      text-align: center;
+      cursor: pointer;
+    }
+
+    .method-tabs button.is-on {
+      color: var(--paper);
+      background: var(--ink);
+    }
+
+    .method-tabs button:hover:not(.is-on),
+    .method-tabs button:focus-visible:not(.is-on) {
+      color: var(--paper);
+      background: var(--pq);
+    }
+
+    .method-panel {
+      padding: 1.05rem 1.15rem 1.15rem;
+    }
+
+    .method-panel[hidden] {
+      display: none;
+    }
+
+    .method-panel > :first-child {
+      margin-top: 0;
+    }
+
+    .method-panel > :last-child {
+      margin-bottom: 0;
+    }
+
+    .cmd {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: start;
+      gap: 0.45rem 0.85rem;
+      margin: 0.75rem 0 1.05rem;
+      padding: 0.65rem 0 0.7rem;
+      border-top: 1px solid var(--ink);
+      border-bottom: 1px solid var(--ink);
+    }
+
+    .cmd pre,
+    .cmd code {
+      margin: 0;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .cmd-ph {
+      background: rgba(193, 31, 14, 0.16);
+      color: var(--pq);
+      font-weight: 600;
+      font-style: normal;
+      padding: 0.05em 0.2em;
+      white-space: nowrap;
+    }
+
+    .cmd-copy {
+      font: inherit;
+      font-size: 0.68rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: none;
+      border: 0;
+      border-bottom: 1px solid transparent;
+      padding: 0.15rem 0;
+      min-width: 7ch;
+      text-align: right;
+      cursor: pointer;
+    }
+
+    .cmd-copy:hover,
+    .cmd-copy:focus-visible {
+      color: var(--ink);
+      border-bottom-color: var(--ink);
+    }
+
+    .cmd-copy.is-copied {
+      color: var(--pq);
+      border-bottom-color: transparent;
+    }
+
+    .check {
+      margin: 0;
+      padding: 1.15rem 1.15rem 1.2rem;
+      border: 1px solid var(--ink);
+      outline: 1px solid var(--ink);
+      outline-offset: 3px;
+    }
+
+    .check-kicker {
+      display: block;
+      font-size: 0.72rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .check-title {
+      display: block;
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 400;
+      font-size: 1.5rem;
+      margin: 0.2rem 0 0.9rem;
+      cursor: pointer;
+    }
+
+    .check-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 0.7rem;
+      align-items: stretch;
+    }
+
+    .check-row input {
+      font-family: var(--mono);
+      font-size: 1.12rem;
+      color: var(--ink);
+      background: var(--paper);
+      border: 1px solid var(--ink);
+      border-radius: 0;
+      padding: 0.72rem 0.8rem;
+      min-width: 0;
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    .check-row input::placeholder {
+      color: var(--muted);
+    }
+
+    .check-row input:focus {
+      border-color: var(--pq);
+      box-shadow: inset 0 0 0 1px var(--pq);
+    }
+
+    .check-row button {
+      font: inherit;
+      font-size: 0.82rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--paper);
+      background: var(--ink);
+      border: 1px solid var(--ink);
+      border-radius: 0;
+      padding: 0.72rem 1.25rem;
+      cursor: pointer;
+    }
+
+    .check-row button:hover,
+    .check-row button:focus-visible {
+      color: var(--paper);
+      background: var(--pq);
+      border-color: var(--pq);
+    }
+
+    .check-row button:disabled {
+      color: var(--paper);
+      background: var(--muted);
+      border-color: var(--muted);
+      cursor: wait;
+    }
+
+    .check-status:not(:empty) {
+      margin-top: 0.95rem;
+    }
+
+    .check-verdict {
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 400;
+      font-size: clamp(1.35rem, 3.2vw, 1.8rem);
+      margin: 0 0 0.3rem;
+    }
+
+    .check-verdict.is-checking {
+      color: var(--muted);
+    }
+
+    .check-verdict.is-missing {
+      color: var(--ink);
+    }
+
+    .check-verdict.is-locked {
+      color: var(--muted);
+    }
+
+    .check-verdict.is-pre {
+      color: var(--ochre);
+    }
+
+    .check-verdict.is-mix {
+      color: var(--wine);
+    }
+
+    .check-verdict.is-safe {
+      color: var(--pq);
+    }
+
+    .check-detail {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+
+    .check-share {
+      margin: 0 0 0.85rem;
+    }
+
+    .check-share-figure {
+      font-family: var(--mono);
+      font-size: clamp(1.6rem, 4vw, 2.15rem);
+      font-variant-numeric: tabular-nums;
+      font-weight: 500;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      margin: 0;
+    }
+
+    .check-share-track {
+      position: relative;
+      height: 3px;
+      margin-top: 0.45rem;
+      background: rgba(28, 23, 16, 0.18);
+    }
+
+    .check-share-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 100%;
+      background: var(--pq);
+      transform: scaleX(0);
+      transform-origin: left center;
+    }
+
+    .check-share-caption {
+      margin: 0.35rem 0 0;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .check-members {
+      list-style: none;
+      margin: 0.85rem 0 0;
+      padding: 0;
+      border-top: 1px solid rgba(28, 23, 16, 0.22);
+    }
+
+    .check-member {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 0.2rem 0.75rem;
+      padding: 0.55rem 0;
+      border-bottom: 1px solid rgba(28, 23, 16, 0.12);
+      align-items: baseline;
+    }
+
+    .check-member-id {
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      overflow-wrap: anywhere;
+      color: var(--ink);
+    }
+
+    button.check-member-id {
+      font: inherit;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      background: none;
+      border: 0;
+      padding: 0;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    button.check-member-id:hover,
+    button.check-member-id:focus-visible {
+      color: var(--pq);
+    }
+
+    .check-member-caption {
+      grid-column: 1 / -1;
+      font-size: 0.68rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .check-member-verdict {
+      font-family: var(--serif);
+      font-style: italic;
+      font-size: 0.95rem;
+      text-align: right;
+    }
+
+    .check-member-verdict.is-missing {
+      color: var(--ink);
+    }
+
+    .check-member-verdict.is-locked,
+    .check-share-figure.is-locked {
+      color: var(--muted);
+    }
+
+    .check-member-verdict.is-pre,
+    .check-share-figure.is-pre {
+      color: var(--ochre);
+    }
+
+    .check-member-verdict.is-mix,
+    .check-share-figure.is-mix {
+      color: var(--wine);
+    }
+
+    .check-member-verdict.is-safe,
+    .check-share-figure.is-safe {
+      color: var(--pq);
+    }
+
+    #tooltip {
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 16.5rem;
+      max-width: calc(100vw - 1.25rem);
+      padding: 0.65rem 0.75rem 0.7rem;
+      background: var(--paper);
+      border: 1px solid var(--ink);
+      pointer-events: none;
+      opacity: 0;
+      visibility: hidden;
+      z-index: 20;
+      font-size: 0.78rem;
+    }
+
+    #tooltip.is-on {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    #tip-hour {
+      font-family: var(--mono);
+      font-variant-numeric: tabular-nums;
+      margin-bottom: 0.45rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid rgba(28, 23, 16, 0.2);
+      letter-spacing: 0.02em;
+    }
+
+    .tip-row {
+      display: grid;
+      grid-template-columns: 1fr 8ch;
+      gap: 0.5rem;
+      min-height: 1.2em;
+      align-items: baseline;
+    }
+
+    .tip-row dt {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .tip-row dd {
+      margin: 0;
+      font-family: var(--mono);
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+
+    .tip-row.is-pq dt,
+    .tip-row.is-pq dd {
+      color: var(--pq);
+    }
+
+    .tip-row.is-blank dt,
+    .tip-row.is-blank dd {
+      visibility: hidden;
+    }
+
+    @media (max-width: 640px) {
+      .sheet {
+        padding: 1.2rem 0.85rem 2.75rem;
+      }
+
+      .masthead {
+        grid-template-columns: 1fr auto;
+      }
+
+      .masthead-center {
+        display: none;
+      }
+
+      #live-label {
+        min-width: 5ch;
+      }
+
+      .hero-figure {
+        font-size: clamp(2.5rem, 15vw, 4.5rem);
+      }
+
+      .panel-head {
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: 0.4rem 0.75rem;
+      }
+
+      .panel-tools {
+        width: 100%;
+        justify-content: space-between;
+      }
+
+      .legend {
+        letter-spacing: 0.03em;
+        gap: 0.55rem;
+        white-space: normal;
+      }
+
+      .chart-frame {
+        aspect-ratio: 1.65 / 1;
+        min-height: 152px;
+        max-height: 210px;
+      }
+
+      .progress-labels {
+        font-size: 0.55rem;
+      }
+
+      .check {
+        padding: 1rem 0.85rem 1.05rem;
+        outline-offset: 2px;
+      }
+
+      .check-title {
+        font-size: 1.3rem;
+      }
+
+      .check-row {
+        grid-template-columns: 1fr;
+      }
+
+      .method-tabs {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .method-panel {
+        padding: 0.95rem 0.85rem 1rem;
+      }
+
+      .validator-tape {
+        mask-image: linear-gradient(to right,
+          transparent 0,
+          #000 1.25rem,
+          #000 calc(100% - 1.25rem),
+          transparent 100%);
+      }
+
+      .validator-chip {
+        width: 7.4rem;
+        flex-basis: 7.4rem;
+      }
+
+      .validator-tape-set {
+        gap: 1.35rem;
+        padding-right: 1.35rem;
+      }
+
+      .validator-dot {
+        width: 2.15rem;
+        height: 2.15rem;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="sheet">
+    <header class="masthead">
+      <span class="masthead-left">Near mainnet</span>
+      <span class="masthead-center">ML-DSA-65</span>
+      <span class="masthead-right">
+        <span class="live-dot is-down" id="live-dot"></span>
+        <span id="live-label">connecting</span>
+      </span>
+    </header>
+    <div class="rules"></div>
+
+    <h1>Are we post-quantum yet?</h1>
+
+    <section class="hero">
+      <p class="hero-figure" id="adoption">0.000%</p>
+      <p class="verdict" id="verdict">no</p>
+      <div class="progress" id="progress" role="progressbar" aria-label="Quantum-safe adoption" aria-valuemin="0"
+        aria-valuemax="100" aria-valuenow="0">
+        <div class="progress-track">
+          <div class="progress-fill" id="progress-fill"></div>
+          <span class="progress-mark"></span>
+          <span class="progress-mark"></span>
+          <span class="progress-mark"></span>
+          <span class="progress-mark"></span>
+          <span class="progress-mark"></span>
+        </div>
+        <div class="progress-labels">
+          <span class="is-reached">0%</span>
+          <span>0.08%</span>
+          <span>0.88%</span>
+          <span>8.88%</span>
+          <span>88.88%</span>
+        </div>
+      </div>
+      <p class="lede-hour" id="hour-range">&nbsp;</p>
+    </section>
+
+    <div class="charts">
+      <section>
+        <div class="panel-head">
+          <h2 class="panel-title">Active accounts</h2>
+          <div class="legend">
+            <span><span class="swatch swatch-all"></span>all</span>
+            <span><span class="swatch swatch-pq"></span>ML-DSA-65</span>
+          </div>
+        </div>
+        <div class="chart-frame">
+          <canvas id="accounts-chart"></canvas>
+        </div>
+      </section>
+
+      <section>
+        <div class="panel-head">
+          <h2 class="panel-title">Transactions</h2>
+          <div class="panel-tools">
+            <div class="grain" role="group" aria-label="Transaction interval">
+              <button type="button" id="grain-hourly" class="is-on" aria-pressed="true">hourly</button>
+              <span class="grain-rule" aria-hidden="true">/</span>
+              <button type="button" id="grain-daily" aria-pressed="false">daily</button>
+            </div>
+            <div class="legend">
+              <span><span class="swatch swatch-all"></span>all</span>
+              <span><span class="swatch swatch-pq"></span>ML-DSA-65</span>
+            </div>
+          </div>
+        </div>
+        <div class="chart-frame">
+          <canvas id="tx-chart"></canvas>
+        </div>
+      </section>
+    </div>
+
+    <section class="article">
+      <h2>What does post-quantum mean?</h2>
+      <p>
+        To verify that you own an account and can send transactions from it, you need to own a key, that only you and nobody else knows.
+        In order to verify ownership of that key without showing it to anyone, a lot of complex math is used. Most
+        of blockchains and accounts use math of elliptic curves, which has been really reliable and secure over the last decades, but in
+        the next years will be at risk of being broken by quantum computers.
+      </p>
+      <p>
+        So very smart people made even more complex math, that even quantum computers cannot break, which is called "post-quantum
+        cryptography", and NEAR is the first big blockchain to add support for that math natively, and teams at
+        <a href="https://wallet.meteorwallet.app">Meteor Wallet</a> and <a href="https://wallet.intear.tech">Intear Wallet</a> already
+        support using it for everyday transactions. Thanks to NEAR's access model, you can safely switch your existing accounts to
+        quantum-safe keys.
+      </p>
+    </section>
+
+    <section class="article">
+      <form class="check" id="check-form">
+        <span class="check-kicker">Mainnet</span>
+        <label class="check-title" for="check-account">Check your account</label>
+        <div class="check-row">
+          <input id="check-account" name="account" type="text" maxlength="64" autocomplete="username"
+            autocapitalize="none" spellcheck="false" placeholder="account.near">
+          <button type="submit" id="check-submit">Check</button>
+        </div>
+        <div class="check-status" id="check-status" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+
+    <section class="article">
+      <h2>How do I switch my account to quantum-safe key?</h2>
+      <div class="method">
+        <div class="method-tabs" role="group" aria-label="Switch method">
+          <button type="button" data-method="intear" class="is-on" aria-pressed="true">Intear Wallet</button>
+          <button type="button" data-method="meteor" aria-pressed="false">Meteor Wallet</button>
+          <button type="button" data-method="cli" aria-pressed="false">NEAR CLI</button>
+          <button type="button" data-method="hardware" aria-pressed="false">Hardware wallets</button>
+        </div>
+        <div class="method-panel" data-method-panel="intear">
+          <p>
+            Open <a href="https://wallet.intear.tech">Intear Wallet</a>, navigate to Settings and click on "Switch to
+            quantum-safe key". This is a quick and safe process that will take 2 seconds, will let you keep your account ID, all assets on
+            it, and seed phrase (phrase will only work in Intear Wallet). You can switch back at any time by following the same process.
+          </p>
+        </div>
+        <div class="method-panel" data-method-panel="meteor" hidden>
+          <aside class="article-warn">
+            <span class="article-warn-kicker">Advanced users only</span>
+            <p>
+              These steps are for people who are comfortable managing access keys by hand.
+              Most users should rotate with <a href="https://wallet.intear.tech">Intear Wallet</a> instead,
+              it had reliable one-click key rotation functionality even for non-post-quantum keys for over a
+              year.
+            </p>
+          </aside>
+          <p>
+            Open <a href="https://wallet.meteorwallet.app">Meteor Wallet</a>, navigate to Settings, click on "Security and
+            Recovery", then "Manage Full Access Keys", click on "Add New Access Key", enter your password, click "Generate New Key", then
+            choose "ML-DSA-65", save the long key that starts with "ml-dsa-65:", and click on "Add ml-dsa-65 key" to proceed. Then in the
+            same "Manage Full Access Keys" menu, find a key that starts with "ml-dsa-65-hash:" and has "Set as Primary Key" button. Click
+            that button to make the wallet use the new key for all transactions, and enter password again. After that, this key will be
+            labeled as "Meteor Primary Key". Now you need to get rid of the old, insecure keys that still exist and can compromise your
+            account: click on "Revoke Access" for every single key you find there, except for the primary one (it will not have that button).
+            Click "Remove Key" to confirm, and enter your password again. Once you're done, enter your account ID above to check that your
+            account is using post-quantum cryptography and is safe from quantum attacks. Your seed phrase will stop working, and you will not
+            get a new seed phrase, you will have to use the long key you saved earlier to sign in to your account.
+          </p>
+        </div>
+        <div class="method-panel" data-method-panel="cli" hidden>
+          <p>
+            If you're a developer, you can use <a href="https://near.cli.rs">near-cli</a> to manually rotate your account to quantum-safe
+            keys. First, add a new key to your account:
+          </p>
+          <div class="cmd">
+            <pre><code>near account add-key <mark class="cmd-ph">&lt;ACCOUNT_ID&gt;</mark> grant-full-access autogenerate-new-keypair --signature-scheme ml-dsa-65 save-to-keychain network-config mainnet sign-with-keychain</code></pre>
+            <button type="button" class="cmd-copy"
+              data-copy="near account add-key &lt;ACCOUNT_ID&gt; grant-full-access autogenerate-new-keypair --signature-scheme ml-dsa-65 save-to-keychain network-config mainnet sign-with-keychain">Copy</button>
+          </div>
+          <p>Then delete the old key:</p>
+          <div class="cmd">
+            <pre><code>near account delete-keys <mark class="cmd-ph">&lt;ACCOUNT_ID&gt;</mark></code></pre>
+            <button type="button" class="cmd-copy" data-copy="near account delete-keys &lt;ACCOUNT_ID&gt;">Copy</button>
+          </div>
+          <p>In the interactive mode, select the non-quantum-safe keys to delete, and confirm the transaction.</p>
+        </div>
+        <div class="method-panel" data-method-panel="hardware" hidden>
+          <p>
+            Just owning a hardware wallet makes you safer against many attacks, but not against quantum computers. Hardware wallets at the moment have no support for post-quantum cryptography on NEAR. You can either migrate an existing account from
+            Ledger to Intear Wallet (has safe key migration while keeping the same account ID), or keep using your hardware wallet until
+            absolutely unavoidable: you probably still have a few years of safety in pre-quantum era, and developers will likely add
+            support for post-quantum cryptography in the future.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <div class="validator-stage">
+      <div class="validator-tape" id="validator-tape" aria-label="Current validators by quantum safety">
+        <div class="validator-tape-track" id="validator-tape-track"></div>
+      </div>
+    </div>
+
+    <section class="validator-copy">
+      <div class="panel-head">
+        <h2 class="panel-title">Validators</h2>
+        <div class="legend">
+          <span><span class="swatch swatch-dot swatch-safe"></span>safe</span>
+          <span><span class="swatch swatch-dot swatch-pre"></span>pre-quantum</span>
+        </div>
+      </div>
+      <div class="progress validator-progress" id="validator-progress" role="progressbar"
+        aria-label="Quantum-safe validators" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="progress-track">
+          <div class="progress-fill" id="validator-progress-fill"></div>
+          <span class="progress-mark" style="left: 34%"></span>
+          <span class="progress-mark" style="left: 67%"></span>
+        </div>
+        <div class="progress-labels">
+          <span style="left: 34%">34%</span>
+          <span style="left: 67%">67%</span>
+        </div>
+      </div>
+      <p class="validator-caption" id="validator-caption">&nbsp;</p>
+      <p>Validators are the second-most security-critical piece, right after your own wallet. If 67% of validators are hacked, they can take over the blockchain, and 34% can bring the blockchain to a temporary halt, that's why it's important that validators are using quantum-safe keys.</p>
+      <p>At the moment, pool.near validators don't have the ability to use post-quantum keys, but this will be changed, as pool.near pools are upgradable.</p>
+      <p>poolv1.near pools are not upgradable, and that's something NEAR will have to solve as part of the <a href="https://www.near.org/blog/near-quantum-safe-roadmap">Roadmap to Post-Quantum Security</a>.</p>
+    </section>
+
+    <section class="chain-sigs">
+      <span class="chain-sigs-kicker">Not quantum-safe</span>
+      <h2>Chain Signatures</h2>
+      <p>Can't produce signatures for post-quantum blockchains, can't securely bring data from other chains. Research is ongoing into post-quantum thresholded signatures, and other blockchains must go post-quantum too, since mutual post-quantum trust can't exist with a blockchain that is prone to quantum attacks. Read <a href="https://www.near.org/blog/near-quantum-safe-roadmap">NEAR's Roadmap to Post-Quantum Security</a> for more details.</p>
+    </section>
+
+    <footer>
+      <span>An account counts as quantum-safe when every full-access key on it is using ML-DSA-65. If an account still has a
+        non-quantum-safe key, even if not used, puts the account at risk.</span>
+      <span>Dashboard developed and data aggregated by <a href="https://wallet.intear.tech">Intear Wallet</a>. Migrate
+        your existing accounts to quantum-safe keys today!</span>
+    </footer>
+  </div>
+
+  <div id="tooltip">
+    <div id="tip-hour"></div>
+    <div class="tip-row">
+      <dt id="tip-dt-a">all</dt>
+      <dd id="tip-a">0</dd>
+    </div>
+    <div class="tip-row is-pq">
+      <dt>ML-DSA-65</dt>
+      <dd id="tip-b">0</dd>
+    </div>
+    <div class="tip-row is-pq">
+      <dt>share</dt>
+      <dd id="tip-share">0%</dd>
+    </div>
+    <div class="tip-row" id="tip-row-c">
+      <dt id="tip-dt-c">ed25519</dt>
+      <dd id="tip-c">0</dd>
+    </div>
+    <div class="tip-row" id="tip-row-d">
+      <dt id="tip-dt-d">secp256k1</dt>
+      <dd id="tip-d">0</dd>
+    </div>
+  </div>
+
+  <script>
+    const STATS_URL = "https://account-indexer.intea.rs/stats";
+    const RPC_URL = "https://rpc.intea.rs/2tH3NjuAtbWdCCw336MBnMHrRuoKrFFsaHF4M9HkHPUdw8gZxF2zzbZqtf";
+    const ACCOUNT_ID_RE = /^(?=.{2,64}$)(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;
+    const INK = "#1c1710";
+    const MUTED = "#7a7266";
+    const PQ = "#c11f0e";
+    const ALL_FILL = "rgba(28, 23, 16, 0.3)";
+    const ALL_HOVER = "rgba(28, 23, 16, 0.5)";
+    const PQ_HOVER = "#9a160a";
+    const GRID = "rgba(28, 23, 16, 0.14)";
+    const MONO = 'ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace';
+
+    const adoptionEl = document.getElementById("adoption");
+    const verdictEl = document.getElementById("verdict");
+    const hourRangeEl = document.getElementById("hour-range");
+    const progressEl = document.getElementById("progress");
+    const progressFillEl = document.getElementById("progress-fill");
+    const progressLabelEls = document.querySelectorAll("#progress .progress-labels span");
+    const liveDotEl = document.getElementById("live-dot");
+    const liveLabelEl = document.getElementById("live-label");
+    const tooltipEl = document.getElementById("tooltip");
+    const tipHourEl = document.getElementById("tip-hour");
+    const tipA = document.getElementById("tip-a");
+    const tipB = document.getElementById("tip-b");
+    const tipC = document.getElementById("tip-c");
+    const tipD = document.getElementById("tip-d");
+    const tipDtA = document.getElementById("tip-dt-a");
+    const tipShare = document.getElementById("tip-share");
+    const tipRowC = document.getElementById("tip-row-c");
+    const tipRowD = document.getElementById("tip-row-d");
+
+    const charts = {
+      accounts: {
+        canvas: document.getElementById("accounts-chart"),
+        points: [],
+        maxValue: 1,
+        hoverIndex: -1,
+      },
+      tx: {
+        canvas: document.getElementById("tx-chart"),
+        points: [],
+        maxValue: 1,
+        hoverIndex: -1,
+      },
+    };
+
+    let lastPayload = "";
+    let lastStats = null;
+    let inFlight = false;
+    let hoverSource = null;
+    let grain = "hourly";
+
+    const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    function pad2(value) {
+      return String(value).padStart(2, "0");
+    }
+
+    function formatCount(value) {
+      return Math.round(value).toLocaleString("en-US");
+    }
+
+    function formatPercent(value) {
+      if (value === 0) return "0%";
+      if (value < 0.1) return value.toFixed(3) + "%";
+      if (value < 10) return value.toFixed(2) + "%";
+      return value.toFixed(1) + "%";
+    }
+
+    function formatCompact(value) {
+      if (value >= 10000) return Math.round(value / 1000) + "k";
+      if (value >= 1000) return (value / 1000).toFixed(1).replace(/\.0$/, "") + "k";
+      return String(Math.round(value));
+    }
+
+    function niceMax(value) {
+      if (value <= 0) return 1;
+      const exponent = Math.pow(10, Math.floor(Math.log10(value)));
+      const n = value / exponent;
+      const nice = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
+      return nice * exponent;
+    }
+
+    function parseHour(iso) {
+      return new Date(iso);
+    }
+
+    function formatHourRange(iso) {
+      const start = parseHour(iso);
+      const end = new Date(start.getTime() + 60 * 60 * 1000);
+      return WEEKDAYS[start.getUTCDay()]
+        + " " + pad2(start.getUTCDate())
+        + " " + MONTHS[start.getUTCMonth()]
+        + " " + start.getUTCFullYear()
+        + " " + pad2(start.getUTCHours()) + ":00–"
+        + pad2(end.getUTCHours()) + ":00 UTC";
+    }
+
+    function formatDayLabel(iso) {
+      const date = parseHour(iso);
+      return WEEKDAYS[date.getUTCDay()]
+        + " " + pad2(date.getUTCDate())
+        + " " + MONTHS[date.getUTCMonth()]
+        + " " + date.getUTCFullYear()
+        + " UTC";
+    }
+
+    function formatStamp(date) {
+      return pad2(date.getUTCDate())
+        + " " + MONTHS[date.getUTCMonth()]
+        + " " + date.getUTCFullYear()
+        + " " + pad2(date.getUTCHours()) + ":00";
+    }
+
+    function formatWindow(startIso, endIso) {
+      const start = parseHour(startIso);
+      const end = new Date(parseHour(endIso).getTime() + 60 * 60 * 1000);
+      return formatStamp(start) + " – " + formatStamp(end) + " UTC";
+    }
+
+    function layoutOf(canvas) {
+      const cssWidth = canvas.clientWidth;
+      const cssHeight = canvas.clientHeight;
+      const pad = cssWidth < 520
+        ? { l: 32, r: 8, t: 8, b: 22 }
+        : { l: 46, r: 10, t: 8, b: 24 };
+      return {
+        cssWidth,
+        cssHeight,
+        pad,
+        plotW: Math.max(1, cssWidth - pad.l - pad.r),
+        plotH: Math.max(1, cssHeight - pad.t - pad.b),
+      };
+    }
+
+    function fitCanvas(canvas) {
+      const dpr = window.devicePixelRatio || 1;
+      const cssWidth = Math.max(1, canvas.clientWidth);
+      const cssHeight = Math.max(1, canvas.clientHeight);
+      const pixelWidth = Math.round(cssWidth * dpr);
+      const pixelHeight = Math.round(cssHeight * dpr);
+      if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+      if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return ctx;
+    }
+
+    function yTicks(maxValue) {
+      const ticks = [];
+      for (let i = 0; i <= 3; i++) ticks.push((maxValue * i) / 3);
+      return ticks;
+    }
+
+    function dayLabels(points, maxLabels) {
+      const labels = [];
+      let lastKey = "";
+      for (let i = 0; i < points.length; i++) {
+        const date = parseHour(points[i].hour);
+        const key = date.getUTCFullYear() + "-" + date.getUTCMonth() + "-" + date.getUTCDate();
+        if (key === lastKey) continue;
+        lastKey = key;
+        labels.push({ i, text: date.getUTCDate() + " " + MONTHS[date.getUTCMonth()] });
+      }
+      const stride = Math.max(1, Math.ceil(labels.length / maxLabels));
+      return labels.filter((_, index) => index % stride === 0);
+    }
+
+    function drawChart(chart) {
+      const canvas = chart.canvas;
+      const ctx = fitCanvas(canvas);
+      const { cssWidth, cssHeight, pad, plotW, plotH } = layoutOf(canvas);
+      ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+      const points = chart.points;
+      if (!points.length) return;
+
+      const maxValue = chart.maxValue;
+      const barW = plotW / points.length;
+      const gap = barW > 2.4 ? 0.4 : 0;
+
+      ctx.strokeStyle = GRID;
+      ctx.lineWidth = 1;
+      ctx.font = "10px " + MONO;
+      ctx.textBaseline = "middle";
+
+      for (const tick of yTicks(maxValue)) {
+        const y = pad.t + plotH - (tick / maxValue) * plotH;
+        ctx.beginPath();
+        ctx.moveTo(pad.l, y);
+        ctx.lineTo(pad.l + plotW, y);
+        ctx.stroke();
+        ctx.fillStyle = MUTED;
+        ctx.textAlign = "right";
+        ctx.fillText(formatCompact(tick), pad.l - 6, y);
+      }
+
+      ctx.fillStyle = ALL_FILL;
+      for (let i = 0; i < points.length; i++) {
+        const height = (points[i].total / maxValue) * plotH;
+        if (height <= 0) continue;
+        const x = pad.l + i * barW;
+        ctx.fillRect(x, pad.t + plotH - height, Math.max(barW - gap, 0.5), height);
+      }
+
+      ctx.fillStyle = PQ;
+      for (let i = 0; i < points.length; i++) {
+        if (points[i].pq <= 0) continue;
+        const height = (points[i].pq / maxValue) * plotH;
+        const x = pad.l + i * barW;
+        ctx.fillRect(x, pad.t + plotH - height, Math.max(barW - gap, 0.5), height);
+      }
+
+      if (chart.hoverIndex >= 0 && chart.hoverIndex < points.length) {
+        const i = chart.hoverIndex;
+        const x = pad.l + i * barW;
+        ctx.fillStyle = "rgba(28, 23, 16, 0.07)";
+        ctx.fillRect(x, pad.t, barW, plotH);
+
+        const totalHeight = (points[i].total / maxValue) * plotH;
+        ctx.fillStyle = ALL_HOVER;
+        if (totalHeight > 0) {
+          ctx.fillRect(x, pad.t + plotH - totalHeight, Math.max(barW - gap, 0.5), totalHeight);
+        }
+        if (points[i].pq > 0) {
+          const pqHeight = (points[i].pq / maxValue) * plotH;
+          ctx.fillStyle = PQ_HOVER;
+          ctx.fillRect(x, pad.t + plotH - pqHeight, Math.max(barW - gap, 0.5), pqHeight);
+        }
+      }
+
+      if (chart.hoverIndex >= 0 && chart.hoverIndex < points.length) {
+        const i = chart.hoverIndex;
+        const x = pad.l + i * barW;
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1;
+        const lineX = x + barW / 2;
+        ctx.beginPath();
+        ctx.moveTo(lineX, pad.t);
+        ctx.lineTo(lineX, pad.t + plotH);
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(pad.l, pad.t + plotH);
+      ctx.lineTo(pad.l + plotW, pad.t + plotH);
+      ctx.stroke();
+
+      ctx.fillStyle = MUTED;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      for (const label of dayLabels(points, Math.max(4, Math.floor(plotW / 72)))) {
+        const x = pad.l + (label.i + 0.5) * barW;
+        ctx.fillText(label.text, x, pad.t + plotH + 6);
+      }
+    }
+
+    function hourIndexAt(chart, clientX) {
+      const rect = chart.canvas.getBoundingClientRect();
+      const layout = layoutOf(chart.canvas);
+      const x = clientX - rect.left;
+      const t = x - layout.pad.l;
+      if (t < 0 || t >= layout.plotW || !chart.points.length) return -1;
+      return Math.min(chart.points.length - 1, Math.floor((t / layout.plotW) * chart.points.length));
+    }
+
+    function setLive(ok) {
+      liveDotEl.classList.toggle("is-down", !ok);
+      const label = ok ? "live" : "offline";
+      if (liveLabelEl.textContent !== label) liveLabelEl.textContent = label;
+    }
+
+    function hideTooltip() {
+      tooltipEl.classList.remove("is-on");
+    }
+
+    function placeTooltip(clientX, clientY) {
+      const width = tooltipEl.offsetWidth;
+      const height = tooltipEl.offsetHeight;
+      let left = clientX + 16;
+      let top = clientY + 16;
+      if (left + width > window.innerWidth - 8) left = clientX - width - 16;
+      if (top + height > window.innerHeight - 8) top = clientY - height - 16;
+      if (left < 8) left = 8;
+      if (top < 8) top = 8;
+      tooltipEl.style.left = left + "px";
+      tooltipEl.style.top = top + "px";
+    }
+
+    function fillTooltip(chartName, point) {
+      tipHourEl.textContent = (chartName === "tx" && grain === "daily")
+        ? formatDayLabel(point.hour)
+        : formatHourRange(point.hour);
+      if (chartName === "accounts") {
+        tipDtA.textContent = "accounts";
+        tipA.textContent = formatCount(point.total);
+        tipB.textContent = formatCount(point.pq);
+        tipShare.textContent = formatPercent(point.share);
+        tipRowC.classList.add("is-blank");
+        tipRowD.classList.add("is-blank");
+      } else {
+        tipDtA.textContent = "all";
+        tipA.textContent = formatCount(point.total);
+        tipB.textContent = formatCount(point.pq);
+        tipShare.textContent = formatPercent(point.share);
+        tipC.textContent = formatCount(point.ed25519);
+        tipD.textContent = formatCount(point.secp256k1);
+        tipRowC.classList.remove("is-blank");
+        tipRowD.classList.remove("is-blank");
+      }
+    }
+
+    function setHover(chartName, index, clientX, clientY) {
+      const chart = charts[chartName];
+      const otherName = chartName === "accounts" ? "tx" : "accounts";
+      const other = charts[otherName];
+      const syncOther = grain === "hourly";
+      if (index < 0) {
+        hoverSource = null;
+        if (chart.hoverIndex !== -1) {
+          chart.hoverIndex = -1;
+          drawChart(chart);
+        }
+        if (syncOther && other.hoverIndex !== -1) {
+          other.hoverIndex = -1;
+          drawChart(other);
+        }
+        hideTooltip();
+        return;
+      }
+      hoverSource = chartName;
+      const point = chart.points[index];
+      if (chart.hoverIndex !== index) {
+        chart.hoverIndex = index;
+        drawChart(chart);
+      }
+      if (syncOther) {
+        const otherIndex = other.points.findIndex((item) => item.hour === point.hour);
+        if (other.hoverIndex !== otherIndex) {
+          other.hoverIndex = otherIndex;
+          drawChart(other);
+        }
+      } else if (other.hoverIndex !== -1) {
+        other.hoverIndex = -1;
+        drawChart(other);
+      }
+      fillTooltip(chartName, point);
+      tooltipEl.classList.add("is-on");
+      placeTooltip(clientX, clientY);
+    }
+
+    function bindChart(chartName) {
+      const chart = charts[chartName];
+      const canvas = chart.canvas;
+      let holdTimer = null;
+      let holding = false;
+      let lastX = 0;
+      let lastY = 0;
+
+      function showAt(clientX, clientY) {
+        setHover(chartName, hourIndexAt(chart, clientX), clientX, clientY);
+      }
+
+      canvas.addEventListener("pointermove", (event) => {
+        lastX = event.clientX;
+        lastY = event.clientY;
+        if (event.pointerType === "touch") {
+          if (holding) showAt(lastX, lastY);
+          return;
+        }
+        showAt(lastX, lastY);
+      });
+
+      canvas.addEventListener("pointerdown", (event) => {
+        lastX = event.clientX;
+        lastY = event.clientY;
+        if (event.pointerType === "mouse") {
+          showAt(lastX, lastY);
+          return;
+        }
+        holding = false;
+        clearTimeout(holdTimer);
+        holdTimer = setTimeout(() => {
+          holdTimer = null;
+          holding = true;
+          showAt(lastX, lastY);
+        }, 380);
+      });
+
+      canvas.addEventListener("pointerup", (event) => {
+        const pending = holdTimer !== null;
+        clearTimeout(holdTimer);
+        holdTimer = null;
+        if (event.pointerType !== "mouse" && pending) {
+          showAt(event.clientX, event.clientY);
+        }
+      });
+
+      canvas.addEventListener("pointercancel", () => {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+        holding = false;
+      });
+
+      canvas.addEventListener("pointerleave", (event) => {
+        if (event.pointerType === "touch") {
+          clearTimeout(holdTimer);
+          holdTimer = null;
+          return;
+        }
+        holding = false;
+        setHover(chartName, -1, 0, 0);
+      });
+
+      canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+      canvas.addEventListener("touchstart", (event) => event.preventDefault(), { passive: false });
+    }
+
+    document.addEventListener("pointerdown", (event) => {
+      if (event.target.closest(".chart-frame")) return;
+      if (hoverSource) setHover(hoverSource, -1, 0, 0);
+    });
+
+    const MILESTONES = [0, 0.08, 0.88, 8.88, 88.88];
+    const LOG_FLOOR = 0.008;
+    const LOG_CEIL = 100;
+
+    function progressPosition(percent) {
+      if (percent <= 0) return 0;
+      if (percent >= LOG_CEIL) return 1;
+      const value = Math.max(percent, LOG_FLOOR);
+      return (Math.log(value) - Math.log(LOG_FLOOR)) / (Math.log(LOG_CEIL) - Math.log(LOG_FLOOR));
+    }
+
+    function placeCheckpoints() {
+      const marks = document.querySelectorAll("#progress .progress-mark");
+      MILESTONES.forEach((milestone, index) => {
+        const left = (progressPosition(milestone) * 100) + "%";
+        if (marks[index]) marks[index].style.left = left;
+        if (progressLabelEls[index]) progressLabelEls[index].style.left = left;
+      });
+    }
+
+    function setProgress(percent) {
+      progressFillEl.style.transform = "scaleX(" + progressPosition(percent) + ")";
+      progressEl.setAttribute("aria-valuenow", percent.toFixed(3));
+      progressLabelEls.forEach((label, index) => {
+        label.classList.toggle("is-reached", percent >= MILESTONES[index]);
+      });
+    }
+
+    placeCheckpoints();
+
+    function verdictFor(percent) {
+      if (percent > 88.88) return "YES! WE'RE SAVED!";
+      if (percent > 8.88) return "quantum safety is getting mainstream adoption, we're almost there!";
+      if (percent > 0.88) return "the early adopters have started migrating, rest will follow shortly";
+      if (percent > 0.08) return "not yet, but we're slowly getting there";
+      if (percent > 0) return "absolutely not, not even close lol";
+      return "literally zero accounts are quantum-safe";
+    }
+
+    function applyHero(adoption) {
+      if (!adoption.length) return;
+      const recentHours = adoption.slice(-24);
+      let total = 0;
+      let pq = 0;
+      for (const row of recentHours) {
+        total += row.active_accounts;
+        pq += row.exclusively_ml_dsa_65_accounts;
+      }
+      const ratio = total > 0 ? pq / total : 0;
+      const percent = ratio * 100;
+      const pct = percent.toFixed(3) + "%";
+      if (adoptionEl.textContent !== pct) adoptionEl.textContent = pct;
+      const verdict = verdictFor(percent);
+      if (verdictEl.textContent !== verdict) verdictEl.textContent = verdict;
+      verdictEl.classList.toggle("is-yes", verdict === "YES! WE'RE SAVED!");
+      setProgress(percent);
+      const range = formatWindow(recentHours[0].hour, recentHours[recentHours.length - 1].hour);
+      if (hourRangeEl.textContent !== range) hourRangeEl.textContent = range;
+    }
+
+    function rollupDaily(points) {
+      const buckets = [];
+      const indexByKey = new Map();
+      for (const point of points) {
+        const date = parseHour(point.hour);
+        const key = date.getUTCFullYear() + "-" + date.getUTCMonth() + "-" + date.getUTCDate();
+        let bucket = indexByKey.get(key);
+        if (!bucket) {
+          bucket = {
+            hour: new Date(Date.UTC(
+              date.getUTCFullYear(),
+              date.getUTCMonth(),
+              date.getUTCDate()
+            )).toISOString(),
+            total: 0,
+            pq: 0,
+            ed25519: 0,
+            secp256k1: 0,
+          };
+          indexByKey.set(key, bucket);
+          buckets.push(bucket);
+        }
+        bucket.total += point.total;
+        bucket.pq += point.pq;
+        bucket.ed25519 += point.ed25519 || 0;
+        bucket.secp256k1 += point.secp256k1 || 0;
+      }
+      for (const bucket of buckets) {
+        bucket.share = bucket.total > 0 ? (bucket.pq / bucket.total) * 100 : 0;
+      }
+      return buckets;
+    }
+
+    function applyCharts(data) {
+      lastStats = data;
+      let accounts = (data.hourly_pq_adoption || []).map((row) => ({
+        hour: row.hour,
+        total: row.active_accounts,
+        pq: row.exclusively_ml_dsa_65_accounts,
+        share: row.active_accounts > 0
+          ? (row.exclusively_ml_dsa_65_accounts / row.active_accounts) * 100
+          : 0,
+      }));
+      let tx = (data.hourly_transactions_by_key_type || []).map((row) => {
+        const total = row.ed25519 + row.secp256k1 + row.ml_dsa_65;
+        return {
+          hour: row.hour,
+          total,
+          pq: row.ml_dsa_65,
+          share: total > 0 ? (row.ml_dsa_65 / total) * 100 : 0,
+          ed25519: row.ed25519,
+          secp256k1: row.secp256k1,
+        };
+      });
+      if (grain === "daily") {
+        tx = rollupDaily(tx);
+      }
+
+      const hoveredHour = hoverSource && charts[hoverSource].hoverIndex >= 0
+        ? charts[hoverSource].points[charts[hoverSource].hoverIndex].hour
+        : null;
+
+      charts.accounts.points = accounts;
+      charts.tx.points = tx;
+      charts.accounts.maxValue = niceMax(Math.max(0, ...accounts.map((row) => row.total)));
+      charts.tx.maxValue = niceMax(Math.max(0, ...tx.map((row) => row.total)));
+
+      if (hoveredHour) {
+        const sourcePoints = hoverSource === "accounts" ? accounts : tx;
+        charts[hoverSource].hoverIndex = sourcePoints.findIndex((row) => row.hour === hoveredHour);
+        if (grain === "hourly") {
+          charts.accounts.hoverIndex = accounts.findIndex((row) => row.hour === hoveredHour);
+          charts.tx.hoverIndex = tx.findIndex((row) => row.hour === hoveredHour);
+        } else {
+          const otherName = hoverSource === "accounts" ? "tx" : "accounts";
+          charts[otherName].hoverIndex = -1;
+        }
+        const hovered = charts[hoverSource].points[charts[hoverSource].hoverIndex];
+        if (hovered) fillTooltip(hoverSource, hovered);
+      }
+
+      drawChart(charts.accounts);
+      drawChart(charts.tx);
+    }
+
+    async function refresh() {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const response = await fetch(STATS_URL, { cache: "no-store" });
+        if (!response.ok) throw new Error("bad status");
+        const data = await response.json();
+        setLive(true);
+        const payload = JSON.stringify(data);
+        if (payload === lastPayload) return;
+        lastPayload = payload;
+        applyHero(data.hourly_pq_adoption || []);
+        applyCharts(data);
+      } catch (_) {
+        setLive(false);
+      } finally {
+        inFlight = false;
+      }
+    }
+
+    bindChart("accounts");
+    bindChart("tx");
+
+    const grainHourlyEl = document.getElementById("grain-hourly");
+    const grainDailyEl = document.getElementById("grain-daily");
+
+    function setGrain(next) {
+      if (grain === next) return;
+      grain = next;
+      grainHourlyEl.classList.toggle("is-on", next === "hourly");
+      grainDailyEl.classList.toggle("is-on", next === "daily");
+      grainHourlyEl.setAttribute("aria-pressed", String(next === "hourly"));
+      grainDailyEl.setAttribute("aria-pressed", String(next === "daily"));
+      hoverSource = null;
+      charts.accounts.hoverIndex = -1;
+      charts.tx.hoverIndex = -1;
+      hideTooltip();
+      if (lastStats) applyCharts(lastStats);
+    }
+
+    grainHourlyEl.addEventListener("click", () => setGrain("hourly"));
+    grainDailyEl.addEventListener("click", () => setGrain("daily"));
+
+    const methodTabsEl = document.querySelector(".method-tabs");
+    const methodPanelEls = document.querySelectorAll(".method-panel");
+
+    methodTabsEl.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-method]");
+      if (!button || button.classList.contains("is-on")) return;
+      const next = button.getAttribute("data-method");
+      methodTabsEl.querySelectorAll("button[data-method]").forEach((tab) => {
+        const on = tab === button;
+        tab.classList.toggle("is-on", on);
+        tab.setAttribute("aria-pressed", String(on));
+      });
+      methodPanelEls.forEach((panel) => {
+        panel.hidden = panel.getAttribute("data-method-panel") !== next;
+      });
+    });
+
+    const checkFormEl = document.getElementById("check-form");
+    const checkAccountEl = document.getElementById("check-account");
+    const checkSubmitEl = document.getElementById("check-submit");
+    const checkStatusEl = document.getElementById("check-status");
+    let checkAbort = null;
+
+    function isPqPublicKey(publicKey) {
+      const scheme = String(publicKey || "").split(":")[0].toLowerCase();
+      if (scheme === "ml-dsa-65" || scheme === "ml-dsa-65-hash") return true;
+      return false;
+    }
+
+    function isFullAccessKey(key) {
+      return key?.access_key?.permission === "FullAccess";
+    }
+
+    function schemeLabel(publicKey) {
+      const scheme = String(publicKey || "").split(":")[0].toLowerCase();
+      if (scheme === "ml-dsa-65" || scheme === "ml-dsa-65-hash") return "ML-DSA-65";
+      if (scheme === "ed25519") return "ed25519";
+      if (scheme === "secp256k1") return "secp256k1";
+      return scheme || "unknown";
+    }
+
+    function isSputnikDao(accountId) {
+      return accountId.endsWith(".sputnik-dao.near");
+    }
+
+    function isStakingPool(accountId) {
+      return accountId.endsWith(".pool.near") || accountId.endsWith(".poolv1.near");
+    }
+
+    function formatSharePercent(safeCount, total) {
+      if (total === 0 || safeCount === 0) return "0%";
+      if (safeCount === total) return "100%";
+      const percent = (safeCount / total) * 100;
+      if (percent < 1) return "<1%";
+      return `${Math.round(percent)}%`;
+    }
+
+    function renderCheck(report) {
+      checkStatusEl.replaceChildren();
+      if (!report) return;
+
+      if (report.share) {
+        const share = document.createElement("div");
+        share.className = "check-share";
+        const figure = document.createElement("p");
+        figure.className = "check-share-figure" + (report.tone ? ` is-${report.tone}` : "");
+        figure.textContent = formatSharePercent(report.share.safeCount, report.share.total);
+        const track = document.createElement("div");
+        track.className = "check-share-track";
+        const fill = document.createElement("div");
+        fill.className = "check-share-fill";
+        const ratio = report.share.total === 0 ? 0 : report.share.safeCount / report.share.total;
+        fill.style.transform = `scaleX(${ratio})`;
+        track.appendChild(fill);
+        const caption = document.createElement("p");
+        caption.className = "check-share-caption";
+        const memberWord = report.share.total === 1 ? "member" : "members";
+        caption.textContent = `${report.share.safeCount} of ${report.share.total} ${memberWord} quantum-safe`;
+        share.appendChild(figure);
+        share.appendChild(track);
+        share.appendChild(caption);
+        checkStatusEl.appendChild(share);
+      }
+
+      if (report.verdict) {
+        const verdictNode = document.createElement("p");
+        verdictNode.className = "check-verdict" + (report.tone ? ` is-${report.tone}` : "");
+        verdictNode.textContent = report.verdict;
+        checkStatusEl.appendChild(verdictNode);
+      }
+      if (report.detail) {
+        const detailNode = document.createElement("p");
+        detailNode.className = "check-detail";
+        detailNode.textContent = report.detail;
+        checkStatusEl.appendChild(detailNode);
+      }
+      if (Array.isArray(report.rows) && report.rows.length > 0) {
+        const list = document.createElement("ul");
+        list.className = "check-members";
+        for (const row of report.rows) {
+          const item = document.createElement("li");
+          item.className = "check-member";
+          if (row.caption) {
+            const caption = document.createElement("span");
+            caption.className = "check-member-caption";
+            caption.textContent = row.caption;
+            item.appendChild(caption);
+          }
+          if (row.checkable && row.accountId) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "check-member-id";
+            button.textContent = row.label || row.accountId;
+            button.addEventListener("click", () => {
+              checkAccountEl.value = row.accountId;
+              checkFormEl.requestSubmit();
+            });
+            item.appendChild(button);
+          } else {
+            const label = document.createElement("span");
+            label.className = "check-member-id";
+            label.textContent = row.label || row.accountId || "";
+            item.appendChild(label);
+          }
+          const verdict = document.createElement("span");
+          verdict.className = "check-member-verdict" + (row.tone ? ` is-${row.tone}` : "");
+          verdict.textContent = row.verdict || "";
+          item.appendChild(verdict);
+          list.appendChild(item);
+        }
+        checkStatusEl.appendChild(list);
+      }
+    }
+
+    const EMPTY_ARGS_BASE64 = btoa("{}");
+
+    function decodeCallResult(result) {
+      const raw = result && result.result;
+      if (raw == null) throw new Error("empty-call");
+      if (!Array.isArray(raw) && typeof raw !== "string") return raw;
+      let text;
+      if (Array.isArray(raw)) {
+        text = new TextDecoder().decode(Uint8Array.from(raw));
+      } else {
+        text = raw;
+      }
+      try {
+        return JSON.parse(text);
+      } catch {
+        return text;
+      }
+    }
+
+    async function callView(accountId, methodName, signal) {
+      try {
+        const queried = await queryRpc(
+          {
+            request_type: "call_function",
+            finality: "final",
+            account_id: accountId,
+            method_name: methodName,
+            args_base64: EMPTY_ARGS_BASE64,
+          },
+          signal,
+        );
+        if (queried.unknown) return { unknown: true };
+        if (queried.failed) return { failed: true };
+        return { value: decodeCallResult(queried.result) };
+      } catch (error) {
+        if (error?.name === "AbortError") throw error;
+        return { failed: true };
+      }
+    }
+
+    function collectPolicyMembers(policy) {
+      const byAccount = new Map();
+      const roles = Array.isArray(policy?.roles) ? policy.roles : [];
+      for (const role of roles) {
+        const group = role?.kind && Array.isArray(role.kind.Group) ? role.kind.Group : null;
+        if (!group) continue;
+        const roleName = typeof role.name === "string" && role.name.trim() ? role.name.trim() : "Group";
+        for (const member of group) {
+          const id = String(member || "").trim().toLowerCase();
+          if (!id || !ACCOUNT_ID_RE.test(id)) continue;
+          if (!byAccount.has(id)) byAccount.set(id, { accountId: id, roles: [] });
+          const entry = byAccount.get(id);
+          if (!entry.roles.includes(roleName)) entry.roles.push(roleName);
+        }
+      }
+      return [...byAccount.values()];
+    }
+
+    function describePool(ownerReport, stakingKey) {
+      const ownerTone = ownerReport.tone || "missing";
+      const keyKnown = Boolean(stakingKey);
+      const keyPq = keyKnown && isPqPublicKey(stakingKey);
+
+      if (ownerTone === "safe" && keyPq) {
+        return {
+          verdict: "Quantum-safe",
+          tone: "safe",
+          detail: "The owner is quantum-safe and so is the validator key. This pool is ready for the post-quantum era.",
+        };
+      }
+      if (ownerTone === "safe" && keyKnown && !keyPq) {
+        return {
+          verdict: "Mixes pre-quantum and post-quantum keys",
+          tone: "mix",
+          detail: "The owner is quantum-safe, but the validator key is still pre-quantum. A quantum computer could impersonate this validator. The owner should rotate the staking key.",
+        };
+      }
+      if (ownerTone === "safe" && !keyKnown) {
+        return {
+          verdict: "Quantum-safe owner",
+          tone: "mix",
+          detail: "The owner is quantum-safe, but this pool didn't return a validator key, so that half can't be checked.",
+        };
+      }
+      if (ownerTone === "mix" && keyPq) {
+        return {
+          verdict: "Mixes pre-quantum and post-quantum keys",
+          tone: "mix",
+          detail: "The validator key is quantum-safe, but the owner still has old full-access keys. Whoever breaks those can still take the pool. Finish rotating the owner in Intear Wallet: Settings → Switch to quantum-safe key.",
+        };
+      }
+      if (ownerTone === "mix" && keyKnown && !keyPq) {
+        return {
+          verdict: "Mixes pre-quantum and post-quantum keys",
+          tone: "mix",
+          detail: "The owner still has old keys, and the validator key is still pre-quantum. Finish rotating the owner in Intear Wallet, then rotate the staking key.",
+        };
+      }
+      if (ownerTone === "mix" && !keyKnown) {
+        return {
+          verdict: "Mixes pre-quantum and post-quantum keys",
+          tone: "mix",
+          detail: "The owner still has old full-access keys, and this pool didn't return a validator key. Finish rotating the owner in Intear Wallet first.",
+        };
+      }
+      if (ownerTone === "pre" && keyPq) {
+        return {
+          verdict: "Mixes pre-quantum and post-quantum keys",
+          tone: "mix",
+          detail: "The validator key is already quantum-safe, but the owner isn't. Whoever breaks the owner's keys can still take the pool. The owner should switch in Intear Wallet: Settings → Switch to quantum-safe key.",
+        };
+      }
+      if (ownerTone === "pre" && keyKnown && !keyPq) {
+        return {
+          verdict: "Uses pre-quantum keys",
+          tone: "pre",
+          detail: "Both the owner and the validator key are pre-quantum. A quantum computer could take the owner account and impersonate this validator. The owner should rotate in Intear Wallet, then rotate the staking key.",
+        };
+      }
+      if (ownerTone === "pre" && !keyKnown) {
+        return {
+          verdict: "Uses pre-quantum keys",
+          tone: "pre",
+          detail: "The owner still uses pre-quantum keys, and this pool didn't return a validator key. Switch the owner in Intear Wallet: Settings → Switch to quantum-safe key.",
+        };
+      }
+      if (ownerTone === "locked" && keyPq) {
+        return {
+          verdict: "Locked owner",
+          tone: "locked",
+          detail: "The owner exists but can't sign, so nobody can change this pool. The validator key is quantum-safe.",
+        };
+      }
+      if (ownerTone === "locked" && keyKnown && !keyPq) {
+        return {
+          verdict: "Locked owner",
+          tone: "mix",
+          detail: "The owner is locked, so nobody can rotate anything, and the validator key is still pre-quantum. A quantum computer could impersonate this validator.",
+        };
+      }
+      if (ownerTone === "locked" && !keyKnown) {
+        return {
+          verdict: "Locked owner",
+          tone: "locked",
+          detail: "The owner exists but can't sign, and this pool didn't return a validator key. Nobody can operate or rotate it.",
+        };
+      }
+      if (ownerTone === "missing" && keyPq) {
+        return {
+          verdict: "Owner missing",
+          tone: "missing",
+          detail: "The owner account isn't on mainnet, even though the validator key is quantum-safe. Nobody can operate this pool.",
+        };
+      }
+      if (ownerTone === "missing" && keyKnown && !keyPq) {
+        return {
+          verdict: "Owner missing",
+          tone: "missing",
+          detail: "The owner account isn't on mainnet, and the validator key is still pre-quantum. This pool is both unowned and impersonatable by a future quantum computer.",
+        };
+      }
+      return {
+        verdict: "Owner missing",
+        tone: "missing",
+        detail: "The owner account isn't on mainnet, and this pool didn't return a validator key.",
+      };
+    }
+
+    async function evaluateDao(accountId, signal, seen) {
+      const [inspected, policyCall] = await Promise.all([
+        inspectAccount(accountId, signal),
+        callView(accountId, "get_policy", signal),
+      ]);
+      if (policyCall.unknown) {
+        return { accountId, ...judgeAccount(false, []) };
+      }
+      if (policyCall.failed) {
+        return { accountId, ...judgeAccount(inspected.exists, inspected.keys) };
+      }
+
+      const members = collectPolicyMembers(policyCall.value);
+      if (members.length === 0) {
+        const judged = judgeAccount(inspected.exists, inspected.keys);
+        return {
+          accountId,
+          ...judged,
+          detail: `${judged.detail} This looks like a Sputnik DAO, but its policy has no group members.`,
+        };
+      }
+
+      const memberReports = await Promise.all(
+        members.map(async (member) => {
+          const report = await evaluateAccount(member.accountId, signal, seen);
+          return { ...member, ...report };
+        }),
+      );
+      const safeCount = memberReports.filter((member) => member.tone === "safe").length;
+      const total = memberReports.length;
+      let verdict;
+      let tone;
+      let detail;
+      if (safeCount === total) {
+        verdict = "Quantum-safe";
+        tone = "safe";
+        detail = "Every group member is quantum-safe. This DAO's council can't be attacked through those keys.";
+      } else if (safeCount === 0) {
+        verdict = "Uses pre-quantum keys";
+        tone = "pre";
+        detail = "None of the group members are quantum-safe. If a quantum computer takes some of them, it can vote. Each member should open Intear Wallet: Settings → Switch to quantum-safe key.";
+      } else {
+        verdict = "Mixes pre-quantum and post-quantum members";
+        tone = "mix";
+        detail = "Some members are quantum-safe, but a DAO is only as strong as the members who can still vote with old keys. The ones below still need to rotate.";
+      }
+
+      return {
+        accountId,
+        verdict,
+        detail,
+        tone,
+        share: { safeCount, total },
+        rows: memberReports.map((member) => ({
+          accountId: member.accountId,
+          label: member.accountId,
+          caption: member.roles.join(" · "),
+          verdict: member.verdict,
+          tone: member.tone,
+          checkable: true,
+        })),
+      };
+    }
+
+    async function evaluatePool(accountId, signal, seen) {
+      const [inspected, ownerCall, stakingCall] = await Promise.all([
+        inspectAccount(accountId, signal),
+        callView(accountId, "get_owner_id", signal),
+        callView(accountId, "get_staking_key", signal),
+      ]);
+      if (ownerCall.unknown && stakingCall.unknown) {
+        return { accountId, ...judgeAccount(false, []) };
+      }
+      if (ownerCall.failed && stakingCall.failed) {
+        return { accountId, ...judgeAccount(inspected.exists, inspected.keys) };
+      }
+
+      const ownerId = typeof ownerCall.value === "string" ? ownerCall.value.trim().toLowerCase() : "";
+      const stakingKey = typeof stakingCall.value === "string" ? stakingCall.value.trim() : "";
+      let ownerReport;
+      if (ownerId && ACCOUNT_ID_RE.test(ownerId)) {
+        ownerReport = await evaluateAccount(ownerId, signal, seen);
+      } else {
+        ownerReport = {
+          accountId: ownerId || "",
+          verdict: "Doesn't exist",
+          tone: "missing",
+          detail: "",
+        };
+      }
+
+      const described = describePool(ownerReport, stakingKey);
+      const keyKnown = Boolean(stakingKey);
+      const keyPq = keyKnown && isPqPublicKey(stakingKey);
+      return {
+        accountId,
+        ...described,
+        rows: [
+          {
+            accountId: ownerId,
+            label: ownerId || "unknown owner",
+            caption: "Owner",
+            verdict: ownerReport.verdict,
+            tone: ownerReport.tone,
+            checkable: Boolean(ownerId && ACCOUNT_ID_RE.test(ownerId)),
+          },
+          {
+            label: keyKnown ? schemeLabel(stakingKey) : "unknown key",
+            caption: "Consensus key",
+            verdict: !keyKnown ? "Unknown" : keyPq ? "Quantum-safe" : "Pre-quantum",
+            tone: !keyKnown ? "missing" : keyPq ? "safe" : "pre",
+            checkable: false,
+          },
+        ],
+      };
+    }
+
+    async function evaluateAccount(accountId, signal, seen) {
+      if (seen.has(accountId)) {
+        return {
+          accountId,
+          verdict: "Already checked",
+          detail: "This account was already in this lookup.",
+          tone: "locked",
+        };
+      }
+      seen.add(accountId);
+      if (isSputnikDao(accountId)) return evaluateDao(accountId, signal, seen);
+      if (isStakingPool(accountId)) return evaluatePool(accountId, signal, seen);
+      const inspected = await inspectAccount(accountId, signal);
+      return { accountId, ...judgeAccount(inspected.exists, inspected.keys) };
+    }
+
+    function rpcErrorLooksUnknown(error) {
+      const text = typeof error === "string" ? error : JSON.stringify(error || {});
+      return /unknown_account|does not exist/i.test(text);
+    }
+
+    async function rpcCall(method, params, signal) {
+      const response = await fetch(RPC_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "arewepostquantumyet",
+          method,
+          params,
+        }),
+        signal,
+      });
+      if (!response.ok) throw new Error("rpc-http");
+      const payload = await response.json();
+      if (payload.error) throw new Error("rpc-error");
+      return payload.result;
+    }
+
+    async function queryRpc(params, signal) {
+      const response = await fetch(RPC_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "arewepostquantumyet",
+          method: "query",
+          params,
+        }),
+        signal,
+      });
+      if (!response.ok) throw new Error("rpc-http");
+      const payload = await response.json();
+      if (payload.error) {
+        if (rpcErrorLooksUnknown(payload.error)) return { unknown: true };
+        throw new Error("rpc-error");
+      }
+      if (payload.result && payload.result.error) {
+        if (rpcErrorLooksUnknown(payload.result.error)) return { unknown: true };
+        return { failed: true };
+      }
+      return { result: payload.result || {} };
+    }
+
+    async function inspectAccount(accountId, signal) {
+      const [account, keys] = await Promise.all([
+        queryRpc(
+          {
+            request_type: "view_account",
+            finality: "final",
+            account_id: accountId,
+          },
+          signal,
+        ),
+        queryRpc(
+          {
+            request_type: "view_access_key_list",
+            finality: "final",
+            account_id: accountId,
+          },
+          signal,
+        ),
+      ]);
+      if (account.unknown) return { exists: false, keys: [] };
+      if (account.failed) throw new Error("rpc-error");
+      return {
+        exists: true,
+        keys: keys.unknown || keys.failed || !Array.isArray(keys.result.keys) ? [] : keys.result.keys,
+      };
+    }
+
+    function judgeAccount(exists, keys) {
+      const fullKeys = keys.filter(isFullAccessKey);
+      const pqFullKeys = fullKeys.filter((key) => isPqPublicKey(key.public_key));
+      const otherFullKeys = fullKeys.filter((key) => !isPqPublicKey(key.public_key));
+
+      if (!exists) {
+        return {
+          verdict: "Doesn't exist",
+          detail: "No account with this ID on mainnet. Check the spelling and try again.",
+          tone: "missing",
+        };
+      }
+      if (fullKeys.length === 0) {
+        return {
+          verdict: "Locked",
+          detail: "This account can't send transactions because it doesn't have a key. It's common for smart contracts, but if it's actually your wallet, you probably irrecoverably locked yourself out.",
+          tone: "locked",
+        };
+      }
+      if (pqFullKeys.length === 0) {
+        return {
+          verdict: "Uses pre-quantum keys",
+          detail: "A future quantum computer could take this account. The fastest fix is Intear Wallet: Settings → Switch to quantum-safe key. It keeps your account ID, assets, and seed phrase.",
+          tone: "pre",
+        };
+      }
+      if (otherFullKeys.length > 0) {
+        return {
+          verdict: "Mixes pre-quantum and post-quantum keys",
+          detail: "You added a quantum-safe key, but the old keys still fully control the account, so a quantum computer could use them to take over your account. Remove every pre-quantum full-access key to make post-quantum key the only way to access your account. Intear Wallet’s Switch to quantum-safe key does that in one step, but with Meteor or CLI you have to delete old keys one by one.",
+          tone: "mix",
+        };
+      }
+      return {
+        verdict: "Quantum-safe",
+        detail: "You're safe. Your account is ready for the post-quantum era.",
+        tone: "safe",
+      };
+    }
+
+    checkFormEl.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const accountId = checkAccountEl.value.trim().toLowerCase();
+      if (!accountId) {
+        renderCheck({ detail: "Enter a NEAR account ID." });
+        checkAccountEl.focus();
+        return;
+      }
+      if (!ACCOUNT_ID_RE.test(accountId)) {
+        renderCheck({ detail: "That doesn't look like a NEAR account ID." });
+        checkAccountEl.focus();
+        return;
+      }
+
+      if (checkAbort) checkAbort.abort();
+      checkAbort = new AbortController();
+      const { signal } = checkAbort;
+      checkSubmitEl.disabled = true;
+      renderCheck({ verdict: "Checking…", tone: "checking" });
+
+      try {
+        const report = await evaluateAccount(accountId, signal, new Set());
+        renderCheck(report);
+      } catch (error) {
+        if (error?.name === "AbortError") return;
+        renderCheck({ detail: "Could not reach Intear RPC. Try again in a moment." });
+      } finally {
+        if (!signal.aborted) checkSubmitEl.disabled = false;
+      }
+    });
+
+    document.querySelectorAll(".cmd-copy").forEach((button) => {
+      let copiedTimer = 0;
+      button.addEventListener("click", async () => {
+        const text = button.getAttribute("data-copy") || "";
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          const input = document.createElement("textarea");
+          input.value = text;
+          input.setAttribute("readonly", "");
+          input.style.position = "fixed";
+          input.style.left = "-9999px";
+          document.body.appendChild(input);
+          input.select();
+          document.execCommand("copy");
+          document.body.removeChild(input);
+        }
+        button.classList.add("is-copied");
+        button.textContent = "Copied";
+        clearTimeout(copiedTimer);
+        copiedTimer = setTimeout(() => {
+          button.classList.remove("is-copied");
+          button.textContent = "Copy";
+        }, 1600);
+      });
+    });
+
+    const resizeObserver = new ResizeObserver(() => {
+      drawChart(charts.accounts);
+      drawChart(charts.tx);
+    });
+    resizeObserver.observe(charts.accounts.canvas.parentElement);
+    resizeObserver.observe(charts.tx.canvas.parentElement);
+
+    const DOT_CHECK_SVG = '<svg class="validator-dot-check" viewBox="0 0 16 16" aria-hidden="true"><polyline points="3.5 8.5 6.5 11.5 12.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter"/></svg>';
+    const DOT_X_SVG = '<svg class="validator-dot-x" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"/></svg>';
+    const VALIDATOR_MARKS = [34, 67];
+
+    const validatorTrackEl = document.getElementById("validator-tape-track");
+    const validatorProgressEl = document.getElementById("validator-progress");
+    const validatorFillEl = document.getElementById("validator-progress-fill");
+    const validatorCaptionEl = document.getElementById("validator-caption");
+    const validatorLabelEls = document.querySelectorAll("#validator-progress .progress-labels span");
+
+    function shuffleInPlace(items) {
+      for (let i = items.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const swap = items[i];
+        items[i] = items[j];
+        items[j] = swap;
+      }
+      return items;
+    }
+
+    function uniqueProducers(producers) {
+      const seen = new Set();
+      const list = [];
+      for (const producer of producers || []) {
+        const accountId = String(producer.account_id || "").trim().toLowerCase();
+        const peerId = String(producer.peer_id || producer.public_key || "");
+        if (!accountId || seen.has(accountId)) continue;
+        seen.add(accountId);
+        list.push({ accountId, peerId });
+      }
+      return list;
+    }
+
+    function parseStake(value) {
+      try {
+        return BigInt(String(value ?? "0").split(".")[0]);
+      } catch (_) {
+        return 0n;
+      }
+    }
+
+    function stakeByAccount(currentValidators) {
+      const stakes = new Map();
+      for (const validator of currentValidators || []) {
+        const accountId = String(validator.account_id || "").trim().toLowerCase();
+        if (!accountId) continue;
+        const stake = parseStake(validator.stake);
+        stakes.set(accountId, (stakes.get(accountId) || 0n) + stake);
+      }
+      return stakes;
+    }
+
+    function stakeSharePercent(safeStake, totalStake) {
+      if (totalStake <= 0n) return 0;
+      return Number((safeStake * 10000n) / totalStake) / 100;
+    }
+
+    function createValidatorChip(producer, clone) {
+      const safe = isPqPublicKey(producer.peerId);
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "validator-chip" + (clone ? " is-clone" : "");
+      chip.dataset.account = producer.accountId;
+      chip.title = producer.accountId;
+      chip.setAttribute("aria-label", producer.accountId + (safe ? ", quantum-safe" : ", pre-quantum"));
+      const dot = document.createElement("span");
+      dot.className = "validator-dot " + (safe ? "is-safe" : "is-pre");
+      dot.innerHTML = DOT_CHECK_SVG + DOT_X_SVG;
+      const label = document.createElement("span");
+      label.className = "validator-chip-id";
+      label.textContent = producer.accountId;
+      chip.appendChild(dot);
+      chip.appendChild(label);
+      return chip;
+    }
+
+    function setValidatorProgress(percent) {
+      validatorFillEl.style.transform = "scaleX(" + (percent / 100) + ")";
+      validatorProgressEl.setAttribute("aria-valuenow", percent.toFixed(1));
+      validatorLabelEls.forEach((label, index) => {
+        label.classList.toggle("is-reached", percent >= VALIDATOR_MARKS[index]);
+      });
+    }
+
+    function setValidatorCaption(text) {
+      if (validatorCaptionEl.textContent !== text) validatorCaptionEl.textContent = text;
+    }
+
+    validatorTrackEl.addEventListener("click", (event) => {
+      const chip = event.target.closest(".validator-chip");
+      if (!chip || !chip.dataset.account) return;
+      checkAccountEl.value = chip.dataset.account;
+      checkFormEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      checkFormEl.requestSubmit();
+    });
+
+    async function loadValidators() {
+      setValidatorCaption("asking the network…");
+      try {
+        const [info, epoch] = await Promise.all([
+          rpcCall("network_info", []),
+          rpcCall("validators", [null]).catch(() => null),
+        ]);
+        const producers = shuffleInPlace(uniqueProducers(info && info.known_producers));
+        if (producers.length === 0) {
+          setValidatorCaption("no producers in the current set");
+          return;
+        }
+
+        validatorTrackEl.replaceChildren();
+        const original = document.createElement("div");
+        original.className = "validator-tape-set";
+        const clone = document.createElement("div");
+        clone.className = "validator-tape-set is-clone";
+        producers.forEach((producer) => {
+          original.appendChild(createValidatorChip(producer, false));
+          clone.appendChild(createValidatorChip(producer, true));
+        });
+        validatorTrackEl.appendChild(original);
+        validatorTrackEl.appendChild(clone);
+        validatorTrackEl.style.animationDuration = Math.max(90, producers.length * 4) + "s";
+
+        const stakes = stakeByAccount(epoch && epoch.current_validators);
+        let safeCount = 0;
+        let safeStake = 0n;
+        let totalStake = 0n;
+        for (const producer of producers) {
+          const safe = isPqPublicKey(producer.peerId);
+          if (safe) safeCount += 1;
+          const stake = stakes.get(producer.accountId) || 0n;
+          if (stake <= 0n) continue;
+          totalStake += stake;
+          if (safe) safeStake += stake;
+        }
+        const percent = stakeSharePercent(safeStake, totalStake);
+        setValidatorProgress(percent);
+        setValidatorCaption(
+          safeCount + " of " + producers.length + " quantum-safe, amounting to "
+          + formatPercent(percent) + " of total staked NEAR"
+        );
+      } catch (_) {
+        setValidatorCaption("could not reach the network");
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 5000);
+    loadValidators();
+  </script>
+</body>
+
+</html>

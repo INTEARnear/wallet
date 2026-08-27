@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
@@ -7,7 +7,7 @@ use near_min_api::types::near_crypto::{PublicKey, PublicKeyHandle};
 use near_min_api::types::{AccountId, near_crypto::SecretKey};
 
 use crate::components::account_selector::{
-    AccountCreateParent, AccountCreateRecoveryMethod, LoginMethod, ModalState, seed_phrase_to_key,
+    AccountCreateParent, AccountCreateRecoveryMethod, LoginMethod, ModalState,
 };
 use crate::components::derivation_path_input::DerivationPathInput;
 use crate::components::legal_consents::LegalConsentsSection;
@@ -81,12 +81,12 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
     let accounts_context = expect_context::<AccountsContext>();
     let (login_method, set_login_method) = signal(LoginMethod::NotSelected);
     let (private_key, set_private_key) = signal("".to_string());
-    let (is_valid, set_is_valid) = signal(None);
+    let (is_valid, set_is_valid) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
     let (is_hovered, set_is_hovered) = signal(false);
-    let (available_accounts, set_available_accounts) = signal::<Vec<(AccountId, Network)>>(vec![]);
+    let (available_accounts, set_available_accounts) =
+        signal(Vec::<(AccountId, Network, Option<SecretKey>)>::new());
     let (selected_accounts, set_selected_accounts) = signal::<Vec<(AccountId, Network)>>(vec![]);
-    let (_generated_mnemonic, set_generated_mnemonic) = signal::<Option<bip39::Mnemonic>>(None);
     let (import_in_progress, set_import_in_progress) = signal(false);
     let config_context = expect_context::<ConfigContext>();
     let (ledger_connection_in_progress, set_ledger_connection_in_progress) = signal(false);
@@ -162,10 +162,17 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                         find_accounts_by_public_key(public_key, &accounts_context)
                                             .await;
 
-                                    set_available_accounts
-                                        .set(all_accounts.clone().into_iter().collect());
+                                    let accounts_found = !all_accounts.is_empty();
+                                    set_available_accounts.set(
+                                        all_accounts
+                                            .into_iter()
+                                            .map(|(account_id, network)| {
+                                                (account_id, network, None)
+                                            })
+                                            .collect(),
+                                    );
                                     set_selected_accounts.set(vec![]);
-                                    if all_accounts.is_empty() {
+                                    if !accounts_found {
                                         if has_existing {
                                             set_error.set(Some(
                                                 TranslationKey::ComponentsLoginFormErrLedgerAlreadyImported
@@ -212,7 +219,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
     let check_seed_phrase = move |seed_phrase: String| {
         set_error.set(None);
         if seed_phrase.is_empty() {
-            set_is_valid.set(None);
+            set_is_valid.set(false);
             return;
         }
         if !legal_consents.all_accepted_untracked() {
@@ -221,26 +228,51 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
             ));
             set_available_accounts.set(vec![]);
             set_selected_accounts.set(vec![]);
-            set_is_valid.set(None);
+            set_is_valid.set(false);
             return;
         }
 
-        let secret_key = if let Some(secret_key) = seed_phrase_to_key(&seed_phrase) {
-            secret_key
-        } else {
-            set_error.set(Some(
-                TranslationKey::ComponentsLoginFormErrInvalidSeedPhrase.format(&[]),
-            ));
-            set_is_valid.set(None);
-            return;
+        let keys = match intear_seed_phrase::secret_keys_from_phrase(&seed_phrase) {
+            Ok(keys) => keys,
+            Err(_) => {
+                set_error.set(Some(
+                    TranslationKey::ComponentsLoginFormErrInvalidSeedPhrase.format(&[]),
+                ));
+                set_is_valid.set(false);
+                set_available_accounts.set(vec![]);
+                return;
+            }
         };
-        let public_key = secret_key.public_key();
 
         spawn_local(async move {
-            let (all_accounts, has_existing) =
-                find_accounts_by_public_key(public_key, &accounts_context).await;
+            let lookups = keys.into_iter().map(|secret_key| async move {
+                let (accounts, has_existing) =
+                    find_accounts_by_public_key(secret_key.public_key(), &accounts_context).await;
+                (secret_key, accounts, has_existing)
+            });
+            let results = futures_util::future::join_all(lookups).await;
 
-            set_available_accounts.set(all_accounts.clone().into_iter().collect());
+            let mut all_accounts = HashSet::new();
+            let mut matched_keys = HashMap::new();
+            let mut has_existing = false;
+            for (secret_key, accounts, existing) in results {
+                has_existing |= existing;
+                for account in accounts {
+                    matched_keys
+                        .entry(account.clone())
+                        .or_insert_with(|| secret_key.clone());
+                    all_accounts.insert(account);
+                }
+            }
+
+            set_available_accounts.set(
+                matched_keys
+                    .into_iter()
+                    .map(|((account_id, network), secret_key)| {
+                        (account_id, network, Some(secret_key))
+                    })
+                    .collect(),
+            );
             set_selected_accounts.set(vec![]);
             if all_accounts.is_empty() {
                 if has_existing {
@@ -252,9 +284,9 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                         TranslationKey::ComponentsLoginFormErrSeedNoAccounts.format(&[]),
                     ));
                 }
-                set_is_valid.set(None);
+                set_is_valid.set(false);
             } else {
-                set_is_valid.set(Some(secret_key));
+                set_is_valid.set(true);
             }
         });
     };
@@ -262,7 +294,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
     let check_private_key = move |private_key: String| {
         set_error.set(None);
         if private_key.is_empty() {
-            set_is_valid.set(None);
+            set_is_valid.set(false);
             return;
         }
         if !legal_consents.all_accepted_untracked() {
@@ -271,7 +303,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
             ));
             set_available_accounts.set(vec![]);
             set_selected_accounts.set(vec![]);
-            set_is_valid.set(None);
+            set_is_valid.set(false);
             return;
         }
 
@@ -281,7 +313,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
             set_error.set(Some(
                 TranslationKey::ComponentsLoginFormErrInvalidPrivateKey.format(&[]),
             ));
-            set_is_valid.set(None);
+            set_is_valid.set(false);
             return;
         };
         let public_key = secret_key.public_key();
@@ -290,9 +322,15 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
             let (all_accounts, has_existing) =
                 find_accounts_by_public_key(public_key, &accounts_context).await;
 
-            set_available_accounts.set(all_accounts.clone().into_iter().collect());
+            let accounts_found = !all_accounts.is_empty();
+            set_available_accounts.set(
+                all_accounts
+                    .into_iter()
+                    .map(|(account_id, network)| (account_id, network, None))
+                    .collect(),
+            );
             set_selected_accounts.set(vec![]);
-            if all_accounts.is_empty() {
+            if !accounts_found {
                 if has_existing {
                     set_error.set(Some(
                         TranslationKey::ComponentsLoginFormErrPrivateKeyAlreadyImported.format(&[]),
@@ -302,9 +340,9 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                         TranslationKey::ComponentsLoginFormErrPrivateKeyNoAccounts.format(&[]),
                     ));
                 }
-                set_is_valid.set(None);
+                set_is_valid.set(false);
             } else {
-                set_is_valid.set(Some(secret_key));
+                set_is_valid.set(true);
             }
         });
     };
@@ -322,36 +360,55 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
             set_error.set(None);
 
             let mut accounts = accounts_context.accounts.get();
-            let user_input = private_key.get();
-            let (secret_key, seed_phrase) = if let Ok(secret_key) = user_input.parse::<SecretKey>()
-            {
-                (secret_key, None)
-            } else if let Some(secret_key) = seed_phrase_to_key(&user_input) {
-                (secret_key, Some(user_input))
-            } else {
-                set_error.set(Some(
-                    TranslationKey::ComponentsLoginFormErrInvalidSeedPhrase.format(&[]),
-                ));
-                set_is_valid.set(None);
-                set_import_in_progress(false);
-                return;
-            };
-
             let mut last_account_id: Option<AccountId> = None;
-            for (account_id, network) in selected_list.iter() {
-                add_security_log(
-                    format!("Account imported with private key {secret_key}"),
-                    account_id.clone(),
-                    accounts_context,
-                );
-                accounts.accounts.push(Account {
-                    account_id: account_id.clone(),
-                    secret_key: SecretKeyHolder::SecretKey(secret_key.clone()),
-                    seed_phrase: seed_phrase.clone(),
-                    network: network.clone(),
-                    exported: false,
-                });
-                last_account_id = Some(account_id.clone());
+            let user_input = private_key.get();
+            if let Ok(secret_key) = user_input.parse::<SecretKey>() {
+                for (account_id, network) in selected_list.iter() {
+                    add_security_log(
+                        format!("Account imported with private key {secret_key}"),
+                        account_id.clone(),
+                        accounts_context,
+                    );
+                    accounts.accounts.push(Account {
+                        account_id: account_id.clone(),
+                        secret_key: SecretKeyHolder::SecretKey(secret_key.clone()),
+                        seed_phrase: None,
+                        network: network.clone(),
+                        exported: false,
+                    });
+                    last_account_id = Some(account_id.clone());
+                }
+            } else {
+                let matched_accounts = available_accounts.get();
+                for (account_id, network) in selected_list.iter() {
+                    let Some(secret_key) = matched_accounts.iter().find_map(
+                        |(matched_account_id, matched_network, secret_key)| {
+                            (matched_account_id == account_id && matched_network == network)
+                                .then(|| secret_key.clone())
+                                .flatten()
+                        },
+                    ) else {
+                        set_error.set(Some(
+                            TranslationKey::ComponentsLoginFormErrInvalidSeedPhrase.format(&[]),
+                        ));
+                        set_is_valid.set(false);
+                        set_import_in_progress(false);
+                        return;
+                    };
+                    add_security_log(
+                        format!("Account imported with private key {secret_key}"),
+                        account_id.clone(),
+                        accounts_context,
+                    );
+                    accounts.accounts.push(Account {
+                        account_id: account_id.clone(),
+                        secret_key: SecretKeyHolder::SecretKey(secret_key.clone()),
+                        seed_phrase: Some(user_input.clone()),
+                        network: network.clone(),
+                        exported: false,
+                    });
+                    last_account_id = Some(account_id.clone());
+                }
             }
 
             if let Some(last) = last_account_id {
@@ -431,7 +488,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                             on:click=move |_| {
                                 set_login_method.set(LoginMethod::SeedPhrase);
                                 set_error.set(None);
-                                set_is_valid.set(None);
+                                set_is_valid.set(false);
                                 set_available_accounts.set(vec![]);
                                 set_selected_accounts.set(vec![]);
                                 set_private_key.set("".to_string());
@@ -467,7 +524,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                             on:click=move |_| {
                                 set_login_method.set(LoginMethod::PrivateKey);
                                 set_error.set(None);
-                                set_is_valid.set(None);
+                                set_is_valid.set(false);
                                 set_available_accounts.set(vec![]);
                                 set_selected_accounts.set(vec![]);
                                 set_private_key.set("".to_string());
@@ -502,11 +559,10 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                             on:click=move |_| {
                                 set_login_method.set(LoginMethod::Ledger);
                                 set_error.set(None);
-                                set_is_valid.set(None);
+                                set_is_valid.set(false);
                                 set_available_accounts.set(vec![]);
                                 set_selected_accounts.set(vec![]);
                                 set_private_key.set("".to_string());
-                                set_generated_mnemonic.set(None);
                                 request_ledger_connection();
                             }
                         >
@@ -575,7 +631,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                         {available_accounts
                                                             .get()
                                                             .into_iter()
-                                                            .map(|(account_id, network)| {
+                                                            .map(|(account_id, network, _)| {
                                                                 let account_id_str = account_id.to_string();
                                                                 let account_id2 = account_id.clone();
                                                                 view! {
@@ -649,7 +705,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                         <button
                                             class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden"
                                             style=move || {
-                                                if is_valid.get().is_some()
+                                                if is_valid.get()
                                                     && !selected_accounts.get().is_empty()
                                                     && legal_consents.all_accepted()
                                                     && !import_in_progress.get()
@@ -660,7 +716,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                 }
                                             }
                                             disabled=move || {
-                                                is_valid.get().is_none()
+                                                !is_valid.get()
                                                     || selected_accounts.get().is_empty()
                                                     || !legal_consents.all_accepted()
                                                     || import_in_progress.get()
@@ -672,7 +728,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                             <div
                                                 class="absolute inset-0 transition-opacity duration-200"
                                                 style=move || {
-                                                    if is_valid.get().is_some()
+                                                    if is_valid.get()
                                                         && !selected_accounts.get().is_empty() && is_hovered.get()
                                                         && legal_consents.all_accepted()
                                                         && !import_in_progress.get()
@@ -725,7 +781,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                 type="text"
                                                 class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 text-base"
                                                 style=move || {
-                                                    if is_valid.get().is_some() {
+                                                    if is_valid.get() {
                                                         "border: 2px solid rgb(22 163 74)"
                                                     } else {
                                                         "border: 2px solid rgb(55 65 81)"
@@ -774,7 +830,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                         {available_accounts
                                                             .get()
                                                             .into_iter()
-                                                            .map(|(account_id, network)| {
+                                                            .map(|(account_id, network, _)| {
                                                                 let account_id_str = account_id.to_string();
                                                                 let account_id2 = account_id.clone();
                                                                 view! {
@@ -851,7 +907,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                         <button
                                             class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg relative overflow-hidden"
                                             style=move || {
-                                                if is_valid.get().is_some()
+                                                if is_valid.get()
                                                     && !selected_accounts.get().is_empty()
                                                     && legal_consents.all_accepted()
                                                     && !import_in_progress.get()
@@ -862,7 +918,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                 }
                                             }
                                             disabled=move || {
-                                                is_valid.get().is_none()
+                                                !is_valid.get()
                                                     || selected_accounts.get().is_empty()
                                                     || !legal_consents.all_accepted()
                                                     || import_in_progress.get()
@@ -874,7 +930,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                             <div
                                                 class="absolute inset-0 transition-opacity duration-200"
                                                 style=move || {
-                                                    if is_valid.get().is_some()
+                                                    if is_valid.get()
                                                         && !selected_accounts.get().is_empty() && is_hovered.get()
                                                         && legal_consents.all_accepted()
                                                         && !import_in_progress.get()
@@ -1046,7 +1102,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                         {available_accounts
                                                             .get()
                                                             .into_iter()
-                                                            .map(|(account_id, network)| {
+                                                            .map(|(account_id, network, _)| {
                                                                 let account_id_str = account_id.to_string();
                                                                 let account_id2 = account_id.clone();
                                                                 view! {

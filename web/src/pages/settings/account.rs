@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::components::account_selector::{
-    AccountCreateParent, AccountCreateRecoveryMethod, ModalState, mnemonic_to_key,
+    AccountCreateParent, AccountCreateRecoveryMethod, ModalState,
 };
 use crate::components::danger_confirm_input::DangerConfirmInput;
 use crate::components::derivation_path_input::DerivationPathInput;
@@ -17,14 +17,13 @@ use crate::contexts::{
 };
 use crate::translations::TranslationKey;
 use crate::utils::serialize_to_js_value;
-use bip39::Mnemonic;
 use chrono::NaiveDate;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_router::hooks::use_navigate;
 use leptos_use::{use_event_listener, use_window};
 use near_min_api::types::AccountId;
-use near_min_api::types::near_crypto::PublicKey;
+use near_min_api::types::near_crypto::{KeyType, PublicKey, PublicKeyHandle};
 use near_min_api::{
     QueryFinality,
     types::{
@@ -146,13 +145,14 @@ pub enum JsWalletRequest {
 fn TerminateSessionsModal(
     is_ledger_account: impl Fn() -> bool + Copy + Send + Sync + 'static,
     terminate_sessions: impl Fn(()) + Copy + Send + Sync + 'static,
-    new_mnemonic: ReadSignal<Option<bip39::Mnemonic>>,
-    set_new_mnemonic: WriteSignal<Option<bip39::Mnemonic>>,
+    new_mnemonic: ReadSignal<Option<(usize, String)>>,
+    set_new_mnemonic: WriteSignal<Option<(usize, String)>>,
     copied_to_clipboard: ReadSignal<bool>,
     set_copied_to_clipboard: WriteSignal<bool>,
     is_confirmed: ReadSignal<bool>,
     set_is_confirmed: WriteSignal<bool>,
     terminating_sessions: ReadSignal<bool>,
+    has_terminate_error: ReadSignal<bool>,
     generate_new_mnemonic: impl Fn() + Copy + Send + Sync + 'static,
 ) -> impl IntoView {
     let ModalContext { modal } = expect_context::<ModalContext>();
@@ -171,7 +171,7 @@ fn TerminateSessionsModal(
         >
             <div class="absolute inset-0 flex items-center justify-center">
                 <div
-                    class="bg-neutral-950 p-8 rounded-xl w-full max-w-md border border-red-500/20"
+                    class="bg-neutral-950 p-8 rounded-xl w-full max-w-md border border-red-500/20 max-h-[90vh] overflow-y-auto"
                     on:click=|ev| ev.stop_propagation()
                 >
                     <h3 class="text-xl font-semibold mb-4 text-white">
@@ -257,7 +257,7 @@ fn TerminateSessionsModal(
                                                 let _ = window()
                                                     .navigator()
                                                     .clipboard()
-                                                    .write_text(&mnemonic.to_string());
+                                                    .write_text(&mnemonic.1);
                                                 set_copied_to_clipboard(true);
                                                 set_timeout(
                                                     move || set_copied_to_clipboard(false),
@@ -293,9 +293,10 @@ fn TerminateSessionsModal(
                             </div>
                             <div class="grid grid-cols-3 gap-2 text-sm">
                                 {move || {
-                                    if let Some(mnemonic) = new_mnemonic.get() {
+                                    if let Some((_, mnemonic)) = new_mnemonic.get() {
                                         mnemonic
-                                            .words()
+                                            .split_whitespace()
+                                            .map(str::to_string)
                                             .enumerate()
                                             .map(|(i, word)| {
                                                 view! {
@@ -313,6 +314,105 @@ fn TerminateSessionsModal(
                                     }
                                 }}
                             </div>
+                            <div class="mt-4 mb-2">
+                            <div class="text-sm font-medium text-neutral-300 mb-2">
+                                {move || {
+                                    TranslationKey::PagesSettingsAccountKeyTypeHeading.format(&[])
+                                }}
+                            </div>
+                            <div class="space-y-2">
+                                {[
+                                    (
+                                        0usize,
+                                        TranslationKey::PagesSettingsAccountKeyTypeEd25519Label,
+                                        TranslationKey::PagesSettingsAccountKeyTypeEd25519Description,
+                                        true,
+                                    ),
+                                    (
+                                        1,
+                                        TranslationKey::PagesSettingsAccountKeyTypeSecp256k1Label,
+                                        TranslationKey::PagesSettingsAccountKeyTypeSecp256k1Description,
+                                        false,
+                                    ),
+                                    (
+                                        2,
+                                        TranslationKey::PagesSettingsAccountKeyTypeMldsa65Label,
+                                        TranslationKey::PagesSettingsAccountKeyTypeMldsa65Description,
+                                        false,
+                                    ),
+                                ]
+                                    .into_iter()
+                                    .map(|(index, label, description, recommended)| {
+                                        view! {
+                                            <button
+                                                type="button"
+                                                class="w-full text-left p-2.5 rounded-lg border transition-all duration-200 cursor-pointer"
+                                                style=move || {
+                                                    if new_mnemonic.get().map(|(i, _)| i).is_some_and(|i| i == index)
+                                                    {
+                                                        "border-color: rgb(96 165 250); background-color: rgb(59 130 246 / 0.1);"
+                                                    } else {
+                                                        "border-color: rgb(64 64 64); background-color: rgb(38 38 38);"
+                                                    }
+                                                }
+                                                on:click=move |_| {
+                                                    set_new_mnemonic
+                                                        .update(|mnemonic| {
+                                                            if let Some((selected_index, _)) = mnemonic {
+                                                                *selected_index = index;
+                                                            }
+                                                        });
+                                                }
+                                            >
+                                                <div class="flex items-start gap-2.5">
+                                                    <div
+                                                        class="mt-0.5 w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center"
+                                                        style=move || {
+                                                            if new_mnemonic.get().map(|(i, _)| i).is_some_and(|i| i == index)
+                                                            {
+                                                                "border-color: rgb(96 165 250);"
+                                                            }
+                                                            else {
+                                                                "border-color: rgb(115 115 115);"
+                                                            }
+                                                        }
+                                                    >
+                                                        <Show when=move || {
+                                                            new_mnemonic.get().map(|(i, _)| i).is_some_and(|i| i == index)
+                                                        }>
+                                                            <div class="w-2 h-2 rounded-full bg-blue-400"></div>
+                                                        </Show>
+                                                    </div>
+                                                    <div class="min-w-0">
+                                                        <div class="flex items-center gap-2 flex-wrap">
+                                                            <span class="text-sm font-medium text-white font-mono">
+                                                                {move || label.format(&[])}
+                                                            </span>
+                                                            {if recommended {
+                                                                view! {
+                                                                    <span class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 font-medium">
+                                                                        {move || {
+                                                                            TranslationKey::PagesSettingsAccountKeyTypeRecommendedBadge
+                                                                                .format(&[])
+                                                                        }}
+                                                                    </span>
+                                                                }
+                                                                    .into_any()
+                                                            } else {
+                                                                ().into_any()
+                                                            }}
+                                                        </div>
+                                                        <p class="text-xs text-neutral-400 mt-1 leading-relaxed">
+                                                            {move || description.format(&[])}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        }
+                                    })
+                                    .collect::<Vec<_>>()}
+                            </div>
+                        </div>
                             <div class="mt-3 text-xs text-yellow-400">
                                 <Icon
                                     icon=icondata::LuTriangleAlert
@@ -345,6 +445,26 @@ fn TerminateSessionsModal(
                         attr:class="mb-4"
                     />
 
+                    <Show when=has_terminate_error>
+                        <div class="p-4 bg-red-950/30 border border-red-700/30 rounded-lg mb-4">
+                            <div class="flex items-center gap-2 text-red-400">
+                                <Icon icon=icondata::LuTriangleAlert width="20" height="20" />
+                                <span class="font-medium">
+                                    {move || {
+                                        TranslationKey::PagesSettingsAccountLedgerErrorHeading
+                                            .format(&[])
+                                    }}
+                                </span>
+                            </div>
+                            <p class="text-red-300 text-sm mt-2">
+                                {move || {
+                                    TranslationKey::PagesSettingsAccountErrCannotRemoveMldsa65Key
+                                        .format(&[])
+                                }}
+                            </p>
+                        </div>
+                    </Show>
+
                     <div class="flex gap-3">
                         <button
                             class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden bg-neutral-800 hover:bg-neutral-700 cursor-pointer"
@@ -357,7 +477,6 @@ fn TerminateSessionsModal(
                             disabled=move || { terminating_sessions.get() || !is_confirmed.get() }
                             on:click=move |_| {
                                 terminate_sessions(());
-                                close_modal();
                             }
                         >
                             {move || TranslationKey::PagesSettingsAccountButtonConfirm.format(&[])}
@@ -398,11 +517,12 @@ pub fn AccountSettings() -> impl IntoView {
     let (ledger_address_number, set_ledger_address_number) = signal(1u32);
 
     let (is_confirmed, set_is_confirmed) = signal(false);
-    let (new_mnemonic, set_new_mnemonic) = signal::<Option<bip39::Mnemonic>>(None);
+    let (new_mnemonic, set_new_mnemonic) = signal::<Option<(usize, String)>>(None);
     let (copied_to_clipboard, set_copied_to_clipboard) = signal(false);
     let (ledger_is_only_key, set_ledger_is_only_key) = signal(false);
     let (checking_keys, set_checking_keys) = signal(false);
     let (terminating_sessions, set_terminating_sessions) = signal(false);
+    let (has_terminate_error, set_has_terminate_error) = signal(false);
     let ModalContext { modal } = expect_context::<ModalContext>();
     let config_context = expect_context::<ConfigContext>();
 
@@ -645,6 +765,7 @@ pub fn AccountSettings() -> impl IntoView {
         };
 
         set_terminating_sessions(true);
+        set_has_terminate_error(false);
 
         let account = accounts_context
             .accounts
@@ -662,7 +783,6 @@ pub fn AccountSettings() -> impl IntoView {
 
         let rpc_client = rpc_context.client.get();
         spawn_local(async move {
-            let mut delete_actions = Vec::new();
             let keys = match rpc_client
                 .view_access_key_list(account_id.clone(), QueryFinality::Finality(Finality::Final))
                 .await
@@ -676,6 +796,18 @@ pub fn AccountSettings() -> impl IntoView {
             };
 
             let current_public_key = account.secret_key.public_key();
+            let current_public_key_handle = PublicKeyHandle::from(&current_public_key);
+
+            if keys.keys.iter().any(|key| {
+                key.public_key.full_pubkey().is_none()
+                    && key.public_key != current_public_key_handle
+            }) {
+                set_has_terminate_error(true);
+                set_terminating_sessions(false);
+                return;
+            }
+
+            let mut delete_actions = Vec::new();
 
             for key in keys.keys {
                 if matches!(
@@ -684,10 +816,13 @@ pub fn AccountSettings() -> impl IntoView {
                 ) {
                     // For Ledger accounts, keep the current key, delete all others
                     // For non-Ledger accounts, delete all keys (will add new one later)
-                    if !is_ledger || key.public_key != current_public_key {
-                        delete_actions.push(Action::DeleteKey(Box::new(DeleteKeyAction {
-                            public_key: key.public_key,
-                        })));
+                    if !is_ledger || key.public_key != current_public_key_handle {
+                        let public_key = key
+                            .public_key
+                            .full_pubkey()
+                            .unwrap_or_else(|| current_public_key.clone());
+                        delete_actions
+                            .push(Action::DeleteKey(Box::new(DeleteKeyAction { public_key })));
                     }
                 }
             }
@@ -753,7 +888,11 @@ pub fn AccountSettings() -> impl IntoView {
                     accounts_context,
                 );
             } else {
-                let secret_key = mnemonic_to_key(mnemonic.clone()).unwrap();
+                let secret_key = intear_seed_phrase::secret_keys_from_phrase(&mnemonic.1)
+                    .unwrap()
+                    .into_iter()
+                    .nth(mnemonic.0)
+                    .unwrap();
                 let public_key = secret_key.public_key();
 
                 let add_action = Action::AddKey(Box::new(AddKeyAction {
@@ -811,14 +950,23 @@ pub fn AccountSettings() -> impl IntoView {
                 add_transaction.update(|queue| queue.push(replace_key_transaction));
             }
 
+            modal.set(None);
+            set_is_confirmed(false);
+            set_new_mnemonic(None);
+            set_copied_to_clipboard(false);
+
             let res = details_receiver.await;
             if matches!(res, Ok(Ok(_))) && !is_ledger {
-                let secret_key = mnemonic_to_key(mnemonic.clone()).unwrap();
+                let secret_key = intear_seed_phrase::secret_keys_from_phrase(&mnemonic.1)
+                    .unwrap()
+                    .into_iter()
+                    .nth(mnemonic.0)
+                    .unwrap();
                 accounts_context.set_accounts.update(|accounts| {
                     for acc in accounts.accounts.iter_mut() {
                         if acc.account_id == account_id {
                             acc.secret_key = SecretKeyHolder::SecretKey(secret_key.clone());
-                            acc.seed_phrase = Some(mnemonic.to_string());
+                            acc.seed_phrase = Some(mnemonic.1.to_string());
                         }
                     }
                 });
@@ -831,8 +979,12 @@ pub fn AccountSettings() -> impl IntoView {
     };
 
     let generate_new_mnemonic = move || {
-        let mnemonic = bip39::Mnemonic::generate(12).unwrap();
-        set_new_mnemonic(Some(mnemonic));
+        let key_type_index = new_mnemonic
+            .get_untracked()
+            .map(|(index, _)| index)
+            .unwrap_or(0);
+        let (phrase, _) = intear_seed_phrase::generate(KeyType::ED25519).unwrap();
+        set_new_mnemonic(Some((key_type_index, phrase)));
         set_copied_to_clipboard(false);
     };
 
@@ -887,7 +1039,8 @@ pub fn AccountSettings() -> impl IntoView {
 
                     // Check if there's only one full access key and it's the current Ledger key
                     let is_only_key = full_access_keys.len() == 1
-                        && full_access_keys[0].public_key == current_public_key;
+                        && full_access_keys[0].public_key
+                            == PublicKeyHandle::from(&current_public_key);
 
                     set_ledger_is_only_key(is_only_key);
                 }
@@ -1021,6 +1174,10 @@ pub fn AccountSettings() -> impl IntoView {
                                         }
                                         SecretKeyHolder::SecretKey(secret_key) => {
                                             let seed_phrase_exists = account.seed_phrase.is_some();
+                                            let is_ed25519 = matches!(
+                                                secret_key.key_type(),
+                                                KeyType::ED25519
+                                            );
                                             view! {
                                                 <div class="p-4 rounded-lg bg-neutral-900">
                                                     <div class="flex items-center justify-between">
@@ -1064,6 +1221,14 @@ pub fn AccountSettings() -> impl IntoView {
                                                             }
                                                         }}
                                                     </div>
+                                                    <Show when=move || !is_ed25519>
+                                                        <div class="mt-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-300 border border-amber-400/20">
+                                                            {move || {
+                                                                TranslationKey::PagesSettingsAccountExportBadgeIntearWalletOnly
+                                                                    .format(&[])
+                                                            }}
+                                                        </div>
+                                                    </Show>
                                                 </div>
 
                                                 <div class="p-4 rounded-lg bg-neutral-900">
@@ -1093,6 +1258,14 @@ pub fn AccountSettings() -> impl IntoView {
                                                     <div class="font-mono text-sm p-3 rounded bg-neutral-800 break-all">
                                                         {secret_key.to_string()}
                                                     </div>
+                                                    <Show when=move || !is_ed25519>
+                                                        <div class="mt-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-400/20">
+                                                            {move || {
+                                                                TranslationKey::PagesSettingsAccountExportBadgeAllWallets
+                                                                    .format(&[])
+                                                            }}
+                                                        </div>
+                                                    </Show>
                                                 </div>
                                             }
                                                 .into_any()
@@ -1137,118 +1310,159 @@ pub fn AccountSettings() -> impl IntoView {
                     .unwrap_or(false);
                 if is_ledger_account {
                     view! {
-                        <button
-                            on:click=move |_| {
-                                let Some(selected_account_id) = accounts_context
-                                    .accounts
-                                    .get_untracked()
-                                    .selected_account_id else {
-                                    return;
-                                };
-                                let new_mnemonic = Mnemonic::generate(12).unwrap();
-                                let Some(new_secret_key) = mnemonic_to_key(new_mnemonic.clone())
-                                else {
-                                    log::error!("Failed to derive key from new mnemonic");
-                                    return;
-                                };
-                                let new_public_key = new_secret_key.public_key();
-                                let rpc_client = rpc_context.client.get_untracked();
-                                let new_mnemonic_string = new_mnemonic.to_string();
-                                spawn_local(async move {
-                                    match rpc_client
-                                        .view_access_key_list(
-                                            selected_account_id.clone(),
-                                            QueryFinality::Finality(Finality::Final),
-                                        )
-                                        .await
-                                    {
-                                        Ok(keys) => {
-                                            let mut actions: Vec<Action> = Vec::new();
-                                            for key_info in keys.keys {
-                                                if matches!(
-                                                    key_info.access_key.permission,
-                                                    AccessKeyPermissionView::FullAccess
-                                                ) {
-                                                    actions
-                                                        .push(
-                                                            Action::DeleteKey(
-                                                                Box::new(DeleteKeyAction {
-                                                                    public_key: key_info.public_key,
-                                                                }),
-                                                            ),
-                                                        );
+                        <div class="space-y-4">
+                            <Show when=move || ledger_error.get().is_some()>
+                                <div class="p-4 bg-red-950/30 border border-red-700/30 rounded-lg">
+                                    <div class="flex items-center gap-2 text-red-400">
+                                        <Icon
+                                            icon=icondata::LuTriangleAlert
+                                            width="20"
+                                            height="20"
+                                        />
+                                        <span class="font-medium">
+                                            {move || {
+                                                TranslationKey::PagesSettingsAccountLedgerErrorHeading
+                                                    .format(&[])
+                                            }}
+                                        </span>
+                                    </div>
+                                    <p class="text-red-300 text-sm mt-2">
+                                        {move || ledger_error.get().unwrap_or_default()}
+                                    </p>
+                                </div>
+                            </Show>
+                            <button
+                                on:click=move |_| {
+                                    let Some(selected_account_id) = accounts_context
+                                        .accounts
+                                        .get_untracked()
+                                        .selected_account_id else {
+                                        return;
+                                    };
+                                    let Some(current_public_key) = accounts_context
+                                        .accounts
+                                        .get_untracked()
+                                        .accounts
+                                        .into_iter()
+                                        .find(|acc| acc.account_id == selected_account_id)
+                                        .map(|acc| acc.secret_key.public_key()) else {
+                                        return;
+                                    };
+                                    let current_public_key_handle =
+                                        PublicKeyHandle::from(&current_public_key);
+                                    set_ledger_error.set(None);
+                                    let (new_mnemonic_string, new_secret_key) =
+                                        intear_seed_phrase::generate(KeyType::ED25519).unwrap();
+                                    let new_public_key = new_secret_key.public_key();
+                                    let rpc_client = rpc_context.client.get_untracked();
+                                    spawn_local(async move {
+                                        match rpc_client
+                                            .view_access_key_list(
+                                                selected_account_id.clone(),
+                                                QueryFinality::Finality(Finality::Final),
+                                            )
+                                            .await
+                                        {
+                                            Ok(keys) => {
+                                                if keys.keys.iter().any(|key| {
+                                                    key.public_key.full_pubkey().is_none()
+                                                        && key.public_key
+                                                            != current_public_key_handle
+                                                }) {
+                                                    set_ledger_error.set(Some(
+                                                        TranslationKey::PagesSettingsAccountErrCannotRemoveMldsa65Key
+                                                            .format(&[]),
+                                                    ));
+                                                    return;
                                                 }
-                                            }
-                                            actions
-                                                .push(
-                                                    Action::AddKey(
-                                                        Box::new(AddKeyAction {
-                                                            public_key: new_public_key.clone(),
-                                                            access_key: AccessKey {
-                                                                nonce: 0,
-                                                                permission: AccessKeyPermission::FullAccess,
-                                                            },
-                                                        }),
-                                                    ),
-                                                );
-                                            let (receiver, transaction) = EnqueuedTransaction::create(
-                                                TranslationKey::MiscTransactionDisconnectLedger.format(&[]),
-                                                selected_account_id.clone(),
-                                                selected_account_id.clone(),
-                                                actions,
-                                                true,
-                                            );
-                                            add_transaction.update(|q| q.push(transaction));
-                                            match receiver.await {
-                                                Ok(Ok(_details)) => {
-                                                    accounts_context
-                                                        .set_accounts
-                                                        .update(|accts| {
-                                                            for acc in accts.accounts.iter_mut() {
-                                                                if acc.account_id == selected_account_id {
-                                                                    acc.secret_key = SecretKeyHolder::SecretKey(
-                                                                        new_secret_key.clone(),
-                                                                    );
-                                                                    acc.seed_phrase = Some(new_mnemonic_string.clone());
-                                                                }
-                                                            }
-                                                        });
-                                                    add_security_log(
-                                                        format!(
-                                                            "Disconnected Ledger. New public key: {}, private key: {}",
-                                                            new_public_key,
-                                                            new_secret_key,
+                                                let mut actions: Vec<Action> = Vec::new();
+                                                for key_info in keys.keys {
+                                                    if matches!(
+                                                        key_info.access_key.permission,
+                                                        AccessKeyPermissionView::FullAccess
+                                                    ) {
+                                                        let public_key = key_info
+                                                            .public_key
+                                                            .full_pubkey()
+                                                            .unwrap_or_else(|| {
+                                                                current_public_key.clone()
+                                                            });
+                                                        actions.push(Action::DeleteKey(Box::new(
+                                                            DeleteKeyAction { public_key },
+                                                        )));
+                                                    }
+                                                }
+                                                actions
+                                                    .push(
+                                                        Action::AddKey(
+                                                            Box::new(AddKeyAction {
+                                                                public_key: new_public_key.clone(),
+                                                                access_key: AccessKey {
+                                                                    nonce: 0,
+                                                                    permission: AccessKeyPermission::FullAccess,
+                                                                },
+                                                            }),
                                                         ),
-                                                        selected_account_id.clone(),
-                                                        accounts_context,
                                                     );
-                                                }
-                                                Ok(Err(err)) => {
-                                                    log::error!("Failed to disconnect Ledger: {}", err);
-                                                }
-                                                Err(_) => {
-                                                    log::error!("Failed to receive transaction result");
+                                                let (receiver, transaction) = EnqueuedTransaction::create(
+                                                    TranslationKey::MiscTransactionDisconnectLedger.format(&[]),
+                                                    selected_account_id.clone(),
+                                                    selected_account_id.clone(),
+                                                    actions,
+                                                    true,
+                                                );
+                                                add_transaction.update(|q| q.push(transaction));
+                                                match receiver.await {
+                                                    Ok(Ok(_details)) => {
+                                                        accounts_context
+                                                            .set_accounts
+                                                            .update(|accts| {
+                                                                for acc in accts.accounts.iter_mut() {
+                                                                    if acc.account_id == selected_account_id {
+                                                                        acc.secret_key = SecretKeyHolder::SecretKey(
+                                                                            new_secret_key.clone(),
+                                                                        );
+                                                                        acc.seed_phrase = Some(new_mnemonic_string.clone());
+                                                                    }
+                                                                }
+                                                            });
+                                                        add_security_log(
+                                                            format!(
+                                                                "Disconnected Ledger. New public key: {}, private key: {}",
+                                                                new_public_key,
+                                                                new_secret_key,
+                                                            ),
+                                                            selected_account_id.clone(),
+                                                            accounts_context,
+                                                        );
+                                                    }
+                                                    Ok(Err(err)) => {
+                                                        log::error!("Failed to disconnect Ledger: {}", err);
+                                                    }
+                                                    Err(_) => {
+                                                        log::error!("Failed to receive transaction result");
+                                                    }
                                                 }
                                             }
+                                            Err(err) => {
+                                                log::error!(
+                                                    "Failed to fetch access key list for Ledger disconnect: {}",
+                                                        err
+                                                );
+                                            }
                                         }
-                                        Err(err) => {
-                                            log::error!(
-                                                "Failed to fetch access key list for Ledger disconnect: {}",
-                                                    err
-                                            );
-                                        }
-                                    }
-                                });
-                            }
-                            class="flex items-center justify-center gap-2 p-4 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 transition-colors font-medium cursor-pointer"
-                        >
-                            <Icon icon=icondata::LuUnlink width="20" height="20" />
-                            <span>
-                                {move || {
-                                    TranslationKey::PagesSettingsAccountDisconnectLedger.format(&[])
-                                }}
-                            </span>
-                        </button>
+                                    });
+                                }
+                                class="flex items-center justify-center gap-2 p-4 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 transition-colors font-medium cursor-pointer w-full"
+                            >
+                                <Icon icon=icondata::LuUnlink width="20" height="20" />
+                                <span>
+                                    {move || {
+                                        TranslationKey::PagesSettingsAccountDisconnectLedger.format(&[])
+                                    }}
+                                </span>
+                            </button>
+                        </div>
                     }
                         .into_any()
                 } else {
@@ -1388,17 +1602,37 @@ pub fn AccountSettings() -> impl IntoView {
                                                 else {
                                                     return;
                                                 };
+                                                set_ledger_error.set(None);
                                                 let rpc_client = rpc_context.client.get_untracked();
                                                 let selected_account_id_opt = accounts_context
                                                     .accounts
                                                     .get_untracked()
                                                     .selected_account_id
                                                     .clone();
+                                                let current_public_key = selected_account_id_opt
+                                                    .as_ref()
+                                                    .and_then(|selected_account_id| {
+                                                        accounts_context
+                                                            .accounts
+                                                            .get_untracked()
+                                                            .accounts
+                                                            .into_iter()
+                                                            .find(|acc| {
+                                                                &acc.account_id == selected_account_id
+                                                            })
+                                                            .map(|acc| acc.secret_key.public_key())
+                                                    });
                                                 spawn_local(async move {
                                                     let Some(selected_account_id) = selected_account_id_opt
                                                     else {
                                                         return;
                                                     };
+                                                    let Some(current_public_key) = current_public_key
+                                                    else {
+                                                        return;
+                                                    };
+                                                    let current_public_key_handle =
+                                                        PublicKeyHandle::from(&current_public_key);
                                                     match rpc_client
                                                         .view_access_key_list(
                                                             selected_account_id.clone(),
@@ -1407,20 +1641,34 @@ pub fn AccountSettings() -> impl IntoView {
                                                         .await
                                                     {
                                                         Ok(keys) => {
+                                                            if keys.keys.iter().any(|key| {
+                                                                key.public_key.full_pubkey().is_none()
+                                                                    && key.public_key
+                                                                        != current_public_key_handle
+                                                            }) {
+                                                                set_ledger_error.set(Some(
+                                                                    TranslationKey::PagesSettingsAccountErrCannotRemoveMldsa65Key
+                                                                        .format(&[]),
+                                                                ));
+                                                                return;
+                                                            }
                                                             let mut actions: Vec<Action> = Vec::new();
                                                             for key_info in keys.keys {
                                                                 if matches!(
                                                                     key_info.access_key.permission,
                                                                     AccessKeyPermissionView::FullAccess
                                                                 ) {
-                                                                    actions
-                                                                        .push(
-                                                                            Action::DeleteKey(
-                                                                                Box::new(DeleteKeyAction {
-                                                                                    public_key: key_info.public_key,
-                                                                                }),
-                                                                            ),
-                                                                        );
+                                                                    let public_key = key_info
+                                                                        .public_key
+                                                                        .full_pubkey()
+                                                                        .unwrap_or_else(|| {
+                                                                            current_public_key.clone()
+                                                                        });
+                                                                    actions.push(Action::DeleteKey(
+                                                                        Box::new(DeleteKeyAction {
+                                                                            public_key,
+                                                                        }),
+                                                                    ));
                                                                 }
                                                             }
                                                             actions
@@ -2078,6 +2326,7 @@ pub fn AccountSettings() -> impl IntoView {
                 }
                 on:click=move |_| {
                     set_is_confirmed(false);
+                    set_has_terminate_error(false);
                     generate_new_mnemonic();
                     modal
                         .set(
@@ -2094,6 +2343,7 @@ pub fn AccountSettings() -> impl IntoView {
                                             is_confirmed=is_confirmed
                                             set_is_confirmed=set_is_confirmed
                                             terminating_sessions=terminating_sessions
+                                            has_terminate_error=has_terminate_error
                                             generate_new_mnemonic=generate_new_mnemonic
                                         />
                                     }
@@ -2130,6 +2380,24 @@ pub fn AccountSettings() -> impl IntoView {
                     </span>
                 </Show>
             </button>
+            <Show when=move || has_terminate_error.get()>
+                <div class="p-4 bg-red-950/30 border border-red-700/30 rounded-lg">
+                    <div class="flex items-center gap-2 text-red-400">
+                        <Icon icon=icondata::LuTriangleAlert width="20" height="20" />
+                        <span class="font-medium">
+                            {move || {
+                                TranslationKey::PagesSettingsAccountLedgerErrorHeading.format(&[])
+                            }}
+                        </span>
+                    </div>
+                    <p class="text-red-300 text-sm mt-2">
+                        {move || {
+                            TranslationKey::PagesSettingsAccountErrCannotRemoveMldsa65Key
+                                .format(&[])
+                        }}
+                    </p>
+                </div>
+            </Show>
         </div>
 
         // Log Out section

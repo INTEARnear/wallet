@@ -7,7 +7,7 @@ use base64::prelude::BASE64_STANDARD;
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, Utc};
 pub use near_crypto;
-use near_crypto::{PublicKey, Signature, Signer};
+use near_crypto::{PublicKey, PublicKeyHandle, Signature, Signer};
 use serde::de::Error as DeError;
 use serde::ser::Error as SerError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -22,7 +22,10 @@ use std::ops::{Add, Range, RangeInclusive};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
-use std::{num::ParseIntError, sync::LazyLock};
+use std::{
+    num::{NonZeroU32, ParseIntError},
+    sync::LazyLock,
+};
 use validator_stake_view::ValidatorStakeView;
 
 use crate::utils::dec_format;
@@ -43,6 +46,67 @@ pub type StorageUsage = u64;
 pub type StorageUsageChange = i64;
 /// Nonce for transactions.
 pub type Nonce = u64;
+/// Nonce index for gas keys.
+pub type NonceIndex = u16;
+
+#[derive(
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Copy,
+)]
+pub enum TransactionNonce {
+    /// Simple nonce without index, used by ordinary access keys
+    Nonce { nonce: Nonce },
+    /// Nonce with index, used by gas keys
+    GasKeyNonce {
+        nonce: Nonce,
+        nonce_index: NonceIndex,
+    },
+}
+
+impl TransactionNonce {
+    pub fn from_nonce(nonce: Nonce) -> Self {
+        TransactionNonce::Nonce { nonce }
+    }
+
+    pub fn from_nonce_and_index(nonce: Nonce, nonce_index: NonceIndex) -> Self {
+        TransactionNonce::GasKeyNonce { nonce, nonce_index }
+    }
+
+    pub fn nonce(&self) -> Nonce {
+        match self {
+            TransactionNonce::Nonce { nonce } => *nonce,
+            TransactionNonce::GasKeyNonce { nonce, .. } => *nonce,
+        }
+    }
+
+    pub fn nonce_index(&self) -> Option<NonceIndex> {
+        match self {
+            TransactionNonce::Nonce { .. } => None,
+            TransactionNonce::GasKeyNonce { nonce_index, .. } => Some(*nonce_index),
+        }
+    }
+}
+
+/// Controls how the transaction nonce is validated against the access key nonce.
+#[derive(
+    BorshSerialize,
+    BorshDeserialize,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    Default,
+    Serialize,
+    Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum NonceMode {
+    /// Any nonce strictly greater than the current access key nonce (default behavior).
+    #[default]
+    Monotonic,
+    /// Nonce must be exactly `ak_nonce + 1` (sequential ordering).
+    Strict,
+}
 /// Height of the block.
 pub type BlockHeight = u64;
 /// Height of the epoch.
@@ -404,6 +468,8 @@ pub enum StateChangeCause {
     /// State change that is happens due to migration that happens in first block of an epoch
     /// after protocol upgrade
     Migration,
+    /// Deprecated, kept to preserve enum variant tags for borsh serialization.
+    _UnusedReshardingV2,
     /// Update persistent state kept by Bandwidth Scheduler after running the scheduling algorithm.
     BandwidthSchedulerStateUpdate,
 }
@@ -463,12 +529,18 @@ pub enum StateChangeValue {
     },
     AccessKeyUpdate {
         account_id: AccountId,
-        public_key: PublicKey,
+        public_key: PublicKeyHandle,
         access_key: AccessKey,
     },
     AccessKeyDeletion {
         account_id: AccountId,
-        public_key: PublicKey,
+        public_key: PublicKeyHandle,
+    },
+    GasKeyNonceUpdate {
+        account_id: AccountId,
+        public_key: PublicKeyHandle,
+        index: NonceIndex,
+        nonce: Nonce,
     },
     DataUpdate {
         account_id: AccountId,
@@ -495,6 +567,7 @@ impl StateChangeValue {
             | StateChangeValue::AccountDeletion { account_id }
             | StateChangeValue::AccessKeyUpdate { account_id, .. }
             | StateChangeValue::AccessKeyDeletion { account_id, .. }
+            | StateChangeValue::GasKeyNonceUpdate { account_id, .. }
             | StateChangeValue::DataUpdate { account_id, .. }
             | StateChangeValue::DataDeletion { account_id, .. }
             | StateChangeValue::ContractCodeUpdate { account_id, .. }
@@ -541,23 +614,41 @@ impl StateChanges {
                 )),
                 TrieKey::AccessKey {
                     account_id,
-                    public_key,
+                    key_handle,
                 } => state_changes.extend(changes.into_iter().map(
                     |RawStateChange { cause, data }| StateChangeWithCause {
                         cause,
                         value: if let Some(change_data) = data {
                             StateChangeValue::AccessKeyUpdate {
                                 account_id: account_id.clone(),
-                                public_key: public_key.clone(),
+                                public_key: key_handle.clone(),
                                 access_key: <_>::try_from_slice(&change_data)
                                     .expect("Failed to parse internally stored access key"),
                             }
                         } else {
                             StateChangeValue::AccessKeyDeletion {
                                 account_id: account_id.clone(),
-                                public_key: public_key.clone(),
+                                public_key: key_handle.clone(),
                             }
                         },
+                    },
+                )),
+                TrieKey::GasKeyNonce {
+                    account_id,
+                    key_handle,
+                    index,
+                } => state_changes.extend(changes.into_iter().filter_map(
+                    |RawStateChange { cause, data }| {
+                        data.map(|change_data| StateChangeWithCause {
+                            cause,
+                            value: StateChangeValue::GasKeyNonceUpdate {
+                                account_id: account_id.clone(),
+                                public_key: key_handle.clone(),
+                                index,
+                                nonce: Nonce::try_from_slice(&change_data)
+                                    .expect("Failed to parse internally stored gas key nonce"),
+                            },
+                        })
                     },
                 )),
                 TrieKey::ContractCode { account_id } => {
@@ -612,6 +703,10 @@ impl StateChanges {
                 TrieKey::BufferedReceiptGroupsQueueItem { .. } => {}
                 // Global contract code is not a part of account, so ignoring it as well.
                 TrieKey::GlobalContractCode { .. } => {}
+                TrieKey::GlobalContractNonce { .. } => {}
+                TrieKey::PromiseYieldStatus { .. } => {}
+                TrieKey::YieldIdToDataId { .. } => {}
+                TrieKey::DataIdToYieldId { .. } => {}
             }
         }
 
@@ -646,6 +741,7 @@ impl StateChanges {
                     state_change.value,
                     StateChangeValue::AccessKeyUpdate { .. }
                         | StateChangeValue::AccessKeyDeletion { .. }
+                        | StateChangeValue::GasKeyNonceUpdate { .. }
                 )
             })
             .collect())
@@ -1053,10 +1149,16 @@ impl ValidatorStats {
     }
 }
 
+#[derive(Default, BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ChunkStats {
+    pub production: ValidatorStats,
+    pub endorsement: ValidatorStats,
+}
+
 #[derive(Debug, BorshSerialize, BorshDeserialize, PartialEq, Eq)]
 pub struct BlockChunkValidatorStats {
     pub block_stats: ValidatorStats,
-    // TODO pub chunk_stats: ChunkStats,
+    pub chunk_stats: ChunkStats,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
@@ -1100,39 +1202,41 @@ pub enum ValidatorInfoIdentifier {
 
 /// Reasons for removing a validator from the validator set.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[borsh(use_discriminant = true)]
+#[repr(u8)]
 pub enum ValidatorKickoutReason {
-    /// Slashed validators are kicked out.
-    Slashed,
+    /// Deprecated
+    _UnusedSlashed = 0,
     /// Validator didn't produce enough blocks.
     NotEnoughBlocks {
         produced: NumBlocks,
         expected: NumBlocks,
-    },
+    } = 1,
     /// Validator didn't produce enough chunks.
     NotEnoughChunks {
         produced: NumBlocks,
         expected: NumBlocks,
-    },
+    } = 2,
     /// Validator unstaked themselves.
-    Unstaked,
+    Unstaked = 3,
     /// Validator stake is now below threshold
     NotEnoughStake {
         #[serde(with = "dec_format", rename = "stake_u128")]
         stake: Balance,
         #[serde(with = "dec_format", rename = "threshold_u128")]
         threshold: Balance,
-    },
+    } = 4,
     /// Enough stake but is not chosen because of seat limits.
-    DidNotGetASeat,
+    DidNotGetASeat = 5,
     /// Validator didn't produce enough chunk endorsements.
     NotEnoughChunkEndorsements {
         produced: NumBlocks,
         expected: NumBlocks,
-    },
+    } = 6,
     ProtocolVersionTooOld {
         version: ProtocolVersion,
         network_version: ProtocolVersion,
-    },
+    } = 7,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -1266,6 +1370,29 @@ impl AccountContract {
             AccountContract::None | AccountContract::Local(_) => 0u64,
             AccountContract::Global(_) => 32u64,
             AccountContract::GlobalByAccount(id) => id.len() as u64,
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[borsh(use_discriminant = true)]
+#[repr(u8)]
+pub enum AccountContractView {
+    Local(CryptoHash) = 0,
+    GlobalHash(CryptoHash) = 1,
+    GlobalAccountId(AccountId) = 2,
+}
+
+impl AccountContractView {
+    pub fn from_account_contract(contract: AccountContract) -> Option<Self> {
+        match contract {
+            AccountContract::None => None,
+            AccountContract::Local(hash) => Some(AccountContractView::Local(hash)),
+            AccountContract::Global(hash) => Some(AccountContractView::GlobalHash(hash)),
+            AccountContract::GlobalByAccount(account_id) => {
+                Some(AccountContractView::GlobalAccountId(account_id))
+            }
         }
     }
 }
@@ -1613,6 +1740,14 @@ impl AccessKey {
     }
 }
 
+#[derive(
+    BorshSerialize, BorshDeserialize, PartialEq, Eq, Hash, Clone, Debug, Serialize, Deserialize,
+)]
+pub struct GasKeyInfo {
+    pub balance: NearToken,
+    pub num_nonces: NonceIndex,
+}
+
 /// Defines permissions for AccessKey
 #[derive(
     BorshSerialize, BorshDeserialize, PartialEq, Eq, Hash, Clone, Debug, Serialize, Deserialize,
@@ -1623,6 +1758,16 @@ pub enum AccessKeyPermission {
     /// Grants full access to the account.
     /// NOTE: It's used to replace account-level public keys.
     FullAccess,
+    /// Gas key with limited permission to make transactions with FunctionCallActions
+    /// Gas keys are a kind of access keys with a prepaid balance to pay for gas.
+    GasKeyFunctionCall(GasKeyInfo, FunctionCallPermission),
+    /// Gas key with full access to the account.
+    /// Gas keys are a kind of access keys with a prepaid balance to pay for gas.
+    GasKeyFullAccess(GasKeyInfo),
+}
+
+impl AccessKeyPermission {
+    pub const MAX_NONCES_FOR_GAS_KEY: NonceIndex = 1024;
 }
 
 /// Grants limited permission to make transactions with FunctionCallActions
@@ -1665,10 +1810,12 @@ pub enum TrieKey {
         account_id: AccountId,
     },
     /// Used to store `primitives::account::AccessKey` struct for a given `AccountId` and
-    /// a given `public_key` of the `AccessKey`.
+    /// a given key handle (the on-trie identifier of the access key - for
+    /// ed25519/secp256k1 this is the full public key; for ML-DSA-65 it is
+    /// a SHA3-256 hash of the public key).
     AccessKey {
         account_id: AccountId,
-        public_key: PublicKey,
+        key_handle: PublicKeyHandle,
     },
     /// Used to store `primitives::receipt::ReceivedData` struct for a given receiver's `AccountId`
     /// of `DataReceipt` and a given `data_id` (the unique identifier for the data).
@@ -1751,6 +1898,31 @@ pub enum TrieKey {
     GlobalContractCode {
         identifier: GlobalContractCodeIdentifier,
     },
+    /// Global contract deployment nonce. Stores the nonce of the last
+    /// deployment for nonce-based idempotency during distribution.
+    GlobalContractNonce {
+        identifier: GlobalContractCodeIdentifier,
+    },
+    PromiseYieldStatus {
+        receiver_id: AccountId,
+        data_id: CryptoHash,
+    },
+    /// Represents a single nonce for a gas key.
+    GasKeyNonce {
+        account_id: AccountId,
+        key_handle: PublicKeyHandle,
+        index: NonceIndex,
+    },
+    /// Mapping from user-provided yield ID to runtime-generated data ID.
+    YieldIdToDataId {
+        receiver_id: AccountId,
+        yield_id: YieldId,
+    },
+    /// Reverse mapping from runtime-generated data ID to user-provided yield ID.
+    DataIdToYieldId {
+        receiver_id: AccountId,
+        data_id: CryptoHash,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, BorshDeserialize, BorshSerialize)]
@@ -1758,6 +1930,23 @@ pub enum GlobalContractCodeIdentifier {
     CodeHash(CryptoHash),
     AccountId(AccountId),
 }
+
+/// Identifier supplied by a contract when creating a yield with a caller-chosen ID.
+#[derive(
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    BorshDeserialize,
+    BorshSerialize,
+    Serialize,
+    Deserialize,
+    Debug,
+    Hash,
+)]
+pub struct YieldId(pub CryptoHash);
 
 /// Error returned in the ExecutionOutcome in case of failure
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -1801,8 +1990,6 @@ pub enum RuntimeError {
     /// Unexpected error which is typically related to the node storage corruption.
     /// It's possible the input state is invalid or malicious.
     StorageError(StorageError),
-    /// An error happens if `check_balance` fails, which is likely an indication of an invalid state.
-    BalanceMismatchError(Box<BalanceMismatchError>),
     /// The incoming receipt didn't pass the validation, it's likely a malicious behavior.
     ReceiptValidationError(ReceiptValidationError),
     /// Error when accessing validator information. Happens inside epoch manager.
@@ -1841,6 +2028,12 @@ impl MissingTrieValueContext {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
+pub struct MissingTrieValue {
+    pub context: MissingTrieValueContext,
+    pub hash: CryptoHash,
+}
+
 /// Errors which may occur during working with trie storages, storing
 /// trie values (trie nodes and state values) by their hashes.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
@@ -1848,7 +2041,7 @@ pub enum StorageError {
     /// Key-value db internal failure
     StorageInternalError,
     /// Requested trie value by its hash which is missing in storage.
-    MissingTrieValue(MissingTrieValueContext, CryptoHash),
+    MissingTrieValue(MissingTrieValue),
     /// Found trie node which shouldn't be part of state. Raised during
     /// validation of state sync parts where incorrect node was passed.
     /// TODO (#8997): consider including hash of trie node.
@@ -1865,9 +2058,6 @@ pub enum StorageError {
     FlatStorageBlockNotSupported(String),
     /// In-memory trie could not be loaded for some reason.
     MemTrieLoadingError(String),
-    /// Indicates that a resharding operation on flat storage is already in progress,
-    /// when it wasn't expected to be so.
-    FlatStorageReshardingAlreadyInProgress,
 }
 
 impl std::fmt::Display for StorageError {
@@ -1953,6 +2143,38 @@ pub enum InvalidTxError {
         /// The number of blocks since the last included chunk of the shard.
         missed_chunks: u64,
     },
+    /// Transaction is specifying an invalid nonce index. Gas key transactions
+    /// must have a nonce_index in valid range, regular transactions must not.
+    InvalidNonceIndex {
+        /// The nonce_index from the transaction (None if missing).
+        tx_nonce_index: Option<NonceIndex>,
+        /// Number of nonces supported by the key. 0 means no nonce_index allowed (regular key).
+        num_nonces: NonceIndex,
+    },
+    /// Gas key does not have enough balance to cover gas costs.
+    NotEnoughGasKeyBalance {
+        signer_id: AccountId,
+        balance: NearToken,
+        cost: NearToken,
+    },
+    /// Gas key transaction failed because the account could not cover the deposit cost.
+    /// Gas is still charged from the gas key in this case.
+    NotEnoughBalanceForDeposit {
+        signer_id: AccountId,
+        balance: NearToken,
+        cost: NearToken,
+        reason: DepositCostFailureReason,
+    },
+}
+
+/// Reason why a gas key transaction failed at the deposit/account level.
+/// In these cases, gas is still charged from the gas key.
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[borsh(use_discriminant = true)]
+#[repr(u8)]
+pub enum DepositCostFailureReason {
+    NotEnoughBalance = 0,
+    LackBalanceForState = 1,
 }
 
 impl From<StorageError> for InvalidTxError {
@@ -1990,6 +2212,12 @@ pub enum InvalidAccessKeyError {
     },
     /// Having a deposit with a function call action is not allowed with a function call access key.
     DepositWithFunctionCall,
+    /// Gas keys track nonces per index in dedicated storage, which a plain
+    /// access key nonce does not select, so a gas key must sign a `DelegateV2`
+    /// with a gas key nonce instead.
+    DelegateActionRequiresNonGasKey,
+    /// A delegate action with a gas key nonce must be signed by a gas key.
+    DelegateActionRequiresGasKey,
 }
 
 /// Describes the error for validating a list of actions.
@@ -1998,7 +2226,10 @@ pub enum ActionsValidationError {
     /// The delete action must be a final action in transaction
     DeleteActionMustBeFinal,
     /// The total prepaid gas (for all given actions) exceeded the limit.
-    TotalPrepaidGasExceeded { total_prepaid_gas: Gas, limit: Gas },
+    TotalPrepaidGasExceeded {
+        total_prepaid_gas: Gas,
+        limit: Gas,
+    },
     /// The number of actions exceeded the given limit.
     TotalNumberOfActionsExceeded {
         total_number_of_actions: u64,
@@ -2010,19 +2241,35 @@ pub enum ActionsValidationError {
         limit: u64,
     },
     /// The length of some method name exceeded the limit in a Add Key action.
-    AddKeyMethodNameLengthExceeded { length: u64, limit: u64 },
+    AddKeyMethodNameLengthExceeded {
+        length: u64,
+        limit: u64,
+    },
     /// Integer overflow during a compute.
     IntegerOverflow,
     /// Invalid account ID.
-    InvalidAccountId { account_id: String },
+    InvalidAccountId {
+        account_id: String,
+    },
     /// The size of the contract code exceeded the limit in a DeployContract action.
-    ContractSizeExceeded { size: u64, limit: u64 },
+    ContractSizeExceeded {
+        size: u64,
+        limit: u64,
+    },
     /// The length of the method name exceeded the limit in a Function Call action.
-    FunctionCallMethodNameLengthExceeded { length: u64, limit: u64 },
+    FunctionCallMethodNameLengthExceeded {
+        length: u64,
+        limit: u64,
+    },
     /// The length of the arguments exceeded the limit in a Function Call action.
-    FunctionCallArgumentsLengthExceeded { length: u64, limit: u64 },
+    FunctionCallArgumentsLengthExceeded {
+        length: u64,
+        limit: u64,
+    },
     /// An attempt to stake with a public key that is not convertible to ristretto.
-    UnsuitableStakingKey { public_key: Box<PublicKey> },
+    UnsuitableStakingKey {
+        public_key: Box<PublicKey>,
+    },
     /// The attached amount of gas in a FunctionCall action has to be a positive number.
     FunctionCallZeroAttachedGas,
     /// There should be the only one DelegateAction
@@ -2036,6 +2283,34 @@ pub enum ActionsValidationError {
     UnsupportedProtocolFeature {
         protocol_feature: String,
         version: ProtocolVersion,
+    },
+    InvalidDeterministicStateInitReceiver {
+        receiver_id: AccountId,
+        derived_id: AccountId,
+    },
+    DeterministicStateInitKeyLengthExceeded {
+        length: u64,
+        limit: u64,
+    },
+    DeterministicStateInitValueLengthExceeded {
+        length: u64,
+        limit: u64,
+    },
+    GasKeyInvalidNumNonces {
+        requested_nonces: NonceIndex,
+        limit: NonceIndex,
+    },
+    AddGasKeyWithNonZeroBalance {
+        #[serde(with = "dec_format")]
+        balance: Balance,
+    },
+    /// Gas keys with FunctionCall permission cannot have an allowance set.
+    GasKeyFunctionCallAllowanceNotAllowed,
+    /// The combined number of `DeployContract` and `DeployGlobalContract`
+    /// actions in one receipt exceeded the limit.
+    TotalNumberOfDeployActionsExceeded {
+        number_of_deploy_actions: u64,
+        limit: u64,
     },
 }
 
@@ -2061,6 +2336,8 @@ pub enum ReceiptValidationError {
     ActionsValidation(ActionsValidationError),
     /// Receipt is bigger than the limit.
     ReceiptSizeExceeded { size: u64, limit: u64 },
+    /// The `refund_to` of an ActionReceipt is not valid.
+    InvalidRefundTo { account_id: String },
 }
 
 impl Display for ReceiptValidationError {
@@ -2111,6 +2388,13 @@ impl Display for ReceiptValidationError {
                     f,
                     "The size of the receipt exceeded the limit: {} > {}",
                     size, limit
+                )
+            }
+            ReceiptValidationError::InvalidRefundTo { account_id } => {
+                write!(
+                    f,
+                    "The refund_to `{}` of an ActionReceipt is not valid.",
+                    account_id
                 )
             }
         }
@@ -2208,6 +2492,58 @@ impl Display for ActionsValidationError {
                     protocol_feature, version,
                 )
             }
+            ActionsValidationError::InvalidDeterministicStateInitReceiver {
+                receiver_id,
+                derived_id,
+            } => {
+                write!(
+                    f,
+                    "DeterministicStateInit action payload is invalid for account {receiver_id}, derived id is {derived_id}",
+                )
+            }
+            ActionsValidationError::DeterministicStateInitKeyLengthExceeded { length, limit } => {
+                write!(
+                    f,
+                    "DeterministicStateInit contains key of length {length} but at most {limit} is allowed",
+                )
+            }
+            ActionsValidationError::DeterministicStateInitValueLengthExceeded { length, limit } => {
+                write!(
+                    f,
+                    "DeterministicStateInit contains value of length {length} but at most {limit} is allowed",
+                )
+            }
+            ActionsValidationError::GasKeyInvalidNumNonces {
+                requested_nonces,
+                limit,
+            } => {
+                write!(
+                    f,
+                    "gas key requested invalid number of nonces: {} (must be between 1 and {})",
+                    requested_nonces, limit
+                )
+            }
+            ActionsValidationError::AddGasKeyWithNonZeroBalance { balance } => {
+                write!(
+                    f,
+                    "Adding a gas key with non-zero balance is not allowed: balance = {}",
+                    balance
+                )
+            }
+            ActionsValidationError::GasKeyFunctionCallAllowanceNotAllowed => {
+                write!(
+                    f,
+                    "Gas keys with FunctionCall permission cannot have an allowance set"
+                )
+            }
+            ActionsValidationError::TotalNumberOfDeployActionsExceeded {
+                number_of_deploy_actions,
+                limit,
+            } => write!(
+                f,
+                "The total number of deploy actions {} exceeds the per-receipt limit {}",
+                number_of_deploy_actions, limit
+            ),
         }
     }
 }
@@ -2327,6 +2663,33 @@ pub enum ActionErrorKind {
     GlobalContractDoesNotExist {
         identifier: GlobalContractIdentifier,
     },
+    /// Gas key does not exist for the specified public key
+    GasKeyDoesNotExist {
+        account_id: AccountId,
+        public_key: Box<PublicKey>,
+    },
+    /// Gas key does not have sufficient balance for the requested withdrawal
+    InsufficientGasKeyBalance {
+        account_id: AccountId,
+        public_key: Box<PublicKey>,
+        #[serde(with = "dec_format")]
+        balance: Balance,
+        #[serde(with = "dec_format")]
+        required: Balance,
+    },
+    /// Gas key balance is too high to burn during deletion
+    GasKeyBalanceTooHigh {
+        account_id: AccountId,
+        /// Set for DeleteKey (specific key), None for DeleteAccount (aggregate)
+        public_key: Option<Box<PublicKey>>,
+        #[serde(with = "dec_format")]
+        balance: Balance,
+    },
+    /// DelegateAction nonce index is outside the gas key's nonce range
+    DelegateActionInvalidNonceIndex {
+        nonce_index: NonceIndex,
+        num_nonces: NonceIndex,
+    },
 }
 
 impl From<ActionErrorKind> for ActionError {
@@ -2441,6 +2804,41 @@ impl Display for InvalidTxError {
                     "Shard {shard_id} missed {missed_chunks} chunks and rejects new transactions."
                 )
             }
+            InvalidTxError::InvalidNonceIndex {
+                tx_nonce_index,
+                num_nonces,
+            } => {
+                write!(
+                    f,
+                    "Invalid nonce_index {tx_nonce_index:?} for key with {num_nonces} nonces"
+                )
+            }
+            InvalidTxError::NotEnoughGasKeyBalance {
+                signer_id,
+                balance,
+                cost,
+            } => write!(
+                f,
+                "Gas key for {:?} does not have enough balance {} for gas cost {}",
+                signer_id, balance, cost
+            ),
+            InvalidTxError::NotEnoughBalanceForDeposit {
+                signer_id,
+                balance,
+                cost,
+                reason,
+            } => match reason {
+                DepositCostFailureReason::NotEnoughBalance => write!(
+                    f,
+                    "Sender {:?} does not have enough balance {} to cover deposit cost {}",
+                    signer_id, balance, cost
+                ),
+                DepositCostFailureReason::LackBalanceForState => write!(
+                    f,
+                    "Sender {:?} would not have enough balance for storage after covering deposit (required {} more)",
+                    signer_id, cost
+                ),
+            },
         }
     }
 }
@@ -2497,107 +2895,20 @@ impl Display for InvalidAccessKeyError {
                     "Having a deposit with a function call action is not allowed with a function call access key."
                 )
             }
+            InvalidAccessKeyError::DelegateActionRequiresGasKey => {
+                write!(f, "Gas key delegate action requires a gas key")
+            }
+            InvalidAccessKeyError::DelegateActionRequiresNonGasKey => {
+                write!(
+                    f,
+                    "Gas keys can't sign a delegate action with a plain nonce; use a DelegateV2 with a gas key nonce"
+                )
+            }
         }
     }
 }
 
 impl std::error::Error for InvalidAccessKeyError {}
-
-/// Happens when the input balance doesn't match the output balance in Runtime apply.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct BalanceMismatchError {
-    // Input balances
-    #[serde(with = "dec_format")]
-    pub incoming_validator_rewards: Balance,
-    #[serde(with = "dec_format")]
-    pub initial_accounts_balance: Balance,
-    #[serde(with = "dec_format")]
-    pub incoming_receipts_balance: Balance,
-    #[serde(with = "dec_format")]
-    pub processed_delayed_receipts_balance: Balance,
-    #[serde(with = "dec_format")]
-    pub initial_postponed_receipts_balance: Balance,
-    #[serde(with = "dec_format")]
-    pub forwarded_buffered_receipts_balance: Balance,
-    // Output balances
-    #[serde(with = "dec_format")]
-    pub final_accounts_balance: Balance,
-    #[serde(with = "dec_format")]
-    pub outgoing_receipts_balance: Balance,
-    #[serde(with = "dec_format")]
-    pub new_delayed_receipts_balance: Balance,
-    #[serde(with = "dec_format")]
-    pub final_postponed_receipts_balance: Balance,
-    #[serde(with = "dec_format")]
-    pub tx_burnt_amount: Balance,
-    #[serde(with = "dec_format")]
-    pub slashed_burnt_amount: Balance,
-    #[serde(with = "dec_format")]
-    pub new_buffered_receipts_balance: Balance,
-    #[serde(with = "dec_format")]
-    pub other_burnt_amount: Balance,
-}
-
-impl Display for BalanceMismatchError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        // Using saturating add to avoid overflow in display
-        let initial_balance = self
-            .incoming_validator_rewards
-            .saturating_add(self.initial_accounts_balance)
-            .saturating_add(self.incoming_receipts_balance)
-            .saturating_add(self.processed_delayed_receipts_balance)
-            .saturating_add(self.initial_postponed_receipts_balance)
-            .saturating_add(self.forwarded_buffered_receipts_balance);
-        let final_balance = self
-            .final_accounts_balance
-            .saturating_add(self.outgoing_receipts_balance)
-            .saturating_add(self.new_delayed_receipts_balance)
-            .saturating_add(self.final_postponed_receipts_balance)
-            .saturating_add(self.tx_burnt_amount)
-            .saturating_add(self.slashed_burnt_amount)
-            .saturating_add(self.other_burnt_amount)
-            .saturating_add(self.new_buffered_receipts_balance);
-
-        write!(
-            f,
-            "Balance Mismatch Error. The input balance {} doesn't match output balance {}\n\
-             Inputs:\n\
-             \tIncoming validator rewards sum: {}\n\
-             \tInitial accounts balance sum: {}\n\
-             \tIncoming receipts balance sum: {}\n\
-             \tProcessed delayed receipts balance sum: {}\n\
-             \tInitial postponed receipts balance sum: {}\n\
-             \tForwarded buffered receipts sum: {}\n\
-             Outputs:\n\
-             \tFinal accounts balance sum: {}\n\
-             \tOutgoing receipts balance sum: {}\n\
-             \tNew delayed receipts balance sum: {}\n\
-             \tFinal postponed receipts balance sum: {}\n\
-             \tTx fees burnt amount: {}\n\
-             \tSlashed amount: {}\n\
-             \tNew buffered receipts balance sum: {}\n\
-             \tOther burnt amount: {}",
-            initial_balance,
-            final_balance,
-            self.incoming_validator_rewards,
-            self.initial_accounts_balance,
-            self.incoming_receipts_balance,
-            self.processed_delayed_receipts_balance,
-            self.initial_postponed_receipts_balance,
-            self.forwarded_buffered_receipts_balance,
-            self.final_accounts_balance,
-            self.outgoing_receipts_balance,
-            self.new_delayed_receipts_balance,
-            self.final_postponed_receipts_balance,
-            self.tx_burnt_amount,
-            self.slashed_burnt_amount,
-            self.new_buffered_receipts_balance,
-            self.other_burnt_amount,
-        )
-    }
-}
-
-impl std::error::Error for BalanceMismatchError {}
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Eq)]
 pub struct IntegerOverflowError;
@@ -2625,12 +2936,6 @@ impl From<IntegerOverflowError> for RuntimeError {
 impl From<StorageError> for RuntimeError {
     fn from(e: StorageError) -> Self {
         RuntimeError::StorageError(e)
-    }
-}
-
-impl From<BalanceMismatchError> for RuntimeError {
-    fn from(e: BalanceMismatchError) -> Self {
-        RuntimeError::BalanceMismatchError(Box::new(e))
     }
 }
 
@@ -2797,6 +3102,55 @@ impl Display for ActionErrorKind {
             ActionErrorKind::GlobalContractDoesNotExist { identifier } => {
                 write!(f, "Global contract identifier {:?} not found", identifier)
             }
+            ActionErrorKind::GasKeyDoesNotExist {
+                account_id,
+                public_key,
+            } => {
+                write!(
+                    f,
+                    "Gas key {} does not exist for account {}",
+                    public_key, account_id
+                )
+            }
+            ActionErrorKind::InsufficientGasKeyBalance {
+                account_id,
+                public_key,
+                balance,
+                required,
+            } => {
+                write!(
+                    f,
+                    "Gas key {} for account {} has insufficient balance: {} available, {} required",
+                    public_key, account_id, balance, required
+                )
+            }
+            ActionErrorKind::GasKeyBalanceTooHigh {
+                account_id,
+                public_key,
+                balance,
+            } => {
+                if let Some(pk) = public_key {
+                    write!(
+                        f,
+                        "Gas key {} for account {} has balance {} which is too high to burn on deletion",
+                        pk, account_id, balance
+                    )
+                } else {
+                    write!(
+                        f,
+                        "Account {} has total gas key balance {} which is too high to burn on deletion",
+                        account_id, balance
+                    )
+                }
+            }
+            ActionErrorKind::DelegateActionInvalidNonceIndex {
+                nonce_index,
+                num_nonces,
+            } => write!(
+                f,
+                "DelegateAction nonce index {} must be smaller than the gas key nonce count {}",
+                nonce_index, num_nonces
+            ),
         }
     }
 }
@@ -2824,6 +3178,8 @@ pub enum EpochError {
     ChunkValidatorSelectionError(String),
     /// Error selecting chunk producer for a shard.
     ChunkProducerSelectionError(String),
+    /// Chunk producer entry not found in the ChunkProducers DB column.
+    ChunkProducerNotInDB(CryptoHash, ShardId),
 }
 
 impl std::error::Error for EpochError {}
@@ -2868,6 +3224,13 @@ impl Display for EpochError {
             EpochError::ChunkProducerSelectionError(err) => {
                 write!(f, "Error selecting chunk producer: {}", err)
             }
+            EpochError::ChunkProducerNotInDB(hash, shard_id) => {
+                write!(
+                    f,
+                    "Chunk producer for shard {} of block {} not found in DB",
+                    shard_id, hash
+                )
+            }
         }
     }
 }
@@ -2899,6 +3262,9 @@ impl Debug for EpochError {
             }
             EpochError::ChunkProducerSelectionError(err) => {
                 write!(f, "ChunkProducerSelectionError({})", err)
+            }
+            EpochError::ChunkProducerNotInDB(hash, shard_id) => {
+                write!(f, "ChunkProducerNotInDB({}, {})", hash, shard_id)
             }
         }
     }
@@ -2938,6 +3304,27 @@ pub enum PrepareError {
     TooManyFunctions,
     /// Contract contains too many locals.
     TooManyLocals,
+    /// Contract contains too many tables.
+    TooManyTables,
+    /// Contract contains too many table elements.
+    TooManyTableElements,
+    /// A function body in the contract exceeds the size limit.
+    FunctionBodyTooLarge,
+    /// The instrumented code exceeds the size limit.
+    InstrumentedCodeTooLarge,
+    /// A function contains too many basic blocks.
+    TooManyBlocksPerFunction,
+    /// A contract contains too many basic blocks.
+    TooManyBlocksPerContract,
+    /// Contract declares too many entries in the wasm type section.
+    TooManyTypes,
+    /// All contract functions combined have more than `max_params_per_contract` parameters.
+    TooManyParamsPerFunction,
+    /// A function has more than `max_params_per_function` parameters.
+    TooManyParamsPerContract,
+    /// A function's max operand-stack size (in bytes) exceeds
+    /// `max_operand_stack_bytes_per_function`.
+    OperandStackTooLarge,
 }
 
 /// A kind of a trap happened during execution of a binary
@@ -3036,6 +3423,10 @@ pub enum HostError {
     /// Invalid input to ed25519 signature verification function (e.g. signature cannot be
     /// derived from bytes).
     Ed25519VerifyInvalidInput { msg: String },
+    /// Input length mismatch for p256 signature verification (signature is not 64
+    /// bytes or public key is not 33 bytes). Parse failures of otherwise
+    /// well-sized inputs return 0 from the host function instead of aborting.
+    P256VerifyInvalidInput { msg: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, BorshDeserialize, BorshSerialize, Deserialize, Serialize)]
@@ -3293,23 +3684,80 @@ pub struct TransferAction {
     pub deposit: NearToken,
 }
 
+/// Transfer NEAR to a gas key's balance
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
+pub struct TransferToGasKeyAction {
+    /// The public key of the gas key to fund
+    pub public_key: PublicKey,
+    /// Amount of NEAR to transfer to the gas key
+    pub deposit: NearToken,
+}
+
+/// Withdraw NEAR from a gas key's balance to the account.
+///
+/// This action must only be available via transactions, not via contract execution
+/// (there is no corresponding promise batch action host function).
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
+pub struct WithdrawFromGasKeyAction {
+    /// The public key of the gas key to withdraw from
+    pub public_key: PublicKey,
+    /// Amount of NEAR to transfer from the gas key
+    pub amount: NearToken,
+}
+
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+#[borsh(use_discriminant = true)]
+#[repr(u8)]
+pub enum DeterministicAccountStateInit {
+    V1(DeterministicAccountStateInitV1) = 0,
+}
+
+#[serde_as]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+pub struct DeterministicAccountStateInitV1 {
+    pub code: GlobalContractIdentifier,
+    #[serde_as(as = "BTreeMap<Base64, Base64>")]
+    pub data: BTreeMap<Vec<u8>, Vec<u8>>,
+}
+
+impl DeterministicAccountStateInit {
+    pub fn take(self) -> (GlobalContractIdentifier, BTreeMap<Vec<u8>, Vec<u8>>) {
+        match self {
+            DeterministicAccountStateInit::V1(inner) => (inner.code, inner.data),
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+pub struct DeterministicStateInitAction {
+    pub state_init: DeterministicAccountStateInit,
+    pub deposit: NearToken,
+}
+
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+#[borsh(use_discriminant = true)]
+#[repr(u8)]
 pub enum Action {
     /// Create an (sub)account using a transaction `receiver_id` as an ID for
     /// a new account ID must pass validation rules described here
     /// <http://nomicon.io/Primitives/Account.html>.
-    CreateAccount(CreateAccountAction),
+    CreateAccount(CreateAccountAction) = 0,
     /// Sets a Wasm code to a receiver_id
-    DeployContract(DeployContractAction),
-    FunctionCall(Box<FunctionCallAction>),
-    Transfer(TransferAction),
-    Stake(Box<StakeAction>),
-    AddKey(Box<AddKeyAction>),
-    DeleteKey(Box<DeleteKeyAction>),
-    DeleteAccount(DeleteAccountAction),
-    Delegate(Box<SignedDelegateAction>),
-    DeployGlobalContract(DeployGlobalContractAction),
-    UseGlobalContract(Box<UseGlobalContractAction>),
+    DeployContract(DeployContractAction) = 1,
+    FunctionCall(Box<FunctionCallAction>) = 2,
+    Transfer(TransferAction) = 3,
+    Stake(Box<StakeAction>) = 4,
+    AddKey(Box<AddKeyAction>) = 5,
+    DeleteKey(Box<DeleteKeyAction>) = 6,
+    DeleteAccount(DeleteAccountAction) = 7,
+    Delegate(Box<SignedDelegateAction>) = 8,
+    DeployGlobalContract(DeployGlobalContractAction) = 9,
+    UseGlobalContract(Box<UseGlobalContractAction>) = 10,
+    DeterministicStateInit(Box<DeterministicStateInitAction>) = 11,
+    TransferToGasKey(Box<TransferToGasKeyAction>) = 12,
+    WithdrawFromGasKey(Box<WithdrawFromGasKeyAction>) = 13,
+    /// Meta transaction carrying a `DelegateActionV2`, which supports gas keys.
+    DelegateV2(Box<VersionedSignedDelegateAction>) = 14,
 }
 
 const _: () = assert!(
@@ -3321,6 +3769,28 @@ const _: () = assert!(
 );
 
 impl Action {
+    /// Whether this is a delegate action (meta transaction). Delegate actions
+    /// must not be nested inside one another, so this is the single predicate
+    /// the nesting guard relies on.
+    pub fn is_delegate(&self) -> bool {
+        match self {
+            Action::Delegate(_) | Action::DelegateV2(_) => true,
+            Action::CreateAccount(_)
+            | Action::DeployContract(_)
+            | Action::FunctionCall(_)
+            | Action::Transfer(_)
+            | Action::Stake(_)
+            | Action::AddKey(_)
+            | Action::DeleteKey(_)
+            | Action::DeleteAccount(_)
+            | Action::DeployGlobalContract(_)
+            | Action::UseGlobalContract(_)
+            | Action::DeterministicStateInit(_)
+            | Action::TransferToGasKey(_)
+            | Action::WithdrawFromGasKey(_) => false,
+        }
+    }
+
     pub fn get_prepaid_gas(&self) -> Gas {
         match self {
             Action::FunctionCall(a) => a.gas,
@@ -3331,6 +3801,8 @@ impl Action {
         match self {
             Action::FunctionCall(a) => a.deposit,
             Action::Transfer(a) => a.deposit,
+            Action::DeterministicStateInit(a) => a.deposit,
+            Action::TransferToGasKey(a) => a.deposit,
             _ => NearToken::from_yoctonear(0),
         }
     }
@@ -3390,8 +3862,29 @@ impl From<DeleteAccountAction> for Action {
     }
 }
 
+impl From<TransferToGasKeyAction> for Action {
+    fn from(action: TransferToGasKeyAction) -> Self {
+        Self::TransferToGasKey(Box::new(action))
+    }
+}
+
+impl From<WithdrawFromGasKeyAction> for Action {
+    fn from(action: WithdrawFromGasKeyAction) -> Self {
+        Self::WithdrawFromGasKey(Box::new(action))
+    }
+}
+
+impl From<DeterministicStateInitAction> for Action {
+    fn from(action: DeterministicStateInitAction) -> Self {
+        Self::DeterministicStateInit(Box::new(action))
+    }
+}
+
 /// This is an index number of Action::Delegate in Action enumeration
 const ACTION_DELEGATE_NUMBER: u8 = 8;
+/// This is an index number of Action::DelegateV2 in Action enumeration
+const ACTION_DELEGATE_V2_NUMBER: u8 = 14;
+const DELEGATE_VARIANT_NUMBERS: [u8; 2] = [ACTION_DELEGATE_NUMBER, ACTION_DELEGATE_V2_NUMBER];
 /// This action allows to execute the inner actions behalf of the defined sender.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 pub struct DelegateAction {
@@ -3433,6 +3926,101 @@ impl SignedDelegateAction {
 impl From<SignedDelegateAction> for Action {
     fn from(delegate_action: SignedDelegateAction) -> Self {
         Self::Delegate(Box::new(delegate_action))
+    }
+}
+
+/// Delegate action with gas key support: `nonce` selects either the access
+/// key's nonce or one of a gas key's parallel nonces by index, mirroring
+/// `TransactionV1`.
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+pub struct DelegateActionV2 {
+    /// Signer of the delegated actions
+    pub sender_id: AccountId,
+    /// Receiver of the delegated actions.
+    pub receiver_id: AccountId,
+    /// List of actions to be executed.
+    pub actions: Vec<NonDelegateAction>,
+    /// Nonce of the signing key, advanced when this action is processed. For
+    /// a gas key it also selects which of the parallel nonces to advance.
+    pub nonce: TransactionNonce,
+    /// The maximal height of the block in the blockchain below which the given DelegateActionV2 is valid.
+    pub max_block_height: BlockHeight,
+    /// Public key used to sign this delegated action.
+    pub public_key: PublicKey,
+}
+
+impl DelegateActionV2 {
+    pub fn get_actions(&self) -> Vec<Action> {
+        self.actions.iter().map(|a| a.clone().into()).collect()
+    }
+}
+
+/// Versions of the delegate action carried by `Action::DelegateV2`. New
+/// versions add a variant here rather than a new `Action` variant. The variant
+/// is part of the signed payload, so a signature can't be ambiguous across
+/// versions.
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[borsh(use_discriminant = true)]
+#[repr(u8)]
+pub enum VersionedDelegateActionPayload {
+    V2(DelegateActionV2) = 0,
+}
+
+impl VersionedDelegateActionPayload {
+    pub fn public_key(&self) -> &PublicKey {
+        match self {
+            VersionedDelegateActionPayload::V2(delegate_action) => &delegate_action.public_key,
+        }
+    }
+
+    pub fn get_actions(&self) -> Vec<Action> {
+        match self {
+            VersionedDelegateActionPayload::V2(delegate_action) => delegate_action.get_actions(),
+        }
+    }
+
+    /// Delegate action hash used for NEP-461 signature scheme which tags
+    /// different messages before hashing
+    ///
+    /// For more details, see: [NEP-461](https://github.com/near/NEPs/pull/461)
+    pub fn get_nep461_hash(&self) -> CryptoHash {
+        let signable = SignableMessage::new(&self, SignableMessageType::DelegateActionV2);
+        let bytes = borsh::to_vec(&signable).expect("failed to serialize");
+        hash(&bytes)
+    }
+}
+
+impl From<DelegateActionV2> for VersionedDelegateActionPayload {
+    fn from(delegate_action: DelegateActionV2) -> Self {
+        VersionedDelegateActionPayload::V2(delegate_action)
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+pub struct VersionedSignedDelegateAction {
+    pub delegate_action: VersionedDelegateActionPayload,
+    pub signature: Signature,
+}
+
+impl VersionedSignedDelegateAction {
+    pub fn verify(&self) -> bool {
+        let hash = self.delegate_action.get_nep461_hash();
+        self.signature
+            .verify(hash.as_ref(), self.delegate_action.public_key())
+    }
+
+    pub fn sign(signer: &Signer, delegate_action: VersionedDelegateActionPayload) -> Self {
+        let signature = signer.sign(delegate_action.get_nep461_hash().as_bytes());
+        Self {
+            delegate_action,
+            signature,
+        }
+    }
+}
+
+impl From<VersionedSignedDelegateAction> for Action {
+    fn from(action: VersionedSignedDelegateAction) -> Self {
+        Self::DelegateV2(Box::new(action))
     }
 }
 
@@ -3478,14 +4066,16 @@ mod private_non_delegate_action {
     }
 
     #[derive(Debug, thiserror::Error)]
-    #[error("attempted to construct NonDelegateAction from Action::Delegate")]
+    #[error(
+        "attempted to construct NonDelegateAction from a delegate action (Delegate or DelegateV2)"
+    )]
     pub struct IsDelegateAction;
 
     impl TryFrom<Action> for NonDelegateAction {
         type Error = IsDelegateAction;
 
         fn try_from(action: Action) -> Result<Self, IsDelegateAction> {
-            if matches!(action, Action::Delegate(_)) {
+            if action.is_delegate() {
                 Err(IsDelegateAction)
             } else {
                 Ok(Self(action))
@@ -3496,7 +4086,7 @@ mod private_non_delegate_action {
     impl borsh::de::BorshDeserialize for NonDelegateAction {
         fn deserialize_reader<R: Read>(rd: &mut R) -> Result<Self, std::io::Error> {
             match u8::deserialize_reader(rd)? {
-                ACTION_DELEGATE_NUMBER => Err(std::io::Error::new(
+                n if DELEGATE_VARIANT_NUMBERS.contains(&n) => Err(std::io::Error::new(
                     ErrorKind::InvalidInput,
                     "DelegateAction mustn't contain a nested one",
                 )),
@@ -3513,6 +4103,7 @@ const MAX_OFF_CHAIN_DISCRIMINANT: u32 = u32::MAX;
 
 pub const NEP_413_SIGN_MESSAGE: u32 = 413;
 pub const NEP_366_META_TRANSACTIONS: u32 = 366;
+pub const NEP_611_GAS_KEYS: u32 = 611;
 
 /// Used to distinguish message types that are sign by account keys, to avoid an
 /// abuse of signed messages as something else.
@@ -3558,6 +4149,9 @@ pub struct SignableMessage<'a, T> {
 pub enum SignableMessageType {
     /// A delegate action, intended for a relayer to included it in an action list of a transaction.
     DelegateAction,
+    /// A delegate action with gas key support, intended for a relayer to include it in an action
+    /// list of a transaction.
+    DelegateActionV2,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -3689,6 +4283,7 @@ impl TryFrom<MessageDiscriminant> for SignableMessageType {
         } else if let Some(nep) = discriminant.on_chain_nep() {
             match nep {
                 NEP_366_META_TRANSACTIONS => Ok(Self::DelegateAction),
+                NEP_611_GAS_KEYS => Ok(Self::DelegateActionV2),
                 _ => Err(Self::Error::UnknownOnChainNep(nep)),
             }
         } else if let Some(nep) = discriminant.off_chain_nep() {
@@ -3705,6 +4300,9 @@ impl From<SignableMessageType> for MessageDiscriminant {
         match ty {
             SignableMessageType::DelegateAction => {
                 MessageDiscriminant::new_on_chain(NEP_366_META_TRANSACTIONS).unwrap()
+            }
+            SignableMessageType::DelegateActionV2 => {
+                MessageDiscriminant::new_on_chain(NEP_611_GAS_KEYS).unwrap()
             }
         }
     }
@@ -3987,13 +4585,26 @@ impl From<AccountView> for Account {
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
+#[borsh(use_discriminant = true)]
+#[repr(u8)]
 pub enum AccessKeyPermissionView {
     FunctionCall {
         allowance: Option<NearToken>,
         receiver_id: String,
         method_names: Vec<String>,
-    },
-    FullAccess,
+    } = 0,
+    FullAccess = 1,
+    GasKeyFunctionCall {
+        balance: NearToken,
+        num_nonces: NonceIndex,
+        allowance: Option<NearToken>,
+        receiver_id: String,
+        method_names: Vec<String>,
+    } = 2,
+    GasKeyFullAccess {
+        balance: NearToken,
+        num_nonces: NonceIndex,
+    } = 3,
 }
 
 impl From<AccessKeyPermission> for AccessKeyPermissionView {
@@ -4005,6 +4616,21 @@ impl From<AccessKeyPermission> for AccessKeyPermissionView {
                 method_names: func_call.method_names,
             },
             AccessKeyPermission::FullAccess => AccessKeyPermissionView::FullAccess,
+            AccessKeyPermission::GasKeyFunctionCall(gas_key_info, func_call) => {
+                AccessKeyPermissionView::GasKeyFunctionCall {
+                    balance: gas_key_info.balance,
+                    num_nonces: gas_key_info.num_nonces,
+                    allowance: func_call.allowance,
+                    receiver_id: func_call.receiver_id,
+                    method_names: func_call.method_names,
+                }
+            }
+            AccessKeyPermission::GasKeyFullAccess(gas_key_info) => {
+                AccessKeyPermissionView::GasKeyFullAccess {
+                    balance: gas_key_info.balance,
+                    num_nonces: gas_key_info.num_nonces,
+                }
+            }
         }
     }
 }
@@ -4022,6 +4648,30 @@ impl From<AccessKeyPermissionView> for AccessKeyPermission {
                 method_names,
             }),
             AccessKeyPermissionView::FullAccess => AccessKeyPermission::FullAccess,
+            AccessKeyPermissionView::GasKeyFunctionCall {
+                balance,
+                num_nonces,
+                allowance,
+                receiver_id,
+                method_names,
+            } => AccessKeyPermission::GasKeyFunctionCall(
+                GasKeyInfo {
+                    balance,
+                    num_nonces,
+                },
+                FunctionCallPermission {
+                    allowance,
+                    receiver_id,
+                    method_names,
+                },
+            ),
+            AccessKeyPermissionView::GasKeyFullAccess {
+                balance,
+                num_nonces,
+            } => AccessKeyPermission::GasKeyFullAccess(GasKeyInfo {
+                balance,
+                num_nonces,
+            }),
         }
     }
 }
@@ -4093,6 +4743,8 @@ pub struct ViewStateResult {
     #[serde_as(as = "Vec<Base64>")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub proof: Vec<Arc<[u8]>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_key: Option<StoreKey>,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
@@ -4135,7 +4787,7 @@ pub struct QueryError {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct AccessKeyInfoView {
-    pub public_key: PublicKey,
+    pub public_key: PublicKeyHandle,
     pub access_key: AccessKeyView,
 }
 
@@ -4161,6 +4813,12 @@ pub enum QueryResponseKind {
     CallResult(CallResult),
     AccessKey(AccessKeyView),
     AccessKeyList(AccessKeyList),
+    GasKeyNonces(GasKeyNoncesView),
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct GasKeyNoncesView {
+    pub nonces: Vec<Nonce>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
@@ -4176,6 +4834,14 @@ pub enum QueryRequest {
         account_id: AccountId,
         #[serde(rename = "prefix_base64")]
         prefix: StoreKey,
+        #[serde(
+            default,
+            rename = "after_key_base64",
+            skip_serializing_if = "Option::is_none"
+        )]
+        after_key: Option<StoreKey>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<NonZeroU32>,
         #[serde(default, skip_serializing_if = "is_false")]
         include_proof: bool,
     },
@@ -4186,11 +4852,21 @@ pub enum QueryRequest {
     ViewAccessKeyList {
         account_id: AccountId,
     },
+    ViewGasKeyNonces {
+        account_id: AccountId,
+        public_key: PublicKey,
+    },
     CallFunction {
         account_id: AccountId,
         method_name: String,
         #[serde(rename = "args_base64")]
         args: FunctionArgs,
+    },
+    ViewGlobalContractCode {
+        code_hash: CryptoHash,
+    },
+    ViewGlobalContractCodeByAccountId {
+        account_id: AccountId,
     },
 }
 
@@ -4281,18 +4957,24 @@ pub struct NetworkInfoView {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+pub enum EpochSyncStatusView {
+    NotStarted,
+    InProgress {
+        source_peer_height: BlockHeight,
+        source_peer_id: String,
+        attempt_time: String,
+    },
+    Done,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub enum SyncStatusView {
     /// Initial state. Not enough peers to do anything yet.
     AwaitingPeers,
     /// Not syncing / Done syncing.
     NoSync,
     /// Syncing using light-client headers to a recent epoch
-    EpochSync {
-        source_peer_height: BlockHeight,
-        source_peer_id: String,
-        attempt_time: String,
-    },
-    EpochSyncDone,
+    EpochSync(EpochSyncStatusView),
     /// Downloading block headers for fast sync.
     HeaderSync {
         start_height: BlockHeight,
@@ -4301,8 +4983,6 @@ pub enum SyncStatusView {
     },
     /// State sync, with different states of state sync for different shards.
     StateSync(StateSyncStatusView),
-    /// Sync state across all shards is done.
-    StateSyncDone,
     /// Download and process blocks until the head reaches the head of the network.
     BlockSync {
         start_height: BlockHeight,
@@ -4564,7 +5244,7 @@ pub struct BlockHeaderView {
     pub validator_reward: Balance,
     #[serde(with = "dec_format")]
     pub total_supply: Balance,
-    // pub challenges_result: ChallengesResult,
+    pub challenges_result: Vec<SlashedValidator>,
     pub last_final_block: CryptoHash,
     pub last_ds_final_block: CryptoHash,
     pub next_bp_hash: CryptoHash,
@@ -4574,6 +5254,24 @@ pub struct BlockHeaderView {
     pub signature: Signature,
     pub latest_protocol_version: ProtocolVersion,
     pub chunk_endorsements: Option<Vec<Vec<u8>>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shard_split: Option<(ShardId, AccountId)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prev_last_certified_block_epoch_id: Option<EpochId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spice_chunk_endorsement_stats: Option<Vec<SpiceChunkEndorsementStats>>,
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct SlashedValidator {
+    pub account_id: AccountId,
+    pub is_double_sign: bool,
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct SpiceChunkEndorsementStats {
+    pub produced: u32,
+    pub expected: u32,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -4616,8 +5314,66 @@ pub struct ChunkHeaderView {
     pub tx_root: CryptoHash,
     pub validator_proposals: Vec<ValidatorStakeView>,
     pub congestion_info: Option<CongestionInfoView>,
-    // pub bandwidth_requests: Option<BandwidthRequests>,
+    #[serde(default)]
+    pub bandwidth_requests: Option<BandwidthRequests>,
+    /// Proposed trie split for dynamic resharding
+    /// `None`: field missing (`ShardChunkHeaderInnerV4` or earlier)
+    /// `Some(None)`: field present, but not set (`ChunkHeaderInnerV5` or later)
+    /// `Some(Some(split))`: field present and set
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposed_split: Option<Option<TrieSplit>>,
     pub signature: Signature,
+}
+
+/// Represents size of receipts, in the context of cross-shard bandwidth, in bytes.
+pub type Bandwidth = u64;
+
+/// There are this many predefined values of bandwidth that can be requested in a BandwidthRequest.
+pub const BANDWIDTH_REQUEST_VALUES_NUM: usize = 40;
+pub const BANDWIDTH_REQUEST_BITMAP_SIZE: usize = BANDWIDTH_REQUEST_VALUES_NUM / 8;
+
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[borsh(use_discriminant = true)]
+#[repr(u8)]
+pub enum BandwidthRequests {
+    V1(BandwidthRequestsV1) = 0,
+}
+
+#[derive(
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, Default, Debug, Clone, PartialEq, Eq,
+)]
+pub struct BandwidthRequestsV1 {
+    pub requests: Vec<BandwidthRequest>,
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct BandwidthRequest {
+    /// Requesting bandwidth to this shard.
+    pub to_shard: u16,
+    /// Bitmap which describes what values of bandwidth are requested.
+    pub requested_values_bitmap: BandwidthRequestBitmap,
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct BandwidthRequestBitmap {
+    pub data: [u8; BANDWIDTH_REQUEST_BITMAP_SIZE],
+}
+
+impl std::fmt::Debug for BandwidthRequestBitmap {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BandwidthRequestBitmap(")?;
+        for byte in &self.data {
+            write!(f, "{:08b}", byte)?;
+        }
+        write!(f, ")")
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+pub struct TrieSplit {
+    pub boundary_account: AccountId,
+    pub left_memory: u64,
+    pub right_memory: u64,
 }
 
 impl ChunkHeaderView {
@@ -4641,55 +5397,138 @@ pub struct ChunkView {
     pub receipts: Vec<ReceiptView>,
 }
 
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum BackwardCompatibleGlobalContractIdentifierView {
+    CodeHash { hash: CryptoHash },
+    AccountId { account_id: AccountId },
+    DeprecatedCodeHash(CryptoHash),
+    DeprecatedAccountId(AccountId),
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    rename_all = "snake_case",
+    from = "BackwardCompatibleGlobalContractIdentifierView"
+)]
+#[borsh(use_discriminant = true)]
+#[repr(u8)]
+pub enum GlobalContractIdentifierView {
+    #[serde(rename = "hash")]
+    CodeHash(CryptoHash) = 0,
+    AccountId(AccountId) = 1,
+}
+
+impl From<BackwardCompatibleGlobalContractIdentifierView> for GlobalContractIdentifierView {
+    fn from(value: BackwardCompatibleGlobalContractIdentifierView) -> Self {
+        match value {
+            BackwardCompatibleGlobalContractIdentifierView::DeprecatedCodeHash(hash)
+            | BackwardCompatibleGlobalContractIdentifierView::CodeHash { hash } => {
+                GlobalContractIdentifierView::CodeHash(hash)
+            }
+            BackwardCompatibleGlobalContractIdentifierView::DeprecatedAccountId(account_id)
+            | BackwardCompatibleGlobalContractIdentifierView::AccountId { account_id } => {
+                GlobalContractIdentifierView::AccountId(account_id)
+            }
+        }
+    }
+}
+
+impl From<GlobalContractIdentifier> for GlobalContractIdentifierView {
+    fn from(code: GlobalContractIdentifier) -> Self {
+        match code {
+            GlobalContractIdentifier::CodeHash(code_hash) => {
+                GlobalContractIdentifierView::CodeHash(code_hash)
+            }
+            GlobalContractIdentifier::AccountId(account_id) => {
+                GlobalContractIdentifierView::AccountId(account_id)
+            }
+        }
+    }
+}
+
+impl From<GlobalContractIdentifierView> for GlobalContractIdentifier {
+    fn from(code: GlobalContractIdentifierView) -> Self {
+        match code {
+            GlobalContractIdentifierView::CodeHash(code_hash) => {
+                GlobalContractIdentifier::CodeHash(code_hash)
+            }
+            GlobalContractIdentifierView::AccountId(account_id) => {
+                GlobalContractIdentifier::AccountId(account_id)
+            }
+        }
+    }
+}
+
 #[serde_as]
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[borsh(use_discriminant = true)]
+#[repr(u8)]
 pub enum ActionView {
-    CreateAccount,
+    CreateAccount = 0,
     DeployContract {
         #[serde_as(as = "Base64")]
         code: Vec<u8>,
-    },
+    } = 1,
     FunctionCall {
         method_name: String,
         args: FunctionArgs,
         gas: Gas,
         deposit: NearToken,
-    },
+    } = 2,
     Transfer {
         deposit: NearToken,
-    },
+    } = 3,
     Stake {
         stake: NearToken,
         public_key: PublicKey,
-    },
+    } = 4,
     AddKey {
         public_key: PublicKey,
         access_key: AccessKeyView,
-    },
+    } = 5,
     DeleteKey {
         public_key: PublicKey,
-    },
+    } = 6,
     DeleteAccount {
         beneficiary_id: AccountId,
-    },
+    } = 7,
     Delegate {
         delegate_action: DelegateAction,
         signature: Signature,
-    },
+    } = 8,
+    DelegateV2 {
+        delegate_action: VersionedDelegateActionPayload,
+        signature: Signature,
+    } = 16,
     DeployGlobalContract {
         #[serde_as(as = "Base64")]
         code: Vec<u8>,
-    },
+    } = 9,
     DeployGlobalContractByAccountId {
         #[serde_as(as = "Base64")]
         code: Vec<u8>,
-    },
+    } = 10,
     UseGlobalContract {
         code_hash: CryptoHash,
-    },
+    } = 11,
     UseGlobalContractByAccountId {
         account_id: AccountId,
-    },
+    } = 12,
+    DeterministicStateInit {
+        code: GlobalContractIdentifierView,
+        #[serde_as(as = "BTreeMap<Base64, Base64>")]
+        data: BTreeMap<Vec<u8>, Vec<u8>>,
+        deposit: NearToken,
+    } = 13,
+    TransferToGasKey {
+        public_key: PublicKey,
+        deposit: NearToken,
+    } = 14,
+    WithdrawFromGasKey {
+        public_key: PublicKey,
+        amount: NearToken,
+    } = 15,
 }
 
 impl From<Action> for ActionView {
@@ -4727,6 +5566,10 @@ impl From<Action> for ActionView {
                 delegate_action: action.delegate_action,
                 signature: action.signature,
             },
+            Action::DelegateV2(action) => ActionView::DelegateV2 {
+                delegate_action: action.delegate_action,
+                signature: action.signature,
+            },
             Action::DeployGlobalContract(action) => {
                 let code = hash(&action.code).as_ref().to_vec();
                 match action.deploy_mode {
@@ -4743,6 +5586,22 @@ impl From<Action> for ActionView {
                 GlobalContractIdentifier::AccountId(account_id) => {
                     ActionView::UseGlobalContractByAccountId { account_id }
                 }
+            },
+            Action::DeterministicStateInit(action) => {
+                let (code, data) = action.state_init.take();
+                ActionView::DeterministicStateInit {
+                    code: code.into(),
+                    data,
+                    deposit: action.deposit,
+                }
+            }
+            Action::TransferToGasKey(action) => ActionView::TransferToGasKey {
+                public_key: action.public_key,
+                deposit: action.deposit,
+            },
+            Action::WithdrawFromGasKey(action) => ActionView::WithdrawFromGasKey {
+                public_key: action.public_key,
+                amount: action.amount,
             },
         }
     }
@@ -4792,6 +5651,13 @@ impl TryFrom<ActionView> for Action {
                 delegate_action,
                 signature,
             })),
+            ActionView::DelegateV2 {
+                delegate_action,
+                signature,
+            } => Action::DelegateV2(Box::new(VersionedSignedDelegateAction {
+                delegate_action,
+                signature,
+            })),
             ActionView::DeployGlobalContract { code } => {
                 Action::DeployGlobalContract(DeployGlobalContractAction {
                     code: code.into(),
@@ -4814,6 +5680,30 @@ impl TryFrom<ActionView> for Action {
                     contract_identifier: GlobalContractIdentifier::AccountId(account_id),
                 }))
             }
+            ActionView::DeterministicStateInit {
+                code,
+                data,
+                deposit,
+            } => Action::DeterministicStateInit(Box::new(DeterministicStateInitAction {
+                state_init: DeterministicAccountStateInit::V1(DeterministicAccountStateInitV1 {
+                    code: code.into(),
+                    data,
+                }),
+                deposit,
+            })),
+            ActionView::TransferToGasKey {
+                public_key,
+                deposit,
+            } => Action::TransferToGasKey(Box::new(TransferToGasKeyAction {
+                public_key,
+                deposit,
+            })),
+            ActionView::WithdrawFromGasKey { public_key, amount } => {
+                Action::WithdrawFromGasKey(Box::new(WithdrawFromGasKeyAction {
+                    public_key,
+                    amount,
+                }))
+            }
         })
     }
 }
@@ -4825,24 +5715,30 @@ pub struct SignedTransactionView {
     pub nonce: Nonce,
     pub receiver_id: AccountId,
     pub actions: Vec<ActionView>,
-    // Default value used when deserializing SignedTransactionView which are missing the `priority_fee` field.
-    // Data which is missing this field was serialized before the introduction of priority_fee.
-    // priority_fee for Transaction::V0 => None, SignedTransactionView => 0
-    #[serde(default)]
-    pub priority_fee: u64,
+    /// Deprecated, retained for backward compatibility.
+    #[serde(default, rename = "priority_fee")]
+    pub _priority_fee: u64,
     pub signature: Signature,
     pub hash: CryptoHash,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub nonce_index: Option<NonceIndex>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub nonce_mode: Option<NonceMode>,
 }
 
 impl From<SignedTransaction> for SignedTransactionView {
     fn from(signed_tx: SignedTransaction) -> Self {
         let hash = signed_tx.get_hash();
         let transaction = signed_tx.transaction;
-        let priority_fee = transaction.priority_fee().unwrap_or_default();
+        let nonce_mode = match transaction.nonce_mode() {
+            NonceMode::Monotonic => None,
+            mode => Some(mode),
+        };
         SignedTransactionView {
             signer_id: transaction.signer_id().clone(),
             public_key: transaction.public_key().clone(),
-            nonce: transaction.nonce(),
+            nonce: transaction.nonce().nonce(),
+            nonce_index: transaction.nonce().nonce_index(),
             receiver_id: transaction.receiver_id().clone(),
             actions: transaction
                 .take_actions()
@@ -4851,7 +5747,8 @@ impl From<SignedTransaction> for SignedTransactionView {
                 .collect(),
             signature: signed_tx.signature,
             hash,
-            priority_fee,
+            _priority_fee: 0,
+            nonce_mode,
         }
     }
 }
@@ -4977,16 +5874,17 @@ pub struct TransactionV1 {
     /// Access key holds permissions for calling certain kinds of actions.
     pub public_key: PublicKey,
     /// Nonce is used to determine order of transaction in the pool.
-    /// It increments for a combination of `signer_id` and `public_key`
-    pub nonce: Nonce,
+    /// It increments for a combination of `signer_id` and `public_key`,
+    /// and for gas key it also includes a `nonce_index`.
+    pub nonce: TransactionNonce,
     /// Receiver account for this transaction
     pub receiver_id: AccountId,
     /// The hash of the block in the blockchain on top of which the given transaction is valid
     pub block_hash: CryptoHash,
     /// A list of actions to be applied
     pub actions: Vec<Action>,
-    /// Priority fee. Unit is 10^12 yoctoNEAR
-    pub priority_fee: u64,
+    /// Controls nonce validation mode (monotonic or strict sequential).
+    pub nonce_mode: NonceMode,
 }
 
 impl Transaction {
@@ -5025,9 +5923,9 @@ impl Transaction {
         }
     }
 
-    pub fn nonce(&self) -> Nonce {
+    pub fn nonce(&self) -> TransactionNonce {
         match self {
-            Transaction::V0(tx) => tx.nonce,
+            Transaction::V0(tx) => TransactionNonce::from_nonce(tx.nonce),
             Transaction::V1(tx) => tx.nonce,
         }
     }
@@ -5053,10 +5951,10 @@ impl Transaction {
         }
     }
 
-    pub fn priority_fee(&self) -> Option<u64> {
+    pub fn nonce_mode(&self) -> NonceMode {
         match self {
-            Transaction::V0(_) => None,
-            Transaction::V1(tx) => Some(tx.priority_fee),
+            Transaction::V0(_) => NonceMode::Monotonic,
+            Transaction::V1(tx) => tx.nonce_mode,
         }
     }
 }
@@ -5075,69 +5973,45 @@ impl BorshSerialize for Transaction {
 }
 
 impl BorshDeserialize for Transaction {
-    /// Deserialize based on the first and second bytes of the stream. For V0, we do backward compatible deserialization by deserializing
-    /// the entire stream into V0. For V1, we consume the first byte and then deserialize the rest.
+    /// Deserialize based on the first and second bytes of the stream. For V0, we do backward
+    /// compatible deserialization by deserializing the entire stream into V0. For V1, we consume
+    /// the first byte and then deserialize the rest.
     fn deserialize_reader<R: Read>(reader: &mut R) -> std::io::Result<Self> {
+        // Read the first two bytes in order to discriminate between V0 and V1.
+        //
+        // The first field in `TransactionV0` is an `AccountId` whose borsh encoding starts with
+        // a 4-byte little-endian length. Since an AccountId is at most 64 bytes, the second byte
+        // of the length is always 0.
+        //
+        // `TransactionV1` is prefixed with a 1_u8 tag byte followed by the borsh-encoded
+        // `TransactionV1` struct, whose first field is also an `AccountId` with nonzero length,
+        // making the second byte nonzero.
+        //
+        // Therefore u2 == 0 implies V0 and u1 == 1 with u2 != 0 implies V1.
         let u1 = u8::deserialize_reader(reader)?;
         let u2 = u8::deserialize_reader(reader)?;
-        let u3 = u8::deserialize_reader(reader)?;
-        let u4 = u8::deserialize_reader(reader)?;
-        // This is a ridiculous hackery: because the first field in `TransactionV0` is an `AccountId`
-        // and an account id is at most 64 bytes, for all valid `TransactionV0` the second byte must be 0
-        // because of the little endian encoding of the length of the account id.
-        // On the other hand, for `TransactionV1`, since the first byte is 1 and an account id must have nonzero
-        // length, so the second byte must not be zero. Therefore, we can distinguish between the two versions
-        // by looking at the second byte.
-
-        let read_signer_id = |buf: [u8; 4], reader: &mut R| -> std::io::Result<AccountId> {
-            let str_len = u32::from_le_bytes(buf);
-            let mut str_vec = Vec::with_capacity(str_len as usize);
-            for _ in 0..str_len {
-                str_vec.push(u8::deserialize_reader(reader)?);
-            }
-            AccountId::try_from(String::from_utf8(str_vec).map_err(|_| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "Failed to parse AccountId from bytes",
-                )
-            })?)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
-        };
 
         if u2 == 0 {
-            let signer_id = read_signer_id([u1, u2, u3, u4], reader)?;
-            let public_key = PublicKey::deserialize_reader(reader)?;
-            let nonce = Nonce::deserialize_reader(reader)?;
-            let receiver_id = AccountId::deserialize_reader(reader)?;
-            let block_hash = CryptoHash::deserialize_reader(reader)?;
-            let actions = Vec::<Action>::deserialize_reader(reader)?;
-            Ok(Transaction::V0(TransactionV0 {
-                signer_id,
-                public_key,
-                nonce,
-                receiver_id,
-                block_hash,
-                actions,
-            }))
-        } else {
-            let u5 = u8::deserialize_reader(reader)?;
-            let signer_id = read_signer_id([u2, u3, u4, u5], reader)?;
-            let public_key = PublicKey::deserialize_reader(reader)?;
-            let nonce = Nonce::deserialize_reader(reader)?;
-            let receiver_id = AccountId::deserialize_reader(reader)?;
-            let block_hash = CryptoHash::deserialize_reader(reader)?;
-            let actions = Vec::<Action>::deserialize_reader(reader)?;
-            let priority_fee = u64::deserialize_reader(reader)?;
-            Ok(Transaction::V1(TransactionV1 {
-                signer_id,
-                public_key,
-                nonce,
-                receiver_id,
-                block_hash,
-                actions,
-                priority_fee,
-            }))
+            // V0: put both bytes back and deserialize TransactionV0.
+            let prefix = [u1, u2];
+            let mut reader = prefix.chain(reader);
+            let tx = TransactionV0::deserialize_reader(&mut reader)?;
+            return Ok(Transaction::V0(tx));
         }
+
+        if u1 == 1 {
+            // V1: u1 is the version tag, u2 is the first byte of TransactionV1.
+            // Put u2 back and deserialize TransactionV1.
+            let prefix = [u2];
+            let mut reader = prefix.chain(reader);
+            let tx = TransactionV1::deserialize_reader(&mut reader)?;
+            return Ok(Transaction::V1(tx));
+        }
+
+        Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("invalid transaction version tag: {}", u1),
+        ))
     }
 }
 
@@ -5221,6 +6095,7 @@ impl fmt::Debug for ExecutionStatusView {
 pub struct CostGasUsed {
     pub cost_category: String,
     pub cost: String,
+    #[serde(with = "dec_format")]
     pub gas_used: Gas,
 }
 
@@ -5228,6 +6103,18 @@ pub struct CostGasUsed {
 pub struct ExecutionMetadataView {
     pub version: u32,
     pub gas_profile: Option<Vec<CostGasUsed>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contracts: Option<Vec<Option<AccountContractView>>>,
+}
+
+impl Default for ExecutionMetadataView {
+    fn default() -> Self {
+        Self {
+            version: 1,
+            gas_profile: None,
+            contracts: None,
+        }
+    }
 }
 
 impl CostGasUsed {
@@ -5268,7 +6155,7 @@ pub struct ExecutionOutcomeView {
     pub status: ExecutionStatusView,
     /// Execution metadata, versioned
     #[serde(default)]
-    pub metadata: Option<ExecutionMetadataView>,
+    pub metadata: ExecutionMetadataView,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone, Serialize, Deserialize)]
@@ -5487,6 +6374,8 @@ pub enum ReceiptEnumView {
         actions: Vec<ActionView>,
         #[serde(default = "default_is_promise")]
         is_promise_yield: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        refund_to: Option<AccountId>,
     },
     Data {
         data_id: CryptoHash,
@@ -5501,6 +6390,8 @@ pub enum ReceiptEnumView {
         already_delivered_shards: Vec<ShardId>,
         #[serde_as(as = "Base64")]
         code: Vec<u8>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        nonce: Option<u64>,
     },
 }
 
@@ -5530,6 +6421,9 @@ pub struct EpochValidatorInfo {
     pub epoch_start_height: BlockHeight,
     /// Epoch height
     pub epoch_height: EpochHeight,
+    /// Per-validator rewards paid out at the start of the previous epoch.
+    #[serde(default)]
+    pub validator_reward_paid_prev_epoch: HashMap<AccountId, Balance>,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
@@ -5542,6 +6436,8 @@ pub struct ValidatorKickoutView {
 pub struct CurrentEpochValidatorInfo {
     pub account_id: AccountId,
     pub public_key: PublicKey,
+    #[serde(default)]
+    pub is_slashed: bool,
     #[serde(with = "dec_format")]
     pub stake: Balance,
     /// Shards this validator is assigned to as chunk producer in the current epoch.
@@ -5751,6 +6647,7 @@ impl From<StateChangeCause> for StateChangeCauseView {
             StateChangeCause::UpdatedDelayedReceipts => Self::UpdatedDelayedReceipts,
             StateChangeCause::ValidatorAccountsUpdate => Self::ValidatorAccountsUpdate,
             StateChangeCause::Migration => Self::Migration,
+            StateChangeCause::_UnusedReshardingV2 => Self::BandwidthSchedulerStateUpdate,
             StateChangeCause::BandwidthSchedulerStateUpdate => Self::BandwidthSchedulerStateUpdate,
         }
     }
@@ -5770,12 +6667,18 @@ pub enum StateChangeValueView {
     },
     AccessKeyUpdate {
         account_id: AccountId,
-        public_key: PublicKey,
+        public_key: PublicKeyHandle,
         access_key: AccessKeyView,
     },
     AccessKeyDeletion {
         account_id: AccountId,
-        public_key: PublicKey,
+        public_key: PublicKeyHandle,
+    },
+    GasKeyNonceUpdate {
+        account_id: AccountId,
+        public_key: PublicKeyHandle,
+        index: NonceIndex,
+        nonce: Nonce,
     },
     DataUpdate {
         account_id: AccountId,
@@ -5828,6 +6731,17 @@ impl From<StateChangeValue> for StateChangeValueView {
             } => Self::AccessKeyDeletion {
                 account_id,
                 public_key,
+            },
+            StateChangeValue::GasKeyNonceUpdate {
+                account_id,
+                public_key,
+                index,
+                nonce,
+            } => Self::GasKeyNonceUpdate {
+                account_id,
+                public_key,
+                index,
+                nonce,
             },
             StateChangeValue::DataUpdate {
                 account_id,
@@ -6739,12 +7653,29 @@ pub enum RpcQueryError {
         block_height: BlockHeight,
         block_hash: CryptoHash,
     },
-    #[error("Function call returned an error: {vm_error}")]
-    ContractExecutionError {
-        vm_error: String,
+    #[error("Gas key for public key {public_key} does not exist while viewing")]
+    UnknownGasKey {
+        public_key: near_crypto::PublicKey,
         block_height: BlockHeight,
         block_hash: CryptoHash,
     },
+    #[error("Function call returned an error: {vm_error:?}")]
+    ContractExecutionError {
+        vm_error: String,
+        error: FunctionCallError,
+        block_height: BlockHeight,
+        block_hash: CryptoHash,
+    },
+    #[error(
+        "Global contract code with identifier {identifier:?} has never been observed on the node"
+    )]
+    NoGlobalContractCode {
+        identifier: GlobalContractIdentifier,
+        block_height: BlockHeight,
+        block_hash: CryptoHash,
+    },
+    #[error("The node reached its limits. Try again later. More details: {error_message}")]
+    InternalError { error_message: String },
 }
 
 #[derive(Deserialize, Debug)]
@@ -7168,6 +8099,20 @@ impl serde::Serialize for Gas {
         S: serde::Serializer,
     {
         serializer.serialize_u64(self.as_gas())
+    }
+}
+
+impl crate::utils::dec_format::DecType for Gas {
+    fn serialize(&self) -> Option<String> {
+        Some(self.as_gas().to_string())
+    }
+
+    fn try_from_str(value: &str) -> Result<Self, std::num::ParseIntError> {
+        u64::from_str_radix(value, 10).map(Self::from_gas)
+    }
+
+    fn from_u64(value: u64) -> Self {
+        Self::from_gas(value)
     }
 }
 

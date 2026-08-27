@@ -3,9 +3,13 @@ use std::time::Duration;
 use crate::{
     components::select::{Select, SelectOption},
     contexts::{
-        accounts_context::{AccountsContext, ENCRYPTION_MEMORY_COST_KB, PasswordAction},
+        accounts_context::{
+            AccountsContext, ENCRYPTION_MEMORY_COST_KB, PasswordAction, SecretKeyHolder,
+        },
         config_context::{ConfigContext, PasswordRememberDuration},
+        rpc_context::RpcContext,
         security_log_context::add_security_log,
+        transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
     pages::settings::ToggleSwitch,
     translations::TranslationKey,
@@ -17,6 +21,12 @@ use leptos::task::spawn_local;
 use leptos_icons::*;
 use leptos_router::components::A;
 use leptos_router::hooks::use_location;
+use near_min_api::QueryFinality;
+use near_min_api::types::near_crypto::{KeyType, PublicKeyHandle};
+use near_min_api::types::{
+    AccessKey, AccessKeyPermission, AccessKeyPermissionView, Action, AddKeyAction, DeleteKeyAction,
+    Finality,
+};
 use rand::{RngCore, rngs::OsRng};
 use serde::Deserialize;
 use web_sys::js_sys::{Object, Reflect};
@@ -119,9 +129,24 @@ async fn benchmark_argon2() -> (u32, f64) {
     (best_rounds, actual_duration)
 }
 
+fn is_same_key_type(left: KeyType, right: KeyType) -> bool {
+    std::mem::discriminant(&left) == std::mem::discriminant(&right)
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum PostQuantumStatus {
+    SwitchToPostQuantum,
+    SwitchToPreQuantum,
+    Protected,
+    ManualMigration,
+}
 #[component]
 pub fn SecuritySettings() -> impl IntoView {
     let accounts_context = expect_context::<AccountsContext>();
+    let rpc_context = expect_context::<RpcContext>();
+    let TransactionQueueContext {
+        add_transaction, ..
+    } = expect_context::<TransactionQueueContext>();
     let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     let (benchmarking_password, set_benchmarking_password) = signal(false);
     let (password_input, set_password_input) = signal(String::new());
@@ -139,6 +164,167 @@ pub fn SecuritySettings() -> impl IntoView {
     let (clearing_cache, set_clearing_cache) = signal(false);
     let (cache_clear_result, set_cache_clear_result) = signal::<Option<Result<(), String>>>(None);
     let (supports_biometry, set_supports_biometry) = signal(false);
+    let (switching_key_type, set_switching_key_type) = signal(false);
+
+    let selected_account = move || {
+        let accounts = accounts_context.accounts.get();
+        let selected_account_id = accounts.selected_account_id.clone()?;
+        accounts
+            .accounts
+            .into_iter()
+            .find(|account| account.account_id == selected_account_id)
+    };
+
+    let post_quantum_status = LocalResource::new(move || {
+        let account = selected_account();
+        let rpc_client = rpc_context.client.get();
+        async move {
+            let account = account?;
+            let current_public_key = account.secret_key.public_key();
+            let key_type = current_public_key.key_type();
+            let current_public_key_handle = PublicKeyHandle::from(&current_public_key);
+            let keys = rpc_client
+                .view_access_key_list(
+                    account.account_id.clone(),
+                    QueryFinality::Finality(Finality::None),
+                )
+                .await
+                .ok()?;
+            let full_access_keys = keys
+                .keys
+                .iter()
+                .filter(|key| {
+                    matches!(
+                        key.access_key.permission,
+                        AccessKeyPermissionView::FullAccess
+                    )
+                })
+                .collect::<Vec<_>>();
+            let has_mixed_key_types = full_access_keys
+                .iter()
+                .any(|key| !is_same_key_type(key.public_key.key_type(), key_type));
+            // ML-DSA-65 keys are stored on-chain as a hash, so someone else's key can't
+            // be turned back into a public key to delete it
+            let has_undeletable_key = full_access_keys.iter().any(|key| {
+                key.public_key.full_pubkey().is_none()
+                    && key.public_key != current_public_key_handle
+            });
+            Some(if has_mixed_key_types || has_undeletable_key {
+                PostQuantumStatus::ManualMigration
+            } else {
+                match (key_type, account.seed_phrase.is_some()) {
+                    (KeyType::ED25519, true) => PostQuantumStatus::SwitchToPostQuantum,
+                    (KeyType::MLDSA65, true) => PostQuantumStatus::SwitchToPreQuantum,
+                    (KeyType::MLDSA65, false) => PostQuantumStatus::Protected,
+                    _ => PostQuantumStatus::ManualMigration,
+                }
+            })
+        }
+    });
+
+    let switch_key_type = move |target_key_type: KeyType| {
+        let Some(account) = selected_account() else {
+            return;
+        };
+        let Some(seed_phrase) = account.seed_phrase.clone() else {
+            return;
+        };
+        let Some(new_secret_key) = intear_seed_phrase::secret_keys_from_phrase(&seed_phrase)
+            .ok()
+            .and_then(|keys| {
+                keys.into_iter()
+                    .find(|key| is_same_key_type(key.key_type(), target_key_type))
+            })
+        else {
+            log::error!("Failed to derive a {target_key_type} key from the seed phrase");
+            return;
+        };
+
+        set_switching_key_type(true);
+
+        let account_id = account.account_id.clone();
+        let current_public_key = account.secret_key.public_key();
+        let new_public_key = new_secret_key.public_key();
+        let rpc_client = rpc_context.client.get();
+
+        spawn_local(async move {
+            let keys = match rpc_client
+                .view_access_key_list(account_id.clone(), QueryFinality::Finality(Finality::None))
+                .await
+            {
+                Ok(keys) => keys,
+                Err(err) => {
+                    log::error!("Error fetching access key list: {err:?}");
+                    set_switching_key_type(false);
+                    return;
+                }
+            };
+
+            let current_public_key_handle = PublicKeyHandle::from(&current_public_key);
+            let mut actions = vec![Action::AddKey(Box::new(AddKeyAction {
+                access_key: AccessKey {
+                    nonce: 0,
+                    permission: AccessKeyPermission::FullAccess,
+                },
+                public_key: new_public_key.clone(),
+            }))];
+            for key in keys.keys {
+                if !matches!(
+                    key.access_key.permission,
+                    AccessKeyPermissionView::FullAccess
+                ) {
+                    continue;
+                }
+                let public_key = match key.public_key.full_pubkey() {
+                    Some(public_key) => public_key,
+                    None if key.public_key == current_public_key_handle => {
+                        current_public_key.clone()
+                    }
+                    None => {
+                        log::error!("Can't delete access key {} of {account_id}", key.public_key);
+                        set_switching_key_type(false);
+                        return;
+                    }
+                };
+                actions.insert(
+                    0,
+                    Action::DeleteKey(Box::new(DeleteKeyAction { public_key })),
+                );
+            }
+
+            add_security_log(
+                format!(
+                    "Switching key algorithm: adding {new_secret_key} and removing all full access keys {}. Previous secret key: {}",
+                    serde_json::to_string(&actions).unwrap(),
+                    account.secret_key,
+                ),
+                account_id.clone(),
+                accounts_context,
+            );
+
+            let (details_receiver, transaction) = EnqueuedTransaction::create(
+                TranslationKey::MiscTransactionSwitchKeyAlgorithm.format(&[]),
+                account_id.clone(),
+                account_id.clone(),
+                actions,
+                true,
+            );
+            add_transaction.update(|queue| queue.push(transaction));
+
+            if matches!(details_receiver.await, Ok(Ok(_))) {
+                accounts_context.set_accounts.update(|accounts| {
+                    for stored_account in accounts.accounts.iter_mut() {
+                        if stored_account.account_id == account_id {
+                            stored_account.secret_key =
+                                SecretKeyHolder::SecretKey(new_secret_key.clone());
+                        }
+                    }
+                });
+            }
+            post_quantum_status.refetch();
+            set_switching_key_type(false);
+        });
+    };
 
     let check_storage_persistence = move || {
         if is_tauri() {
@@ -375,6 +561,99 @@ pub fn SecuritySettings() -> impl IntoView {
                     </div>
                     <Icon icon=icondata::LuChevronRight width="20" height="20" />
                 </A>
+
+                {move || {
+                    let Some(status) = post_quantum_status.get().flatten() else {
+                        return ().into_any();
+                    };
+                    let switch_target = match status {
+                        PostQuantumStatus::SwitchToPostQuantum => {
+                            Some((
+                                KeyType::MLDSA65,
+                                TranslationKey::PagesSettingsSecurityPostQuantumSwitchToPostQuantumButton,
+                                icondata::LuShieldCheck,
+                                "bg-green-500/10 hover:bg-green-500/20 text-green-400",
+                            ))
+                        }
+                        PostQuantumStatus::SwitchToPreQuantum => {
+                            Some((
+                                KeyType::ED25519,
+                                TranslationKey::PagesSettingsSecurityPostQuantumSwitchToPreQuantumButton,
+                                icondata::LuShieldOff,
+                                "bg-neutral-800 hover:bg-neutral-700 text-neutral-300",
+                            ))
+                        }
+                        PostQuantumStatus::Protected | PostQuantumStatus::ManualMigration => None,
+                    };
+                    let emphasis = match status {
+                        PostQuantumStatus::SwitchToPostQuantum => {
+                            Some((
+                                TranslationKey::PagesSettingsSecurityPostQuantumEmphasisNotSafe,
+                                "text-red-400 font-semibold",
+                            ))
+                        }
+                        PostQuantumStatus::SwitchToPreQuantum | PostQuantumStatus::Protected => {
+                            Some((
+                                TranslationKey::PagesSettingsSecurityPostQuantumEmphasisProtected,
+                                "text-green-400 font-semibold",
+                            ))
+                        }
+                        PostQuantumStatus::ManualMigration => None,
+                    };
+                    let description = match status {
+                        PostQuantumStatus::SwitchToPostQuantum => {
+                            Some(TranslationKey::PagesSettingsSecurityPostQuantumDescriptionPreQuantum)
+                        }
+                        PostQuantumStatus::SwitchToPreQuantum => {
+                            Some(TranslationKey::PagesSettingsSecurityPostQuantumDescriptionPostQuantum)
+                        }
+                        PostQuantumStatus::Protected => None,
+                        PostQuantumStatus::ManualMigration => {
+                            Some(TranslationKey::PagesSettingsSecurityPostQuantumDescriptionManualMigration)
+                        }
+                    };
+                    view! {
+                        <div class="flex flex-col gap-2">
+                            <div class="text-lg font-medium">
+                                {move || TranslationKey::PagesSettingsSecurityHeaderPostQuantum.format(&[])}
+                            </div>
+                            {switch_target
+                                .map(|(target_key_type, button_label, button_icon, button_class)| {
+                                    view! {
+                                        <button
+                                            class=format!(
+                                                "flex items-center justify-center gap-2 p-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer {button_class}",
+                                            )
+                                            disabled=move || switching_key_type.get()
+                                            on:click=move |_| switch_key_type(target_key_type)
+                                        >
+                                            <Show when=move || !switching_key_type.get()>
+                                                <Icon icon=button_icon width="20" height="20" />
+                                                <span>{move || button_label.format(&[])}</span>
+                                            </Show>
+                                            <Show when=move || switching_key_type.get()>
+                                                <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-current"></div>
+                                                <span>{move || TranslationKey::PagesSettingsSecurityPostQuantumSwitching.format(&[])}</span>
+                                            </Show>
+                                        </button>
+                                    }
+                                })}
+                            <div class="text-sm text-neutral-400">
+                                {emphasis
+                                    .map(|(emphasis_key, emphasis_class)| {
+                                        view! {
+                                            <span class=emphasis_class>
+                                                {move || emphasis_key.format(&[])}
+                                            </span>
+                                            " "
+                                        }
+                                    })}
+                                {description.map(|description| move || description.format(&[]))}
+                            </div>
+                        </div>
+                    }
+                        .into_any()
+                }}
 
                 <Show when=move || supports_biometry.get()>
                     <div class="flex flex-col gap-2">

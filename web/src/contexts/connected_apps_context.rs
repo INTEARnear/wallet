@@ -113,6 +113,7 @@ pub fn action_attaches_deposit(action: &Action) -> bool {
         action,
         Action::Transfer(TransferAction { deposit, .. }) if !deposit.is_zero()
     ) || matches!(action, Action::FunctionCall(f) if !f.deposit.is_zero())
+        || matches!(action, Action::TransferToGasKey(_))
         || is_dangerous_action(action)
 }
 
@@ -124,8 +125,11 @@ pub fn is_dangerous_action(action: &Action) -> bool {
             | Action::DeployContract(_)
             | Action::DeleteAccount(_)
             | Action::Delegate(_)
+            | Action::DelegateV2(_)
             | Action::Stake(_)
             | Action::UseGlobalContract(_)
+            | Action::DeterministicStateInit(_)
+            | Action::WithdrawFromGasKey(_)
             | Action::DeployGlobalContract(DeployGlobalContractAction {
                 deploy_mode: GlobalContractDeployMode::AccountId,
                 ..

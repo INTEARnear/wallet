@@ -29,13 +29,17 @@ struct TransactionRow {
     key_type: KeyType,
 }
 
+enum AccessKeyOp {
+    Insert(PublicKeyHandle, AccountId),
+    Delete(PublicKeyHandle, AccountId),
+    WipeAccount(AccountId),
+}
+
 struct AccountIndexer {
     pool: PgPool,
     pending_transactions: Vec<TransactionRow>,
     pending_signers: HashSet<AccountId>,
-    pending_key_inserts: Vec<(PublicKeyHandle, AccountId)>,
-    pending_key_deletes: Vec<(PublicKeyHandle, AccountId)>,
-    pending_account_deletes: Vec<AccountId>,
+    pending_access_key_ops: Vec<AccessKeyOp>,
 }
 
 impl AccountIndexer {
@@ -44,9 +48,7 @@ impl AccountIndexer {
             pool,
             pending_transactions: Vec::new(),
             pending_signers: HashSet::new(),
-            pending_key_inserts: Vec::new(),
-            pending_key_deletes: Vec::new(),
-            pending_account_deletes: Vec::new(),
+            pending_access_key_ops: Vec::new(),
         }
     }
 }
@@ -95,16 +97,17 @@ impl Indexer for AccountIndexer {
                     access_key,
                 } => {
                     if matches!(access_key.permission, AccessKeyPermissionView::FullAccess) {
-                        self.pending_key_inserts
-                            .push((public_key.into(), receiver_id.clone()));
+                        self.pending_access_key_ops
+                            .push(AccessKeyOp::Insert(public_key.into(), receiver_id.clone()));
                     }
                 }
                 ActionView::DeleteKey { public_key } => {
-                    self.pending_key_deletes
-                        .push((public_key.into(), receiver_id.clone()));
+                    self.pending_access_key_ops
+                        .push(AccessKeyOp::Delete(public_key.into(), receiver_id.clone()));
                 }
                 ActionView::DeleteAccount { .. } => {
-                    self.pending_account_deletes.push(receiver_id.clone());
+                    self.pending_access_key_ops
+                        .push(AccessKeyOp::WipeAccount(receiver_id.clone()));
                 }
                 _ => {}
             }
@@ -117,34 +120,38 @@ impl Indexer for AccountIndexer {
             DateTime::from_timestamp_nanos(block.block.header.timestamp_nanosec as i64);
         let hour = truncate_to_hour(block_timestamp);
 
-        for (key_handle, account_id) in self.pending_key_inserts.drain(..) {
-            sqlx::query!(
-                "INSERT INTO access_keys (key_handle, account_id) VALUES ($1, $2)",
-                key_handle.to_string(),
-                account_id.as_str()
-            )
-            .execute(&self.pool)
-            .await
-            .expect("insert_access_key: unexpected duplicate (key_handle, account_id)");
-        }
-        for (key_handle, account_id) in self.pending_key_deletes.drain(..) {
-            sqlx::query!(
-                "DELETE FROM access_keys WHERE key_handle = $1 AND account_id = $2",
-                key_handle.to_string(),
-                account_id.as_str()
-            )
-            .execute(&self.pool)
-            .await
-            .expect("delete_access_key failed");
-        }
-        for account_id in self.pending_account_deletes.drain(..) {
-            sqlx::query!(
-                "DELETE FROM access_keys WHERE account_id = $1",
-                account_id.as_str()
-            )
-            .execute(&self.pool)
-            .await
-            .expect("delete_access_keys_for_account failed");
+        for op in self.pending_access_key_ops.drain(..) {
+            match op {
+                AccessKeyOp::Insert(key_handle, account_id) => {
+                    sqlx::query!(
+                        "INSERT INTO access_keys (key_handle, account_id) VALUES ($1, $2)",
+                        key_handle.to_string(),
+                        account_id.as_str()
+                    )
+                    .execute(&self.pool)
+                    .await
+                    .expect("insert_access_key: unexpected duplicate (key_handle, account_id)");
+                }
+                AccessKeyOp::Delete(key_handle, account_id) => {
+                    sqlx::query!(
+                        "DELETE FROM access_keys WHERE key_handle = $1 AND account_id = $2",
+                        key_handle.to_string(),
+                        account_id.as_str()
+                    )
+                    .execute(&self.pool)
+                    .await
+                    .expect("delete_access_key failed");
+                }
+                AccessKeyOp::WipeAccount(account_id) => {
+                    sqlx::query!(
+                        "DELETE FROM access_keys WHERE account_id = $1",
+                        account_id.as_str()
+                    )
+                    .execute(&self.pool)
+                    .await
+                    .expect("delete_access_keys_for_account failed");
+                }
+            }
         }
 
         if !self.pending_transactions.is_empty() {
@@ -244,7 +251,11 @@ impl Indexer for AccountIndexer {
             .expect("record_hourly_active_accounts failed");
         }
 
-        upsert_hourly_stats(&self.pool, hour).await;
+        if truncate_to_hour(block_timestamp + chrono::Duration::minutes(1)) != hour
+            || block.block.header.height.is_multiple_of(100)
+        {
+            upsert_hourly_stats(&self.pool, hour).await;
+        }
 
         Ok(())
     }

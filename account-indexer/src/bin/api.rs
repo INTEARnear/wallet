@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, env, net::SocketAddr, str::FromStr};
 
 use axum::{
     Json, Router,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
     routing::get,
 };
@@ -12,7 +12,7 @@ use near_min_api::types::{
     AccountId,
     near_crypto::{KeyType, ParseKeyError, PublicKey, PublicKeyHandle},
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::EnvFilter;
@@ -82,12 +82,6 @@ async fn public_key_lookup(
     Ok(Json(PublicKeyLookupResponse { account_ids }))
 }
 
-#[derive(Deserialize)]
-struct StatsQuery {
-    from: Option<DateTime<Utc>>,
-    to: Option<DateTime<Utc>>,
-}
-
 #[derive(Serialize)]
 struct HourlyTransactionsByKeyType {
     hour: DateTime<Utc>,
@@ -101,33 +95,18 @@ struct HourlyPqAdoption {
     hour: DateTime<Utc>,
     active_accounts: i64,
     exclusively_ml_dsa_65_accounts: i64,
-    exclusively_ml_dsa_65_percentage: f64,
 }
 
 #[derive(Serialize)]
 struct StatsResponse {
-    from: DateTime<Utc>,
-    to: DateTime<Utc>,
     hourly_transactions_by_key_type: Vec<HourlyTransactionsByKeyType>,
     hourly_pq_adoption: Vec<HourlyPqAdoption>,
 }
 
-/// Defaults to the last 72 hours; pivots the per-(hour, key_type) rollup rows into one
-/// row per hour with a column per key type.
-async fn stats(
-    State(state): State<AppState>,
-    Query(query): Query<StatsQuery>,
-) -> Result<Json<StatsResponse>, ApiError> {
-    let to = query.to.unwrap_or_else(Utc::now);
-    let from = query
-        .from
-        .unwrap_or_else(|| to - chrono::Duration::hours(72));
-
+async fn stats(State(state): State<AppState>) -> Result<Json<StatsResponse>, ApiError> {
     let key_type_rows = sqlx::query!(
         "SELECT hour, key_type, transaction_count FROM hourly_key_type_stats
-         WHERE hour BETWEEN $1 AND $2 ORDER BY hour, key_type",
-        from,
-        to
+         ORDER BY hour, key_type",
     )
     .fetch_all(&state.pool)
     .await
@@ -153,9 +132,7 @@ async fn stats(
 
     let hourly_pq_adoption = sqlx::query!(
         "SELECT hour, active_accounts_count, exclusively_pq_accounts_count FROM hourly_stats
-         WHERE hour BETWEEN $1 AND $2 ORDER BY hour",
-        from,
-        to
+         ORDER BY hour",
     )
     .fetch_all(&state.pool)
     .await
@@ -165,17 +142,10 @@ async fn stats(
         hour: row.hour,
         active_accounts: row.active_accounts_count,
         exclusively_ml_dsa_65_accounts: row.exclusively_pq_accounts_count,
-        exclusively_ml_dsa_65_percentage: if row.active_accounts_count > 0 {
-            row.exclusively_pq_accounts_count as f64 / row.active_accounts_count as f64
-        } else {
-            0.0
-        },
     })
     .collect();
 
     Ok(Json(StatsResponse {
-        from,
-        to,
         hourly_transactions_by_key_type: by_hour.into_values().collect(),
         hourly_pq_adoption,
     }))
