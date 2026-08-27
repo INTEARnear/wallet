@@ -8,9 +8,12 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use dotenvy::dotenv;
-use near_min_api::types::{
-    AccountId,
-    near_crypto::{KeyType, ParseKeyError, PublicKey, PublicKeyHandle},
+use near_min_api::{
+    QueryFinality, RpcClient,
+    types::{
+        AccountId, Finality,
+        near_crypto::{KeyType, ParseKeyError, PublicKey, PublicKeyHandle},
+    },
 };
 use serde::Serialize;
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -20,6 +23,7 @@ use tracing_subscriber::EnvFilter;
 #[derive(Clone)]
 struct AppState {
     pool: PgPool,
+    rpc_client: RpcClient,
 }
 
 #[derive(Serialize)]
@@ -75,6 +79,7 @@ async fn public_key_lookup(
     if let Some(public_key) = handle.full_pubkey()
         && let Some(implicit_account_id) = implicit_account_id(&public_key)
         && !account_ids.contains(&implicit_account_id)
+        && implicit_account_should_be_visible(&state.rpc_client, implicit_account_id.clone()).await
     {
         account_ids.push(implicit_account_id);
     }
@@ -173,11 +178,16 @@ async fn main() {
         .await
         .expect("Failed to run database migrations");
 
+    let rpc_urls = env::var("RPC_URLS")
+        .map(|urls| urls.split(',').map(String::from).collect::<Vec<_>>())
+        .expect("RPC_URLS environment variable is required");
+    let rpc_client = RpcClient::new(rpc_urls);
+
     let app = Router::new()
         .route("/public_key/{key_or_handle}", get(public_key_lookup))
         .route("/stats", get(stats))
         .layer(CorsLayer::permissive())
-        .with_state(AppState { pool });
+        .with_state(AppState { pool, rpc_client });
 
     let addr = env::var("ACCOUNT_INDEXER_BIND")
         .map(|value| value.parse().expect("Invalid ACCOUNT_INDEXER_BIND format"))
@@ -202,6 +212,16 @@ fn implicit_account_id(public_key: &PublicKey) -> Option<AccountId> {
         return None;
     };
     AccountId::from_str(&to_hex(&key.0)).ok()
+}
+
+async fn implicit_account_should_be_visible(rpc_client: &RpcClient, account_id: AccountId) -> bool {
+    match rpc_client
+        .view_account(account_id, QueryFinality::Finality(Finality::Final))
+        .await
+    {
+        Ok(account) => account.amount.as_yoctonear() > 0,
+        Err(_) => true,
+    }
 }
 
 fn to_hex(bytes: &[u8]) -> String {

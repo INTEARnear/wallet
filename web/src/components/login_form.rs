@@ -37,7 +37,7 @@ async fn find_accounts_by_public_key(
         (Network::Mainnet, "https://api.fastnear.com/v0"),
         (Network::Mainnet, "https://account-indexer.intea.rs"),
         (Network::Testnet, "https://test.api.fastnear.com/v0"),
-        (Network::Mainnet, "https://account-indexer-testnet.intea.rs"),
+        (Network::Testnet, "https://account-indexer-testnet.intea.rs"),
     ] {
         let url = format!("{api_url}/public_key/{public_key_handle}");
         if let Ok(response) = reqwest::get(url).await
