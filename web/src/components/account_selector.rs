@@ -547,6 +547,9 @@ pub fn AccountSelector() -> impl IntoView {
                 };
 
                 for (account, result) in accs.into_iter().zip(results) {
+                    if account.protected_until > Utc::now() {
+                        continue;
+                    }
                     let public_key = account.secret_key.public_key();
                     if let Err(Error::OtherQueryError(err)) = result
                         && err == format!("access key {public_key} does not exist while viewing")

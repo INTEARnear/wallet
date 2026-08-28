@@ -703,6 +703,7 @@ pub fn DeveloperSandbox() -> impl IntoView {
                                                                         seed_phrase: None,
                                                                         network: Network::Localnet(Box::new(network.clone())),
                                                                         exported: true,
+                                                                        protected_until: Default::default(),
                                                                     });
                                                             });
                                                         let (details_receiver, transaction) = EnqueuedTransaction::create(
@@ -843,6 +844,7 @@ pub fn DeveloperSandbox() -> impl IntoView {
                                                             seed_phrase: None,
                                                             network: Network::Localnet(Box::new(network)),
                                                             exported: true,
+                                                            protected_until: Default::default(),
                                                         };
                                                         set_accounts
                                                             .update(|accounts_data| {

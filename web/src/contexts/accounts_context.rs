@@ -75,10 +75,18 @@ pub struct Account {
     pub network: Network,
     #[serde(default = "default_true")]
     pub exported: bool,
+    #[serde(default)]
+    pub protected_until: DateTime<Utc>,
 }
 
 fn default_true() -> bool {
     true
+}
+
+impl Account {
+    pub fn protect_key_rotation(&mut self) {
+        self.protected_until = Utc::now() + chrono::Duration::seconds(10);
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1121,6 +1129,7 @@ pub fn provide_accounts_context() {
                 seed_phrase: None,
                 network: Network::Mainnet,
                 exported: false,
+                protected_until: Default::default(),
             });
             new_state.selected_account_id = Some(account_id);
 

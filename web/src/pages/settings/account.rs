@@ -967,6 +967,7 @@ pub fn AccountSettings() -> impl IntoView {
                         if acc.account_id == account_id {
                             acc.secret_key = SecretKeyHolder::SecretKey(secret_key.clone());
                             acc.seed_phrase = Some(mnemonic.1.to_string());
+                            acc.protect_key_rotation();
                         }
                     }
                 });
@@ -1423,6 +1424,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                             new_secret_key.clone(),
                                                                         );
                                                                         acc.seed_phrase = Some(new_mnemonic_string.clone());
+                                                                        acc.protect_key_rotation();
                                                                     }
                                                                 }
                                                             });
@@ -1703,6 +1705,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                                                         public_key: public_key.clone(),
                                                                                     };
                                                                                     acc.seed_phrase = None;
+                                                                                    acc.protect_key_rotation();
                                                                                 }
                                                                             }
                                                                         });

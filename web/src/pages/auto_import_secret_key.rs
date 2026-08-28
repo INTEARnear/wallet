@@ -157,6 +157,7 @@ pub fn AutoImportSecretKey() -> impl IntoView {
                                                             Network::Mainnet
                                                         },
                                                         exported: false,
+                                                        protected_until: Default::default(),
                                                     });
                                                 accounts.selected_account_id = Some(account_id.clone());
                                                 accounts_context.set_accounts.set(accounts);

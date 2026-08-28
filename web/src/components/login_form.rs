@@ -375,6 +375,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                         seed_phrase: None,
                         network: network.clone(),
                         exported: false,
+                        protected_until: Default::default(),
                     });
                     last_account_id = Some(account_id.clone());
                 }
@@ -406,6 +407,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                         seed_phrase: Some(user_input.clone()),
                         network: network.clone(),
                         exported: false,
+                        protected_until: Default::default(),
                     });
                     last_account_id = Some(account_id.clone());
                 }
@@ -1241,6 +1243,7 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                                 seed_phrase: None,
                                                                                 network: network.clone(),
                                                                                 exported: true,
+                                                                                protected_until: Default::default(),
                                                                             });
                                                                         last_account_id = Some(account_id.clone());
                                                                     }

@@ -317,6 +317,7 @@ pub fn SecuritySettings() -> impl IntoView {
                         if stored_account.account_id == account_id {
                             stored_account.secret_key =
                                 SecretKeyHolder::SecretKey(new_secret_key.clone());
+                            stored_account.protect_key_rotation();
                         }
                     }
                 });
