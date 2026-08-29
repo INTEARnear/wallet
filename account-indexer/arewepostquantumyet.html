@@ -534,6 +534,61 @@
       line-height: 1.5;
     }
 
+    .tally {
+      margin-top: 5rem;
+    }
+
+    .tally-head {
+      margin: 0 0 1.9rem;
+      font-size: 0.72rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .tally-head-note {
+      margin-left: 0.7rem;
+      color: var(--muted);
+    }
+
+    .tally-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 2.6rem 2rem;
+    }
+
+    .tally-item {
+      min-width: 0;
+    }
+
+    .tally-figure {
+      margin: 0;
+      font-family: var(--mono);
+      font-size: clamp(1.9rem, 5.8vw, 3.2rem);
+      font-variant-numeric: tabular-nums;
+      font-weight: 500;
+      letter-spacing: -0.06em;
+      line-height: 0.9;
+      min-height: 0.9em;
+      white-space: nowrap;
+      color: var(--pq);
+    }
+
+    .tally-label {
+      margin: 0.9rem 0 0;
+      font-size: 0.68rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      line-height: 1.35;
+    }
+
+    .tally-note {
+      margin: 0.12rem 0 0;
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      line-height: 1.35;
+      color: var(--muted);
+    }
+
     footer {
       margin-top: 4rem;
       padding-top: 0.85rem;
@@ -1105,6 +1160,11 @@
         width: 2.15rem;
         height: 2.15rem;
       }
+
+      .tally-grid {
+        grid-template-columns: 1fr;
+        gap: 1.9rem;
+      }
     }
   </style>
 </head>
@@ -1233,9 +1293,8 @@
             <span class="article-warn-kicker">Advanced users only</span>
             <p>
               These steps are for people who are comfortable managing access keys by hand.
-              Most users should rotate with <a href="https://wallet.intear.tech">Intear Wallet</a> instead,
-              it had reliable one-click key rotation functionality even for non-post-quantum keys for over a
-              year.
+              Although it's probably impossible to lock yourself out of your account, take
+              caution or try other methods if you're not comfortable with key management.
             </p>
           </aside>
           <p>
@@ -1266,7 +1325,7 @@
             <pre><code>near account delete-keys <mark class="cmd-ph">&lt;ACCOUNT_ID&gt;</mark></code></pre>
             <button type="button" class="cmd-copy" data-copy="near account delete-keys &lt;ACCOUNT_ID&gt;">Copy</button>
           </div>
-          <p>In the interactive mode, select the non-quantum-safe keys to delete, and confirm the transaction.</p>
+          <p>In the interactive mode, select the non-quantum-safe keys to delete (deleting post-quantum keys is not possible), and confirm the transaction.</p>
         </div>
         <div class="method-panel" data-method-panel="hardware" hidden>
           <p>
@@ -1317,10 +1376,31 @@
       <p>Can't produce signatures for post-quantum blockchains, can't securely bring data from other chains. Research is ongoing into post-quantum thresholded signatures, and other blockchains must go post-quantum too, since mutual post-quantum trust can't exist with a blockchain that is prone to quantum attacks. Read <a href="https://www.near.org/blog/near-quantum-safe-roadmap">NEAR's Roadmap to Post-Quantum Security</a> for more details.</p>
     </section>
 
+    <section class="tally">
+      <p class="tally-head">By the numbers</p>
+      <div class="tally-grid">
+        <div class="tally-item">
+          <p class="tally-figure" id="tally-accounts">&nbsp;</p>
+          <p class="tally-label">Quantum-safe accounts</p>
+          <p class="tally-note">currently</p>
+        </div>
+        <div class="tally-item">
+          <p class="tally-figure" id="tally-transactions">&nbsp;</p>
+          <p class="tally-label">Quantum-safe transactions</p>
+          <p class="tally-note">all time</p>
+        </div>
+        <div class="tally-item">
+          <p class="tally-figure" id="tally-share">&nbsp;</p>
+          <p class="tally-label">Quantum-safe transactions</p>
+          <p class="tally-note">last 24 hours</p>
+        </div>
+      </div>
+    </section>
+
     <footer>
       <span>An account counts as quantum-safe when every full-access key on it is using ML-DSA-65. If an account still has a
         non-quantum-safe key, even if not used, puts the account at risk.</span>
-      <span>Dashboard developed and data aggregated by <a href="https://wallet.intear.tech">Intear Wallet</a>. Migrate
+      <span>Dashboard developed and data aggregated by <a href="https://wallet.intear.tech">Intear Wallet</a> as part of 8888 initiative. Migrate
         your existing accounts to quantum-safe keys today!</span>
     </footer>
   </div>
@@ -1380,6 +1460,9 @@
     const tipShare = document.getElementById("tip-share");
     const tipRowC = document.getElementById("tip-row-c");
     const tipRowD = document.getElementById("tip-row-d");
+    const tallyAccountsEl = document.getElementById("tally-accounts");
+    const tallyTransactionsEl = document.getElementById("tally-transactions");
+    const tallyShareEl = document.getElementById("tally-share");
 
     const charts = {
       accounts: {
@@ -1836,6 +1919,24 @@
       if (hourRangeEl.textContent !== range) hourRangeEl.textContent = range;
     }
 
+    function setTallyFigure(element, text) {
+      if (element.textContent !== text) element.textContent = text;
+    }
+
+    function applyTally(data) {
+      const totals = data.totals || {};
+      setTallyFigure(tallyAccountsEl, formatCount(totals.quantum_safe_accounts || 0));
+      setTallyFigure(tallyTransactionsEl, formatCount(totals.quantum_safe_transactions || 0));
+      const recentHours = (data.hourly_transactions_by_key_type || []).slice(-24);
+      let total = 0;
+      let quantumSafe = 0;
+      for (const row of recentHours) {
+        total += row.ed25519 + row.secp256k1 + row.ml_dsa_65;
+        quantumSafe += row.ml_dsa_65;
+      }
+      setTallyFigure(tallyShareEl, formatPercent(total > 0 ? (quantumSafe / total) * 100 : 0));
+    }
+
     function rollupDaily(points) {
       const buckets = [];
       const indexByKey = new Map();
@@ -1933,6 +2034,7 @@
         if (payload === lastPayload) return;
         lastPayload = payload;
         applyHero(data.hourly_pq_adoption || []);
+        applyTally(data);
         applyCharts(data);
       } catch (_) {
         setLive(false);

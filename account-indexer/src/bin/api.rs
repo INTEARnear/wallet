@@ -1,9 +1,18 @@
-use std::{collections::BTreeMap, env, net::SocketAddr, str::FromStr};
+use std::{
+    collections::BTreeMap,
+    env,
+    net::SocketAddr,
+    str::FromStr,
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 
 use axum::{
     Json, Router,
+    body::Bytes,
     extract::{Path, State},
-    http::StatusCode,
+    http::{StatusCode, header},
+    response::{IntoResponse, Response},
     routing::get,
 };
 use chrono::{DateTime, Utc};
@@ -24,6 +33,7 @@ use tracing_subscriber::EnvFilter;
 struct AppState {
     pool: PgPool,
     rpc_client: RpcClient,
+    stats_cache: Arc<RwLock<Bytes>>,
 }
 
 #[derive(Serialize)]
@@ -103,19 +113,27 @@ struct HourlyPqAdoption {
 }
 
 #[derive(Serialize)]
+struct Totals {
+    quantum_safe_accounts: i64,
+    quantum_safe_transactions: i64,
+}
+
+#[derive(Serialize)]
 struct StatsResponse {
     hourly_transactions_by_key_type: Vec<HourlyTransactionsByKeyType>,
     hourly_pq_adoption: Vec<HourlyPqAdoption>,
+    totals: Totals,
 }
 
-async fn stats(State(state): State<AppState>) -> Result<Json<StatsResponse>, ApiError> {
+const STATS_REFRESH_INTERVAL: Duration = Duration::from_secs(10);
+
+async fn compute_stats(pool: &PgPool) -> Result<StatsResponse, sqlx::Error> {
     let key_type_rows = sqlx::query!(
         "SELECT hour, key_type, transaction_count FROM hourly_key_type_stats
          ORDER BY hour, key_type",
     )
-    .fetch_all(&state.pool)
-    .await
-    .map_err(internal_error)?;
+    .fetch_all(pool)
+    .await?;
     let mut by_hour: BTreeMap<DateTime<Utc>, HourlyTransactionsByKeyType> = BTreeMap::new();
     for row in key_type_rows {
         let entry = by_hour
@@ -139,9 +157,8 @@ async fn stats(State(state): State<AppState>) -> Result<Json<StatsResponse>, Api
         "SELECT hour, active_accounts_count, exclusively_pq_accounts_count FROM hourly_stats
          ORDER BY hour",
     )
-    .fetch_all(&state.pool)
-    .await
-    .map_err(internal_error)?
+    .fetch_all(pool)
+    .await?
     .into_iter()
     .map(|row| HourlyPqAdoption {
         hour: row.hour,
@@ -150,10 +167,44 @@ async fn stats(State(state): State<AppState>) -> Result<Json<StatsResponse>, Api
     })
     .collect();
 
-    Ok(Json(StatsResponse {
+    let quantum_safe_accounts =
+        sqlx::query_scalar!("SELECT count(*) FROM account_key_counts WHERE is_exclusively_pq")
+            .fetch_one(pool)
+            .await?
+            .unwrap_or(0);
+
+    let quantum_safe_transactions = sqlx::query_scalar!(
+        "SELECT coalesce(sum(transaction_count), 0)::bigint FROM hourly_key_type_stats
+         WHERE key_type = 'ml-dsa-65'"
+    )
+    .fetch_one(pool)
+    .await?
+    .unwrap_or(0);
+
+    Ok(StatsResponse {
         hourly_transactions_by_key_type: by_hour.into_values().collect(),
         hourly_pq_adoption,
-    }))
+        totals: Totals {
+            quantum_safe_accounts,
+            quantum_safe_transactions,
+        },
+    })
+}
+
+fn serialize_stats(stats: &StatsResponse) -> Bytes {
+    Bytes::from(serde_json::to_vec(stats).expect("StatsResponse is always serializable"))
+}
+
+async fn stats(State(state): State<AppState>) -> Response {
+    let body = state.stats_cache.read().unwrap().clone();
+    (
+        [
+            (header::CONTENT_TYPE, "application/json"),
+            (header::CACHE_CONTROL, "public, max-age=10"),
+        ],
+        body,
+    )
+        .into_response()
 }
 
 #[tokio::main]
@@ -183,11 +234,38 @@ async fn main() {
         .expect("RPC_URLS environment variable is required");
     let rpc_client = RpcClient::new(rpc_urls);
 
+    let stats_cache = Arc::new(RwLock::new(serialize_stats(
+        &compute_stats(&pool)
+            .await
+            .expect("Failed to compute initial stats"),
+    )));
+    tokio::spawn({
+        let pool = pool.clone();
+        let stats_cache = Arc::clone(&stats_cache);
+        async move {
+            loop {
+                tokio::time::sleep(STATS_REFRESH_INTERVAL).await;
+                match compute_stats(&pool).await {
+                    Ok(stats) => {
+                        *stats_cache
+                            .write()
+                            .expect("stats cache lock is never poisoned") = serialize_stats(&stats);
+                    }
+                    Err(error) => tracing::error!(%error, "Failed to refresh stats"),
+                }
+            }
+        }
+    });
+
     let app = Router::new()
         .route("/public_key/{key_or_handle}", get(public_key_lookup))
         .route("/stats", get(stats))
         .layer(CorsLayer::permissive())
-        .with_state(AppState { pool, rpc_client });
+        .with_state(AppState {
+            pool,
+            rpc_client,
+            stats_cache,
+        });
 
     let addr = env::var("ACCOUNT_INDEXER_BIND")
         .map(|value| value.parse().expect("Invalid ACCOUNT_INDEXER_BIND format"))

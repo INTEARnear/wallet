@@ -5,8 +5,7 @@ use chrono::{DateTime, Timelike, Utc};
 use inindexer::{
     AutoContinue, BlockRange, Indexer, IndexerOptions,
     near_indexer_primitives::{
-        CryptoHash, IndexerExecutionOutcomeWithReceipt, IndexerTransactionWithOutcome,
-        StreamerMessage,
+        IndexerExecutionOutcomeWithReceipt, IndexerTransactionWithOutcome, StreamerMessage,
         types::AccountId,
         views::{AccessKeyPermissionView, ActionView, ExecutionStatusView, ReceiptEnumView},
     },
@@ -15,7 +14,7 @@ use inindexer::{
     run_indexer,
 };
 use near_min_api::types::near_crypto::{KeyType, PublicKeyHandle};
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sqlx::{PgPool, Postgres, Transaction, postgres::PgPoolOptions};
 use tracing_subscriber::EnvFilter;
 
 enum Network {
@@ -23,10 +22,29 @@ enum Network {
     Testnet,
 }
 
-struct TransactionRow {
-    tx_hash: CryptoHash,
-    block_timestamp: DateTime<Utc>,
-    key_type: KeyType,
+#[derive(Default)]
+struct KeyTypeCounts {
+    ed25519: i64,
+    secp256k1: i64,
+    ml_dsa_65: i64,
+}
+
+impl KeyTypeCounts {
+    fn record(&mut self, key_type: KeyType) {
+        match key_type {
+            KeyType::ED25519 => self.ed25519 += 1,
+            KeyType::SECP256K1 => self.secp256k1 += 1,
+            KeyType::MLDSA65 => self.ml_dsa_65 += 1,
+        }
+    }
+
+    fn per_key_type(&self) -> [(KeyType, i64); 3] {
+        [
+            (KeyType::ED25519, self.ed25519),
+            (KeyType::SECP256K1, self.secp256k1),
+            (KeyType::MLDSA65, self.ml_dsa_65),
+        ]
+    }
 }
 
 enum AccessKeyOp {
@@ -37,19 +55,27 @@ enum AccessKeyOp {
 
 struct AccountIndexer {
     pool: PgPool,
-    pending_transactions: Vec<TransactionRow>,
+    pending_transaction_counts: KeyTypeCounts,
     pending_signers: HashSet<AccountId>,
     pending_access_key_ops: Vec<AccessKeyOp>,
+    last_seen_hour: Option<DateTime<Utc>>,
 }
 
 impl AccountIndexer {
     fn new(pool: PgPool) -> Self {
         Self {
             pool,
-            pending_transactions: Vec::new(),
+            pending_transaction_counts: KeyTypeCounts::default(),
             pending_signers: HashSet::new(),
             pending_access_key_ops: Vec::new(),
+            last_seen_hour: None,
         }
+    }
+
+    fn discard_pending(&mut self) {
+        self.pending_transaction_counts = KeyTypeCounts::default();
+        self.pending_signers.clear();
+        self.pending_access_key_ops.clear();
     }
 }
 
@@ -60,15 +86,10 @@ impl Indexer for AccountIndexer {
     async fn process_transaction(
         &mut self,
         transaction: &IndexerTransactionWithOutcome,
-        block: &StreamerMessage,
+        _block: &StreamerMessage,
     ) -> Result<(), Self::Error> {
-        let block_timestamp =
-            DateTime::from_timestamp_nanos(block.block.header.timestamp_nanosec as i64);
-        self.pending_transactions.push(TransactionRow {
-            tx_hash: transaction.transaction.hash,
-            block_timestamp,
-            key_type: transaction.transaction.public_key.key_type(),
-        });
+        self.pending_transaction_counts
+            .record(transaction.transaction.public_key.key_type());
         self.pending_signers
             .insert(transaction.transaction.signer_id.clone());
         Ok(())
@@ -116,93 +137,123 @@ impl Indexer for AccountIndexer {
     }
 
     async fn process_block_end(&mut self, block: &StreamerMessage) -> Result<(), Self::Error> {
+        let block_height = block.block.header.height as i64;
         let block_timestamp =
             DateTime::from_timestamp_nanos(block.block.header.timestamp_nanosec as i64);
         let hour = truncate_to_hour(block_timestamp);
 
-        for op in self.pending_access_key_ops.drain(..) {
-            match op {
-                AccessKeyOp::Insert(key_handle, account_id) => {
+        let mut db_transaction = self
+            .pool
+            .begin()
+            .await
+            .expect("begin block transaction failed");
+
+        let last_applied_height =
+            sqlx::query_scalar!("SELECT last_block_height FROM indexer_progress WHERE id")
+                .fetch_optional(&mut *db_transaction)
+                .await
+                .expect("read indexer_progress failed");
+        if last_applied_height.is_some_and(|applied| applied >= block_height) {
+            self.discard_pending();
+            return Ok(());
+        }
+
+        for op_group in group_consecutive_ops(std::mem::take(&mut self.pending_access_key_ops)) {
+            match op_group {
+                AccessKeyOpGroup::Insert {
+                    key_handles,
+                    account_ids,
+                } => {
                     sqlx::query!(
-                        "INSERT INTO access_keys (key_handle, account_id) VALUES ($1, $2)",
-                        key_handle.to_string(),
-                        account_id.as_str()
+                        "WITH inserted AS (
+                             INSERT INTO access_keys (key_handle, account_id)
+                             SELECT * FROM UNNEST($1::text[], $2::text[])
+                             ON CONFLICT DO NOTHING
+                             RETURNING account_id, key_handle
+                         ), deltas AS (
+                             SELECT account_id,
+                                    count(*)::int AS added_keys,
+                                    count(*) FILTER (WHERE key_handle LIKE 'ml-dsa-65-hash:%')::int
+                                        AS added_pq_keys
+                             FROM inserted
+                             GROUP BY account_id
+                         )
+                         INSERT INTO account_key_counts (account_id, full_access_key_count, pq_key_count)
+                         SELECT account_id, added_keys, added_pq_keys FROM deltas
+                         ON CONFLICT (account_id) DO UPDATE SET
+                             full_access_key_count = account_key_counts.full_access_key_count
+                                 + EXCLUDED.full_access_key_count,
+                             pq_key_count = account_key_counts.pq_key_count + EXCLUDED.pq_key_count",
+                        &key_handles,
+                        &account_ids
                     )
-                    .execute(&self.pool)
+                    .execute(&mut *db_transaction)
                     .await
-                    .expect("insert_access_key: unexpected duplicate (key_handle, account_id)");
+                    .expect("insert_access_keys failed");
                 }
-                AccessKeyOp::Delete(key_handle, account_id) => {
+                AccessKeyOpGroup::Delete {
+                    key_handles,
+                    account_ids,
+                } => {
                     sqlx::query!(
-                        "DELETE FROM access_keys WHERE key_handle = $1 AND account_id = $2",
-                        key_handle.to_string(),
-                        account_id.as_str()
+                        "WITH deleted AS (
+                             DELETE FROM access_keys
+                             WHERE (key_handle, account_id)
+                                 IN (SELECT * FROM UNNEST($1::text[], $2::text[]))
+                             RETURNING account_id, key_handle
+                         ), deltas AS (
+                             SELECT account_id,
+                                    count(*)::int AS removed_keys,
+                                    count(*) FILTER (WHERE key_handle LIKE 'ml-dsa-65-hash:%')::int
+                                        AS removed_pq_keys
+                             FROM deleted
+                             GROUP BY account_id
+                         )
+                         UPDATE account_key_counts SET
+                             full_access_key_count = account_key_counts.full_access_key_count
+                                 - deltas.removed_keys,
+                             pq_key_count = account_key_counts.pq_key_count - deltas.removed_pq_keys
+                         FROM deltas
+                         WHERE account_key_counts.account_id = deltas.account_id",
+                        &key_handles,
+                        &account_ids
                     )
-                    .execute(&self.pool)
+                    .execute(&mut *db_transaction)
                     .await
-                    .expect("delete_access_key failed");
+                    .expect("delete_access_keys failed");
                 }
-                AccessKeyOp::WipeAccount(account_id) => {
+                AccessKeyOpGroup::WipeAccount { account_ids } => {
                     sqlx::query!(
-                        "DELETE FROM access_keys WHERE account_id = $1",
-                        account_id.as_str()
+                        "DELETE FROM access_keys WHERE account_id = ANY($1::text[])",
+                        &account_ids
                     )
-                    .execute(&self.pool)
+                    .execute(&mut *db_transaction)
                     .await
-                    .expect("delete_access_keys_for_account failed");
+                    .expect("delete_access_keys_for_accounts failed");
+                    sqlx::query!(
+                        "DELETE FROM account_key_counts WHERE account_id = ANY($1::text[])",
+                        &account_ids
+                    )
+                    .execute(&mut *db_transaction)
+                    .await
+                    .expect("delete_account_key_counts failed");
                 }
             }
         }
 
-        if !self.pending_transactions.is_empty() {
-            let tx_hashes: Vec<Vec<u8>> = self
-                .pending_transactions
-                .iter()
-                .map(|row| row.tx_hash.0.to_vec())
-                .collect();
-            let block_timestamps: Vec<DateTime<Utc>> = self
-                .pending_transactions
-                .iter()
-                .map(|row| row.block_timestamp)
-                .collect();
-            let key_types: Vec<String> = self
-                .pending_transactions
-                .iter()
-                .map(|row| row.key_type.to_string())
-                .collect();
-            sqlx::query!(
-                "INSERT INTO transactions (tx_hash, block_timestamp, key_type)
-                 SELECT * FROM UNNEST($1::bytea[], $2::timestamptz[], $3::text[])",
-                &tx_hashes,
-                &block_timestamps,
-                &key_types
-            )
-            .execute(&self.pool)
-            .await
-            .expect("insert_transactions: unexpected duplicate tx_hash");
-
-            let mut ed25519_count = 0i64;
-            let mut secp256k1_count = 0i64;
-            let mut ml_dsa_65_count = 0i64;
-            for row in &self.pending_transactions {
-                match row.key_type {
-                    KeyType::ED25519 => ed25519_count += 1,
-                    KeyType::SECP256K1 => secp256k1_count += 1,
-                    KeyType::MLDSA65 => ml_dsa_65_count += 1,
-                }
+        let mut hours = Vec::new();
+        let mut key_types = Vec::new();
+        let mut transaction_counts = Vec::new();
+        for (key_type, count) in self.pending_transaction_counts.per_key_type() {
+            if count == 0 {
+                continue;
             }
-            let mut hours = Vec::new();
-            let mut key_types = Vec::new();
-            let mut transaction_counts = Vec::new();
-            for (key_type, count) in [
-                (KeyType::ED25519, ed25519_count),
-                (KeyType::SECP256K1, secp256k1_count),
-                (KeyType::MLDSA65, ml_dsa_65_count),
-            ] {
-                hours.push(hour);
-                key_types.push(key_type.to_string());
-                transaction_counts.push(count);
-            }
+            hours.push(hour);
+            key_types.push(key_type.to_string());
+            transaction_counts.push(count);
+        }
+        self.pending_transaction_counts = KeyTypeCounts::default();
+        if !hours.is_empty() {
             sqlx::query!(
                 "INSERT INTO hourly_key_type_stats (hour, key_type, transaction_count)
                  SELECT * FROM UNNEST($1::timestamptz[], $2::text[], $3::bigint[])
@@ -212,31 +263,16 @@ impl Indexer for AccountIndexer {
                 &key_types,
                 &transaction_counts
             )
-            .execute(&self.pool)
+            .execute(&mut *db_transaction)
             .await
             .expect("upsert_hourly_key_type_stats failed");
-            self.pending_transactions.clear();
         }
 
-        for account_id in &self.pending_signers {
-            sqlx::query!(
-                "INSERT INTO active_accounts (account_id, last_transaction_timestamp)
-                 VALUES ($1, $2)
-                 ON CONFLICT (account_id) DO UPDATE SET
-                     last_transaction_timestamp = EXCLUDED.last_transaction_timestamp
-                 WHERE EXCLUDED.last_transaction_timestamp > active_accounts.last_transaction_timestamp",
-                account_id.as_str(),
-                block_timestamp
-            )
-            .execute(&self.pool)
-            .await
-            .expect("upsert_active_account failed");
-        }
         if !self.pending_signers.is_empty() {
-            let account_ids: Vec<AccountId> = self.pending_signers.drain().collect();
-            let account_id_strings: Vec<&str> = account_ids
-                .iter()
-                .map(|account_id| account_id.as_str())
+            let account_ids: Vec<String> = self
+                .pending_signers
+                .drain()
+                .map(|account_id| account_id.to_string())
                 .collect();
             let hours = vec![hour; account_ids.len()];
             sqlx::query!(
@@ -244,21 +280,103 @@ impl Indexer for AccountIndexer {
                  SELECT * FROM UNNEST($1::timestamptz[], $2::text[])
                  ON CONFLICT DO NOTHING",
                 &hours,
-                &account_id_strings as &[&str]
+                &account_ids
             )
-            .execute(&self.pool)
+            .execute(&mut *db_transaction)
             .await
             .expect("record_hourly_active_accounts failed");
         }
 
-        if truncate_to_hour(block_timestamp + chrono::Duration::minutes(1)) != hour
-            || block.block.header.height.is_multiple_of(100)
-        {
-            upsert_hourly_stats(&self.pool, hour).await;
+        let hour_changed = self.last_seen_hour != Some(hour);
+        if hour_changed {
+            finalize_past_hours(&mut db_transaction, hour).await;
         }
+        if hour_changed || block.block.header.height.is_multiple_of(100) {
+            upsert_hourly_stats(&mut db_transaction, hour).await;
+        }
+
+        sqlx::query!(
+            "INSERT INTO indexer_progress (id, last_block_height) VALUES (TRUE, $1)
+             ON CONFLICT (id) DO UPDATE SET last_block_height = EXCLUDED.last_block_height",
+            block_height
+        )
+        .execute(&mut *db_transaction)
+        .await
+        .expect("upsert_indexer_progress failed");
+
+        db_transaction
+            .commit()
+            .await
+            .expect("commit block transaction failed");
+        self.last_seen_hour = Some(hour);
 
         Ok(())
     }
+}
+
+enum AccessKeyOpGroup {
+    Insert {
+        key_handles: Vec<String>,
+        account_ids: Vec<String>,
+    },
+    Delete {
+        key_handles: Vec<String>,
+        account_ids: Vec<String>,
+    },
+    WipeAccount {
+        account_ids: Vec<String>,
+    },
+}
+
+/// Merges runs of same-kind operations into batched statements. Only consecutive
+/// operations are merged, because a key added and then deleted within the same block
+/// must still be applied in that order.
+fn group_consecutive_ops(ops: Vec<AccessKeyOp>) -> Vec<AccessKeyOpGroup> {
+    let mut groups: Vec<AccessKeyOpGroup> = Vec::new();
+    for op in ops {
+        match op {
+            AccessKeyOp::Insert(key_handle, account_id) => {
+                if let Some(AccessKeyOpGroup::Insert {
+                    key_handles,
+                    account_ids,
+                }) = groups.last_mut()
+                {
+                    key_handles.push(key_handle.to_string());
+                    account_ids.push(account_id.to_string());
+                } else {
+                    groups.push(AccessKeyOpGroup::Insert {
+                        key_handles: vec![key_handle.to_string()],
+                        account_ids: vec![account_id.to_string()],
+                    });
+                }
+            }
+            AccessKeyOp::Delete(key_handle, account_id) => {
+                if let Some(AccessKeyOpGroup::Delete {
+                    key_handles,
+                    account_ids,
+                }) = groups.last_mut()
+                {
+                    key_handles.push(key_handle.to_string());
+                    account_ids.push(account_id.to_string());
+                } else {
+                    groups.push(AccessKeyOpGroup::Delete {
+                        key_handles: vec![key_handle.to_string()],
+                        account_ids: vec![account_id.to_string()],
+                    });
+                }
+            }
+            AccessKeyOp::WipeAccount(account_id) => {
+                if let Some(AccessKeyOpGroup::WipeAccount { account_ids }) = groups.last_mut() {
+                    account_ids.push(account_id.to_string());
+                } else {
+                    groups.push(AccessKeyOpGroup::WipeAccount {
+                        account_ids: vec![account_id.to_string()],
+                    });
+                }
+            }
+        }
+    }
+    groups
 }
 
 fn truncate_to_hour(timestamp: DateTime<Utc>) -> DateTime<Utc> {
@@ -269,41 +387,53 @@ fn truncate_to_hour(timestamp: DateTime<Utc>) -> DateTime<Utc> {
         .and_utc()
 }
 
-async fn upsert_hourly_stats(pool: &PgPool, hour: DateTime<Utc>) {
-    let adoption = sqlx::query!(
-        "WITH accounts_this_hour AS (
-            SELECT account_id FROM hourly_active_accounts WHERE hour = $1
-        ),
-        classified AS (
-            SELECT a.account_id,
-                   COUNT(*) AS total_keys,
-                   COUNT(*) FILTER (WHERE ak.key_handle LIKE 'ml-dsa-65-hash:%') AS pq_keys
-            FROM accounts_this_hour a
-            JOIN access_keys ak ON ak.account_id = a.account_id
-            GROUP BY a.account_id
-        )
-        SELECT
-            (SELECT COUNT(*) FROM accounts_this_hour) AS active_accounts_count,
-            COUNT(*) FILTER (WHERE total_keys = pq_keys) AS exclusively_pq_accounts_count
-        FROM classified",
-        hour
-    )
-    .fetch_one(pool)
-    .await
-    .expect("compute hourly PQ adoption failed");
+async fn upsert_hourly_stats(db_transaction: &mut Transaction<'_, Postgres>, hour: DateTime<Utc>) {
     sqlx::query!(
         "INSERT INTO hourly_stats (hour, active_accounts_count, exclusively_pq_accounts_count)
-         VALUES ($1, $2, $3)
+         SELECT $1::timestamptz, count(*), count(*) FILTER (WHERE c.is_exclusively_pq)
+         FROM hourly_active_accounts h
+         LEFT JOIN account_key_counts c ON c.account_id = h.account_id
+         WHERE h.hour = $1
          ON CONFLICT (hour) DO UPDATE SET
              active_accounts_count = EXCLUDED.active_accounts_count,
              exclusively_pq_accounts_count = EXCLUDED.exclusively_pq_accounts_count",
-        hour,
-        adoption.active_accounts_count,
-        adoption.exclusively_pq_accounts_count
+        hour
     )
-    .execute(pool)
+    .execute(&mut **db_transaction)
     .await
     .expect("upsert_hourly_stats failed");
+}
+
+/// Writes the final numbers for every hour that has already elapsed, then drops their
+/// per-account rows: only the current hour is ever recomputed, so the membership of
+/// earlier hours is no longer needed.
+async fn finalize_past_hours(
+    db_transaction: &mut Transaction<'_, Postgres>,
+    current_hour: DateTime<Utc>,
+) {
+    sqlx::query!(
+        "INSERT INTO hourly_stats (hour, active_accounts_count, exclusively_pq_accounts_count)
+         SELECT h.hour, count(*), count(*) FILTER (WHERE c.is_exclusively_pq)
+         FROM hourly_active_accounts h
+         LEFT JOIN account_key_counts c ON c.account_id = h.account_id
+         WHERE h.hour < $1
+         GROUP BY h.hour
+         ON CONFLICT (hour) DO UPDATE SET
+             active_accounts_count = EXCLUDED.active_accounts_count,
+             exclusively_pq_accounts_count = EXCLUDED.exclusively_pq_accounts_count",
+        current_hour
+    )
+    .execute(&mut **db_transaction)
+    .await
+    .expect("finalize_past_hourly_stats failed");
+
+    sqlx::query!(
+        "DELETE FROM hourly_active_accounts WHERE hour < $1",
+        current_hour
+    )
+    .execute(&mut **db_transaction)
+    .await
+    .expect("prune_hourly_active_accounts failed");
 }
 
 #[tokio::main]
