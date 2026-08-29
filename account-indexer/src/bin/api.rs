@@ -20,7 +20,7 @@ use dotenvy::dotenv;
 use near_min_api::{
     QueryFinality, RpcClient,
     types::{
-        AccountId, Finality,
+        AccountId, Finality, HandlerError, RpcError, RpcErrorKind, RpcQueryError,
         near_crypto::{KeyType, ParseKeyError, PublicKey, PublicKeyHandle},
     },
 };
@@ -298,6 +298,13 @@ async fn implicit_account_should_be_visible(rpc_client: &RpcClient, account_id: 
         .await
     {
         Ok(account) => account.amount.as_yoctonear() > 0,
+        Err(near_min_api::Error::JsonRpc(RpcError {
+            error_struct:
+                Some(RpcErrorKind::HandlerError(HandlerError::RpcQueryError(
+                    RpcQueryError::UnknownAccount { .. },
+                ))),
+            ..
+        })) => false,
         Err(_) => true,
     }
 }
