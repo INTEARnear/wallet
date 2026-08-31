@@ -659,7 +659,7 @@
 
     .method-tabs {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 1px;
       padding-bottom: 1px;
       background: var(--ink);
@@ -1253,7 +1253,7 @@
       <p>
         So very smart people made even more complex math, that even quantum computers cannot break, which is called "post-quantum
         cryptography", and NEAR is the first big blockchain to add support for that math natively, and teams at
-        <a href="https://wallet.meteorwallet.app">Meteor Wallet</a> and <a href="https://wallet.intear.tech">Intear Wallet</a> already
+        <a target="_blank" rel="noopener noreferrer" href="https://wallet.meteorwallet.app">Meteor Wallet</a> and <a target="_blank" rel="noopener noreferrer" href="https://wallet.intear.tech">Intear Wallet</a> already
         support using it for everyday transactions. Thanks to NEAR's access model, you can safely switch your existing accounts to
         quantum-safe keys.
       </p>
@@ -1279,13 +1279,15 @@
           <button type="button" data-method="intear" class="is-on" aria-pressed="true">Intear Wallet</button>
           <button type="button" data-method="meteor" aria-pressed="false">Meteor Wallet</button>
           <button type="button" data-method="cli" aria-pressed="false">NEAR CLI</button>
+          <button type="button" data-method="hot" aria-pressed="false">HOT Wallet</button>
+          <button type="button" data-method="mynearwallet" aria-pressed="false">MyNearWallet</button>
           <button type="button" data-method="hardware" aria-pressed="false">Hardware wallets</button>
         </div>
         <div class="method-panel" data-method-panel="intear">
           <p>
-            Open <a href="https://wallet.intear.tech">Intear Wallet</a>, navigate to Settings and click on "Switch to
+            Open <a target="_blank" rel="noopener noreferrer" href="https://wallet.intear.tech">Intear Wallet</a>, navigate to Settings and click on "Switch to
             quantum-safe key". This is a quick and safe process that will take 2 seconds, will let you keep your account ID, all assets on
-            it, and seed phrase (phrase will only work in Intear Wallet). You can switch back at any time by following the same process.
+            it, and same seed phrase (phrase will only work in Intear Wallet because <a href="https://github.com/near/NEPs/pull/649">seed phrase for post-quantum is not yet standardized</a>). You can switch back at any time by following the same process.
           </p>
         </div>
         <div class="method-panel" data-method-panel="meteor" hidden>
@@ -1298,7 +1300,7 @@
             </p>
           </aside>
           <p>
-            Open <a href="https://wallet.meteorwallet.app">Meteor Wallet</a>, navigate to Settings, click on "Security and
+            Open <a target="_blank" rel="noopener noreferrer" href="https://wallet.meteorwallet.app">Meteor Wallet</a>, navigate to Settings, click on "Security and
             Recovery", then "Manage Full Access Keys", click on "Add New Access Key", enter your password, click "Generate New Key", then
             choose "ML-DSA-65", save the long key that starts with "ml-dsa-65:", and click on "Add ml-dsa-65 key" to proceed. Then in the
             same "Manage Full Access Keys" menu, find a key that starts with "ml-dsa-65-hash:" and has "Set as Primary Key" button. Click
@@ -1312,7 +1314,7 @@
         </div>
         <div class="method-panel" data-method-panel="cli" hidden>
           <p>
-            If you're a developer, you can use <a href="https://near.cli.rs">near-cli</a> to manually rotate your account to quantum-safe
+            If you're a developer, you can use <a target="_blank" rel="noopener noreferrer" href="https://near.cli.rs">near-cli</a> to manually rotate your account to quantum-safe
             keys. First, add a new key to your account:
           </p>
           <div class="cmd">
@@ -1326,6 +1328,19 @@
             <button type="button" class="cmd-copy" data-copy="near account delete-keys &lt;ACCOUNT_ID&gt;">Copy</button>
           </div>
           <p>In the interactive mode, select the non-quantum-safe keys to delete (deleting post-quantum keys is not possible), and confirm the transaction.</p>
+        </div>
+        <div class="method-panel" data-method-panel="hot" hidden>
+          <p>
+            <a target="_blank" rel="noopener noreferrer" href="https://hot-labs.org/">HOT Wallet</a> does not support post-quantum cryptography yet, but you still have at least a few years before quantum computers will be able to break it, so you can wait until support is added.
+          </p>
+        </div>
+        <div class="method-panel" data-method-panel="mynearwallet" hidden>
+          <p>
+            <a target="_blank" rel="noopener noreferrer" href="https://app.mynearwallet.com">MyNearWallet</a> is officially deprecated by its developers. Its maintainers recommend migrating to <a target="_blank" rel="noopener noreferrer" href="https://wallet.meteorwallet.app">Meteor Wallet</a>, and they've already added support for post-quantum cryptography to it, so that's the recommended alternative, you'll have to migrate soon anyway.
+          </p>
+          <p>
+            Or if your primary reason to stay on MyNearWallet is it being open-source, <a target="_blank" rel="noopener noreferrer" href="https://wallet.intear.tech">Intear Wallet</a> is <a target="_blank" rel="noopener noreferrer" href="https://github.com/INTEARnear/wallet">open-source</a> and has post-quantum support. It's actually even more open, since you can self-host the wallet and connect a self-hosted wallet to dApps.
+          </p>
         </div>
         <div class="method-panel" data-method-panel="hardware" hidden>
           <p>
@@ -1367,13 +1382,13 @@
       <p class="validator-caption" id="validator-caption">&nbsp;</p>
       <p>Validators are the second-most security-critical piece, right after your own wallet. If 67% of validators are hacked, they can take over the blockchain, and 34% can bring the blockchain to a temporary halt, that's why it's important that validators are using quantum-safe keys.</p>
       <p>At the moment, pool.near validators don't have the ability to use post-quantum keys, but this will be changed, as pool.near pools are upgradable.</p>
-      <p>poolv1.near pools are not upgradable, and that's something NEAR will have to solve as part of the <a href="https://www.near.org/blog/near-quantum-safe-roadmap">Roadmap to Post-Quantum Security</a>.</p>
+      <p>poolv1.near pools are not upgradable, and that's something NEAR will have to solve as part of the <a target="_blank" rel="noopener noreferrer" href="https://www.near.org/blog/near-quantum-safe-roadmap">Roadmap to Post-Quantum Security</a>.</p>
     </section>
 
     <section class="chain-sigs">
       <span class="chain-sigs-kicker">Not quantum-safe</span>
       <h2>Chain Signatures</h2>
-      <p>Can't produce signatures for post-quantum blockchains, can't securely bring data from other chains. Research is ongoing into post-quantum thresholded signatures, and other blockchains must go post-quantum too, since mutual post-quantum trust can't exist with a blockchain that is prone to quantum attacks. Read <a href="https://www.near.org/blog/near-quantum-safe-roadmap">NEAR's Roadmap to Post-Quantum Security</a> for more details.</p>
+      <p>Can't produce signatures for post-quantum blockchains, can't securely bring data from other chains. Research is ongoing into post-quantum thresholded signatures, and other blockchains must go post-quantum too, since mutual post-quantum trust can't exist with a blockchain that is prone to quantum attacks. Read <a target="_blank" rel="noopener noreferrer" href="https://www.near.org/blog/near-quantum-safe-roadmap">NEAR's Roadmap to Post-Quantum Security</a> for more details.</p>
     </section>
 
     <section class="tally">
@@ -1400,7 +1415,7 @@
     <footer>
       <span>An account counts as quantum-safe when every full-access key on it is using ML-DSA-65. If an account still has a
         non-quantum-safe key, even if not used, puts the account at risk.</span>
-      <span>Dashboard developed and data aggregated by <a href="https://wallet.intear.tech">Intear Wallet</a> as part of 8888 initiative. Migrate
+      <span>Dashboard developed and data aggregated by <a target="_blank" rel="noopener noreferrer" href="https://wallet.intear.tech">Intear Wallet</a> as part of <a target="_blank" rel="noopener noreferrer" href="https://8888.markets">8888</a>. Migrate
         your existing accounts to quantum-safe keys today!</span>
     </footer>
   </div>
@@ -1860,20 +1875,34 @@
     });
 
     const MILESTONES = [0, 0.08, 0.88, 8.88, 88.88];
-    const LOG_FLOOR = 0.008;
-    const LOG_CEIL = 100;
+    const SCALE_VALUES = [0.001, 0.08, 0.88, 8.88, 88.88, 100];
+    const LAST_LABEL_POSITION = Math.log(88.88 / 0.008) / Math.log(100 / 0.008);
+
+    function scalePosition(index) {
+      if (index >= SCALE_VALUES.length - 1) return 1;
+      return (index / (MILESTONES.length - 1)) * LAST_LABEL_POSITION;
+    }
 
     function progressPosition(percent) {
       if (percent <= 0) return 0;
-      if (percent >= LOG_CEIL) return 1;
-      const value = Math.max(percent, LOG_FLOOR);
-      return (Math.log(value) - Math.log(LOG_FLOOR)) / (Math.log(LOG_CEIL) - Math.log(LOG_FLOOR));
+      if (percent >= 100) return 1;
+      const value = Math.max(percent, SCALE_VALUES[0]);
+      let index = 0;
+      while (index < SCALE_VALUES.length - 2 && value >= SCALE_VALUES[index + 1]) {
+        index += 1;
+      }
+      const start = SCALE_VALUES[index];
+      const end = SCALE_VALUES[index + 1];
+      const t = Math.log(value / start) / Math.log(end / start);
+      const from = scalePosition(index);
+      const to = scalePosition(index + 1);
+      return from + (to - from) * Math.min(1, Math.max(0, t));
     }
 
     function placeCheckpoints() {
       const marks = document.querySelectorAll("#progress .progress-mark");
-      MILESTONES.forEach((milestone, index) => {
-        const left = (progressPosition(milestone) * 100) + "%";
+      MILESTONES.forEach((_, index) => {
+        const left = (scalePosition(index) * 100) + "%";
         if (marks[index]) marks[index].style.left = left;
         if (progressLabelEls[index]) progressLabelEls[index].style.left = left;
       });
@@ -1916,7 +1945,7 @@
       verdictEl.classList.toggle("is-yes", verdict === "YES! WE'RE SAVED!");
       setProgress(percent);
       const range = formatWindow(recentHours[0].hour, recentHours[recentHours.length - 1].hour);
-      if (hourRangeEl.textContent !== range) hourRangeEl.textContent = range;
+      if (hourRangeEl.textContent !== range) hourRangeEl.textContent = range + " (log scale)";
     }
 
     function setTallyFigure(element, text) {
