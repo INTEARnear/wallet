@@ -683,10 +683,400 @@ pub enum Error {
     Reqwest(reqwest::Error),
     #[error("RPC returned an error: {0:?}")]
     JsonRpc(RpcError),
-    #[error("RPC returned an error: {0:?}")]
+    #[error("RPC returned an unprocessable response: {0:?}. Response: {1:?}")]
     JsonRpcDeserialization(serde_json::Error, serde_json::Value),
     #[error("No RPC URLs provided in RpcClient")]
     NoRpcUrls,
     #[error("Query error: {0:?}")]
     OtherQueryError(String),
+}
+
+#[cfg(test)]
+mod live_rpc_tests {
+    use super::*;
+
+    const LIVE_RPC_URL: &str = "https://rpc.intea.rs";
+    const WRAP_NEAR: &str = "wrap.near";
+    const AURORA: &str = "aurora";
+    const NEAR: &str = "near";
+
+    struct LiveRpc {
+        _guard: tokio::sync::MutexGuard<'static, ()>,
+        client: RpcClient,
+    }
+
+    async fn live_rpc() -> LiveRpc {
+        static LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+        let guard = LOCK.lock().await;
+        LiveRpc {
+            _guard: guard,
+            client: RpcClient::new([LIVE_RPC_URL])
+                .with_max_retries(4)
+                .with_exponential_backoff_settings(Duration::from_millis(500), 2.0),
+        }
+    }
+
+    fn wrap_near() -> AccountId {
+        WRAP_NEAR.parse().unwrap()
+    }
+
+    fn aurora() -> AccountId {
+        AURORA.parse().unwrap()
+    }
+
+    fn near() -> AccountId {
+        NEAR.parse().unwrap()
+    }
+
+    fn format_rpc_response(response: &serde_json::Value) -> String {
+        let pretty =
+            serde_json::to_string_pretty(response).unwrap_or_else(|_| response.to_string());
+        const MAX_CHARS: usize = 4000;
+        if pretty.len() <= MAX_CHARS {
+            pretty
+        } else {
+            format!(
+                "{}… (truncated {} chars)",
+                &pretty[..MAX_CHARS],
+                pretty.len()
+            )
+        }
+    }
+
+    fn unwrap_rpc<T: std::fmt::Debug>(method: &str, result: Result<T, Error>) -> T {
+        match result {
+            Ok(value) => value,
+            Err(Error::JsonRpcDeserialization(error, response)) => {
+                panic!(
+                    "{method}: response deserialization failed: {error}\n{}",
+                    format_rpc_response(&response)
+                );
+            }
+            Err(error) => panic!("{method}: request failed: {error:?}"),
+        }
+    }
+
+    async fn latest_tx_hash(client: &RpcClient) -> CryptoHash {
+        let mut block = unwrap_rpc(
+            "block",
+            client
+                .block(BlockReference::Finality(Finality::Final))
+                .await,
+        );
+        for _ in 0..30 {
+            for chunk_header in &block.chunks {
+                if chunk_header.height_included != block.header.height {
+                    continue;
+                }
+                let chunk: serde_json::Value = unwrap_rpc(
+                    "chunk",
+                    client
+                        .request(
+                            "chunk",
+                            serde_json::json!({ "chunk_id": chunk_header.chunk_hash }),
+                        )
+                        .await,
+                );
+                if let Some(hash) = chunk
+                    .get("transactions")
+                    .and_then(|transactions| transactions.as_array())
+                    .and_then(|transactions| transactions.first())
+                    .and_then(|transaction| transaction.get("hash"))
+                    .and_then(|hash| hash.as_str())
+                {
+                    return hash.parse().expect("chunk transaction hash");
+                }
+            }
+            block = unwrap_rpc(
+                "block",
+                client
+                    .block(BlockReference::BlockId(BlockId::Hash(
+                        block.header.prev_hash,
+                    )))
+                    .await,
+            );
+        }
+        panic!("no transactions found in recent blocks");
+    }
+
+    #[tokio::test]
+    async fn status() {
+        let rpc = live_rpc().await;
+        let status = unwrap_rpc("status", rpc.client.status().await);
+        assert!(!status.chain_id.is_empty());
+        assert!(status.protocol_version > 0);
+        assert!(status.sync_info.latest_block_height > 0);
+    }
+
+    #[tokio::test]
+    async fn block() {
+        let rpc = live_rpc().await;
+        let client = &rpc.client;
+        let final_block = unwrap_rpc(
+            "block",
+            client
+                .block(BlockReference::Finality(Finality::Final))
+                .await,
+        );
+        assert!(final_block.header.height > 0);
+        assert!(!final_block.chunks.is_empty());
+
+        let by_hash = unwrap_rpc(
+            "block",
+            client
+                .block(BlockReference::BlockId(BlockId::Hash(
+                    final_block.header.hash,
+                )))
+                .await,
+        );
+        assert_eq!(by_hash.header.hash, final_block.header.hash);
+
+        let by_height = unwrap_rpc(
+            "block",
+            client
+                .block(BlockReference::BlockId(BlockId::Height(
+                    final_block.header.height,
+                )))
+                .await,
+        );
+        assert_eq!(by_height.header.height, final_block.header.height);
+    }
+
+    #[tokio::test]
+    async fn validators() {
+        let rpc = live_rpc().await;
+        let client = &rpc.client;
+        let latest = unwrap_rpc(
+            "validators",
+            client.validators(EpochReference::Latest).await,
+        );
+        assert!(!latest.current_validators.is_empty());
+        assert!(latest.epoch_height > 0);
+
+        let block = unwrap_rpc(
+            "block",
+            client
+                .block(BlockReference::Finality(Finality::Final))
+                .await,
+        );
+        let by_block = unwrap_rpc(
+            "validators",
+            client
+                .validators(EpochReference::BlockId(BlockId::Hash(block.header.hash)))
+                .await,
+        );
+        assert_eq!(by_block.epoch_height, latest.epoch_height);
+    }
+
+    #[tokio::test]
+    async fn query_view_account() {
+        let rpc = live_rpc().await;
+        let client = &rpc.client;
+        let account = unwrap_rpc(
+            "query",
+            client
+                .view_account(wrap_near(), QueryFinality::Finality(Finality::Final))
+                .await,
+        );
+        assert!(account.storage_usage > 0);
+
+        let response: QueryResponse = unwrap_rpc(
+            "query",
+            client
+                .request(
+                    "query",
+                    Query {
+                        request: QueryRequest::ViewAccount {
+                            account_id: wrap_near(),
+                        },
+                        finality: QueryFinality::Finality(Finality::Final),
+                    },
+                )
+                .await,
+        );
+        assert!(matches!(response.kind, QueryResponseKind::ViewAccount(_)));
+        assert!(response.block_height > 0);
+    }
+
+    #[tokio::test]
+    async fn query_view_code() {
+        let rpc = live_rpc().await;
+        let client = &rpc.client;
+        let code = unwrap_rpc(
+            "query",
+            client
+                .view_code(wrap_near(), QueryFinality::Finality(Finality::Final))
+                .await,
+        );
+        assert!(!code.code.is_empty());
+
+        let response: QueryResponse = unwrap_rpc(
+            "query",
+            client
+                .request(
+                    "query",
+                    Query {
+                        request: QueryRequest::ViewCode {
+                            account_id: wrap_near(),
+                        },
+                        finality: QueryFinality::Finality(Finality::Final),
+                    },
+                )
+                .await,
+        );
+        assert!(matches!(response.kind, QueryResponseKind::ViewCode(_)));
+    }
+
+    #[tokio::test]
+    async fn query_call_function() {
+        let rpc = live_rpc().await;
+        let metadata: serde_json::Value = match rpc
+            .client
+            .call(
+                wrap_near(),
+                "ft_metadata",
+                serde_json::json!({}),
+                QueryFinality::Finality(Finality::Final),
+            )
+            .await
+        {
+            Ok(value) => value,
+            Err(CallError::Rpc(Error::JsonRpcDeserialization(error, response))) => {
+                panic!(
+                    "query: response deserialization failed: {error}\n{}",
+                    format_rpc_response(&response)
+                );
+            }
+            Err(error) => panic!("query: request failed: {error:?}"),
+        };
+        assert_eq!(metadata["symbol"], "wNEAR");
+    }
+
+    #[tokio::test]
+    async fn query_view_state() {
+        let rpc = live_rpc().await;
+        let state = unwrap_rpc(
+            "query",
+            rpc.client
+                .view_state(
+                    near(),
+                    b"\xffintear-missing-prefix",
+                    QueryFinality::Finality(Finality::Final),
+                )
+                .await,
+        );
+        assert!(state.values.is_empty());
+    }
+
+    #[tokio::test]
+    async fn query_view_access_key_list() {
+        let rpc = live_rpc().await;
+        let keys = unwrap_rpc(
+            "query",
+            rpc.client
+                .view_access_key_list(aurora(), QueryFinality::Finality(Finality::Final))
+                .await,
+        );
+        assert!(!keys.keys.is_empty());
+    }
+
+    #[tokio::test]
+    async fn query_view_access_key() {
+        let rpc = live_rpc().await;
+        let client = &rpc.client;
+        let keys = unwrap_rpc(
+            "query",
+            client
+                .view_access_key_list(aurora(), QueryFinality::Finality(Finality::Final))
+                .await,
+        );
+        let public_key = keys
+            .keys
+            .iter()
+            .find_map(|key| key.public_key.full_pubkey())
+            .expect("aurora should have an ed25519 or secp256k1 access key");
+        let _access_key = unwrap_rpc(
+            "query",
+            client
+                .get_access_key(
+                    aurora(),
+                    public_key,
+                    QueryFinality::Finality(Finality::Final),
+                )
+                .await,
+        );
+    }
+
+    #[tokio::test]
+    async fn intear_batch_query() {
+        let rpc = live_rpc().await;
+        let responses = unwrap_rpc(
+            "INTEAR_batch_query",
+            rpc.client
+                .INTEAR_batch_query(vec![
+                    Query {
+                        request: QueryRequest::ViewAccount {
+                            account_id: wrap_near(),
+                        },
+                        finality: QueryFinality::Finality(Finality::Final),
+                    },
+                    Query {
+                        request: QueryRequest::CallFunction {
+                            account_id: wrap_near(),
+                            method_name: "ft_metadata".to_string(),
+                            args: serde_json::to_vec(&serde_json::json!({})).unwrap().into(),
+                        },
+                        finality: QueryFinality::Finality(Finality::Final),
+                    },
+                ])
+                .await,
+        );
+        assert_eq!(responses.len(), 2);
+        match &responses[0] {
+            ResultOrError::Result(response) => {
+                assert!(matches!(response.kind, QueryResponseKind::ViewAccount(_)));
+            }
+            ResultOrError::Error(error) => {
+                panic!("INTEAR_batch_query account query failed: {error:?}")
+            }
+        }
+        match &responses[1] {
+            ResultOrError::Result(response) => {
+                assert!(matches!(response.kind, QueryResponseKind::CallResult(_)));
+            }
+            ResultOrError::Error(error) => {
+                panic!("INTEAR_batch_query call query failed: {error:?}")
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn tx() {
+        let rpc = live_rpc().await;
+        let tx_hash = latest_tx_hash(&rpc.client).await;
+        let details = unwrap_rpc("tx", rpc.client.tx(tx_hash).await);
+        assert!(details.final_execution_status >= TxExecutionStatus::Included);
+    }
+
+    #[tokio::test]
+    async fn experimental_tx_status() {
+        let rpc = live_rpc().await;
+        let tx_hash = latest_tx_hash(&rpc.client).await;
+        let details = unwrap_rpc(
+            "EXPERIMENTAL_tx_status",
+            rpc.client.EXPERIMENTAL_tx_status(tx_hash).await,
+        );
+        assert!(details.final_execution_status >= TxExecutionStatus::Included);
+        let outcome = details
+            .final_execution_outcome
+            .expect("finalized transaction should include an execution outcome");
+        assert!(
+            !outcome
+                .final_outcome
+                .transaction
+                .signer_id
+                .as_str()
+                .is_empty()
+        );
+    }
 }

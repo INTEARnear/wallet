@@ -11,6 +11,7 @@ use near_crypto::{PublicKey, PublicKeyHandle, Signature, Signer};
 use serde::de::Error as DeError;
 use serde::ser::Error as SerError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_with::DisplayFromStr;
 use serde_with::base64::Base64;
 use sha2::Digest;
 use std::borrow::{Borrow, Cow};
@@ -6403,6 +6404,7 @@ fn default_is_promise() -> bool {
 }
 
 /// Information about this epoch validators and next epoch validators
+#[serde_as]
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct EpochValidatorInfo {
     /// Validators for the current epoch
@@ -6423,6 +6425,7 @@ pub struct EpochValidatorInfo {
     pub epoch_height: EpochHeight,
     /// Per-validator rewards paid out at the start of the previous epoch.
     #[serde(default)]
+    #[serde_as(as = "HashMap<_, DisplayFromStr>")]
     pub validator_reward_paid_prev_epoch: HashMap<AccountId, Balance>,
 }
 
