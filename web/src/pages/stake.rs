@@ -948,11 +948,6 @@ fn ValidatorCard(
 }
 
 #[derive(Deserialize)]
-struct LinearSummary {
-    ft_price: NearToken,
-}
-
-#[derive(Deserialize)]
 struct MetaPoolState {
     st_near_price: NearToken,
 }
@@ -1016,19 +1011,6 @@ async fn fetch_metapool_rate(rpc_client: &RpcClient, height: u64) -> Result<BigD
     Ok(BigDecimal::from(state.st_near_price.as_yoctonear()))
 }
 
-async fn fetch_linear_rate(rpc_client: &RpcClient, height: u64) -> Result<BigDecimal, String> {
-    let summary: LinearSummary = rpc_client
-        .call::<LinearSummary>(
-            "linear-protocol.near".parse().unwrap(),
-            "get_summary",
-            serde_json::json!({}),
-            QueryFinality::BlockId(BlockId::Height(height)),
-        )
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(BigDecimal::from(summary.ft_price.as_yoctonear()))
-}
-
 async fn fetch_rhea_rate(rpc_client: &RpcClient, height: u64) -> Result<BigDecimal, String> {
     let summary: RheaSummary = rpc_client
         .call::<RheaSummary>(
@@ -1044,7 +1026,7 @@ async fn fetch_rhea_rate(rpc_client: &RpcClient, height: u64) -> Result<BigDecim
 
 async fn compute_liquid_staking_apys(
     rpc_client: &RpcClient,
-) -> Result<[Option<BigDecimal>; 3], String> {
+) -> Result<[Option<BigDecimal>; 2], String> {
     const SECONDS_IN_YEAR: u64 = 60 * 60 * 24 * 365;
 
     let (block_now, block_prev) = fetch_blocks_for_lst_comparison(rpc_client).await?;
@@ -1053,18 +1035,9 @@ async fn compute_liquid_staking_apys(
     let timestamp_now = block_now.header.timestamp_nanosec / 1_000_000_000;
     let timestamp_prev = block_prev.header.timestamp_nanosec / 1_000_000_000;
 
-    let (
-        metapool_now_res,
-        metapool_prev_res,
-        linear_now_res,
-        linear_prev_res,
-        rhea_now_res,
-        rhea_prev_res,
-    ) = futures_util::join!(
+    let (metapool_now_res, metapool_prev_res, rhea_now_res, rhea_prev_res) = futures_util::join!(
         fetch_metapool_rate(rpc_client, height_now),
         fetch_metapool_rate(rpc_client, height_prev),
-        fetch_linear_rate(rpc_client, height_now),
-        fetch_linear_rate(rpc_client, height_prev),
         fetch_rhea_rate(rpc_client, height_now),
         fetch_rhea_rate(rpc_client, height_prev)
     );
@@ -1085,21 +1058,6 @@ async fn compute_liquid_staking_apys(
             None
         };
 
-    let linear = if let (Ok(l_now), Ok(l_prev)) = (linear_now_res, linear_prev_res) {
-        if l_prev != 0u8 {
-            let growth = (&l_now - &l_prev) / &l_prev;
-            Some(
-                growth * BigDecimal::from(SECONDS_IN_YEAR)
-                    / BigDecimal::from(timestamp_now - timestamp_prev)
-                    * BigDecimal::from(100u8),
-            )
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-
     let rhea = if let (Ok(r_now), Ok(r_prev)) = (rhea_now_res, rhea_prev_res) {
         if r_prev != 0u8 {
             let growth = (&r_now - &r_prev) / &r_prev;
@@ -1115,11 +1073,11 @@ async fn compute_liquid_staking_apys(
         None
     };
 
-    if metapool.is_none() && linear.is_none() && rhea.is_none() {
+    if metapool.is_none() && rhea.is_none() {
         return Err("Failed to compute any liquid staking APY".to_string());
     }
 
-    Ok([metapool, linear, rhea])
+    Ok([metapool, rhea])
 }
 
 #[component]
@@ -1128,7 +1086,7 @@ fn LiquidStakingCard(
     logo_src: &'static str,
     logo_alt: &'static str,
     background_color: &'static str,
-    apy_data: LocalResource<Result<[Option<BigDecimal>; 3], String>>,
+    apy_data: LocalResource<Result<[Option<BigDecimal>; 2], String>>,
     apy_index: usize,
 ) -> impl IntoView {
     view! {
@@ -1150,7 +1108,6 @@ fn LiquidStakingCard(
                                     let apy = match apy_index {
                                         0 => apy_tuple[0].as_ref(),
                                         1 => apy_tuple[1].as_ref(),
-                                        2 => apy_tuple[2].as_ref(),
                                         _ => None,
                                     };
                                     let apy_str = format!(
@@ -1690,7 +1647,7 @@ pub fn Stake() -> impl IntoView {
                                     TranslationKey::PagesStakeSectionLiquidStaking.format(&[])
                                 }}
                             </h2>
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <LiquidStakingCard
                                     href="/swap?from=near&to=meta-pool.near"
                                     logo_src="/lst-metapool.svg"
@@ -1700,20 +1657,12 @@ pub fn Stake() -> impl IntoView {
                                     apy_index=0
                                 />
                                 <LiquidStakingCard
-                                    href="/swap?from=near&to=linear-protocol.near"
-                                    logo_src="/lst-linear.svg"
-                                    logo_alt="LiNEAR Protocol"
-                                    background_color="#090811"
-                                    apy_data={liquid_apys}
-                                    apy_index=1
-                                />
-                                <LiquidStakingCard
                                     href="/swap?from=near&to=lst.rhealab.near"
                                     logo_src="/rhea.svg"
                                     logo_alt="Rhea Finance"
                                     background_color="#16161c"
                                     apy_data={liquid_apys}
-                                    apy_index=2
+                                    apy_index=1
                                 />
                             </div>
                         </div>

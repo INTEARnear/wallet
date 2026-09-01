@@ -937,7 +937,6 @@ translation_keys! {
                     Wrap,
                     RheaDcl,
                     MetaPool,
-                    Linear,
                     XRhea,
                     RNear,
                     Plach,

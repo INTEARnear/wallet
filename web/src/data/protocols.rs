@@ -150,16 +150,6 @@ pub async fn get_protocols() -> Vec<Protocol> {
             image_override: None,
         },
         ProtocolDefinition {
-            project_id: "linear-protocol",
-            category: ProtocolCategory::DeFi,
-            is_sponsored: false,
-            size: ProtocolSize::Small,
-            name_override: None,
-            description: "Liquid staking",
-            url_override: None,
-            image_override: None,
-        },
-        ProtocolDefinition {
             project_id: "delta-bot",
             category: ProtocolCategory::DeFi,
             is_sponsored: false,

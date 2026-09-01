@@ -133,7 +133,6 @@ pub fn Swap() -> impl IntoView {
         DexId::Wrap,
         DexId::RheaDcl,
         DexId::MetaPool,
-        DexId::Linear,
         DexId::XRhea,
         DexId::RNear,
         DexId::Plach,
@@ -1102,16 +1101,6 @@ pub fn Swap() -> impl IntoView {
                                                         }
                                                             .into_any()
                                                     }
-                                                    DexId::Linear => {
-                                                        view! {
-                                                            <img
-                                                                src="/linear.svg"
-                                                                alt=move || pages_swap_dex_label(DexId::Linear)
-                                                                class="w-auto h-8"
-                                                            />
-                                                        }
-                                                            .into_any()
-                                                    }
                                                     DexId::XRhea => {
                                                         view! {
                                                             <div class="flex items-center gap-2">
@@ -1610,7 +1599,6 @@ pub fn Swap() -> impl IntoView {
                                                         DexId::Aidols,
                                                         DexId::Wrap,
                                                         DexId::MetaPool,
-                                                        DexId::Linear,
                                                         DexId::XRhea,
                                                         DexId::RNear,
                                                         DexId::Plach,
@@ -2226,11 +2214,6 @@ pub enum DexId {
     ///
     /// Supports NEAR -> STNEAR and STNEAR -> NEAR, both AmountIn and AmountOut
     MetaPool,
-    /// https://linearprotocol.org/
-    /// Liquid Staking provider
-    ///
-    /// Supports NEAR -> LiNEAR and LiNEAR -> NEAR, both AmountIn and AmountOut
-    Linear,
     /// https://app.rhea.finance/stake
     /// Staked $RHEA
     ///
@@ -2252,7 +2235,6 @@ const AIDOLS_STR: &str = "Aidols";
 const WRAP_STR: &str = "Wrap";
 const RHEA_DCL_STR: &str = "RheaDcl";
 const METAPOOL_STR: &str = "MetaPool";
-const LINEAR_STR: &str = "Linear";
 const XRHEA_STR: &str = "XRhea";
 const RNEAR_STR: &str = "RNear";
 const PLACH_STR: &str = "Plach";
@@ -2265,7 +2247,6 @@ impl Display for DexId {
             DexId::Wrap => f.write_str(WRAP_STR),
             DexId::RheaDcl => f.write_str(RHEA_DCL_STR),
             DexId::MetaPool => f.write_str(METAPOOL_STR),
-            DexId::Linear => f.write_str(LINEAR_STR),
             DexId::XRhea => f.write_str(XRHEA_STR),
             DexId::RNear => f.write_str(RNEAR_STR),
             DexId::Plach => f.write_str(PLACH_STR),
@@ -2280,7 +2261,6 @@ fn pages_swap_dex_label(dex: DexId) -> String {
         DexId::Wrap => TranslationKey::PagesSwapDexWrap.format(&[]),
         DexId::RheaDcl => TranslationKey::PagesSwapDexRheaDcl.format(&[]),
         DexId::MetaPool => TranslationKey::PagesSwapDexMetaPool.format(&[]),
-        DexId::Linear => TranslationKey::PagesSwapDexLinear.format(&[]),
         DexId::XRhea => TranslationKey::PagesSwapDexXRhea.format(&[]),
         DexId::RNear => TranslationKey::PagesSwapDexRNear.format(&[]),
         DexId::Plach => TranslationKey::PagesSwapDexPlach.format(&[]),
@@ -2297,7 +2277,6 @@ impl FromStr for DexId {
             WRAP_STR => DexId::Wrap,
             RHEA_DCL_STR => DexId::RheaDcl,
             METAPOOL_STR => DexId::MetaPool,
-            LINEAR_STR => DexId::Linear,
             XRHEA_STR => DexId::XRhea,
             RNEAR_STR => DexId::RNear,
             PLACH_STR => DexId::Plach,
@@ -2734,16 +2713,6 @@ fn SwapConfirmationModal(
                                                 <img
                                                     src="/metapool.svg"
                                                     alt=move || pages_swap_dex_label(DexId::MetaPool)
-                                                    class="w-auto h-5"
-                                                />
-                                            }
-                                                .into_any()
-                                        }
-                                        DexId::Linear => {
-                                            view! {
-                                                <img
-                                                    src="/linear.svg"
-                                                    alt=move || pages_swap_dex_label(DexId::Linear)
                                                     class="w-auto h-5"
                                                 />
                                             }
