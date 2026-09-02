@@ -16,14 +16,14 @@ use crate::contexts::{
     transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
 };
 use crate::translations::TranslationKey;
-use crate::utils::serialize_to_js_value;
+use crate::utils::{intents_remove_public_key_batches, serialize_to_js_value};
 use chrono::NaiveDate;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_router::hooks::use_navigate;
 use leptos_use::{use_event_listener, use_window};
 use near_min_api::types::AccountId;
-use near_min_api::types::near_crypto::{KeyType, PublicKey, PublicKeyHandle};
+use near_min_api::types::near_crypto::{KeyType, PublicKeyHandle};
 use near_min_api::{
     QueryFinality,
     types::{
@@ -829,52 +829,12 @@ pub fn AccountSettings() -> impl IntoView {
 
             let mut actions = delete_actions;
 
-            let intents_transactions = match network.get_untracked() {
-                Network::Mainnet => {
-                    match rpc_client
-                        .call::<Vec<PublicKey>>(
-                            "intents.near".parse().unwrap(),
-                            "public_keys_of",
-                            serde_json::json!({
-                                "account_id": account_id,
-                            }),
-                            QueryFinality::Finality(Finality::Final),
-                        )
-                        .await
-                    {
-                        Ok(keys) => {
-                            // If the user has more than 30 keys, we need to split the actions into
-                            // chunks of 30 because of 300 TGas per-transaction limit
-                            if !keys.is_empty() {
-                                let actions: Vec<Vec<Action>> = keys
-                                    .into_iter()
-                                    .map(|key| {
-                                        Action::FunctionCall(Box::new(FunctionCallAction {
-                                            method_name: "remove_public_key".to_string(),
-                                            args: serde_json::json!({
-                                                "public_key": key,
-                                            })
-                                            .to_string()
-                                            .into_bytes(),
-                                            gas: NearGas::from_tgas(10).into(),
-                                            deposit: NearToken::from_yoctonear(1),
-                                        }))
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .chunks(30)
-                                    .map(|chunk| chunk.to_vec())
-                                    .collect();
-                                Some(actions)
-                            } else {
-                                None
-                            }
-                        }
-                        _ => None,
-                    }
-                }
-                Network::Testnet => None,
-                Network::Localnet { .. } => None,
-            };
+            let intents_transactions = intents_remove_public_key_batches(
+                &rpc_client,
+                &account_id,
+                &network.get_untracked(),
+            )
+            .await;
 
             if is_ledger {
                 // For Ledger accounts, just remove other keys, keep current one

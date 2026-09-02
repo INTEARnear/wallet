@@ -5,14 +5,14 @@ use cached::proc_macro::cached;
 use futures_util::lock::Mutex;
 use leptos::prelude::*;
 use near_min_api::{
-    RpcClient,
+    QueryFinality, RpcClient,
     types::{
         AccessKey as NearAccessKey, AccessKeyPermission, AccountId, AccountIdRef,
         Action as NearAction, AddKeyAction, Balance, CreateAccountAction, CryptoHash,
         DelegateAction, DeleteAccountAction, DeleteKeyAction, DeployContractAction,
-        DeployGlobalContractAction, FunctionCallAction, FunctionCallPermission, Gas,
-        GlobalContractDeployMode, GlobalContractIdentifier, NearToken, StakeAction, TransferAction,
-        UseGlobalContractAction,
+        DeployGlobalContractAction, Finality, FunctionCallAction, FunctionCallPermission, Gas,
+        GlobalContractDeployMode, GlobalContractIdentifier, NearGas, NearToken, StakeAction,
+        TransferAction, UseGlobalContractAction,
         near_crypto::{PublicKey, Signature},
     },
     utils::dec_format,
@@ -1195,6 +1195,52 @@ pub async fn fetch_token_info(token_id: AccountId, network: Network) -> Option<T
         .ok()?;
     let token_data: TokenInfo = response.json().await.ok()?;
     Some(token_data)
+}
+
+pub async fn intents_remove_public_key_batches(
+    rpc_client: &RpcClient,
+    account_id: &AccountId,
+    network: &Network,
+) -> Option<Vec<Vec<NearAction>>> {
+    if !matches!(network, Network::Mainnet) {
+        return None;
+    }
+
+    let keys = rpc_client
+        .call::<Vec<PublicKey>>(
+            "intents.near".parse().unwrap(),
+            "public_keys_of",
+            serde_json::json!({
+                "account_id": account_id,
+            }),
+            QueryFinality::Finality(Finality::Final),
+        )
+        .await
+        .ok()?;
+
+    if keys.is_empty() {
+        return None;
+    }
+
+    Some(
+        keys.into_iter()
+            .map(|key| {
+                NearAction::FunctionCall(Box::new(FunctionCallAction {
+                    method_name: "remove_public_key".to_string(),
+                    args: serde_json::json!({
+                        "public_key": key,
+                    })
+                    .to_string()
+                    .into_bytes(),
+                    gas: NearGas::from_tgas(10).into(),
+                    deposit: NearToken::from_yoctonear(1),
+                }))
+            })
+            .collect::<Vec<_>>()
+            .chunks(100)
+            .map(|chunk| chunk.to_vec())
+            .collect(),
+    )
 }
 
 #[derive(Debug, BorshSerialize)]

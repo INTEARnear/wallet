@@ -13,7 +13,7 @@ use crate::{
     },
     pages::settings::ToggleSwitch,
     translations::TranslationKey,
-    utils::{is_tauri, tauri_invoke_no_args},
+    utils::{intents_remove_public_key_batches, is_tauri, tauri_invoke_no_args},
 };
 use argon2::{Argon2, ParamsBuilder};
 use leptos::prelude::*;
@@ -245,6 +245,7 @@ pub fn SecuritySettings() -> impl IntoView {
         let account_id = account.account_id.clone();
         let current_public_key = account.secret_key.public_key();
         let new_public_key = new_secret_key.public_key();
+        let network = account.network.clone();
         let rpc_client = rpc_context.client.get();
 
         spawn_local(async move {
@@ -292,6 +293,9 @@ pub fn SecuritySettings() -> impl IntoView {
                 );
             }
 
+            let intents_action_batches =
+                intents_remove_public_key_batches(&rpc_client, &account_id, &network).await;
+
             add_security_log(
                 format!(
                     "Switching key algorithm: adding {new_secret_key} and removing all full access keys {}. Previous secret key: {}",
@@ -309,7 +313,32 @@ pub fn SecuritySettings() -> impl IntoView {
                 actions,
                 true,
             );
-            add_transaction.update(|queue| queue.push(transaction));
+            if let Some(intents_action_batches) = intents_action_batches {
+                let intents_transactions = intents_action_batches
+                    .into_iter()
+                    .map(|intents_actions| {
+                        let (_intents_details_receiver, intents_transaction) =
+                            EnqueuedTransaction::create(
+                                TranslationKey::MiscTransactionRemoveIntentsKeys.format(&[]),
+                                account_id.clone(),
+                                "intents.near".parse().unwrap(),
+                                intents_actions,
+                                true,
+                            );
+
+                        intents_transaction.in_same_queue_as(&transaction)
+                    })
+                    .collect::<Vec<_>>();
+                add_transaction.update(|queue| {
+                    queue.extend(
+                        intents_transactions
+                            .into_iter()
+                            .chain(std::iter::once(transaction)),
+                    )
+                });
+            } else {
+                add_transaction.update(|queue| queue.push(transaction));
+            }
 
             if matches!(details_receiver.await, Ok(Ok(_))) {
                 accounts_context.set_accounts.update(|accounts| {
