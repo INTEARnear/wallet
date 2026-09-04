@@ -506,21 +506,12 @@
       background: var(--pq);
     }
 
-    .chain-sigs {
+    .app-support {
       margin-top: 4rem;
       max-width: 42rem;
     }
 
-    .chain-sigs-kicker {
-      display: block;
-      font-size: 0.68rem;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-      color: var(--pq);
-      margin: 0 0 0.2rem;
-    }
-
-    .chain-sigs h2 {
+    .app-support h2 {
       font-family: var(--serif);
       font-style: italic;
       font-weight: 400;
@@ -528,7 +519,7 @@
       margin: 0 0 0.75rem;
     }
 
-    .chain-sigs > p {
+    .app-support > p {
       margin: 0;
       font-size: 0.95rem;
       line-height: 1.5;
@@ -1385,10 +1376,9 @@
       <p>poolv1.near pools are not upgradable, and that's something NEAR will have to solve as part of the <a target="_blank" rel="noopener noreferrer" href="https://www.near.org/blog/near-quantum-safe-roadmap">Roadmap to Post-Quantum Security</a>.</p>
     </section>
 
-    <section class="chain-sigs">
-      <span class="chain-sigs-kicker">Not quantum-safe</span>
-      <h2>Chain Signatures</h2>
-      <p>Can't produce signatures for post-quantum blockchains, can't securely bring data from other chains. Research is ongoing into post-quantum thresholded signatures, and other blockchains must go post-quantum too, since mutual post-quantum trust can't exist with a blockchain that is prone to quantum attacks. Read <a target="_blank" rel="noopener noreferrer" href="https://www.near.org/blog/near-quantum-safe-roadmap">NEAR's Roadmap to Post-Quantum Security</a> for more details.</p>
+    <section class="app-support">
+      <h2>App Support</h2>
+      <p>Some dApps currently don't support post-quantum keys. As a rule of thumb, apps where you send transactions are usually automatically supported, and apps where you sign messages (including apps based on Near Intents) require some effort from the developers.</p>
     </section>
 
     <section class="tally">

@@ -85,7 +85,7 @@ fn default_true() -> bool {
 
 impl Account {
     pub fn protect_key_rotation(&mut self) {
-        self.protected_until = Utc::now() + chrono::Duration::seconds(10);
+        self.protected_until = Utc::now() + chrono::Duration::seconds(30);
     }
 }
 

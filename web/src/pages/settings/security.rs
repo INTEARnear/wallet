@@ -306,6 +306,14 @@ pub fn SecuritySettings() -> impl IntoView {
                 accounts_context,
             );
 
+            accounts_context.set_accounts.update(|accounts| {
+                accounts
+                    .accounts
+                    .iter_mut()
+                    .find(|acc| acc.account_id == account_id)
+                    .unwrap()
+                    .protect_key_rotation();
+            });
             let (details_receiver, transaction) = EnqueuedTransaction::create(
                 TranslationKey::MiscTransactionSwitchKeyAlgorithm.format(&[]),
                 account_id.clone(),
@@ -346,7 +354,6 @@ pub fn SecuritySettings() -> impl IntoView {
                         if stored_account.account_id == account_id {
                             stored_account.secret_key =
                                 SecretKeyHolder::SecretKey(new_secret_key.clone());
-                            stored_account.protect_key_rotation();
                         }
                     }
                 });
