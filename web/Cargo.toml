@@ -86,6 +86,7 @@ wasm-bindgen-futures = "0.4.35"
 serde_with = "3.14"
 itertools = "0.13"
 translation-macros = { path = "../translation-macros" }
+near-crypto = "=0.37.3"
 
 [dev-dependencies]
 tokio = { version = "1.40.0", features = ["full"] }
