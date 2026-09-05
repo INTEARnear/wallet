@@ -137,6 +137,7 @@ class IntearWalletAdapter {
                 signerId,
                 receiverId: da.receiverId,
                 actions: da.actions,
+                ...(da.blockHeightTtl !== undefined && { blockHeightTtl: da.blockHeightTtl }),
             };
         });
         transactions = transactions.map(t => {
@@ -145,6 +146,7 @@ class IntearWalletAdapter {
                 signerId: t.signerId ?? this.near.connectedAccount.accountId,
                 receiverId: t.receiverId,
                 actions: t.actions,
+                ...(t.blockHeightTtl !== undefined && { blockHeightTtl: t.blockHeightTtl }),
             };
         });
         const result = await this.near.connectedAccount.sendTransactions(transactions, true);

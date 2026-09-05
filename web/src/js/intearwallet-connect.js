@@ -406,6 +406,7 @@ class ConnectedAccount {
             signerId: tx.signerId,
             receiverId: tx.receiverId,
             actions: tx.actions,
+            ...(onlySignDelegate && tx.blockHeightTtl !== undefined && { blockHeightTtl: tx.blockHeightTtl }),
         }));
         const transactionsJson = JSON.stringify(serializableTransactions);
         const nonce = Date.now();

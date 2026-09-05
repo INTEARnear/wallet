@@ -961,6 +961,8 @@ pub struct WalletSelectorTransaction {
     pub signer_id: AccountId,
     pub receiver_id: AccountId,
     pub actions: Vec<SendTransactionsAction>,
+    #[serde(default)]
+    pub block_height_ttl: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]

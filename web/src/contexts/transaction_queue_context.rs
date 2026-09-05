@@ -46,6 +46,7 @@ pub enum TransactionType {
     SignDelegateAction {
         actions: Vec<Action>,
         receiver_id: AccountId,
+        block_height_ttl: Option<u64>,
         sender: Option<futures_channel::oneshot::Sender<Result<SignedDelegateAction, String>>>,
     },
 }
@@ -94,10 +95,12 @@ impl TransactionType {
             TransactionType::SignDelegateAction {
                 actions,
                 receiver_id,
+                block_height_ttl,
                 sender,
             } => TransactionType::SignDelegateAction {
                 actions: actions.clone(),
                 receiver_id: receiver_id.clone(),
+                block_height_ttl: *block_height_ttl,
                 sender: sender.take(),
             },
         }
@@ -284,6 +287,7 @@ impl TransactionType {
             TransactionType::SignDelegateAction {
                 actions,
                 receiver_id,
+                block_height_ttl,
                 sender,
             } => {
                 let access_key = match rpc_client
@@ -312,6 +316,18 @@ impl TransactionType {
                     }
                 };
 
+                let block_height_ttl = block_height_ttl.unwrap_or(100);
+                if block_height_ttl == 0 {
+                    return Err("blockHeightTtl must be positive".to_string());
+                }
+                let max_block_height = recent_block_header
+                    .height
+                    .checked_add(block_height_ttl)
+                    .ok_or_else(|| {
+                        "final block height plus blockHeightTtl exceeds the supported range"
+                            .to_string()
+                    })?;
+
                 let delegate_action = DelegateAction {
                     sender_id: signer.account_id.clone(),
                     receiver_id: receiver_id.clone(),
@@ -323,7 +339,7 @@ impl TransactionType {
                             format!("Failed to convert action to non-delegate action: {e}")
                         })?,
                     nonce: access_key.nonce + 1 + current_index_in_queue as u64,
-                    max_block_height: recent_block_header.height + 100,
+                    max_block_height,
                     public_key: signer.secret_key.public_key(),
                 };
                 let Ok(signature) = sign_nep366(
