@@ -32,7 +32,7 @@ use crate::contexts::accounts_context::{
 use crate::contexts::config_context::ConfigContext;
 use crate::contexts::legal_consents_context::LegalConsents;
 use crate::contexts::network_context::Network;
-use crate::contexts::security_log_context::add_security_log;
+use crate::contexts::security_log_context::{SecurityLogEvent, add_security_log};
 use crate::contexts::transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext};
 use crate::pages::settings::LedgerSelector;
 use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
@@ -313,7 +313,9 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
         };
         let rpc_client = network.default_rpc_client();
         add_security_log(
-            format!("Account creation started with private key {secret_key}"),
+            SecurityLogEvent::AccountCreationStarted {
+                secret_key: secret_key.clone(),
+            },
             account_id.clone(),
             accounts_context,
         );
@@ -470,7 +472,9 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
                             }) => {
                                 let mut accounts = accounts_context.accounts.get_untracked();
                                 add_security_log(
-                                    format!("Account created with private key {secret_key}"),
+                                    SecurityLogEvent::AccountCreated {
+                                        secret_key: secret_key.clone(),
+                                    },
                                     account_id.clone(),
                                     accounts_context,
                                 );

@@ -12,7 +12,7 @@ use crate::contexts::{
     modal_context::ModalContext,
     network_context::{Network, NetworkContext},
     rpc_context::RpcContext,
-    security_log_context::add_security_log,
+    security_log_context::{SecurityLogEvent, add_security_log},
     transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
 };
 use crate::translations::TranslationKey;
@@ -20,7 +20,6 @@ use crate::utils::{intents_remove_public_key_batches, serialize_to_js_value};
 use chrono::NaiveDate;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
-use leptos_router::hooks::use_navigate;
 use leptos_use::{use_event_listener, use_window};
 use near_min_api::types::AccountId;
 use near_min_api::types::near_crypto::{KeyType, PublicKeyHandle};
@@ -498,7 +497,6 @@ pub fn AccountSettings() -> impl IntoView {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
     let account_selector_context = expect_context::<AccountSelectorContext>();
-    let navigate = use_navigate();
 
     let (bettear_bot_change_in_progress, set_bettear_bot_change_in_progress) = signal(false);
 
@@ -575,7 +573,7 @@ pub fn AccountSettings() -> impl IntoView {
     Effect::new(move || {
         if show_secrets_memo.get() {
             add_security_log(
-                "Shown secrets on /settings/security/account".to_string(),
+                SecurityLogEvent::ShownSecrets,
                 accounts_context
                     .accounts
                     .get_untracked()
@@ -839,11 +837,11 @@ pub fn AccountSettings() -> impl IntoView {
             if is_ledger {
                 // For Ledger accounts, just remove other keys, keep current one
                 add_security_log(
-                    format!(
-                        "Terminated all other sessions for Ledger account {account_id}: Removed {} other keys, kept current Ledger key {}",
-                        actions.len(),
-                        current_public_key
-                    ),
+                    SecurityLogEvent::TerminatedOtherSessionsLedger {
+                        account_id: account_id.clone(),
+                        removed_key_count: actions.len(),
+                        kept_public_key: current_public_key.clone(),
+                    },
                     account_id.clone(),
                     accounts_context,
                 );
@@ -866,11 +864,13 @@ pub fn AccountSettings() -> impl IntoView {
                 actions.push(add_action);
 
                 add_security_log(
-                    format!(
-                        "Terminated all other sessions for account {account_id}: Added key {secret_key} (public key: {public_key}) and removed keys {}. Previous key that the wallet was using was {}",
-                        serde_json::to_string(&actions).unwrap(),
-                        account.secret_key
-                    ),
+                    SecurityLogEvent::TerminatedOtherSessions {
+                        account_id: account_id.clone(),
+                        new_secret_key: secret_key.clone(),
+                        new_public_key: public_key.clone(),
+                        removed_keys: serde_json::to_string(&actions).unwrap(),
+                        previous_secret_key: account.secret_key.clone(),
+                    },
                     account_id.clone(),
                     accounts_context,
                 );
@@ -1404,11 +1404,10 @@ pub fn AccountSettings() -> impl IntoView {
                                                                 }
                                                             });
                                                         add_security_log(
-                                                            format!(
-                                                                "Disconnected Ledger. New public key: {}, private key: {}",
-                                                                new_public_key,
-                                                                new_secret_key,
-                                                            ),
+                                                            SecurityLogEvent::DisconnectedLedger {
+                                                                new_public_key: new_public_key.clone(),
+                                                                new_secret_key: new_secret_key.clone(),
+                                                            },
                                                             selected_account_id.clone(),
                                                             accounts_context,
                                                         );
@@ -1693,11 +1692,10 @@ pub fn AccountSettings() -> impl IntoView {
                                                                             }
                                                                         });
                                                                     add_security_log(
-                                                                        format!(
-                                                                            "Connected Ledger (path {}) public key {}",
-                                                                            path,
-                                                                            public_key,
-                                                                        ),
+                                                                        SecurityLogEvent::ConnectedLedger {
+                                                                            path: path.clone(),
+                                                                            public_key: public_key.clone(),
+                                                                        },
                                                                         selected_account_id.clone(),
                                                                         accounts_context,
                                                                     );
@@ -2151,9 +2149,9 @@ pub fn AccountSettings() -> impl IntoView {
                                                         Ok(Ok(_details)) => {
                                                             add_security_log(
                                                                 if has_key {
-                                                                    "Unlinked Bettear Bot".to_string()
+                                                                    SecurityLogEvent::UnlinkedBettearBot
                                                                 } else {
-                                                                    "Linked Bettear Bot".to_string()
+                                                                    SecurityLogEvent::LinkedBettearBot
                                                                 },
                                                                 selected_account_id.clone(),
                                                                 accounts_context,
@@ -2384,63 +2382,6 @@ pub fn AccountSettings() -> impl IntoView {
                     </p>
                 </div>
             </Show>
-        </div>
-
-        // Log Out section
-        <div class="flex flex-col gap-4 p-4">
-            <div class="text-lg font-medium">
-                {move || TranslationKey::PagesSettingsAccountLogOutSectionTitle.format(&[])}
-            </div>
-            <div class="text-sm text-neutral-400">
-                {move || TranslationKey::PagesSettingsAccountLogOutDescription.format(&[])}
-            </div>
-            <button
-                on:click=move |_| {
-                    accounts_context
-                        .set_accounts
-                        .maybe_update(|accounts_data| {
-                            if let Some(selected_account_id) = accounts_data
-                                .selected_account_id
-                                .as_ref()
-                            {
-                                add_security_log(
-                                    format!(
-                                        "Logged out of {selected_account_id} with key {} (public key: {})",
-                                        accounts_data
-                                            .accounts
-                                            .iter()
-                                            .find(|acc| acc.account_id == *selected_account_id)
-                                            .map(|acc| acc.secret_key.clone())
-                                            .unwrap(),
-                                        accounts_data
-                                            .accounts
-                                            .iter()
-                                            .find(|acc| acc.account_id == *selected_account_id)
-                                            .map(|acc| acc.secret_key.public_key())
-                                            .unwrap(),
-                                    ),
-                                    selected_account_id.clone(),
-                                    accounts_context,
-                                );
-                                accounts_data
-                                    .accounts
-                                    .retain(|acc| acc.account_id != *selected_account_id);
-                                accounts_data.selected_account_id = accounts_data
-                                    .accounts
-                                    .first()
-                                    .map(|acc| acc.account_id.clone());
-                                true
-                            } else {
-                                false
-                            }
-                        });
-                    navigate("/", Default::default());
-                }
-                class="flex items-center justify-center gap-2 p-3 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors font-medium cursor-pointer"
-            >
-                <Icon icon=icondata::LuLogOut width="16" height="16" />
-                {move || TranslationKey::PagesSettingsAccountLogOutButton.format(&[])}
-            </button>
         </div>
     }
 }

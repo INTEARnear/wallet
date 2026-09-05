@@ -6,7 +6,7 @@ use near_min_api::types::{AccountId, near_crypto::SecretKey};
 use crate::contexts::{
     accounts_context::{Account, AccountsContext, SecretKeyHolder},
     network_context::Network,
-    security_log_context::add_security_log,
+    security_log_context::{SecurityLogEvent, add_security_log},
 };
 use crate::translations::TranslationKey;
 
@@ -139,9 +139,9 @@ pub fn AutoImportSecretKey() -> impl IntoView {
                                                     return;
                                                 };
                                                 add_security_log(
-                                                    format!(
-                                                        "Account imported on /auto-import-secret-key with private key {secret_key}",
-                                                    ),
+                                                    SecurityLogEvent::AccountImportedOnAutoImport {
+                                                        secret_key: secret_key.clone(),
+                                                    },
                                                     account_id.clone(),
                                                     accounts_context,
                                                 );

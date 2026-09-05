@@ -24,7 +24,7 @@ use crate::components::account_creation_form::AccountCreationForm;
 use crate::components::login_form::LoginForm;
 use crate::contexts::accounts_context::Account;
 use crate::contexts::network_context::{Network, NetworkContext};
-use crate::contexts::security_log_context::add_security_log;
+use crate::contexts::security_log_context::{SecurityLogEvent, add_security_log};
 use crate::contexts::{
     account_selector_context::AccountSelectorContext, accounts_context::AccountsContext,
 };
@@ -577,10 +577,9 @@ pub fn AccountSelector() -> impl IntoView {
 
                 for account in logged_out_accounts.iter() {
                     add_security_log(
-                        format!(
-                            "Account logged out due to remote access key removal. Old access key: {}",
-                            account.secret_key
-                        ),
+                        SecurityLogEvent::AccountLoggedOutRemoteKeyRemoval {
+                            secret_key: account.secret_key.clone(),
+                        },
                         account.account_id.clone(),
                         accounts_context,
                     );

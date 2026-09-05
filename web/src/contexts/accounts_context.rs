@@ -2,6 +2,7 @@ use core::fmt;
 use std::fmt::Display;
 use std::future::Future;
 use std::pin::Pin;
+use std::str::FromStr;
 use std::sync::mpmc;
 use std::time::Duration;
 
@@ -35,7 +36,9 @@ use crate::translations::TranslationKey;
 use crate::utils::{is_debug_enabled, is_tauri, serialize_to_js_value, tauri_invoke_no_args};
 
 use super::{
-    config_context::ConfigContext, network_context::Network, security_log_context::add_security_log,
+    config_context::ConfigContext,
+    network_context::Network,
+    security_log_context::{SecurityLogEvent, add_security_log},
 };
 
 pub const ENCRYPTION_MEMORY_COST_KB: u32 = 65536; // 64MB
@@ -267,6 +270,32 @@ impl Display for SecretKeyHolder {
                 write!(f, "Ledger(path: {path}, public_key: {public_key})")
             }
         }
+    }
+}
+
+impl FromStr for SecretKeyHolder {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some(inner) = s
+            .strip_prefix("SecretKey(")
+            .and_then(|s| s.strip_suffix(')'))
+        {
+            let secret_key = inner.parse().map_err(|_| ())?;
+            return Ok(SecretKeyHolder::SecretKey(secret_key));
+        }
+        if let Some(inner) = s
+            .strip_prefix("Ledger(path: ")
+            .and_then(|s| s.strip_suffix(')'))
+        {
+            let (path, public_key) = inner.rsplit_once(", public_key: ").ok_or(())?;
+            let public_key = public_key.parse().map_err(|_| ())?;
+            return Ok(SecretKeyHolder::Ledger {
+                path: path.to_string(),
+                public_key,
+            });
+        }
+        Err(())
     }
 }
 
@@ -1061,10 +1090,9 @@ pub fn provide_accounts_context() {
                     let new_cipher = derive_cipher(password, rounds, &salt).await?;
                     for account in current_accounts.accounts.iter() {
                         add_security_log(
-                            format!(
-                                "Encrypted accounts with password. Private key for recovery: {}",
-                                account.secret_key
-                            ),
+                            SecurityLogEvent::EncryptedAccountsWithPassword {
+                                recovery_secret_key: account.secret_key.clone(),
+                            },
                             account.account_id.clone(),
                             accounts_context,
                         );
@@ -1182,7 +1210,7 @@ pub fn provide_accounts_context() {
     Effect::new(move || {
         if let Some(account_id) = selected_account_id_memo.get() {
             add_security_log(
-                "Wallet opened".to_string(),
+                SecurityLogEvent::WalletOpened,
                 account_id.clone(),
                 accounts_context,
             );

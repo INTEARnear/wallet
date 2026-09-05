@@ -1,6 +1,5 @@
 use leptos::html::Div;
 use leptos::prelude::*;
-use leptos::task::spawn_local;
 use leptos_icons::*;
 use leptos_use::use_intersection_observer;
 use wasm_bindgen::JsValue;
@@ -9,7 +8,7 @@ use web_sys::js_sys::Date;
 use crate::{
     contexts::{
         accounts_context::AccountsContext,
-        security_log_context::{SecurityLog, load_security_logs},
+        security_log_context::{SecurityLogEntry, load_security_logs},
     },
     translations::TranslationKey,
     utils::format_account_id,
@@ -19,11 +18,13 @@ const PER_PAGE: u32 = 10;
 
 #[component]
 pub fn SecurityLogPage() -> impl IntoView {
+    let accounts_context = expect_context::<AccountsContext>();
     let (logs, set_logs) = signal(vec![]);
     let (has_more, set_has_more) = signal(true);
 
     let load_more = Action::new(move |_input: &()| async move {
-        let result = load_security_logs(logs.get_untracked().len() as u32, PER_PAGE).await;
+        let cipher = accounts_context.cipher.get_untracked();
+        let result = load_security_logs(logs.get_untracked().len() as u32, PER_PAGE, cipher).await;
         match result {
             Ok(new_logs) => {
                 set_has_more.set(new_logs.len() == PER_PAGE as usize);
@@ -104,24 +105,16 @@ pub fn SecurityLogPage() -> impl IntoView {
 }
 
 #[component]
-fn LogEntry(log: SecurityLog) -> impl IntoView {
+fn LogEntry(log: SecurityLogEntry) -> impl IntoView {
     let local_date = Date::new(&JsValue::from_f64(log.timestamp.timestamp_millis() as f64));
     let formatted_date = local_date.to_locale_string("default", &JsValue::UNDEFINED);
     let formatted_date = formatted_date.as_string().unwrap_or_default();
 
-    let accounts_context = expect_context::<AccountsContext>();
-
-    let log_for_message = log.clone();
     let account_id = log.account.clone();
-
-    let (message, set_message) =
-        signal(TranslationKey::PagesSettingsSecurityLogMessageLoading.format(&[]));
-
-    spawn_local(async move {
-        let cipher = accounts_context.cipher.get_untracked();
-        let decrypted = log_for_message.get_decrypted_message(cipher.as_ref()).await;
-        set_message(decrypted);
-    });
+    let message = match log.event {
+        Ok(event) => event.to_string(),
+        Err(error) => error.to_string(),
+    };
 
     view! {
         <div class="p-4 rounded-lg bg-neutral-900">

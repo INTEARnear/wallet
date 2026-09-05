@@ -14,7 +14,7 @@ use crate::contexts::{
     accounts_context::AccountsContext,
     connected_apps_context::{ConnectedApp, ConnectedAppsContext},
     network_context::Network,
-    security_log_context::add_security_log,
+    security_log_context::{SecurityLogEvent, add_security_log},
     transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
 };
 
@@ -71,9 +71,9 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
             return;
         };
         add_security_log(
-            format!(
-                "Logged out of {app:?} on /logout (NOTE: some logouts made on dapp side might not be displayed on this page)"
-            ),
+            SecurityLogEvent::LoggedOutOfApp {
+                app: format!("{app:?}"),
+            },
             app.account_id.clone(),
             accounts_context,
         );

@@ -1,3 +1,7 @@
+use std::convert::Infallible;
+use std::fmt::{self, Display};
+use std::str::FromStr;
+
 use aes_gcm::{
     Aes256Gcm, Key, KeyInit, Nonce,
     aead::{Aead, OsRng, rand_core::RngCore},
@@ -9,14 +13,562 @@ use deli::{CursorDirection, Database, Model};
 use futures_channel::oneshot;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use near_min_api::types::AccountId;
+use near_min_api::types::{
+    AccountId,
+    near_crypto::{PublicKey, SecretKey},
+};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen_futures::JsFuture;
 
-use crate::contexts::accounts_context::{AccountsContext, Cipher};
+use crate::contexts::accounts_context::{AccountsContext, Cipher, SecretKeyHolder};
 use crate::utils::{is_tauri, tauri_invoke_no_args};
 
 const DB_NAME: &str = "smile_wallet_security";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransactionDanger {
+    NotDangerous,
+    Confirmed,
+    NotConfirmed,
+}
+
+#[derive(Debug, Clone)]
+pub enum SecurityLogEvent {
+    AccountImportedWithPrivateKey {
+        secret_key: SecretKey,
+    },
+    AccountImportedWithLedger {
+        path: String,
+        public_key: PublicKey,
+    },
+    AccountImportedOnAutoImport {
+        secret_key: SecretKey,
+    },
+    AccountCreationStarted {
+        secret_key: SecretKeyHolder,
+    },
+    AccountCreated {
+        secret_key: SecretKeyHolder,
+    },
+    AccountLoggedOutRemoteKeyRemoval {
+        secret_key: SecretKeyHolder,
+    },
+    SignedNep413Message {
+        origin: String,
+        message: String,
+    },
+    EncryptedAccountsWithPassword {
+        recovery_secret_key: SecretKeyHolder,
+    },
+    WalletOpened,
+    DeletedFromDeveloperSandbox {
+        account_id: AccountId,
+        secret_key: SecretKeyHolder,
+        public_key: PublicKey,
+    },
+    SentTransactions {
+        origin: String,
+        transactions: String,
+        danger: TransactionDanger,
+    },
+    ConnectedToApp {
+        app: String,
+    },
+    AddedFullAccessKeyOnLogin {
+        public_key: PublicKey,
+    },
+    LoggedOutOfApp {
+        app: String,
+    },
+    LoggedOutOfAccount {
+        account_id: AccountId,
+        secret_key: SecretKeyHolder,
+        public_key: PublicKey,
+    },
+    SwitchingKeyAlgorithm {
+        new_secret_key: SecretKey,
+        removed_keys: String,
+        previous_secret_key: SecretKeyHolder,
+    },
+    StoragePersistenceWarningDismissed,
+    ShownSecrets,
+    TerminatedOtherSessionsLedger {
+        account_id: AccountId,
+        removed_key_count: usize,
+        kept_public_key: PublicKey,
+    },
+    TerminatedOtherSessions {
+        account_id: AccountId,
+        new_secret_key: SecretKey,
+        new_public_key: PublicKey,
+        removed_keys: String,
+        previous_secret_key: SecretKeyHolder,
+    },
+    DisconnectedLedger {
+        new_public_key: PublicKey,
+        new_secret_key: SecretKey,
+    },
+    ConnectedLedger {
+        path: String,
+        public_key: PublicKey,
+    },
+    UnlinkedBettearBot,
+    LinkedBettearBot,
+    Unknown {
+        message: String,
+    },
+}
+
+impl SecurityLogEvent {
+    pub fn recoverable_secret_keys(&self) -> Vec<SecretKey> {
+        let mut secret_keys = Vec::new();
+        match self {
+            Self::AccountImportedWithPrivateKey { secret_key }
+            | Self::AccountImportedOnAutoImport { secret_key }
+            | Self::DisconnectedLedger {
+                new_secret_key: secret_key,
+                ..
+            } => {
+                secret_keys.push(secret_key.clone());
+            }
+            Self::AccountCreationStarted { secret_key }
+            | Self::AccountCreated { secret_key }
+            | Self::AccountLoggedOutRemoteKeyRemoval { secret_key }
+            | Self::DeletedFromDeveloperSandbox { secret_key, .. }
+            | Self::LoggedOutOfAccount { secret_key, .. } => {
+                if let SecretKeyHolder::SecretKey(secret_key) = secret_key {
+                    secret_keys.push(secret_key.clone());
+                }
+            }
+            Self::EncryptedAccountsWithPassword {
+                recovery_secret_key: SecretKeyHolder::SecretKey(secret_key),
+            } => {
+                secret_keys.push(secret_key.clone());
+            }
+            Self::SwitchingKeyAlgorithm {
+                new_secret_key,
+                previous_secret_key,
+                ..
+            }
+            | Self::TerminatedOtherSessions {
+                new_secret_key,
+                previous_secret_key,
+                ..
+            } => {
+                secret_keys.push(new_secret_key.clone());
+                if let SecretKeyHolder::SecretKey(secret_key) = previous_secret_key {
+                    secret_keys.push(secret_key.clone());
+                }
+            }
+            _ => {}
+        }
+        secret_keys
+    }
+}
+
+impl Display for SecurityLogEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::AccountImportedWithPrivateKey { secret_key } => {
+                write!(f, "Account imported with private key {secret_key}")
+            }
+            Self::AccountImportedWithLedger { path, public_key } => {
+                write!(
+                    f,
+                    "Account imported with Ledger path {path} and public key {public_key}"
+                )
+            }
+            Self::AccountImportedOnAutoImport { secret_key } => {
+                write!(
+                    f,
+                    "Account imported on /auto-import-secret-key with private key {secret_key}"
+                )
+            }
+            Self::AccountCreationStarted { secret_key } => {
+                write!(f, "Account creation started with private key {secret_key}")
+            }
+            Self::AccountCreated { secret_key } => {
+                write!(f, "Account created with private key {secret_key}")
+            }
+            Self::AccountLoggedOutRemoteKeyRemoval { secret_key } => {
+                write!(
+                    f,
+                    "Account logged out due to remote access key removal. Old access key: {secret_key}"
+                )
+            }
+            Self::SignedNep413Message { origin, message } => {
+                write!(
+                    f,
+                    "Signed NEP-413 message on /sign-message from {origin}: {message}"
+                )
+            }
+            Self::EncryptedAccountsWithPassword {
+                recovery_secret_key,
+            } => {
+                write!(
+                    f,
+                    "Encrypted accounts with password. Private key for recovery: {recovery_secret_key}"
+                )
+            }
+            Self::WalletOpened => write!(f, "Wallet opened"),
+            Self::DeletedFromDeveloperSandbox {
+                account_id,
+                secret_key,
+                public_key,
+            } => {
+                write!(
+                    f,
+                    "Deleted {account_id} from developer sandbox with key {secret_key} (public key: {public_key})"
+                )
+            }
+            Self::SentTransactions {
+                origin,
+                transactions,
+                danger,
+            } => {
+                let danger_prefix = match danger {
+                    TransactionDanger::NotDangerous => "",
+                    TransactionDanger::Confirmed => " dangerous (typed 'CONFIRM')",
+                    TransactionDanger::NotConfirmed => " dangerous (not typed 'CONFIRM')",
+                };
+                write!(
+                    f,
+                    "Sent{danger_prefix} transactions on /send-transactions from {origin}: {transactions}"
+                )
+            }
+            Self::ConnectedToApp { app } => write!(f, "Connected to {app} on /connect"),
+            Self::AddedFullAccessKeyOnLogin { public_key } => {
+                write!(
+                    f,
+                    "Added full access key on /login with public key {public_key}, typed 'CONFIRM'"
+                )
+            }
+            Self::LoggedOutOfApp { app } => {
+                write!(
+                    f,
+                    "Logged out of {app} on /logout (NOTE: some logouts made on dapp side might not be displayed on this page)"
+                )
+            }
+            Self::LoggedOutOfAccount {
+                account_id,
+                secret_key,
+                public_key,
+            } => {
+                write!(
+                    f,
+                    "Logged out of {account_id} with key {secret_key} (public key: {public_key})"
+                )
+            }
+            Self::SwitchingKeyAlgorithm {
+                new_secret_key,
+                removed_keys,
+                previous_secret_key,
+            } => {
+                write!(
+                    f,
+                    "Switching key algorithm: adding {new_secret_key} and removing all full access keys {removed_keys}. Previous secret key: {previous_secret_key}"
+                )
+            }
+            Self::StoragePersistenceWarningDismissed => {
+                write!(f, "Storage persistence warning dismissed")
+            }
+            Self::ShownSecrets => write!(f, "Shown secrets on /settings/security/account"),
+            Self::TerminatedOtherSessionsLedger {
+                account_id,
+                removed_key_count,
+                kept_public_key,
+            } => {
+                write!(
+                    f,
+                    "Terminated all other sessions for Ledger account {account_id}: Removed {removed_key_count} other keys, kept current Ledger key {kept_public_key}"
+                )
+            }
+            Self::TerminatedOtherSessions {
+                account_id,
+                new_secret_key,
+                new_public_key,
+                removed_keys,
+                previous_secret_key,
+            } => {
+                write!(
+                    f,
+                    "Terminated all other sessions for account {account_id}: Added key {new_secret_key} (public key: {new_public_key}) and removed keys {removed_keys}. Previous key that the wallet was using was {previous_secret_key}"
+                )
+            }
+            Self::DisconnectedLedger {
+                new_public_key,
+                new_secret_key,
+            } => {
+                write!(
+                    f,
+                    "Disconnected Ledger. New public key: {new_public_key}, private key: {new_secret_key}"
+                )
+            }
+            Self::ConnectedLedger { path, public_key } => {
+                write!(f, "Connected Ledger (path {path}) public key {public_key}")
+            }
+            Self::UnlinkedBettearBot => write!(f, "Unlinked Bettear Bot"),
+            Self::LinkedBettearBot => write!(f, "Linked Bettear Bot"),
+            Self::Unknown { message } => write!(f, "(unknown): {message}"),
+        }
+    }
+}
+
+impl FromStr for SecurityLogEvent {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(parse_security_log_event(s))
+    }
+}
+
+fn parse_security_log_event(s: &str) -> SecurityLogEvent {
+    if s == "Wallet opened" {
+        return SecurityLogEvent::WalletOpened;
+    }
+    if s == "Storage persistence warning dismissed" {
+        return SecurityLogEvent::StoragePersistenceWarningDismissed;
+    }
+    if s == "Shown secrets on /settings/security/account" {
+        return SecurityLogEvent::ShownSecrets;
+    }
+    if s == "Unlinked Bettear Bot" {
+        return SecurityLogEvent::UnlinkedBettearBot;
+    }
+    if s == "Linked Bettear Bot" {
+        return SecurityLogEvent::LinkedBettearBot;
+    }
+
+    if let Some(event) = parse_account_imported_with_ledger(s) {
+        return event;
+    }
+    if let Some(event) =
+        parse_prefixed_secret_key(s, "Account imported with private key ", |secret_key| {
+            SecurityLogEvent::AccountImportedWithPrivateKey { secret_key }
+        })
+    {
+        return event;
+    }
+    if let Some(event) = parse_prefixed_secret_key(
+        s,
+        "Account imported on /auto-import-secret-key with private key ",
+        |secret_key| SecurityLogEvent::AccountImportedOnAutoImport { secret_key },
+    ) {
+        return event;
+    }
+    if let Some(secret_key) = s
+        .strip_prefix("Account creation started with private key ")
+        .and_then(|rest| rest.parse().ok())
+    {
+        return SecurityLogEvent::AccountCreationStarted { secret_key };
+    }
+    if let Some(secret_key) = s
+        .strip_prefix("Account created with private key ")
+        .and_then(|rest| rest.parse().ok())
+    {
+        return SecurityLogEvent::AccountCreated { secret_key };
+    }
+    if let Some(secret_key) = s
+        .strip_prefix("Account logged out due to remote access key removal. Old access key: ")
+        .and_then(|rest| rest.parse().ok())
+    {
+        return SecurityLogEvent::AccountLoggedOutRemoteKeyRemoval { secret_key };
+    }
+    if let Some(event) = parse_signed_nep413_message(s) {
+        return event;
+    }
+    if let Some(recovery_secret_key) = s
+        .strip_prefix("Encrypted accounts with password. Private key for recovery: ")
+        .and_then(|rest| rest.parse().ok())
+    {
+        return SecurityLogEvent::EncryptedAccountsWithPassword {
+            recovery_secret_key,
+        };
+    }
+    if let Some(event) = parse_deleted_from_developer_sandbox(s) {
+        return event;
+    }
+    if let Some(event) = parse_sent_transactions(s) {
+        return event;
+    }
+    if let Some(app) = s
+        .strip_prefix("Connected to ")
+        .and_then(|rest| rest.strip_suffix(" on /connect"))
+    {
+        return SecurityLogEvent::ConnectedToApp {
+            app: app.to_string(),
+        };
+    }
+    if let Some(public_key) = s
+        .strip_prefix("Added full access key on /login with public key ")
+        .and_then(|rest| rest.strip_suffix(", typed 'CONFIRM'"))
+        .and_then(|rest| rest.parse().ok())
+    {
+        return SecurityLogEvent::AddedFullAccessKeyOnLogin { public_key };
+    }
+    if let Some(app) = s.strip_prefix("Logged out of ").and_then(|rest| {
+        rest.strip_suffix(
+            " on /logout (NOTE: some logouts made on dapp side might not be displayed on this page)",
+        )
+    }) {
+        return SecurityLogEvent::LoggedOutOfApp {
+            app: app.to_string(),
+        };
+    }
+    if let Some(event) = parse_logged_out_of_account(s) {
+        return event;
+    }
+    if let Some(event) = parse_switching_key_algorithm(s) {
+        return event;
+    }
+    if let Some(event) = parse_terminated_other_sessions_ledger(s) {
+        return event;
+    }
+    if let Some(event) = parse_terminated_other_sessions(s) {
+        return event;
+    }
+    if let Some(event) = parse_disconnected_ledger(s) {
+        return event;
+    }
+    if let Some(event) = parse_connected_ledger(s) {
+        return event;
+    }
+
+    SecurityLogEvent::Unknown {
+        message: s.to_string(),
+    }
+}
+
+fn parse_prefixed_secret_key(
+    s: &str,
+    prefix: &str,
+    into_event: impl FnOnce(SecretKey) -> SecurityLogEvent,
+) -> Option<SecurityLogEvent> {
+    let secret_key = s.strip_prefix(prefix)?.parse().ok()?;
+    Some(into_event(secret_key))
+}
+
+fn parse_account_imported_with_ledger(s: &str) -> Option<SecurityLogEvent> {
+    let rest = s.strip_prefix("Account imported with Ledger path ")?;
+    let (path, public_key) = rest.rsplit_once(" and public key ")?;
+    let public_key = public_key.parse().ok()?;
+    Some(SecurityLogEvent::AccountImportedWithLedger {
+        path: path.to_string(),
+        public_key,
+    })
+}
+
+fn parse_signed_nep413_message(s: &str) -> Option<SecurityLogEvent> {
+    let rest = s.strip_prefix("Signed NEP-413 message on /sign-message from ")?;
+    let (origin, message) = rest.split_once(": ")?;
+    Some(SecurityLogEvent::SignedNep413Message {
+        origin: origin.to_string(),
+        message: message.to_string(),
+    })
+}
+
+fn parse_deleted_from_developer_sandbox(s: &str) -> Option<SecurityLogEvent> {
+    let rest = s.strip_prefix("Deleted ")?;
+    let (account_id, rest) = rest.split_once(" from developer sandbox with key ")?;
+    let (secret_key, rest) = rest.rsplit_once(" (public key: ")?;
+    let public_key = rest.strip_suffix(')')?;
+    Some(SecurityLogEvent::DeletedFromDeveloperSandbox {
+        account_id: account_id.parse().ok()?,
+        secret_key: secret_key.parse().ok()?,
+        public_key: public_key.parse().ok()?,
+    })
+}
+
+fn parse_sent_transactions(s: &str) -> Option<SecurityLogEvent> {
+    let (rest, danger) = if let Some(rest) =
+        s.strip_prefix("Sent dangerous (typed 'CONFIRM') transactions on /send-transactions from ")
+    {
+        (rest, TransactionDanger::Confirmed)
+    } else if let Some(rest) = s.strip_prefix(
+        "Sent dangerous (not typed 'CONFIRM') transactions on /send-transactions from ",
+    ) {
+        (rest, TransactionDanger::NotConfirmed)
+    } else if let Some(rest) = s.strip_prefix("Sent transactions on /send-transactions from ") {
+        (rest, TransactionDanger::NotDangerous)
+    } else {
+        return None;
+    };
+    let (origin, transactions) = rest.split_once(": ")?;
+    Some(SecurityLogEvent::SentTransactions {
+        origin: origin.to_string(),
+        transactions: transactions.to_string(),
+        danger,
+    })
+}
+
+fn parse_logged_out_of_account(s: &str) -> Option<SecurityLogEvent> {
+    let rest = s.strip_prefix("Logged out of ")?;
+    let (account_id, rest) = rest.split_once(" with key ")?;
+    let (secret_key, rest) = rest.rsplit_once(" (public key: ")?;
+    let public_key = rest.strip_suffix(')')?;
+    Some(SecurityLogEvent::LoggedOutOfAccount {
+        account_id: account_id.parse().ok()?,
+        secret_key: secret_key.parse().ok()?,
+        public_key: public_key.parse().ok()?,
+    })
+}
+
+fn parse_switching_key_algorithm(s: &str) -> Option<SecurityLogEvent> {
+    let rest = s.strip_prefix("Switching key algorithm: adding ")?;
+    let (new_secret_key, rest) = rest.split_once(" and removing all full access keys ")?;
+    let (removed_keys, previous_secret_key) = rest.rsplit_once(". Previous secret key: ")?;
+    Some(SecurityLogEvent::SwitchingKeyAlgorithm {
+        new_secret_key: new_secret_key.parse().ok()?,
+        removed_keys: removed_keys.to_string(),
+        previous_secret_key: previous_secret_key.parse().ok()?,
+    })
+}
+
+fn parse_terminated_other_sessions_ledger(s: &str) -> Option<SecurityLogEvent> {
+    let rest = s.strip_prefix("Terminated all other sessions for Ledger account ")?;
+    let (account_id, rest) = rest.split_once(": Removed ")?;
+    let (removed_key_count, kept_public_key) =
+        rest.split_once(" other keys, kept current Ledger key ")?;
+    Some(SecurityLogEvent::TerminatedOtherSessionsLedger {
+        account_id: account_id.parse().ok()?,
+        removed_key_count: removed_key_count.parse().ok()?,
+        kept_public_key: kept_public_key.parse().ok()?,
+    })
+}
+
+fn parse_terminated_other_sessions(s: &str) -> Option<SecurityLogEvent> {
+    let rest = s.strip_prefix("Terminated all other sessions for account ")?;
+    let (account_id, rest) = rest.split_once(": Added key ")?;
+    let (new_secret_key, rest) = rest.split_once(" (public key: ")?;
+    let (new_public_key, rest) = rest.split_once(") and removed keys ")?;
+    let (removed_keys, previous_secret_key) =
+        rest.rsplit_once(". Previous key that the wallet was using was ")?;
+    Some(SecurityLogEvent::TerminatedOtherSessions {
+        account_id: account_id.parse().ok()?,
+        new_secret_key: new_secret_key.parse().ok()?,
+        new_public_key: new_public_key.parse().ok()?,
+        removed_keys: removed_keys.to_string(),
+        previous_secret_key: previous_secret_key.parse().ok()?,
+    })
+}
+
+fn parse_disconnected_ledger(s: &str) -> Option<SecurityLogEvent> {
+    let rest = s.strip_prefix("Disconnected Ledger. New public key: ")?;
+    let (new_public_key, new_secret_key) = rest.split_once(", private key: ")?;
+    Some(SecurityLogEvent::DisconnectedLedger {
+        new_public_key: new_public_key.parse().ok()?,
+        new_secret_key: new_secret_key.parse().ok()?,
+    })
+}
+
+fn parse_connected_ledger(s: &str) -> Option<SecurityLogEvent> {
+    let rest = s.strip_prefix("Connected Ledger (path ")?;
+    let (path, public_key) = rest.split_once(") public key ")?;
+    Some(SecurityLogEvent::ConnectedLedger {
+        path: path.to_string(),
+        public_key: public_key.parse().ok()?,
+    })
+}
 
 #[derive(Clone, Serialize, Deserialize, Debug, Model)]
 pub struct SecurityLog {
@@ -30,25 +582,66 @@ pub struct SecurityLog {
     pub timestamp: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecurityLogDecryptError {
+    Locked,
+    Failed,
+}
+
+impl std::fmt::Display for SecurityLogDecryptError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Locked => write!(f, "[ENCRYPTED - Unlock wallet to view]"),
+            Self::Failed => write!(f, "[ENCRYPTED - Failed to decrypt]"),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SecurityLogEntry {
+    pub id: u32,
+    pub event: Result<SecurityLogEvent, SecurityLogDecryptError>,
+    pub account: AccountId,
+    pub timestamp: DateTime<Utc>,
+}
+
 impl SecurityLog {
-    pub async fn get_decrypted_message(&self, cipher: Option<&Cipher>) -> String {
+    async fn decrypt_message(
+        &self,
+        cipher: Option<&Cipher>,
+    ) -> Result<String, SecurityLogDecryptError> {
         let Some(nonce_str) = &self.nonce else {
-            // No nonce means the message is not encrypted
-            return self.message.clone();
+            return Ok(self.message.clone());
         };
 
         let Some(cipher) = cipher else {
-            return "[ENCRYPTED - Unlock wallet to view]".to_string();
+            return Err(SecurityLogDecryptError::Locked);
         };
 
         match decrypt_message(&self.message, nonce_str, cipher).await {
-            Ok(decrypted) => decrypted,
-            Err(err) => format!("[ENCRYPTED - Failed to decrypt: {}]", err),
+            Ok(decrypted) => Ok(decrypted),
+            Err(err) => {
+                log::error!("Failed to decrypt security log: {err}");
+                Err(SecurityLogDecryptError::Failed)
+            }
         }
     }
 
     pub fn is_encrypted(&self) -> bool {
         self.nonce.is_some()
+    }
+
+    async fn into_entry(self, cipher: Option<&Cipher>) -> SecurityLogEntry {
+        let event = match self.decrypt_message(cipher).await {
+            Ok(plaintext) => Ok(plaintext.parse().unwrap()),
+            Err(error) => Err(error),
+        };
+        SecurityLogEntry {
+            id: self.id,
+            event,
+            account: self.account,
+            timestamp: self.timestamp,
+        }
     }
 }
 
@@ -215,7 +808,11 @@ async fn add_log_entry(
     }
 }
 
-pub async fn load_security_logs(start_index: u32, limit: u32) -> Result<Vec<SecurityLog>, String> {
+pub async fn load_security_logs(
+    start_index: u32,
+    limit: u32,
+    cipher: Option<Cipher>,
+) -> Result<Vec<SecurityLogEntry>, String> {
     // Need to make this Send to use it in Action
     let (tx, rx) = oneshot::channel();
     spawn_local(async move {
@@ -245,7 +842,11 @@ pub async fn load_security_logs(start_index: u32, limit: u32) -> Result<Vec<Secu
                         break;
                     }
                 }
-                Ok(values)
+                let mut entries = Vec::with_capacity(values.len());
+                for value in values {
+                    entries.push(value.into_entry(cipher.as_ref()).await);
+                }
+                Ok(entries)
             }
             Err(e) => Err(e.to_string()),
         };
@@ -256,11 +857,56 @@ pub async fn load_security_logs(start_index: u32, limit: u32) -> Result<Vec<Secu
     rx.await.unwrap_or(Err("Failed to receive result".into()))
 }
 
-pub fn add_security_log(message: String, account: AccountId, accounts_context: AccountsContext) {
+pub async fn load_all_security_logs(
+    cipher: Option<Cipher>,
+) -> Result<Vec<SecurityLogEntry>, String> {
+    let (tx, rx) = oneshot::channel();
+    spawn_local(async move {
+        let result = match setup_db().await {
+            Ok(db) => {
+                let tx = db
+                    .transaction()
+                    .with_model::<SecurityLog>()
+                    .build()
+                    .expect("Failed to create transaction");
+
+                let store =
+                    SecurityLog::with_transaction(&tx).expect("Failed to instantiate store");
+                let mut values = Vec::new();
+                if let Ok(Some(mut cursor)) = store.cursor(.., Some(CursorDirection::Prev)).await {
+                    while let Ok(Some(value)) = cursor.value() {
+                        values.push(value);
+                        if let Err(e) = cursor.advance(1).await {
+                            log::error!("Failed to advance cursor: {e:?}");
+                            break;
+                        }
+                    }
+                }
+                let mut entries = Vec::with_capacity(values.len());
+                for value in values {
+                    entries.push(value.into_entry(cipher.as_ref()).await);
+                }
+                Ok(entries)
+            }
+            Err(e) => Err(e.to_string()),
+        };
+
+        let _ = tx.send(result);
+    });
+
+    rx.await.unwrap_or(Err("Failed to receive result".into()))
+}
+
+pub fn add_security_log(
+    event: SecurityLogEvent,
+    account: AccountId,
+    accounts_context: AccountsContext,
+) {
     spawn_local(async move {
         let cipher = accounts_context.cipher.get_untracked();
+        let message = event.to_string();
 
-        match add_log_entry(message.clone(), account.clone(), cipher).await {
+        match add_log_entry(message, account, cipher).await {
             Ok(_) => {
                 // Log added successfully
             }

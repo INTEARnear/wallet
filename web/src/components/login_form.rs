@@ -19,7 +19,9 @@ use crate::contexts::accounts_context::{
 use crate::contexts::config_context::ConfigContext;
 use crate::contexts::legal_consents_context::LegalConsents;
 use crate::contexts::network_context::Network;
-use crate::contexts::security_log_context::add_security_log;
+use crate::contexts::security_log_context::{
+    SecurityLogEvent, add_security_log, load_all_security_logs,
+};
 use crate::pages::settings::LedgerSelector;
 use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
 use crate::translations::TranslationKey;
@@ -30,47 +32,65 @@ async fn find_accounts_by_public_key(
     accounts_context: &AccountsContext,
 ) -> (HashSet<(AccountId, Network)>, bool) {
     let public_key_handle = PublicKeyHandle::from(public_key);
-    let mut all_accounts = HashSet::new();
-
-    let mut has_accounts_with_same_public_key = false;
-    for (network, api_url) in [
+    let public_key_path = public_key_handle.to_string();
+    let lookups = [
         (Network::Mainnet, "https://api.fastnear.com/v0"),
         (Network::Mainnet, "https://account-indexer.intea.rs"),
         (Network::Testnet, "https://test.api.fastnear.com/v0"),
         (Network::Testnet, "https://account-indexer-testnet.intea.rs"),
-    ] {
-        let url = format!("{api_url}/public_key/{public_key_handle}");
-        if let Ok(response) = reqwest::get(url).await
-            && let Ok(data) = response.json::<serde_json::Value>().await
-            && let Some(account_ids) = data.get("account_ids").and_then(|ids| ids.as_array())
-        {
-            let accounts: Vec<(AccountId, Network)> = account_ids
+    ]
+    .into_iter()
+    .map(|(network, api_url)| {
+        let public_key_path = public_key_path.clone();
+        async move {
+            let url = format!("{api_url}/public_key/{public_key_path}");
+            let Ok(response) = reqwest::get(url).await else {
+                return Vec::new();
+            };
+            let Ok(data) = response.json::<serde_json::Value>().await else {
+                return Vec::new();
+            };
+            let Some(account_ids) = data.get("account_ids").and_then(|ids| ids.as_array()) else {
+                return Vec::new();
+            };
+            account_ids
                 .iter()
                 .filter_map(|id| {
                     id.as_str()
                         .and_then(|s| s.parse::<AccountId>().ok())
                         .map(|id| (id, network.clone()))
                 })
-                .filter(|(id, _)| {
-                    if accounts_context
-                        .accounts
-                        .get_untracked()
-                        .accounts
-                        .iter()
-                        .any(|a| a.account_id == *id)
-                    {
-                        has_accounts_with_same_public_key = true;
-                        false
-                    } else {
-                        true
-                    }
-                })
-                .collect();
-            all_accounts.extend(accounts);
+                .collect::<Vec<_>>()
+        }
+    });
+    let results = futures_util::future::join_all(lookups).await;
+
+    let mut all_accounts = HashSet::new();
+    let mut has_accounts_with_same_public_key = false;
+    for accounts in results {
+        for (account_id, network) in accounts {
+            if accounts_context
+                .accounts
+                .get_untracked()
+                .accounts
+                .iter()
+                .any(|account| account.account_id == account_id)
+            {
+                has_accounts_with_same_public_key = true;
+            } else {
+                all_accounts.insert((account_id, network));
+            }
         }
     }
 
     (all_accounts, has_accounts_with_same_public_key)
+}
+
+#[derive(Clone, Debug)]
+struct RecoverableAccount {
+    account_id: AccountId,
+    network: Network,
+    secret_key: SecretKey,
 }
 
 #[component]
@@ -97,6 +117,49 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
     let (ledger_current_key_data, set_ledger_current_key_data) =
         signal::<Option<(String, near_min_api::types::near_crypto::PublicKey)>>(None);
     let legal_consents = expect_context::<LegalConsents>();
+    let (recoverable_accounts, set_recoverable_accounts) = signal(Vec::<RecoverableAccount>::new());
+
+    Effect::new(move || {
+        let cipher = accounts_context.cipher.get();
+        spawn_local(async move {
+            let Ok(logs) = load_all_security_logs(cipher).await else {
+                return;
+            };
+            let mut unique_secret_keys = HashMap::new();
+            for log in logs {
+                let Ok(event) = log.event else {
+                    continue;
+                };
+                for secret_key in event.recoverable_secret_keys() {
+                    unique_secret_keys.insert(secret_key.public_key().to_string(), secret_key);
+                }
+            }
+
+            let lookups = unique_secret_keys.into_values().map(|secret_key| async move {
+                let (accounts, _) =
+                    find_accounts_by_public_key(secret_key.public_key(), &accounts_context).await;
+                (secret_key, accounts)
+            });
+            let results = futures_util::future::join_all(lookups).await;
+
+            let mut recoverable = Vec::new();
+            let mut seen_accounts = HashSet::new();
+            for (secret_key, accounts) in results {
+                for (account_id, network) in accounts {
+                    if seen_accounts.insert((account_id.clone(), network.clone())) {
+                        recoverable.push(RecoverableAccount {
+                            account_id,
+                            network,
+                            secret_key: secret_key.clone(),
+                        });
+                    }
+                }
+            }
+            log::info!("Recoverable accounts: {:?}", recoverable);
+            recoverable.sort_by(|left, right| left.account_id.cmp(&right.account_id));
+            set_recoverable_accounts.set(recoverable);
+        });
+    });
 
     let (ledger_account_number, set_ledger_account_number) = signal(0u32);
     let (ledger_change_number, set_ledger_change_number) = signal(0u32);
@@ -365,7 +428,9 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
             if let Ok(secret_key) = user_input.parse::<SecretKey>() {
                 for (account_id, network) in selected_list.iter() {
                     add_security_log(
-                        format!("Account imported with private key {secret_key}"),
+                        SecurityLogEvent::AccountImportedWithPrivateKey {
+                            secret_key: secret_key.clone(),
+                        },
                         account_id.clone(),
                         accounts_context,
                     );
@@ -397,7 +462,9 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                         return;
                     };
                     add_security_log(
-                        format!("Account imported with private key {secret_key}"),
+                        SecurityLogEvent::AccountImportedWithPrivateKey {
+                            secret_key: secret_key.clone(),
+                        },
                         account_id.clone(),
                         accounts_context,
                     );
@@ -1226,9 +1293,10 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                                                         .iter()
                                                                     {
                                                                         add_security_log(
-                                                                            format!(
-                                                                                "Account imported with Ledger path {path} and public key {public_key}",
-                                                                            ),
+                                                                            SecurityLogEvent::AccountImportedWithLedger {
+                                                                                path: path.clone(),
+                                                                                public_key: public_key.clone(),
+                                                                            },
                                                                             account_id.clone(),
                                                                             accounts_context,
                                                                         );
@@ -1296,40 +1364,185 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                                 .into_any()
                         }
                     }}
-                    <LegalConsentsSection />
+                    <div>
+                        <LegalConsentsSection />
+                        <RecoverableAccountsSection
+                            recoverable_accounts=recoverable_accounts
+                            set_error=set_error
+                        />
 
-                    <div class="relative mt-6">
-                        <div class="absolute inset-0 flex items-center">
-                            <div class="w-full border-t border-neutral-800"></div>
+                        <div class="relative mt-6">
+                            <div class="absolute inset-0 flex items-center">
+                                <div class="w-full border-t border-neutral-800"></div>
+                            </div>
+                            <div class="relative flex justify-center text-sm">
+                                <span class="px-2 bg-neutral-950 text-neutral-400">
+                                    {move || TranslationKey::ComponentsLoginFormDividerOr.format(&[])}
+                                </span>
+                            </div>
                         </div>
-                        <div class="relative flex justify-center text-sm">
-                            <span class="px-2 bg-neutral-950 text-neutral-400">
-                                {move || TranslationKey::ComponentsLoginFormDividerOr.format(&[])}
-                            </span>
-                        </div>
-                    </div>
 
-                    <button
-                        class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden border border-neutral-800 hover:border-neutral-700 cursor-pointer mt-6 disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled=move || !legal_consents.all_accepted()
-                        on:click=move |_| {
-                            if !legal_consents.all_accepted_untracked() {
-                                set_error.set(Some(TranslationKey::ComponentsLegalConsentsBlockingMessage.format(&[])));
-                                return;
+                        <button
+                            class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden border border-neutral-800 hover:border-neutral-700 cursor-pointer mt-6 disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled=move || !legal_consents.all_accepted()
+                            on:click=move |_| {
+                                if !legal_consents.all_accepted_untracked() {
+                                    set_error.set(Some(TranslationKey::ComponentsLegalConsentsBlockingMessage.format(&[])));
+                                    return;
+                                }
+                                set_modal_state
+                                    .set(ModalState::Creating {
+                                        parent: AccountCreateParent::Mainnet,
+                                        recovery_method: AccountCreateRecoveryMethod::RecoveryPhrase,
+                                    })
                             }
-                            set_modal_state
-                                .set(ModalState::Creating {
-                                    parent: AccountCreateParent::Mainnet,
-                                    recovery_method: AccountCreateRecoveryMethod::RecoveryPhrase,
-                                })
-                        }
-                    >
-                        <span class="relative">
-                            {move || TranslationKey::ComponentsLoginFormButtonCreateNewAccount.format(&[])}
-                        </span>
-                    </button>
+                        >
+                            <span class="relative">
+                                {move || TranslationKey::ComponentsLoginFormButtonCreateNewAccount.format(&[])}
+                            </span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
+    }
+}
+
+#[component]
+fn RecoverableAccountsSection(
+    recoverable_accounts: ReadSignal<Vec<RecoverableAccount>>,
+    set_error: WriteSignal<Option<String>>,
+) -> impl IntoView {
+    let accounts_context = expect_context::<AccountsContext>();
+    let visible_accounts = move || {
+        let imported_account_ids = accounts_context
+            .accounts
+            .get()
+            .accounts
+            .into_iter()
+            .map(|account| account.account_id)
+            .collect::<HashSet<_>>();
+        recoverable_accounts
+            .get()
+            .into_iter()
+            .filter(|account| !imported_account_ids.contains(&account.account_id))
+            .collect::<Vec<_>>()
+    };
+
+    view! {
+        <Show when=move || !visible_accounts().is_empty()>
+            <div>
+                <div class="relative mt-6">
+                    <div class="absolute inset-0 flex items-center">
+                        <div class="w-full border-t border-neutral-800"></div>
+                    </div>
+                    <div class="relative flex justify-center text-sm">
+                        <span class="px-2 bg-neutral-950 text-neutral-400">
+                            {move || TranslationKey::ComponentsLoginFormDividerOr.format(&[])}
+                        </span>
+                    </div>
+                </div>
+                <div class="space-y-2 mt-6">
+                    <For
+                        each=visible_accounts
+                        key=|account| (account.account_id.clone(), account.network.clone())
+                        let:recoverable_account
+                    >
+                        <RecoverableAccountButton
+                            recoverable_account=recoverable_account
+                            set_error=set_error
+                        />
+                    </For>
+                </div>
+            </div>
+        </Show>
+    }
+}
+
+#[component]
+fn RecoverableAccountButton(
+    recoverable_account: RecoverableAccount,
+    set_error: WriteSignal<Option<String>>,
+) -> impl IntoView {
+    let AccountSelectorContext {
+        set_modal_state, ..
+    } = expect_context::<AccountSelectorContext>();
+    let accounts_context = expect_context::<AccountsContext>();
+    let legal_consents = expect_context::<LegalConsents>();
+    let account_id_str = recoverable_account.account_id.to_string();
+    let network = recoverable_account.network.clone();
+
+    view! {
+        <button
+            class="w-full text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium shadow-lg relative overflow-hidden border border-neutral-800 hover:border-neutral-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-left"
+            disabled=move || !legal_consents.all_accepted()
+            on:click=move |_| {
+                if !legal_consents.all_accepted_untracked() {
+                    set_error
+                        .set(
+                            Some(
+                                TranslationKey::ComponentsLegalConsentsBlockingMessage.format(&[]),
+                            ),
+                        );
+                    return;
+                }
+
+                add_security_log(
+                    SecurityLogEvent::AccountImportedWithPrivateKey {
+                        secret_key: recoverable_account.secret_key.clone(),
+                    },
+                    recoverable_account.account_id.clone(),
+                    accounts_context,
+                );
+                accounts_context
+                    .set_accounts
+                    .update(|accounts| {
+                        accounts
+                            .accounts
+                            .push(Account {
+                                account_id: recoverable_account.account_id.clone(),
+                                secret_key: SecretKeyHolder::SecretKey(
+                                    recoverable_account.secret_key.clone(),
+                                ),
+                                seed_phrase: None,
+                                network: recoverable_account.network.clone(),
+                                exported: false,
+                                protected_until: Default::default(),
+                            });
+                        accounts.selected_account_id = Some(recoverable_account.account_id.clone());
+                    });
+                set_modal_state.set(ModalState::AccountList);
+            }
+        >
+            <div class="relative">
+                <div>{account_id_str}</div>
+                {move || {
+                    if network == Network::Testnet {
+                        view! {
+                            <p class="text-yellow-500 text-sm mt-1 font-medium">
+                                {move || TranslationKey::ComponentsLoginFormTestnetImportDisclaimer
+                                    .format_view(vec![
+                                        (
+                                            "testnet",
+                                            view! {
+                                                <b>
+                                                    {move || {
+                                                        TranslationKey::ComponentsLoginFormTestnetWord
+                                                            .format(&[])
+                                                    }}
+                                                </b>
+                                            }
+                                                .into_any(),
+                                        ),
+                                    ])}
+                            </p>
+                        }
+                            .into_any()
+                    } else {
+                        ().into_any()
+                    }
+                }}
+            </div>
+        </button>
     }
 }

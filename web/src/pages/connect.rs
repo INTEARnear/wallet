@@ -39,7 +39,7 @@ use crate::{
         accounts_context::{AccountsContext, LedgerSigningState, SecretKeyHolder},
         connected_apps_context::{ConnectedApp, ConnectedAppsContext, ConnectorVersion},
         network_context::Network,
-        security_log_context::add_security_log,
+        security_log_context::{SecurityLogEvent, add_security_log},
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
     pages::sign_message::{SignedMessageV1, SignedMessageV2},
@@ -701,7 +701,9 @@ pub fn Connect() -> impl IntoView {
                         function_call_public_key: message.function_call_public_key.clone(),
                     };
                     add_security_log(
-                        format!("Connected to {app:?} on /connect"),
+                        SecurityLogEvent::ConnectedToApp {
+                            app: format!("{app:?}"),
+                        },
                         selected_account.clone(),
                         accounts_context,
                     );

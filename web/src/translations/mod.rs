@@ -261,14 +261,10 @@ translation_keys! {
                     BettearUnlink,
                     BettearLink,
                     CreateSubaccount,
-                    LogOutSectionTitle,
-                    LogOutDescription,
-                    LogOutButton,
                 },
                 SecurityLog {
                     PageTitle,
                     EmptyState,
-                    MessageLoading,
                 },
                 ConnectedApps {
                     PageTitle,

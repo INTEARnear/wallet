@@ -18,7 +18,7 @@ use crate::{
         accounts_context::{Account, AccountsContext, SecretKeyHolder},
         config_context::ConfigContext,
         network_context::Network,
-        security_log_context::add_security_log,
+        security_log_context::{SecurityLogEvent, add_security_log},
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
     translations::TranslationKey,
@@ -361,22 +361,21 @@ pub fn DeveloperSandbox() -> impl IntoView {
     let delete_account = move |account_id: AccountId| {
         set_accounts.update(|accounts_data| {
             add_security_log(
-                format!(
-                    "Deleted {} from developer sandbox with key {} (public key: {})",
-                    account_id,
-                    accounts_data
+                SecurityLogEvent::DeletedFromDeveloperSandbox {
+                    account_id: account_id.clone(),
+                    secret_key: accounts_data
                         .accounts
                         .iter()
                         .find(|acc| acc.account_id == account_id)
                         .map(|acc| acc.secret_key.clone())
                         .unwrap(),
-                    accounts_data
+                    public_key: accounts_data
                         .accounts
                         .iter()
                         .find(|acc| acc.account_id == account_id)
                         .map(|acc| acc.secret_key.public_key())
                         .unwrap(),
-                ),
+                },
                 account_id.clone(),
                 accounts_context,
             );

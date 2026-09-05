@@ -25,7 +25,7 @@ use crate::{
         config_context::ConfigContext,
         connected_apps_context::ConnectedAppsContext,
         network_context::Network,
-        security_log_context::add_security_log,
+        security_log_context::{SecurityLogEvent, add_security_log},
     },
     utils::{
         NEP413Payload, fetch_token_info, format_token_amount, serialize_to_js_value, sign_nep413,
@@ -1607,15 +1607,14 @@ pub fn SignMessage() -> impl IntoView {
             return;
         };
         add_security_log(
-            format!(
-                "Signed NEP-413 message on /sign-message from {}: {}",
-                origin.get_untracked(),
-                if request_data.message.len() > 5000 {
+            SecurityLogEvent::SignedNep413Message {
+                origin: origin.get_untracked(),
+                message: if request_data.message.len() > 5000 {
                     format!("{}...", &request_data.message[..5000])
                 } else {
                     request_data.message.clone()
-                }
-            ),
+                },
+            },
             account.account_id.clone(),
             accounts_context,
         );

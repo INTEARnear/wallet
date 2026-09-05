@@ -34,7 +34,7 @@ use crate::{
             is_dangerous_action,
         },
         network_context::Network,
-        security_log_context::add_security_log,
+        security_log_context::{SecurityLogEvent, TransactionDanger, add_security_log},
         transaction_queue_context::{
             EnqueuedTransaction, TransactionQueueContext, TransactionType,
         },
@@ -1043,24 +1043,23 @@ pub fn SendTransactions() -> impl IntoView {
             return;
         }
         add_security_log(
-            format!(
-                "Sent{} transactions on /send-transactions from {}: {}",
-                if has_dangerous_actions.get_untracked() {
-                    if is_confirmed.get_untracked() {
-                        " dangerous (typed 'CONFIRM')"
-                    } else {
-                        " dangerous (not typed 'CONFIRM')"
-                    }
-                } else {
-                    ""
-                },
-                origin.get_untracked(),
-                if request_data.transactions.len() > 5000 {
+            SecurityLogEvent::SentTransactions {
+                origin: origin.get_untracked(),
+                transactions: if request_data.transactions.len() > 5000 {
                     format!("{}...", &request_data.transactions[..5000])
                 } else {
                     request_data.transactions.clone()
-                }
-            ),
+                },
+                danger: if has_dangerous_actions.get_untracked() {
+                    if is_confirmed.get_untracked() {
+                        TransactionDanger::Confirmed
+                    } else {
+                        TransactionDanger::NotConfirmed
+                    }
+                } else {
+                    TransactionDanger::NotDangerous
+                },
+            },
             request_data.account_id.clone(),
             accounts_context,
         );

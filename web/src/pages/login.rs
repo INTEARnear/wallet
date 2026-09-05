@@ -9,7 +9,7 @@ use crate::{
     components::danger_confirm_input::DangerConfirmInput,
     contexts::{
         accounts_context::AccountsContext,
-        security_log_context::add_security_log,
+        security_log_context::{SecurityLogEvent, add_security_log},
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
     translations::TranslationKey,
@@ -129,9 +129,9 @@ pub fn Login() -> impl IntoView {
                                         return;
                                     };
                                     add_security_log(
-                                        format!(
-                                            "Added full access key on /login with public key {public_key}, typed 'CONFIRM'",
-                                        ),
+                                        SecurityLogEvent::AddedFullAccessKeyOnLogin {
+                                            public_key: public_key.clone(),
+                                        },
                                         account_id.clone(),
                                         accounts_context,
                                     );

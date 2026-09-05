@@ -8,7 +8,7 @@ use crate::{
         },
         config_context::{ConfigContext, PasswordRememberDuration},
         rpc_context::RpcContext,
-        security_log_context::add_security_log,
+        security_log_context::{SecurityLogEvent, add_security_log},
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
     pages::settings::ToggleSwitch,
@@ -297,11 +297,11 @@ pub fn SecuritySettings() -> impl IntoView {
                 intents_remove_public_key_batches(&rpc_client, &account_id, &network).await;
 
             add_security_log(
-                format!(
-                    "Switching key algorithm: adding {new_secret_key} and removing all full access keys {}. Previous secret key: {}",
-                    serde_json::to_string(&actions).unwrap(),
-                    account.secret_key,
-                ),
+                SecurityLogEvent::SwitchingKeyAlgorithm {
+                    new_secret_key: new_secret_key.clone(),
+                    removed_keys: serde_json::to_string(&actions).unwrap(),
+                    previous_secret_key: account.secret_key.clone(),
+                },
                 account_id.clone(),
                 accounts_context,
             );
@@ -477,7 +477,7 @@ pub fn SecuritySettings() -> impl IntoView {
             .selected_account_id
         {
             add_security_log(
-                "Storage persistence warning dismissed".to_string(),
+                SecurityLogEvent::StoragePersistenceWarningDismissed,
                 account.clone(),
                 accounts_context,
             );
