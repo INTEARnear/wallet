@@ -4,11 +4,11 @@ use futures_util::TryFutureExt;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use near_min_api::types::{
-    AccountId, Action, ActionErrorKind, BlockReference, CryptoHash, DelegateAction,
-    DepositCostFailureReason, Finality, HandlerError, InvalidTxError, NearToken, NonDelegateAction,
-    RpcErrorKind, RpcRequestValidationErrorKind, RpcStatusError, RpcTransactionError, ServerError,
-    SignedDelegateAction, SignedTransaction, Transaction, TransactionV0, TxExecutionError,
-    TxExecutionStatus,
+    AccountId, Action, ActionErrorKind, BlockHeight, BlockHeightDelta, BlockReference, CryptoHash,
+    DelegateAction, DepositCostFailureReason, Finality, HandlerError, InvalidTxError, NearToken,
+    NonDelegateAction, RpcErrorKind, RpcRequestValidationErrorKind, RpcStatusError,
+    RpcTransactionError, ServerError, SignedDelegateAction, SignedTransaction, Transaction,
+    TransactionV0, TxExecutionError, TxExecutionStatus,
 };
 use near_min_api::{ExperimentalTxDetails, PendingTransaction, QueryFinality, RpcClient};
 use rand::Rng;
@@ -46,9 +46,48 @@ pub enum TransactionType {
     SignDelegateAction {
         actions: Vec<Action>,
         receiver_id: AccountId,
-        block_height_ttl: Option<u64>,
+        block_height_ttl: Option<BlockHeightDelta>,
         sender: Option<futures_channel::oneshot::Sender<Result<SignedDelegateAction, String>>>,
     },
+}
+
+pub const DEFAULT_DELEGATE_ACTION_BLOCK_HEIGHT_TTL: BlockHeightDelta = 100;
+
+fn delegate_action_max_block_height(
+    final_block_height: BlockHeight,
+    block_height_ttl: Option<BlockHeightDelta>,
+) -> Result<BlockHeight, String> {
+    let block_height_ttl = block_height_ttl.unwrap_or(DEFAULT_DELEGATE_ACTION_BLOCK_HEIGHT_TTL);
+    if block_height_ttl == 0 {
+        return Err("Block height TTL must be positive".to_string());
+    }
+    Ok(final_block_height.saturating_add(block_height_ttl))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn delegate_action_ttl_uses_the_requested_block_delta() {
+        assert_eq!(
+            delegate_action_max_block_height(1_000, None).unwrap(),
+            1_100
+        );
+        assert_eq!(
+            delegate_action_max_block_height(1_000, Some(1)).unwrap(),
+            1_001
+        );
+        assert_eq!(
+            delegate_action_max_block_height(1_000, Some(2)).unwrap(),
+            1_002
+        );
+        assert!(delegate_action_max_block_height(1_000, Some(0)).is_err());
+        assert_eq!(
+            delegate_action_max_block_height(u64::MAX, Some(1)).unwrap(),
+            u64::MAX
+        );
+    }
 }
 
 enum TransactionResult<'a> {
@@ -316,17 +355,8 @@ impl TransactionType {
                     }
                 };
 
-                let block_height_ttl = block_height_ttl.unwrap_or(100);
-                if block_height_ttl == 0 {
-                    return Err("blockHeightTtl must be positive".to_string());
-                }
-                let max_block_height = recent_block_header
-                    .height
-                    .checked_add(block_height_ttl)
-                    .ok_or_else(|| {
-                        "final block height plus blockHeightTtl exceeds the supported range"
-                            .to_string()
-                    })?;
+                let max_block_height =
+                    delegate_action_max_block_height(recent_block_header.height, block_height_ttl)?;
 
                 let delegate_action = DelegateAction {
                     sender_id: signer.account_id.clone(),

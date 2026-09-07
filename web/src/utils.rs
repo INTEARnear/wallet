@@ -8,8 +8,8 @@ use near_min_api::{
     QueryFinality, RpcClient,
     types::{
         AccessKey as NearAccessKey, AccessKeyPermission, AccountId, AccountIdRef,
-        Action as NearAction, AddKeyAction, Balance, CreateAccountAction, CryptoHash,
-        DelegateAction, DeleteAccountAction, DeleteKeyAction, DeployContractAction,
+        Action as NearAction, AddKeyAction, Balance, BlockHeightDelta, CreateAccountAction,
+        CryptoHash, DelegateAction, DeleteAccountAction, DeleteKeyAction, DeployContractAction,
         DeployGlobalContractAction, Finality, FunctionCallAction, FunctionCallPermission, Gas,
         GlobalContractDeployMode, GlobalContractIdentifier, NearGas, NearToken, StakeAction,
         TransferAction, UseGlobalContractAction,
@@ -962,7 +962,7 @@ pub struct WalletSelectorTransaction {
     pub receiver_id: AccountId,
     pub actions: Vec<SendTransactionsAction>,
     #[serde(default)]
-    pub block_height_ttl: Option<u64>,
+    pub block_height_ttl: Option<BlockHeightDelta>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]

@@ -656,6 +656,8 @@ translation_keys! {
                 WarningMultipleTxBody,
                 WarningHighGasTitle,
                 WarningHighGasBody,
+                WarningLongDelegateTtlTitle,
+                WarningLongDelegateTtlBody,
                 SignerMismatchTitle,
                 SignerMismatchBody,
                 DangerWarningTitle,

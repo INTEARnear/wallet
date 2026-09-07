@@ -681,6 +681,8 @@
   "pages.send_transactions.user_rejected_transactions": "Користувач відхилив транзакції",
   "pages.send_transactions.warning_high_gas_body": "Один або кілька викликів функцій використовують понад 300 TGas. Зменшіть комісію, якщо повний обсяг не потрібен.",
   "pages.send_transactions.warning_high_gas_title": "Високе споживання комісій",
+  "pages.send_transactions.warning_long_delegate_ttl_body": "Цей запит залишатиметься дійсним протягом {blocks} блоків після підписання. Його можна надіслати будь-коли впродовж цього періоду.",
+  "pages.send_transactions.warning_long_delegate_ttl_title": "Тривалий термін дії делегованої дії",
   "pages.send_transactions.warning_multiple_tx_body": "Об'єднайте в одну транзакцію з кількома діями для швидшості та атомарності.",
   "pages.send_transactions.warning_multiple_tx_title": "Кілька транзакцій до одного контракту",
   "pages.settings.account.access_key_description_ledger": "Буде видалено всі інші ключі доступу, залишиться лише поточний ключ Ledger. Ledger стане єдиним способом доступу до акаунту.",

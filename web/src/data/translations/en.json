@@ -681,6 +681,8 @@
   "pages.send_transactions.user_rejected_transactions": "User rejected the transactions",
   "pages.send_transactions.warning_high_gas_body": "One or more function calls attach over 300 TGas. Consider reducing the gas if the full amount isn't needed, because it can make some people unable to use your app, and there will be a high fee penalty introduced in the future NEAR release.",
   "pages.send_transactions.warning_high_gas_title": "High Gas Usage Detected",
+  "pages.send_transactions.warning_long_delegate_ttl_body": "This request will remain valid for {blocks} blocks after signing. It can be submitted at any time during that window.",
+  "pages.send_transactions.warning_long_delegate_ttl_title": "Long Delegate Action Lifetime",
   "pages.send_transactions.warning_multiple_tx_body": "Consider combining these into a single transaction with multiple actions to speed up the user experience and have atomicity between these transactions.",
   "pages.send_transactions.warning_multiple_tx_title": "Multiple Transactions to Same Contract",
   "pages.settings.account.access_key_description_ledger": "This will remove all other access keys from your account, keeping only the current Ledger key. This will make your Ledger the only way to access this account.",

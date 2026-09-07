@@ -8,8 +8,8 @@ use leptos_router::hooks::use_location;
 use near_min_api::{
     ExperimentalTxDetails,
     types::{
-        AccessKeyPermission, AccountId, Action, AddKeyAction, CryptoHash, DeleteAccountAction,
-        DeleteKeyAction, DeployContractAction, DeployGlobalContractAction,
+        AccessKeyPermission, AccountId, Action, AddKeyAction, BlockHeightDelta, CryptoHash,
+        DeleteAccountAction, DeleteKeyAction, DeployContractAction, DeployGlobalContractAction,
         DeterministicStateInitAction, FinalExecutionOutcomeViewEnum, FunctionCallAction,
         FunctionCallPermission, GlobalContractDeployMode, GlobalContractIdentifier, NearGas,
         NearToken, SignedDelegateAction, StakeAction, TransferAction, TransferToGasKeyAction,
@@ -36,7 +36,8 @@ use crate::{
         network_context::Network,
         security_log_context::{SecurityLogEvent, TransactionDanger, add_security_log},
         transaction_queue_context::{
-            EnqueuedTransaction, TransactionQueueContext, TransactionType,
+            DEFAULT_DELEGATE_ACTION_BLOCK_HEIGHT_TTL, EnqueuedTransaction, TransactionQueueContext,
+            TransactionType,
         },
     },
     pages::connect::submit_tauri_response,
@@ -52,6 +53,35 @@ pub enum SendTransactionsMode {
     #[default]
     Send,
     SignDelegateActions,
+}
+
+fn is_long_delegate_action_ttl(
+    mode: &SendTransactionsMode,
+    block_height_ttl: BlockHeightDelta,
+) -> bool {
+    *mode == SendTransactionsMode::SignDelegateActions
+        && block_height_ttl > DEFAULT_DELEGATE_ACTION_BLOCK_HEIGHT_TTL
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn long_delegate_action_ttl_warning_starts_above_the_default() {
+        assert!(!is_long_delegate_action_ttl(
+            &SendTransactionsMode::SignDelegateActions,
+            100,
+        ));
+        assert!(is_long_delegate_action_ttl(
+            &SendTransactionsMode::SignDelegateActions,
+            101,
+        ));
+        assert!(!is_long_delegate_action_ttl(
+            &SendTransactionsMode::Send,
+            101,
+        ));
+    }
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -824,6 +854,17 @@ pub fn SendTransactions() -> impl IntoView {
             .map(|txs| txs.to_vec())
     });
 
+    let long_delegate_action_ttl = Memo::new(move |_| {
+        let mode = request_data.get().map(|data| data.mode)?;
+        transactions.get().and_then(|transactions| {
+            transactions
+                .iter()
+                .filter_map(|transaction| transaction.block_height_ttl)
+                .filter(|ttl| is_long_delegate_action_ttl(&mode, *ttl))
+                .max()
+        })
+    });
+
     let has_deposit = Memo::new(move |_| {
         transactions
             .get()
@@ -1308,6 +1349,34 @@ pub fn SendTransactions() -> impl IntoView {
                                             .unwrap_or(().into_any())
                                     }}
                                 </div>
+                                {move || {
+                                    if let Some(block_height_ttl) = long_delegate_action_ttl.get() {
+                                        let blocks = block_height_ttl.to_string();
+                                        let body = TranslationKey::PagesSendTransactionsWarningLongDelegateTtlBody
+                                            .format(&[("blocks", &blocks)]);
+                                        view! {
+                                            <div class="p-4 bg-yellow-500/10 backdrop-blur-sm rounded-xl border border-yellow-500/20">
+                                                <div class="flex items-center gap-2 text-yellow-500">
+                                                    <Icon
+                                                        icon=LuTriangleAlert
+                                                        width="20"
+                                                        height="20"
+                                                        attr:class="min-w-5 min-h-5"
+                                                    />
+                                                    <div>
+                                                        <p class="font-medium">
+                                                            {TranslationKey::PagesSendTransactionsWarningLongDelegateTtlTitle.format(&[])}
+                                                        </p>
+                                                        <p class="text-yellow-500/80 text-sm">{body}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+                                            .into_any()
+                                    } else {
+                                        ().into_any()
+                                    }
+                                }}
                                 {move || {
                                     let mut warnings = Vec::new();
                                     if has_multiple_txs_same_receiver.get() {

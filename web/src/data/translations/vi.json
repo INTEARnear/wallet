@@ -681,6 +681,8 @@
   "pages.send_transactions.user_rejected_transactions": "Người dùng đã từ chối các giao dịch",
   "pages.send_transactions.warning_high_gas_body": "Một hoặc nhiều lệnh gọi hàm gắn hơn 300 TGas. Hãy cân nhắc giảm lượng Gas nếu không cần dùng hết, vì điều đó có thể khiến một số người không thể sử dụng ứng dụng của bạn và sẽ có một hình phạt phí cao được áp dụng trong các bản update NEAR Core trong tương lai.",
   "pages.send_transactions.warning_high_gas_title": "Phát hiện mức sử dụng Gas cao",
+  "pages.send_transactions.warning_long_delegate_ttl_body": "Yêu cầu này vẫn có hiệu lực trong {blocks} khối sau khi ký. Yêu cầu có thể được gửi bất cứ lúc nào trong khoảng thời gian đó.",
+  "pages.send_transactions.warning_long_delegate_ttl_title": "Thời hạn dài cho hành động ủy quyền",
   "pages.send_transactions.warning_multiple_tx_body": "Hãy cân nhắc kết hợp chúng thành một giao dịch duy nhất với nhiều hành động để tăng tốc trải nghiệm người dùng và có tính nguyên tử giữa các giao dịch này.",
   "pages.send_transactions.warning_multiple_tx_title": "Nhiều giao dịch tới cùng một Contract",
   "pages.settings.account.access_key_description_ledger": "Hành động này sẽ xóa tất cả các khóa truy cập khác khỏi tài khoản của bạn, chỉ giữ lại khóa Ledger hiện tại. Ledger sẽ là cách duy nhất để truy cập tài khoản.",
