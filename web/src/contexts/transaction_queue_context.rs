@@ -4,11 +4,11 @@ use futures_util::TryFutureExt;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use near_min_api::types::{
-    AccountId, Action, ActionErrorKind, BlockReference, CryptoHash, DelegateAction,
-    DepositCostFailureReason, Finality, HandlerError, InvalidTxError, NearToken, NonDelegateAction,
-    RpcErrorKind, RpcRequestValidationErrorKind, RpcStatusError, RpcTransactionError, ServerError,
-    SignedDelegateAction, SignedTransaction, Transaction, TransactionV0, TxExecutionError,
-    TxExecutionStatus,
+    AccountId, Action, ActionErrorKind, BlockHeightDelta, BlockReference, CryptoHash,
+    DelegateAction, DepositCostFailureReason, Finality, HandlerError, InvalidTxError, NearToken,
+    NonDelegateAction, RpcErrorKind, RpcRequestValidationErrorKind, RpcStatusError,
+    RpcTransactionError, ServerError, SignedDelegateAction, SignedTransaction, Transaction,
+    TransactionV0, TxExecutionError, TxExecutionStatus,
 };
 use near_min_api::{ExperimentalTxDetails, PendingTransaction, QueryFinality, RpcClient};
 use rand::Rng;
@@ -47,6 +47,7 @@ pub enum TransactionType {
         actions: Vec<Action>,
         receiver_id: AccountId,
         sender: Option<futures_channel::oneshot::Sender<Result<SignedDelegateAction, String>>>,
+        ttl_blocks: Option<BlockHeightDelta>,
     },
 }
 
@@ -95,10 +96,12 @@ impl TransactionType {
                 actions,
                 receiver_id,
                 sender,
+                ttl_blocks,
             } => TransactionType::SignDelegateAction {
                 actions: actions.clone(),
                 receiver_id: receiver_id.clone(),
                 sender: sender.take(),
+                ttl_blocks: *ttl_blocks,
             },
         }
     }
@@ -285,7 +288,9 @@ impl TransactionType {
                 actions,
                 receiver_id,
                 sender,
+                ttl_blocks,
             } => {
+                let ttl_blocks = ttl_blocks.unwrap_or(100);
                 let access_key = match rpc_client
                     .get_access_key(
                         signer.account_id.clone(),
@@ -323,7 +328,7 @@ impl TransactionType {
                             format!("Failed to convert action to non-delegate action: {e}")
                         })?,
                     nonce: access_key.nonce + 1 + current_index_in_queue as u64,
-                    max_block_height: recent_block_header.height + 100,
+                    max_block_height: recent_block_header.height + ttl_blocks,
                     public_key: signer.secret_key.public_key(),
                 };
                 let Ok(signature) = sign_nep366(

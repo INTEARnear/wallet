@@ -139,7 +139,7 @@ The popup needs to be closed by the dApp after receiving `signed` or `error` mes
     "nonce": 0, // must be a recent timestamp in milliseconds since unix epoch
     "signature": "ed25519:...", // of sha256("${nonce}|${transactions}")
     "transactions": "[ ... ]", // stringified JSON array of transaction objects as in https://github.com/near/wallet-selector/blob/30703fdfccb7138eead12a0a65c6b0dba89429d7/packages/core/src/lib/wallet/transactions.types.ts#L1-L78. For actions, it also accepts the real action syntax that is used in RPC communication, indexing, and Rust codebases, except for Delegate action which is unsupported
-    "mode": "Send", // or "SignDelegateActions". Defaults to "Send" if omitted
+    "mode": "Send", // or { "SignDelegateActionsExtended": { "ttlBlocks": number | null, default is 100 } }. Defaults to "Send" if omitted
   }
 }
 ```
@@ -163,7 +163,7 @@ Success:
       /* ...fields of SignedDelegateAction type in Rust */
     },
     ...
-  ] // this field only exists if mode is "SignDelegateActions"
+  ] // this field only exists if mode is "SignDelegateActionsExtended"
 }
 ```
 

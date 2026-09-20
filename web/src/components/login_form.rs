@@ -135,11 +135,14 @@ pub fn LoginForm(show_back_button: bool) -> impl IntoView {
                 }
             }
 
-            let lookups = unique_secret_keys.into_values().map(|secret_key| async move {
-                let (accounts, _) =
-                    find_accounts_by_public_key(secret_key.public_key(), &accounts_context).await;
-                (secret_key, accounts)
-            });
+            let lookups = unique_secret_keys
+                .into_values()
+                .map(|secret_key| async move {
+                    let (accounts, _) =
+                        find_accounts_by_public_key(secret_key.public_key(), &accounts_context)
+                            .await;
+                    (secret_key, accounts)
+                });
             let results = futures_util::future::join_all(lookups).await;
 
             let mut recoverable = Vec::new();

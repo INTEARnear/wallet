@@ -23,7 +23,7 @@
   "scripts": {
     "js:build": "node build-js.js",
     "js:watch": "node build-js.js --watch",
-    "intearwallet-connect:example": "npm run js:build && serve intearwallet-connect/examples",
+    "intearwallet-connect:example": "npm run js:build && serve -p 4000 intearwallet-connect/examples",
     "build": "npm run js:build && npx cross-env ONLY_CREATE_INDEX_HTML=1 cargo leptos serve --release",
     "dev": "npm run js:watch & cargo leptos watch",
     "dev-release": "npm run js:watch & cargo leptos watch --release"

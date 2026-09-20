@@ -8,8 +8,8 @@ use leptos_router::hooks::use_location;
 use near_min_api::{
     ExperimentalTxDetails,
     types::{
-        AccessKeyPermission, AccountId, Action, AddKeyAction, CryptoHash, DeleteAccountAction,
-        DeleteKeyAction, DeployContractAction, DeployGlobalContractAction,
+        AccessKeyPermission, AccountId, Action, AddKeyAction, BlockHeightDelta, CryptoHash,
+        DeleteAccountAction, DeleteKeyAction, DeployContractAction, DeployGlobalContractAction,
         DeterministicStateInitAction, FinalExecutionOutcomeViewEnum, FunctionCallAction,
         FunctionCallPermission, GlobalContractDeployMode, GlobalContractIdentifier, NearGas,
         NearToken, SignedDelegateAction, StakeAction, TransferAction, TransferToGasKeyAction,
@@ -24,6 +24,9 @@ use std::{
 };
 use wasm_bindgen::JsCast;
 use web_sys::{Window, js_sys::Date};
+
+const ESTIMATED_BLOCK_TIME: Duration = Duration::from_millis(600);
+const LONG_DELEGATE_TTL_THRESHOLD: Duration = Duration::from_secs(10 * 60);
 
 use crate::{
     components::danger_confirm_input::DangerConfirmInput,
@@ -52,6 +55,10 @@ pub enum SendTransactionsMode {
     #[default]
     Send,
     SignDelegateActions,
+    #[serde(rename_all = "camelCase")]
+    SignDelegateActionsExtended {
+        ttl_blocks: Option<BlockHeightDelta>,
+    },
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -926,6 +933,16 @@ pub fn SendTransactions() -> impl IntoView {
             .unwrap_or(false)
     });
 
+    let has_long_delegate_ttl = Memo::new(move |_| {
+        log::info!("{:?}", request_data.read().as_ref().map(|data| &data.mode));
+        matches!(
+            request_data.read().as_ref().map(|data| &data.mode),
+            Some(SendTransactionsMode::SignDelegateActionsExtended {
+                ttl_blocks: Some(ttl_blocks),
+            }) if ESTIMATED_BLOCK_TIME * (*ttl_blocks as u32) > LONG_DELEGATE_TTL_THRESHOLD
+        )
+    });
+
     let has_high_gas_function_call = Memo::new(move |_| {
         transactions
             .get()
@@ -1004,7 +1021,15 @@ pub fn SendTransactions() -> impl IntoView {
                             .collect(),
                         false,
                     ),
-                    SendTransactionsMode::SignDelegateActions => {
+                    SendTransactionsMode::SignDelegateActions
+                    | SendTransactionsMode::SignDelegateActionsExtended { .. } => {
+                        let ttl_blocks = match mode {
+                            SendTransactionsMode::SignDelegateActions => None,
+                            SendTransactionsMode::SignDelegateActionsExtended { ttl_blocks } => {
+                                ttl_blocks
+                            }
+                            _ => unreachable!(),
+                        };
                         let (signed_delegate_tx, signed_delegate_rx) = oneshot::channel();
                         signed_delegate_receivers.push(signed_delegate_rx);
                         EnqueuedTransaction::create_with_type(
@@ -1018,6 +1043,7 @@ pub fn SendTransactions() -> impl IntoView {
                                     .collect(),
                                 receiver_id: transaction.receiver_id,
                                 sender: Some(signed_delegate_tx),
+                                ttl_blocks,
                             },
                         )
                     }
@@ -1150,7 +1176,8 @@ pub fn SendTransactions() -> impl IntoView {
                     }
                 });
             }
-            SendTransactionsMode::SignDelegateActions => {
+            SendTransactionsMode::SignDelegateActions
+            | SendTransactionsMode::SignDelegateActionsExtended { .. } => {
                 drop(details_receivers);
                 let signed_delegates = futures_util::future::join_all(signed_delegate_receivers);
                 spawn_local(async move {
@@ -1366,6 +1393,64 @@ pub fn SendTransactions() -> impl IntoView {
                                         } else {
                                             ().into_any()
                                         }
+                                    } else {
+                                        ().into_any()
+                                    }
+                                }}
+                                {move || {
+                                    if has_long_delegate_ttl() {
+                                        view! {
+                                            <div class="p-4 bg-amber-900/20 backdrop-blur-sm rounded-xl border border-amber-500/30">
+                                                <div class="flex items-center gap-2 text-amber-400">
+                                                    <Icon
+                                                        icon=LuTriangleAlert
+                                                        width="20"
+                                                        height="20"
+                                                        attr:class="min-w-5 min-h-5"
+                                                    />
+                                                    <p class="text-amber-200 text-sm">
+                                                        {move || {
+                                                            let duration_phrase = move |duration: Duration| -> String {
+                                                                let total_minutes = duration.as_secs() as i64 / 60;
+                                                                if total_minutes >= 24 * 60 {
+                                                                    let days = total_minutes / (24 * 60);
+                                                                    if days == 1 {
+                                                                        TranslationKey::PagesSignMessageDuration1Day.format(&[])
+                                                                    } else {
+                                                                        TranslationKey::PagesSignMessageDurationNDays.format(&[("n", &days.to_string())])
+                                                                    }
+                                                                } else if total_minutes >= 60 {
+                                                                    let hours = total_minutes / 60;
+                                                                    if hours == 1 {
+                                                                        TranslationKey::PagesSignMessageDuration1Hour.format(&[])
+                                                                    } else {
+                                                                        TranslationKey::PagesSignMessageDurationNHours.format(&[("n", &hours.to_string())])
+                                                                    }
+                                                                } else {
+                                                                    TranslationKey::PagesSignMessageDurationNMinutes
+                                                                        .format(&[("n", &total_minutes.to_string())])
+                                                                }
+                                                            };
+                                                            let duration = request_data
+                                                                .read()
+                                                                .as_ref()
+                                                                .and_then(|data| match &data.mode {
+                                                                    SendTransactionsMode::SignDelegateActionsExtended {
+                                                                        ttl_blocks,
+                                                                    } => *ttl_blocks,
+                                                                    _ => None,
+                                                                })
+                                                                .map(|ttl_blocks| ESTIMATED_BLOCK_TIME * (ttl_blocks as u32))
+                                                                .map(duration_phrase)
+                                                                .unwrap_or_default();
+                                                            TranslationKey::PagesSendTransactionsWarningLongDelegateTtl
+                                                                .format(&[("duration", &duration)])
+                                                        }}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        }
+                                            .into_any()
                                     } else {
                                         ().into_any()
                                     }

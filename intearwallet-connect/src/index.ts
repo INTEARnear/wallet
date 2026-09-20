@@ -643,10 +643,16 @@ class ConnectedAccount {
     /**
      * Sends transactions to be signed and executed via wallet popup
      * @param transactions - Array of transactions to send. Each transaction specifies signerId, receiverId, and actions.
+     * @param onlySignDelegate - Whether to sign delegate actions instead of sending the transactions.
+     * @param ttlBlocks - Number of blocks until signed delegate actions expire. The wallet's default is used when null.
      * @returns A promise that resolves with the execution outcomes (or signed delegate actions if onlySignDelegate is true), or null if user rejected
      * @throws Error if not connected or sending fails
      */
-    async sendTransactions(transactions: Transaction[], onlySignDelegate: boolean = false): Promise<SendTransactionsResult | SignDelegateActionsResult | null> {
+    async sendTransactions(
+        transactions: Transaction[],
+        onlySignDelegate: boolean = false,
+        ttlBlocks: number | null = null,
+    ): Promise<SendTransactionsResult | SignDelegateActionsResult | null> {
         if (this.disconnected) {
             throw new Error("Account is disconnected");
         }
@@ -698,7 +704,9 @@ class ConnectedAccount {
             nonce,
             signature,
             transactions: transactionsJson,
-            mode: onlySignDelegate ? "SignDelegateActions" : "Send"
+            mode: onlySignDelegate
+                ? { SignDelegateActionsExtended: { ttlBlocks } }
+                : "Send"
         };
 
         const walletUrl = this.#connector.walletUrl;
