@@ -126,13 +126,12 @@ impl RpcClient {
                     Ok(response) => return Ok(response),
                     Err(
                         e @ Error::JsonRpc(RpcError {
+                            // Trying to add all cases that can happen because of node's issues,
+                            // including nodes configured to not store all blocks, or with limits.
+                            // This is because the user might have mroe than one RPC, and the
+                            // second one might work. Or if a transaction is pending / not finalized
+                            // yet, but will probably be available after exponential backoff.
                             error_struct:
-                                // Trying to add all cases that can happen because of node's issues,
-                                // including nodes configured to not store all blocks, or with limits.
-                                // This is because the user might have mroe than one RPC, and the
-                                // second one might work. Or if a transaction is pending / not finalized
-                                // yet, but will probably be available after exponential backoff.
-                                error_struct:
                                 Some(RpcErrorKind::HandlerError(
                                     HandlerError::RpcQueryError(
                                         RpcQueryError::GarbageCollectedBlock { .. }
