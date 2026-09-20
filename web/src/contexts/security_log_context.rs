@@ -808,6 +808,41 @@ async fn add_log_entry(
     }
 }
 
+pub async fn delete_security_logs_for_account(account_id: AccountId) -> Result<(), String> {
+    let db = setup_db().await.map_err(|error| error.to_string())?;
+    let tx = db
+        .transaction()
+        .writable()
+        .with_model::<SecurityLog>()
+        .build()
+        .map_err(|error| error.to_string())?;
+    let store = SecurityLog::with_transaction(&tx).map_err(|error| error.to_string())?;
+
+    let mut ids = Vec::new();
+    if let Some(mut cursor) = store
+        .cursor(.., None)
+        .await
+        .map_err(|error| error.to_string())?
+    {
+        while let Some(log_entry) = cursor.value().map_err(|error| error.to_string())? {
+            if log_entry.account == account_id {
+                ids.push(log_entry.id);
+            }
+            if cursor.advance(1).await.is_err() {
+                break;
+            }
+        }
+    }
+
+    for id in ids {
+        store.delete(&id).await.map_err(|error| error.to_string())?;
+    }
+    tx.commit()
+        .await
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
 pub async fn load_security_logs(
     start_index: u32,
     limit: u32,

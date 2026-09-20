@@ -7,6 +7,7 @@ pub fn DangerConfirmInput(
     #[prop(optional)] expected_text: Option<Signal<String>>,
     #[prop(optional)] label_text: Option<Signal<String>>,
     #[prop(optional)] placeholder_text: Option<Signal<String>>,
+    #[prop(optional)] case_insensitive: bool,
     #[prop(into)] warning_title: Signal<String>,
     #[prop(into)] warning_message: Signal<String>,
 ) -> impl IntoView {
@@ -26,8 +27,12 @@ pub fn DangerConfirmInput(
             Some(s) => s.get(),
             None => TranslationKey::ComponentsDangerConfirmInputExpectedText.format(&[]),
         };
-        let _ = confirmation_text.get();
-        set_is_confirmed.set(confirmation_text.get() == expected);
+        let confirmation = confirmation_text.get();
+        set_is_confirmed.set(if case_insensitive {
+            confirmation.eq_ignore_ascii_case(&expected)
+        } else {
+            confirmation == expected
+        });
     });
 
     view! {

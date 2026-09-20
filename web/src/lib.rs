@@ -2,11 +2,9 @@
     closure_track_caller,
     stmt_expr_attributes,
     mpmc_channel,
-    iter_intersperse,
-    box_patterns,
+    deref_patterns,
     const_trait_impl,
-    const_index,
-    const_slice_make_iter
+    const_index
 )]
 #![deny(clippy::float_arithmetic)]
 

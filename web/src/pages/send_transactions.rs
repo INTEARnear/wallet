@@ -227,12 +227,14 @@ fn TransactionAction(
                 let hash = format!("{:?}", CryptoHash::hash_bytes(&code));
                 TranslationKey::PagesSendTransactionsActionDeployContract.format(&[("hash", &hash)])
             }
-            Action::FunctionCall(box FunctionCallAction {
-                method_name,
-                gas,
-                deposit,
-                ..
-            }) => {
+            Action::FunctionCall(
+                deref!(FunctionCallAction {
+                    method_name,
+                    gas,
+                    deposit,
+                    ..
+                }),
+            ) => {
                 let deposit_suffix = if deposit.is_zero() {
                     String::new()
                 } else {
@@ -249,16 +251,18 @@ fn TransactionAction(
                 TranslationKey::PagesSendTransactionsActionTransfer
                     .format(&[("deposit", &deposit.exact_amount_display())])
             }
-            Action::Stake(box StakeAction { stake, public_key }) => {
+            Action::Stake(deref!(StakeAction { stake, public_key })) => {
                 TranslationKey::PagesSendTransactionsActionStake.format(&[
                     ("stake", &stake.to_string()),
                     ("public_key", &public_key.to_string()),
                 ])
             }
-            Action::AddKey(box AddKeyAction {
-                public_key,
-                access_key,
-            }) => match &access_key.permission {
+            Action::AddKey(
+                deref!(AddKeyAction {
+                    public_key,
+                    access_key,
+                }),
+            ) => match &access_key.permission {
                 AccessKeyPermission::FullAccess | AccessKeyPermission::GasKeyFullAccess(_) => {
                     TranslationKey::PagesSendTransactionsActionAddFullAccessKey
                         .format(&[("public_key", &PublicKeyHandle::from(public_key).to_string())])
@@ -295,7 +299,7 @@ fn TransactionAction(
                     ])
                 }
             },
-            Action::DeleteKey(box DeleteKeyAction { public_key }) => {
+            Action::DeleteKey(deref!(DeleteKeyAction { public_key })) => {
                 TranslationKey::PagesSendTransactionsActionDeleteKey
                     .format(&[("public_key", &public_key.to_string())])
             }
@@ -303,9 +307,11 @@ fn TransactionAction(
                 TranslationKey::PagesSendTransactionsActionDeleteAccount
                     .format(&[("beneficiary_id", beneficiary_id.as_ref())])
             }
-            Action::UseGlobalContract(box UseGlobalContractAction {
-                contract_identifier,
-            }) => {
+            Action::UseGlobalContract(
+                deref!(UseGlobalContractAction {
+                    contract_identifier,
+                }),
+            ) => {
                 let source = match contract_identifier {
                     GlobalContractIdentifier::AccountId(account_id) => {
                         TranslationKey::PagesSendTransactionsActionGlobalContractSourceAccount
@@ -351,18 +357,20 @@ fn TransactionAction(
             Action::Delegate(_) | Action::DelegateV2(_) => {
                 panic!("Delegate actions are not supported")
             }
-            Action::DeterministicStateInit(box DeterministicStateInitAction {
-                deposit, ..
-            }) => TranslationKey::PagesSendTransactionsActionDeterministicStateInit
+            Action::DeterministicStateInit(
+                deref!(DeterministicStateInitAction { deposit, .. }),
+            ) => TranslationKey::PagesSendTransactionsActionDeterministicStateInit
                 .format(&[("deposit", &deposit.exact_amount_display())]),
-            Action::TransferToGasKey(box TransferToGasKeyAction {
-                public_key,
-                deposit,
-            }) => TranslationKey::PagesSendTransactionsActionTransferToGasKey.format(&[
+            Action::TransferToGasKey(
+                deref!(TransferToGasKeyAction {
+                    public_key,
+                    deposit,
+                }),
+            ) => TranslationKey::PagesSendTransactionsActionTransferToGasKey.format(&[
                 ("deposit", &deposit.exact_amount_display()),
                 ("public_key", &public_key.to_string()),
             ]),
-            Action::WithdrawFromGasKey(box WithdrawFromGasKeyAction { public_key, amount }) => {
+            Action::WithdrawFromGasKey(deref!(WithdrawFromGasKeyAction { public_key, amount })) => {
                 TranslationKey::PagesSendTransactionsActionWithdrawFromGasKey.format(&[
                     ("amount", &amount.exact_amount_display()),
                     ("public_key", &public_key.to_string()),
@@ -399,9 +407,13 @@ fn TransactionAction(
             </div>
             {move || {
                 if is_expanded() {
-                    if let Action::FunctionCall(
-                        box FunctionCallAction { method_name, args, gas, deposit, .. },
-                    ) = action.clone().into()
+                    if let Action::FunctionCall(deref!(FunctionCallAction {
+                        method_name,
+                        args,
+                        gas,
+                        deposit,
+                        ..
+                    })) = action.clone().into()
                     {
                         let args_clone = args.clone();
                         let args_clone2 = args.clone();
@@ -955,7 +967,7 @@ pub fn SendTransactions() -> impl IntoView {
                         {
                             *gas >= NearGas::from_tgas(300).as_gas()
                         } else if let SendTransactionsAction::Native(Action::FunctionCall(
-                            box FunctionCallAction { gas, .. },
+                            deref!(FunctionCallAction { gas, .. }),
                         )) = action
                         {
                             gas.0 >= NearGas::from_tgas(300)

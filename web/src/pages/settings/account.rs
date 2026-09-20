@@ -12,7 +12,7 @@ use crate::contexts::{
     modal_context::ModalContext,
     network_context::{Network, NetworkContext},
     rpc_context::RpcContext,
-    security_log_context::{SecurityLogEvent, add_security_log},
+    security_log_context::{SecurityLogEvent, add_security_log, delete_security_logs_for_account},
     transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
 };
 use crate::translations::TranslationKey;
@@ -479,6 +479,120 @@ fn TerminateSessionsModal(
                             }
                         >
                             {move || TranslationKey::PagesSettingsAccountButtonConfirm.format(&[])}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn LogoutModal(account_id: AccountId, accounts_context: AccountsContext) -> impl IntoView {
+    let ModalContext { modal } = expect_context::<ModalContext>();
+    let (is_confirmed, set_is_confirmed) = signal(false);
+    let (is_logging_out, set_is_logging_out) = signal(false);
+    let (logout_error, set_logout_error) = signal(false);
+
+    let account_id_for_expected_text = account_id.clone();
+    let account_id_for_label = account_id.clone();
+    let account_id_for_placeholder = account_id.clone();
+    let account_id_for_logout = account_id.clone();
+
+    let close_modal = move || {
+        if !is_logging_out.get_untracked() {
+            modal.set(None);
+        }
+    };
+
+    view! {
+        <div
+            class="fixed inset-0 bg-neutral-950/60 backdrop-blur-[2px] lg:rounded-3xl z-10"
+            on:click=move |_| close_modal()
+        >
+            <div class="absolute inset-0 flex items-center justify-center">
+                <div
+                    class="bg-neutral-950 p-8 rounded-xl w-full max-w-md border border-red-500/20 max-h-[90vh] overflow-y-auto"
+                    on:click=|ev| ev.stop_propagation()
+                >
+                    <h3 class="text-xl font-semibold mb-4 text-white">
+                        {move || TranslationKey::PagesSettingsAccountLogoutModalTitle.format(&[])}
+                    </h3>
+
+                    <DangerConfirmInput
+                        set_is_confirmed=set_is_confirmed
+                        case_insensitive=true
+                        expected_text=Signal::derive(move || {
+                            TranslationKey::PagesSettingsAccountLogoutConfirmationText
+                                .format(&[("account_id", account_id_for_expected_text.as_str())])
+                        })
+                        label_text=Signal::derive(move || {
+                            let confirmation =
+                                TranslationKey::PagesSettingsAccountLogoutConfirmationText
+                                    .format(&[("account_id", account_id_for_label.as_str())]);
+                            TranslationKey::PagesSettingsAccountLogoutConfirmationLabel
+                                .format(&[("confirmation", &confirmation)])
+                        })
+                        placeholder_text=Signal::derive(move || {
+                            TranslationKey::PagesSettingsAccountLogoutConfirmationText
+                                .format(&[("account_id", account_id_for_placeholder.as_str())])
+                        })
+                        warning_title=Signal::derive(move || {
+                            TranslationKey::PagesSettingsAccountLogoutWarningTitle.format(&[])
+                        })
+                        warning_message=Signal::derive(move || {
+                            TranslationKey::PagesSettingsAccountLogoutWarningMessage.format(&[])
+                        })
+                        attr:class="mb-4"
+                    />
+
+                    <Show when=move || logout_error.get()>
+                        <div class="p-4 bg-red-950/30 border border-red-700/30 rounded-lg mb-4 text-red-300 text-sm">
+                            {move || TranslationKey::PagesSettingsAccountLogoutError.format(&[])}
+                        </div>
+                    </Show>
+
+                    <div class="flex gap-3">
+                        <button
+                            class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                            disabled=move || is_logging_out.get()
+                            on:click=move |_| close_modal()
+                        >
+                            {move || TranslationKey::PagesSettingsAccountButtonCancel.format(&[])}
+                        </button>
+                        <button
+                            class="flex-1 text-white rounded-xl px-4 py-3 transition-all duration-200 font-medium bg-red-500 hover:bg-red-600 disabled:bg-red-500/50 disabled:cursor-not-allowed cursor-pointer"
+                            disabled=move || !is_confirmed.get() || is_logging_out.get()
+                            on:click=move |_| {
+                                set_is_logging_out.set(true);
+                                set_logout_error.set(false);
+                                let account_id = account_id_for_logout.clone();
+                                spawn_local(async move {
+                                    if let Err(error) = delete_security_logs_for_account(account_id.clone()).await {
+                                        log::error!(
+                                            "Failed to delete security logs for {account_id}: {error}"
+                                        );
+                                        set_logout_error.set(true);
+                                        set_is_logging_out.set(false);
+                                        return;
+                                    }
+
+                                    accounts_context.set_accounts.update(|accounts| {
+                                        accounts.accounts.retain(|account| account.account_id != account_id);
+                                        if accounts.selected_account_id.as_ref() == Some(&account_id) {
+                                            accounts.selected_account_id = None;
+                                        }
+                                    });
+                                    modal.set(None);
+                                });
+                            }
+                        >
+                            <Show
+                                when=move || !is_logging_out.get()
+                                fallback=move || TranslationKey::PagesSettingsAccountLoggingOut.format(&[])
+                            >
+                                {move || TranslationKey::PagesSettingsAccountLogoutButton.format(&[])}
+                            </Show>
                         </button>
                     </div>
                 </div>
@@ -2382,6 +2496,31 @@ pub fn AccountSettings() -> impl IntoView {
                     </p>
                 </div>
             </Show>
+
+            <button
+                class="flex items-center justify-center gap-2 p-4 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors cursor-pointer"
+                on:click=move |_| {
+                    let Some(account_id) = accounts_context
+                        .accounts
+                        .get_untracked()
+                        .selected_account_id
+                    else {
+                        return;
+                    };
+                    modal.set(Some(Box::new(move || {
+                        view! {
+                            <LogoutModal
+                                account_id=account_id.clone()
+                                accounts_context=accounts_context
+                            />
+                        }
+                        .into_any()
+                    })));
+                }
+            >
+                <Icon icon=icondata::LuLogOut width="20" height="20" />
+                <span>{move || TranslationKey::PagesSettingsAccountLogoutButton.format(&[])}</span>
+            </button>
         </div>
     }
 }

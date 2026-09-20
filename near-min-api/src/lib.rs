@@ -132,6 +132,7 @@ impl RpcClient {
                                 // This is because the user might have mroe than one RPC, and the
                                 // second one might work. Or if a transaction is pending / not finalized
                                 // yet, but will probably be available after exponential backoff.
+                                error_struct:
                                 Some(RpcErrorKind::HandlerError(
                                     HandlerError::RpcQueryError(
                                         RpcQueryError::GarbageCollectedBlock { .. }
@@ -141,28 +142,31 @@ impl RpcClient {
                                         | RpcQueryError::TooLargeContractState { .. },
                                     )
                                     | HandlerError::RpcReceiptError(
-                                        RpcReceiptError::UnknownReceipt { .. }
+                                        RpcReceiptError::UnknownReceipt { .. },
                                     )
                                     | HandlerError::RpcStatusError(
                                         RpcStatusError::NodeIsSyncing
-                                        | RpcStatusError::NoNewBlocks { .. }
+                                        | RpcStatusError::NoNewBlocks { .. },
                                     )
                                     | HandlerError::RpcTransactionError(
                                         RpcTransactionError::DoesNotTrackShard
                                         | RpcTransactionError::RequestRouted { .. }
                                         | RpcTransactionError::UnknownTransaction { .. }
-                                        | RpcTransactionError::TimeoutError
+                                        | RpcTransactionError::TimeoutError,
                                     )
                                     | HandlerError::RpcLightClientProofError(
                                         RpcLightClientProofError::UnknownBlock
                                         | RpcLightClientProofError::InconsistentState { .. }
                                         | RpcLightClientProofError::NotConfirmed { .. }
-                                        | RpcLightClientProofError::UnknownTransactionOrReceipt { .. }
-                                        | RpcLightClientProofError::UnavailableShard { .. }
-                                    )
+                                        | RpcLightClientProofError::UnknownTransactionOrReceipt {
+                                            ..
+                                        }
+                                        | RpcLightClientProofError::UnavailableShard { .. },
+                                    ),
                                 )),
                             ..
-                        }) | e @ Error::Reqwest(_),
+                        })
+                        | e @ Error::Reqwest(_),
                     ) => {
                         error = Some(e);
                         continue;
