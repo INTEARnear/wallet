@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Intear Wallet Connect Example</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    #app {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      padding: 40px;
+      max-width: 500px;
+      width: 100%;
+    }
+
+    h1 {
+      color: #333;
+      margin-bottom: 24px;
+      font-size: 28px;
+      text-align: center;
+    }
+
+    #status {
+      background: #f7f7f7;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 24px;
+      font-size: 16px;
+      color: #555;
+      text-align: center;
+      font-weight: 500;
+    }
+
+    #status.connected {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    #status.rejected {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    #status.error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      flex: 1;
+      min-width: 140px;
+      padding: 14px 24px;
+      font-size: 16px;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    #connectBtn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    #connectBtn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    #disconnectBtn {
+      background: #e74c3c;
+      color: white;
+    }
+
+    #disconnectBtn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
+    }
+
+    #connectSignBtn {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      color: white;
+    }
+
+    #connectSignBtn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(245, 87, 108, 0.4);
+    }
+
+    #connectSignAddKeyBtn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    #connectSignAddKeyBtn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    #connectNativeBtn {
+      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      color: white;
+    }
+
+    #connectNativeBtn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(79, 172, 254, 0.4);
+    }
+
+    #connectIframeBtn {
+      background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+      color: #333;
+    }
+
+    #connectIframeBtn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(168, 237, 234, 0.4);
+    }
+
+    #signMessageBtn {
+      background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+      color: white;
+    }
+
+    #signMessageBtn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(17, 153, 142, 0.4);
+    }
+
+    #sendTxBtn {
+      background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%);
+      color: white;
+    }
+
+    #sendTxBtn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(247, 151, 30, 0.4);
+    }
+
+    #signDelegateBtn {
+      background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+      color: white;
+    }
+
+    #signDelegateBtn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
+    }
+
+    #sendTwoTxBtn {
+      background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+      color: white;
+    }
+
+    #sendTwoTxBtn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(250, 112, 154, 0.4);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .signature-result {
+      margin-top: 16px;
+      padding: 12px;
+      background: #f0f0f0;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 12px;
+      word-break: break-all;
+      display: none;
+    }
+
+    .signature-result.visible {
+      display: block;
+    }
+
+    .signature-result h4 {
+      margin-bottom: 8px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 14px;
+      color: #333;
+    }
+
+    .signature-result p {
+      margin-bottom: 4px;
+      color: #555;
+    }
+
+    .tx-result {
+      margin-top: 16px;
+      padding: 12px;
+      background: #f0f0f0;
+      border-radius: 8px;
+      display: none;
+    }
+
+    .tx-result.visible {
+      display: block;
+    }
+
+    .tx-result h4 {
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: #333;
+    }
+
+    .tx-result pre {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 12px;
+      border-radius: 6px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 11px;
+      max-height: 300px;
+      overflow: auto;
+      white-space: pre;
+      margin: 0;
+    }
+
+    .info {
+      margin-top: 24px;
+      padding-top: 24px;
+      border-top: 1px solid #e0e0e0;
+      font-size: 14px;
+      color: #666;
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app">
+    <h1>🔗 Intear Wallet Connector</h1>
+    <div id="status">Not connected</div>
+    <div class="button-group">
+      <button id="connectBtn">Connect</button>
+      <button id="connectSignBtn">Connect + Sign</button>
+      <button id="connectSignAddKeyBtn">Connect + Add Key</button>
+      <button id="connectNativeBtn">Connect via App</button>
+      <button id="connectIframeBtn">Connect via Iframe</button>
+      <button id="signMessageBtn" disabled>Sign Message</button>
+      <button id="sendTxBtn" disabled>Send Transaction</button>
+      <button id="sendTwoTxBtn" disabled>Send 2 Transactions</button>
+      <button id="signDelegateBtn" disabled>Sign Delegate Actions</button>
+      <button id="disconnectBtn" disabled>Disconnect</button>
+    </div>
+    <div id="signatureResult" class="signature-result">
+      <h4>Signed Message Result:</h4>
+      <p><strong>Account:</strong> <span id="sigAccountId"></span></p>
+      <p><strong>Public Key:</strong> <span id="sigPublicKey"></span></p>
+      <p><strong>Signature:</strong> <span id="sigSignature"></span></p>
+    </div>
+    <div id="txResult" class="tx-result">
+      <h4>Transaction Result:</h4>
+      <pre id="txOutcomes"></pre>
+    </div>
+    <div class="info">
+      This is a demo of the intearwallet-connect library
+    </div>
+  </div>
+
+  <script type="module">
+    import { IntearWalletConnector, LocalStorageStorage, INTEAR_NATIVE_WALLET_URL, iframe, base58Encode } from './index.js';
+
+    const connector = await IntearWalletConnector.loadFrom(new LocalStorageStorage("intearwallet-connect-example"));
+    const statusEl = document.getElementById('status');
+    const connectBtn = document.getElementById('connectBtn');
+    const connectSignBtn = document.getElementById('connectSignBtn');
+    const connectSignAddKeyBtn = document.getElementById('connectSignAddKeyBtn');
+    const connectNativeBtn = document.getElementById('connectNativeBtn');
+    const connectIframeBtn = document.getElementById('connectIframeBtn');
+    const signMessageBtn = document.getElementById('signMessageBtn');
+    const sendTxBtn = document.getElementById('sendTxBtn');
+    const sendTwoTxBtn = document.getElementById('sendTwoTxBtn');
+    const signDelegateBtn = document.getElementById('signDelegateBtn');
+    const disconnectBtn = document.getElementById('disconnectBtn');
+    const signatureResult = document.getElementById('signatureResult');
+    const sigAccountId = document.getElementById('sigAccountId');
+    const sigPublicKey = document.getElementById('sigPublicKey');
+    const sigSignature = document.getElementById('sigSignature');
+    const txResult = document.getElementById('txResult');
+    const txOutcomes = document.getElementById('txOutcomes');
+
+    function setStatus(text, className) {
+      statusEl.textContent = text;
+      statusEl.className = className || '';
+    }
+
+    function updateUI() {
+      if (connector.connectedAccount) {
+        setStatus(`Connected: ${connector.connectedAccount.accountId}`, 'connected');
+        connectBtn.disabled = true;
+        connectSignBtn.disabled = true;
+        connectSignAddKeyBtn.disabled = true;
+        connectNativeBtn.disabled = true;
+        connectIframeBtn.disabled = true;
+        signMessageBtn.disabled = false;
+        sendTxBtn.disabled = false;
+        sendTwoTxBtn.disabled = false;
+        signDelegateBtn.disabled = false;
+        disconnectBtn.disabled = false;
+      } else {
+        setStatus('Not connected');
+        connectBtn.disabled = false;
+        connectSignBtn.disabled = false;
+        connectSignAddKeyBtn.disabled = false;
+        connectNativeBtn.disabled = false;
+        connectIframeBtn.disabled = false;
+        signMessageBtn.disabled = true;
+        sendTxBtn.disabled = true;
+        sendTwoTxBtn.disabled = true;
+        signDelegateBtn.disabled = true;
+        disconnectBtn.disabled = true;
+        signatureResult.classList.remove('visible');
+        txResult.classList.remove('visible');
+      }
+    }
+
+    connectBtn.addEventListener('click', async () => {
+      try {
+        connectBtn.textContent = 'Connecting...';
+        const result = await connector.requestConnection({
+          walletUrl: "https://wallet.intear.tech",
+          relayerId: "therealtears",
+        });
+        console.log('result:', result);
+        connectBtn.textContent = 'Connect';
+
+        if (result === null) {
+          setStatus('Connection rejected by user', 'rejected');
+        } else {
+          updateUI();
+        }
+      } catch (error) {
+        console.error('Connection failed:', error);
+        setStatus(`Error: ${error.message}`, 'error');
+        connectBtn.textContent = 'Connect';
+      }
+    });
+
+    connectSignBtn.addEventListener('click', async () => {
+      try {
+        connectSignBtn.textContent = 'Connecting...';
+
+        // Generate a random 32-byte nonce
+        const nonceBytes = new Uint8Array(32);
+        crypto.getRandomValues(nonceBytes);
+
+        const result = await connector.requestConnection({
+          messageToSign: {
+            message: 'Sign in to Intear Wallet Connect Example',
+            nonce: nonceBytes,
+            recipient: 'intearwallet-connect-example',
+            callbackUrl: null,
+            state: null
+          },
+          walletUrl: "https://wallet.intear.tech"
+        });
+        console.log('result:', result);
+        connectSignBtn.textContent = 'Connect + Sign';
+
+        if (result === null) {
+          setStatus('Connection rejected by user', 'rejected');
+        } else {
+          updateUI();
+          // Display the signed message from connection
+          if (result.signedMessage) {
+            sigAccountId.textContent = result.signedMessage.accountId;
+            sigPublicKey.textContent = result.signedMessage.publicKey;
+            sigSignature.textContent = result.signedMessage.signature;
+            signatureResult.classList.add('visible');
+          }
+        }
+      } catch (error) {
+        console.error('Connection failed:', error);
+        setStatus(`Error: ${error.message}`, 'error');
+        connectSignBtn.textContent = 'Connect + Sign';
+      }
+    });
+
+    connectSignAddKeyBtn.addEventListener('click', async () => {
+      try {
+        connectSignAddKeyBtn.textContent = 'Connecting...';
+
+        const nonceBytes = new Uint8Array(32);
+        crypto.getRandomValues(nonceBytes);
+        const fcKeyPair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign"]);
+        const fcPublicKeyRaw = await crypto.subtle.exportKey("raw", fcKeyPair.publicKey);
+        const fcPublicKeyBytes = new Uint8Array(fcPublicKeyRaw);
+        const fcPublicKey = 'ed25519:' + base58Encode(fcPublicKeyBytes);
+
+        const result = await connector.requestConnection({
+          functionCallKey: {
+            publicKey: fcPublicKey,
+            contractId: 'intear.near',
+            methodNames: ['test_method'],
+            gasAllowance: '1' + '0'.repeat(24), // 1 NEAR
+          },
+          walletUrl: iframe(),
+        });
+        console.log('result:', result);
+        connectSignAddKeyBtn.textContent = 'Connect + Add Key';
+
+        if (result === null) {
+          setStatus('Connection rejected by user', 'rejected');
+        } else {
+          updateUI();
+          if (result.signedMessage) {
+            sigAccountId.textContent = result.signedMessage.accountId;
+            sigPublicKey.textContent = result.signedMessage.publicKey;
+            sigSignature.textContent = result.signedMessage.signature;
+            signatureResult.classList.add('visible');
+          }
+          setStatus(`Connected + FC key added for intear.near`, 'connected');
+        }
+      } catch (error) {
+        console.error('Connection failed:', error);
+        setStatus(`Error: ${error.message}`, 'error');
+        connectSignAddKeyBtn.textContent = 'Connect + Add Key';
+      }
+    });
+
+    connectNativeBtn.addEventListener('click', async () => {
+      try {
+        connectNativeBtn.textContent = 'Connecting...';
+        const result = await connector.requestConnection({
+          walletUrl: INTEAR_NATIVE_WALLET_URL
+        });
+        console.log('result:', result);
+        connectNativeBtn.textContent = 'Connect via App';
+
+        if (result === null) {
+          setStatus('Connection rejected by user', 'rejected');
+        } else {
+          updateUI();
+        }
+      } catch (error) {
+        console.error('Connection failed:', error);
+        setStatus(`Error: ${error.message}`, 'error');
+        connectNativeBtn.textContent = 'Connect via App';
+      }
+    });
+
+    connectIframeBtn.addEventListener('click', async () => {
+      try {
+        connectIframeBtn.textContent = 'Connecting...';
+        const result = await connector.requestConnection({
+          walletUrl: iframe("https://wallet.intear.tech")
+          // walletUrl: iframe("http://127.0.0.1:3000") // used for local development of wallet
+        });
+        console.log('result:', result);
+        connectIframeBtn.textContent = 'Connect via Iframe';
+
+        if (result === null) {
+          setStatus('Connection rejected by user', 'rejected');
+        } else {
+          updateUI();
+        }
+      } catch (error) {
+        console.error('Connection failed:', error);
+        setStatus(`Error: ${error.message}`, 'error');
+        connectIframeBtn.textContent = 'Connect via Iframe';
+      }
+    });
+
+    signMessageBtn.addEventListener('click', async () => {
+      try {
+        signMessageBtn.textContent = 'Signing...';
+
+        // Generate a random 32-byte nonce
+        const nonceBytes = new Uint8Array(32);
+        crypto.getRandomValues(nonceBytes);
+
+        const result = await connector.connectedAccount.signMessage({
+          message: 'Hello from Intear Wallet Connect Example!',
+          nonce: nonceBytes,
+          recipient: 'intearwallet-connect-example',
+          callbackUrl: null,
+          state: null
+        });
+
+        signMessageBtn.textContent = 'Sign Message';
+
+        if (result === null) {
+          setStatus('Signing rejected by user', 'rejected');
+        } else {
+          setStatus(`Connected: ${connector.connectedAccount.accountId}`, 'connected');
+          sigAccountId.textContent = result.accountId;
+          sigPublicKey.textContent = result.publicKey;
+          sigSignature.textContent = result.signature;
+          signatureResult.classList.add('visible');
+        }
+      } catch (error) {
+        console.error('Signing failed:', error);
+        setStatus(`Error: ${error.message}`, 'error');
+        signMessageBtn.textContent = 'Sign Message';
+      }
+    });
+
+    sendTxBtn.addEventListener('click', async () => {
+      try {
+        sendTxBtn.textContent = 'Sending...';
+
+        const accountId = connector.connectedAccount.accountId;
+        const result = await connector.connectedAccount.sendTransactions([
+          {
+            signerId: accountId,
+            receiverId: 'intear.near',
+            actions: [
+              {
+                type: 'Transfer',
+                params: {
+                  deposit: '1' + '0'.repeat(24 - 2) // 0.01 NEAR
+                }
+              }
+            ]
+          }
+        ]);
+
+        sendTxBtn.textContent = 'Send Transaction';
+
+        if (result === null) {
+          setStatus('Transaction rejected by user', 'rejected');
+          txResult.classList.remove('visible');
+        } else {
+          setStatus(`Transaction sent! Outcomes: ${result.outcomes.length}`, 'connected');
+          txOutcomes.textContent = JSON.stringify(result.outcomes, null, 2);
+          txResult.classList.add('visible');
+        }
+      } catch (error) {
+        console.error('Transaction failed:', error);
+        setStatus(`Error: ${error.message}`, 'error');
+        sendTxBtn.textContent = 'Send Transaction';
+      }
+    });
+
+    sendTwoTxBtn.addEventListener('click', async () => {
+      try {
+        sendTwoTxBtn.textContent = 'Sending...';
+
+        const accountId = connector.connectedAccount.accountId;
+        const result = await connector.connectedAccount.sendTransactions([
+          {
+            signerId: accountId,
+            receiverId: 'intear.near',
+            actions: [
+              {
+                type: 'Transfer',
+                params: {
+                  deposit: '1' + '0'.repeat(24 - 2) // 0.01 NEAR
+                }
+              }
+            ]
+          },
+          {
+            signerId: accountId,
+            receiverId: 'intear.near',
+            actions: [
+              {
+                type: 'Transfer',
+                params: {
+                  deposit: '1' + '0'.repeat(24 - 2) // 0.01 NEAR
+                }
+              }
+            ]
+          }
+        ]);
+
+        sendTwoTxBtn.textContent = 'Send 2 Transactions';
+
+        if (result === null) {
+          setStatus('Transactions rejected by user', 'rejected');
+          txResult.classList.remove('visible');
+        } else {
+          setStatus(`Transactions sent! Outcomes: ${result.outcomes.length}`, 'connected');
+          txOutcomes.textContent = JSON.stringify(result.outcomes, null, 2);
+          txResult.classList.add('visible');
+        }
+      } catch (error) {
+        console.error('Transactions failed:', error);
+        setStatus(`Error: ${error.message}`, 'error');
+        sendTwoTxBtn.textContent = 'Send 2 Transactions';
+      }
+    });
+
+    signDelegateBtn.addEventListener('click', async () => {
+      try {
+        signDelegateBtn.textContent = 'Signing...';
+
+        const accountId = connector.connectedAccount.accountId;
+        const result = await connector.connectedAccount.sendTransactions([
+          {
+            signerId: accountId,
+            receiverId: 'intear.near',
+            actions: [
+              {
+                type: 'Transfer',
+                params: {
+                  deposit: '1' + '0'.repeat(24 - 2) // 0.01 NEAR
+                }
+              }
+            ]
+          },
+          {
+            signerId: accountId,
+            receiverId: 'intear.near',
+            actions: [
+              {
+                type: 'Transfer',
+                params: {
+                  deposit: '2' + '0'.repeat(24 - 2) // 0.02 NEAR
+                }
+              }
+            ]
+          }
+        ], true);
+
+        signDelegateBtn.textContent = 'Sign Delegate Actions';
+
+        if (result === null) {
+          setStatus('Delegate action signing rejected by user', 'rejected');
+          txResult.classList.remove('visible');
+        } else {
+          setStatus(`Signed ${result.signedDelegateActions.length} delegate action(s)`, 'connected');
+          txOutcomes.textContent = JSON.stringify(result.signedDelegateActions, null, 2);
+          txResult.classList.add('visible');
+        }
+      } catch (error) {
+        console.error('Delegate action signing failed:', error);
+        setStatus(`Error: ${error.message}`, 'error');
+        signDelegateBtn.textContent = 'Sign Delegate Actions';
+      }
+    });
+
+    disconnectBtn.addEventListener('click', () => {
+      connector.disconnect();
+      updateUI();
+    });
+
+    updateUI();
+  </script>
+</body>
+
+</html>

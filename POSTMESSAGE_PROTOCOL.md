@@ -186,4 +186,4 @@ The popup needs to be closed by the dApp after receiving `sent` or `error` messa
 
 # Example Implementation
 
-The official minimal library for low-level interactions: https://github.com/INTEARnear/intearwallet-connect
+The official minimal library for low-level interactions is [`intearwallet-connect`](intearwallet-connect/README.md).

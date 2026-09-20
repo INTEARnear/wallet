@@ -8,15 +8,22 @@
     "tailwindcss": "4.2.1"
   },
   "devDependencies": {
+    "@rollup/plugin-replace": "6.0.3",
+    "@rollup/plugin-typescript": "12.3.0",
     "@tailwindcss/cli": "4.2.1",
     "esbuild": "0.25.5",
     "esbuild-plugin-polyfill-node": "0.3.0",
-    "esbuild-plugins-node-modules-polyfill": "1.7.1"
+    "esbuild-plugins-node-modules-polyfill": "1.7.1",
+    "rollup": "4.59.0",
+    "serve": "14.2.5",
+    "tslib": "2.8.1",
+    "typescript": "5.9.3"
   },
   "type": "module",
   "scripts": {
     "js:build": "node build-js.js",
     "js:watch": "node build-js.js --watch",
+    "intearwallet-connect:example": "npm run js:build && serve intearwallet-connect/examples",
     "build": "npm run js:build && npx cross-env ONLY_CREATE_INDEX_HTML=1 cargo leptos serve --release",
     "dev": "npm run js:watch & cargo leptos watch",
     "dev-release": "npm run js:watch & cargo leptos watch --release"

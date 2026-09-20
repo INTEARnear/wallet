@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "lib": ["ESNext", "DOM"],
+    "declaration": true,
+    "declarationMap": false,
+    "sourceMap": false,
+    "outDir": "./build",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "node10",
+    "resolveJsonModule": true,
+    "removeComments": false,
+    "pretty": true,
+    "noEmitHelpers": true,
+    "downlevelIteration": false
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "build", "examples"]
+}

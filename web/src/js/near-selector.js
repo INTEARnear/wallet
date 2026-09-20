@@ -1,4 +1,4 @@
-import IntearWalletConnector from "./intearwallet-connect.js";
+import IntearWalletConnector from "../../../intearwallet-connect/src/index.ts";
 
 const selectorStorage = {
     get: async (key) => {
