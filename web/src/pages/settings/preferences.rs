@@ -10,13 +10,11 @@ use crate::contexts::config_context::{BackgroundGroup, ConfigContext, HiddenNft,
 use crate::contexts::translation_context::TranslationContext;
 use crate::pages::swap::Slippage;
 use crate::translations::{BuiltInLanguage, Language, TranslationKey};
-use crate::utils::{is_android, is_tauri, tauri_invoke_no_args};
 use bigdecimal::{BigDecimal, FromPrimitive};
 use itertools::Itertools;
 use leptos::prelude::*;
 use leptos_icons::*;
 use leptos_use::use_window_size;
-use wasm_bindgen_futures::JsFuture;
 
 pub const SLIPPAGE_PRESETS: [f64; 4] = [0.5, 1.0, 2.0, 5.0];
 #[component]
@@ -35,21 +33,11 @@ pub fn LedgerSelector(#[prop(optional, into)] on_change: Option<Callback<()>>) -
             .collect::<Vec<_>>()
     });
 
-    let has_ble_permissions = LocalResource::new(|| async move {
-        if is_android() {
-            let promise = tauri_invoke_no_args("has_ble_permissions");
-            let future = JsFuture::from(promise);
-            let result = future.await.unwrap();
-            let result: bool = serde_wasm_bindgen::from_value(result).unwrap();
-            return result;
-        }
-        true
-    });
+    let has_ble_permissions = LocalResource::new(|| async move { true });
     set_interval(
         move || has_ble_permissions.refetch(),
         Duration::from_secs(1),
     );
-    let has_ble_permissions = Memo::new(move |_| has_ble_permissions.get().unwrap_or(true));
 
     view! {
         <div class="bg-neutral-800 rounded-xl p-4 space-y-4">
@@ -119,19 +107,6 @@ pub fn LedgerSelector(#[prop(optional, into)] on_change: Option<Callback<()>>) -
                             .format(&[])
                     }}
                 </div>
-                <Show when=move || !has_ble_permissions.get()>
-                    <button
-                        class="w-full p-3 rounded-lg text-sm font-medium transition-colors cursor-pointer bg-blue-500 hover:bg-blue-600 text-white"
-                        on:click=move |_| {
-                            let _promise_detached = tauri_invoke_no_args("request_ble_permissions");
-                        }
-                    >
-                        {move || {
-                            TranslationKey::PagesSettingsPreferencesLedgerEnableBluetooth
-                                .format(&[])
-                        }}
-                    </button>
-                </Show>
             </Suspense>
         </div>
     }
@@ -214,36 +189,6 @@ pub fn PreferencesSettings() -> impl IntoView {
                 <div class="text-lg font-medium text-gray-300">
                     {move || TranslationKey::PagesSettingsPreferencesHeaderOptions.format(&[])}
                 </div>
-                <Show when=move || is_tauri() && !is_android()>
-                    <ToggleSwitch
-                        label=Signal::derive(move || {
-                            TranslationKey::PagesSettingsPreferencesToggleHideToTray.format(&[])
-                        })
-                        value=hide_to_tray
-                        disabled=Signal::derive(|| false)
-                        on_toggle=move || {
-                            config_context
-                                .config
-                                .update(|config| {
-                                    config.hide_to_tray = !config.hide_to_tray;
-                                });
-                        }
-                    />
-                    <ToggleSwitch
-                        label=Signal::derive(move || {
-                            TranslationKey::PagesSettingsPreferencesToggleAutostart.format(&[])
-                        })
-                        value=autostart
-                        disabled=Signal::derive(|| false)
-                        on_toggle=move || {
-                            config_context
-                                .config
-                                .update(|config| {
-                                    config.autostart = !config.autostart;
-                                });
-                        }
-                    />
-                </Show>
                 <ToggleSwitch
                     label=Signal::derive(move || {
                         TranslationKey::PagesSettingsPreferencesToggleRealtimeBalances.format(&[])
@@ -305,23 +250,6 @@ pub fn PreferencesSettings() -> impl IntoView {
                             });
                     }
                 />
-                <Show when=is_android>
-                    <ToggleSwitch
-                        label=Signal::derive(move || {
-                            TranslationKey::PagesSettingsPreferencesToggleDisableScreenshots
-                                .format(&[])
-                        })
-                        value=prevent_screenshots
-                        disabled=Signal::derive(|| false)
-                        on_toggle=move || {
-                            config_context
-                                .config
-                                .update(|config| {
-                                    config.prevent_screenshots = !config.prevent_screenshots;
-                                });
-                        }
-                    />
-                </Show>
                 <NumberFormatSettings />
             </div>
 

@@ -4,7 +4,6 @@ use futures_channel::oneshot;
 use icondata::*;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::Icon;
-use leptos_router::hooks::use_location;
 use near_min_api::{
     ExperimentalTxDetails,
     types::{
@@ -42,7 +41,6 @@ use crate::{
             EnqueuedTransaction, TransactionQueueContext, TransactionType,
         },
     },
-    pages::connect::submit_tauri_response,
     utils::{
         SendTransactionsAction, WalletSelectorAction, WalletSelectorTransaction,
         format_token_amount_no_hide, is_debug_enabled, serialize_to_js_value,
@@ -600,7 +598,6 @@ pub fn SendTransactions() -> impl IntoView {
     let (loading, set_loading) = signal(true);
     let (request_data, set_request_data) = signal::<Option<SendTransactionsRequest>>(None);
     let (origin, set_origin) = signal::<String>("*".to_string());
-    let (tauri_session_id, set_tauri_session_id) = signal::<Option<String>>(None);
     let (started_sending, set_started_sending) = signal(false);
     let (is_confirmed, set_is_confirmed) = signal(false);
     let (remember_contract, set_remember_contract) = signal(false);
@@ -612,7 +609,6 @@ pub fn SendTransactions() -> impl IntoView {
     } = expect_context::<TransactionQueueContext>();
     let (expanded_actions, set_expanded_actions) =
         signal::<HashSet<(usize, usize)>>(HashSet::new());
-    let (error, set_error) = signal::<Option<String>>(None);
 
     let is_localhost_app = move |app: &crate::contexts::connected_apps_context::ConnectedApp| {
         let domain = app
@@ -637,89 +633,6 @@ pub fn SendTransactions() -> impl IntoView {
         set_loading(false);
         set_request_data(Some(data));
     };
-
-    let retrieve_bridge_session = move |session_id: String| {
-        spawn_local(async move {
-            let url = dotenvy_macro::dotenv!("SHARED_LOGOUT_BRIDGE_SERVICE_ADDR");
-            let retrieve_url = format!("{url}/api/session/{session_id}/retrieve-request");
-
-            match reqwest::Client::new().get(&retrieve_url).send().await {
-                Ok(response) if response.status().is_success() => {
-                    match response.json::<serde_json::Value>().await {
-                        Ok(json) => {
-                            if let Some(message) = json.get("message") {
-                                let Some(message) = message.as_str() else {
-                                    log::error!("Bridge: Message is not a string");
-                                    set_error(Some(
-                                        "Failed to receive transaction details: unexpected response format".to_string(),
-                                    ));
-                                    set_loading(false);
-                                    return;
-                                };
-                                let message = match serde_json::from_str::<ReceiveMessage>(message)
-                                {
-                                    Ok(message) => message,
-                                    Err(e) => {
-                                        log::error!("Bridge: Failed to parse message: {e}");
-                                        set_error(Some(format!(
-                                            "Failed to parse the transaction request from the app: {e}\nMessage: {message}"
-                                        )));
-                                        set_loading(false);
-                                        return;
-                                    }
-                                };
-                                log::info!("Bridge: Request data: {:?}", message);
-                                set_tauri_session_id(Some(session_id.clone()));
-                                match message {
-                                    ReceiveMessage::SignAndSendTransactions { data } => {
-                                        process_sign_and_send(data, "".to_string());
-                                    }
-                                }
-                            } else {
-                                log::warn!("Bridge: No message field in response");
-                                set_error(Some("No message field in response".to_string()));
-                                set_loading(false);
-                            }
-                        }
-                        Err(e) => {
-                            log::error!("Bridge: Failed to parse response JSON: {e}");
-                            set_error(Some(format!("Failed to parse bridge response JSON: {e}")));
-                            set_loading(false);
-                        }
-                    }
-                }
-                Ok(response) => {
-                    log::error!(
-                        "Bridge: Bridge service responded with status {}",
-                        response.status()
-                    );
-                    set_error(Some(format!(
-                        "Connection bridge returned an error (HTTP {})",
-                        response.status()
-                    )));
-                    set_loading(false);
-                }
-                Err(e) => {
-                    log::error!("Bridge: Failed to connect to bridge service: {e}");
-                    set_error(Some(
-                        "Failed to connect to the connection bridge service".to_string(),
-                    ));
-                    set_loading(false);
-                }
-            }
-        });
-    };
-
-    Effect::new(move |_| {
-        let location = use_location();
-        let params = location.query.get();
-        if let Some(session_id) = params.get("session_id")
-            && !session_id.is_empty()
-        {
-            log::info!("Found session_id in URL: {session_id}");
-            retrieve_bridge_session(session_id.clone());
-        }
-    });
 
     let opener = || match window().opener() {
         Ok(opener) => {
@@ -758,32 +671,24 @@ pub fn SendTransactions() -> impl IntoView {
         }
     });
 
-    let post_to_opener = move |message: SendMessage, close_window: bool| {
-        if let Some(session_id) = tauri_session_id.get_untracked() {
-            spawn_local(submit_tauri_response(session_id, message, close_window));
-        } else {
-            let js_value = match connected_app() {
-                Some(ConnectedApp {
-                    connector_version: ConnectorVersion::V1 | ConnectorVersion::V2,
-                    ..
-                }) => serialize_to_js_value_old(&message).unwrap(),
-                _ => serialize_to_js_value(&message).unwrap(),
-            };
-            opener()
-                .post_message(&js_value, &origin.read_untracked())
-                .expect("Failed to send message");
-        }
+    let post_to_opener = move |message: SendMessage| {
+        let js_value = match connected_app() {
+            Some(ConnectedApp {
+                connector_version: ConnectorVersion::V1 | ConnectorVersion::V2,
+                ..
+            }) => serialize_to_js_value_old(&message).unwrap(),
+            _ => serialize_to_js_value(&message).unwrap(),
+        };
+        opener()
+            .post_message(&js_value, &origin.read_untracked())
+            .expect("Failed to send message");
     };
 
-    let post_to_opener_old = move |message: SendMessageOld, close_window: bool| {
-        if let Some(session_id) = tauri_session_id.get_untracked() {
-            spawn_local(submit_tauri_response(session_id, message, close_window));
-        } else {
-            let js_value = serialize_to_js_value_old(&message).unwrap();
-            opener()
-                .post_message(&js_value, &origin.read_untracked())
-                .expect("Failed to send message");
-        }
+    let post_to_opener_old = move |message: SendMessageOld| {
+        let js_value = serialize_to_js_value_old(&message).unwrap();
+        opener()
+            .post_message(&js_value, &origin.read_untracked())
+            .expect("Failed to send message");
     };
 
     window_event_listener(leptos::ev::message, move |event| {
@@ -1070,14 +975,14 @@ pub fn SendTransactions() -> impl IntoView {
                 message: TranslationKey::PagesSendTransactionsFailedDeserializeTransactions
                     .format(&[]),
             };
-            post_to_opener(message, true);
+            post_to_opener(message);
             return;
         };
         if transactions.is_empty() {
             let message = SendMessage::Error {
                 message: TranslationKey::PagesSendTransactionsNoTransactionsEmpty.format(&[]),
             };
-            post_to_opener(message, true);
+            post_to_opener(message);
             return;
         }
         add_security_log(
@@ -1148,7 +1053,7 @@ pub fn SendTransactions() -> impl IntoView {
                                 }
                                 Err(error) => {
                                     let message = SendMessage::Error { message: error };
-                                    post_to_opener(message, true);
+                                    post_to_opener(message);
                                     return;
                                 }
                             };
@@ -1163,7 +1068,7 @@ pub fn SendTransactions() -> impl IntoView {
                                             .map(FinalExecutionOutcomeViewEnum::FinalExecutionOutcomeWithReceipt)
                                             .collect(),
                                     };
-                                    post_to_opener_old(message, true);
+                                    post_to_opener_old(message);
                                 }
                                 ConnectorVersion::V3 => {
                                     let message = SendMessage::Sent {
@@ -1174,7 +1079,7 @@ pub fn SendTransactions() -> impl IntoView {
                                                 .collect(),
                                         }
                                     };
-                                    post_to_opener(message, true);
+                                    post_to_opener(message);
                                 }
                             };
                         }
@@ -1183,7 +1088,7 @@ pub fn SendTransactions() -> impl IntoView {
                             let message = SendMessage::Error {
                                 message: "Failed to fetch transaction details".to_string(),
                             };
-                            post_to_opener(message, true);
+                            post_to_opener(message);
                         }
                     }
                 });
@@ -1226,11 +1131,11 @@ pub fn SendTransactions() -> impl IntoView {
                                                 .collect(),
                                         },
                                     };
-                                    post_to_opener(message, true);
+                                    post_to_opener(message);
                                 }
                                 Err(error) => {
                                     let message = SendMessage::Error { message: error };
-                                    post_to_opener(message, true);
+                                    post_to_opener(message);
                                 }
                             }
                         }
@@ -1240,7 +1145,7 @@ pub fn SendTransactions() -> impl IntoView {
                                 message: TranslationKey::PagesSendTransactionsFailedReceiveSignedDelegateActions
                                     .format(&[]),
                             };
-                            post_to_opener(message, true);
+                            post_to_opener(message);
                         }
                     }
                 });
@@ -1252,7 +1157,7 @@ pub fn SendTransactions() -> impl IntoView {
         let message = SendMessage::Error {
             message: TranslationKey::PagesSendTransactionsUserRejectedTransactions.format(&[]),
         };
-        post_to_opener(message, true);
+        post_to_opener(message);
     };
 
     Effect::new(move || {
@@ -1266,33 +1171,18 @@ pub fn SendTransactions() -> impl IntoView {
         <div class="flex flex-col items-center justify-center min-h-[calc(80vh-100px)] pt-4 pb-4">
             {move || {
                 if loading.get() {
-                    if let Some(error_msg) = error.get() {
-                        view! {
-                            <div class="flex flex-col items-center gap-4 text-center max-w-sm">
-                                <p class="text-red-400 text-lg font-semibold">
-                                    {move || {
-                                        TranslationKey::PagesSendTransactionsTransactionErrorTitle
-                                            .format(&[])
-                                    }}
-                                </p>
-                                <p class="text-neutral-300 text-sm">{error_msg}</p>
-                            </div>
-                        }
-                            .into_any()
-                    } else {
-                        view! {
-                            <div class="flex flex-col items-center gap-4">
-                                <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-white"></div>
-                                <p class="text-white text-lg">
-                                    {move || {
-                                        TranslationKey::PagesSendTransactionsReceivingTransactionDetails
-                                            .format(&[])
-                                    }}
-                                </p>
-                            </div>
-                        }
-                            .into_any()
+                    view! {
+                        <div class="flex flex-col items-center gap-4">
+                            <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-white"></div>
+                            <p class="text-white text-lg">
+                                {move || {
+                                    TranslationKey::PagesSendTransactionsReceivingTransactionDetails
+                                        .format(&[])
+                                }}
+                            </p>
+                        </div>
                     }
+                        .into_any()
                 } else {
                     view! {
                         <div class="flex flex-col items-center gap-6 max-w-md w-full">

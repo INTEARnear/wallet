@@ -8,12 +8,10 @@ use near_min_api::types::{
     near_crypto::{PublicKey, Signature},
 };
 use serde::Deserialize;
-use web_sys::js_sys::Date;
 
 use crate::contexts::{
     accounts_context::AccountsContext,
     connected_apps_context::{ConnectedApp, ConnectedAppsContext},
-    network_context::Network,
     security_log_context::{SecurityLogEvent, add_security_log},
     transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
 };
@@ -119,33 +117,7 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
             let account_id = account_id.clone();
             let public_key = public_key.clone();
             async move {
-                let account = accounts_context
-                    .accounts
-                    .get_untracked()
-                    .accounts
-                    .into_iter()
-                    .find(|account| account.account_id == *account_id)
-                    .unwrap();
-                let url = dotenvy_macro::dotenv!("SHARED_LOGOUT_BRIDGE_SERVICE_ADDR");
-                let nonce = Date::now() as u64;
-                let request = reqwest::Client::new().post(format!(
-                    "{url}/api/logout_user/{network}",
-                    network = match &account.network {
-                        Network::Mainnet => "mainnet".to_string(),
-                        Network::Testnet => "testnet".to_string(),
-                        Network::Localnet(network) => network.id.clone(),
-                    }
-                ))
-                .json(&serde_json::json!({
-                    "account_id": account_id,
-                    "user_logout_public_key": account.secret_key.public_key(),
-                    "app_public_key": public_key,
-                    "nonce": nonce,
-                    "signature": app.logout_key.sign(format!("logout|{nonce}|{account_id}|{public_key}").as_bytes())
-                }))
-                .send();
-                let (_tx_details, _logout_response) =
-                    futures_util::join!(details_receiver, request);
+                let _ = details_receiver.await;
                 set_apps.update(|state| {
                     if let Some(app) = state.apps.iter_mut().find(|app| {
                         app.account_id == account_id && app.auth_public_key == public_key
@@ -158,116 +130,6 @@ pub fn ConnectedAppsSettings() -> impl IntoView {
             }
         });
     };
-
-    // Check status of active connections on mount
-    Effect::new(move || {
-        let active_apps = apps
-            .get_untracked()
-            .apps
-            .into_iter()
-            .filter(|app| app.logged_out_at.is_none())
-            .filter(|app| {
-                app.account_id
-                    == accounts_context
-                        .accounts
-                        .get()
-                        .selected_account_id
-                        .expect("No selected account")
-            })
-            .collect::<Vec<_>>();
-        let account = accounts_context
-            .accounts
-            .get()
-            .accounts
-            .into_iter()
-            .find(|a| {
-                a.account_id
-                    == accounts_context
-                        .accounts
-                        .get()
-                        .selected_account_id
-                        .expect("No selected account")
-            })
-            .expect("Account not found");
-
-        if !active_apps.is_empty() {
-            spawn_local(async move {
-                for app in active_apps {
-                    let url = dotenvy_macro::dotenv!("SHARED_LOGOUT_BRIDGE_SERVICE_ADDR");
-                    let network = match &account.network {
-                        Network::Mainnet => "mainnet".to_string(),
-                        Network::Testnet => "testnet".to_string(),
-                        Network::Localnet(network) => network.id.clone(),
-                    };
-                    let nonce = Date::now() as u64;
-                    let message = format!("check|{nonce}");
-                    let check_signature = app.logout_key.sign(message.as_bytes());
-
-                    match reqwest::Client::new()
-                        .post(format!(
-                            "{url}/api/check_logout/{network}/{}/{}",
-                            app.account_id, app.auth_public_key
-                        ))
-                        .json(&serde_json::json!({
-                            "nonce": nonce,
-                            "signature": check_signature,
-                        }))
-                        .send()
-                        .await
-                    {
-                        Ok(response) => match response.json::<SessionStatus>().await {
-                            Ok(status) => {
-                                log::info!(
-                                    "Connection status for {} on {}: {:?}",
-                                    app.origin,
-                                    app.account_id,
-                                    status
-                                );
-
-                                if let SessionStatus::LoggedOut(logout_info) = status {
-                                    let message = format!(
-                                        "logout|{}|{}|{}",
-                                        logout_info.nonce, app.account_id, app.auth_public_key
-                                    );
-
-                                    let verify_key = match logout_info.caused_by {
-                                        LogoutCause::User => app.logout_key.public_key(),
-                                        LogoutCause::App => app.auth_public_key.clone(),
-                                    };
-
-                                    if !logout_info
-                                        .signature
-                                        .verify(message.as_bytes(), &verify_key)
-                                    {
-                                        log::error!("Invalid logout signature");
-                                        continue;
-                                    }
-
-                                    log_out(&app.account_id, &app.auth_public_key);
-                                }
-                            }
-                            Err(e) => {
-                                log::error!(
-                                    "Failed to parse status for {} on {}: {}",
-                                    app.origin,
-                                    app.account_id,
-                                    e
-                                );
-                            }
-                        },
-                        Err(e) => {
-                            log::error!(
-                                "Failed to check status for {} on {}: {}",
-                                app.origin,
-                                app.account_id,
-                                e
-                            );
-                        }
-                    }
-                }
-            });
-        }
-    });
 
     let disable_autoconfirm =
         move |account_id: &AccountId, public_key: &PublicKey, setting: AutoconfirmSetting| {

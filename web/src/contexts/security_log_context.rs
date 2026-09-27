@@ -21,7 +21,6 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen_futures::JsFuture;
 
 use crate::contexts::accounts_context::{AccountsContext, Cipher, SecretKeyHolder};
-use crate::utils::{is_tauri, tauri_invoke_no_args};
 
 const DB_NAME: &str = "smile_wallet_security";
 
@@ -655,38 +654,6 @@ async fn encrypt_message(message: &str, cipher: &Cipher) -> Result<(String, Stri
         .encrypt(nonce, message.as_bytes())
         .map_err(|e| format!("Failed to encrypt message: {}", e))?;
 
-    let encrypted_data = if is_tauri() {
-        let (tx, rx) = futures_channel::oneshot::channel();
-        let nonce = *nonce;
-        spawn_local(async move {
-            let key_promise = tauri_invoke_no_args("get_os_encryption_key");
-            let key_future = JsFuture::from(key_promise);
-            let Ok(key_js) = key_future.await else {
-                tx.send(Err("Failed to get key".to_string())).unwrap();
-                return;
-            };
-            let Some(key_string) = key_js.as_string() else {
-                tx.send(Err("Key is not a string".to_string())).unwrap();
-                return;
-            };
-            let Ok(key_bytes) = BASE64_STANDARD.decode(&key_string) else {
-                tx.send(Err("Failed to decode key".to_string())).unwrap();
-                return;
-            };
-            let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
-            let cipher = Aes256Gcm::new(key);
-            let Ok(encrypted_data) = cipher.encrypt(&nonce, encrypted_data.as_ref()) else {
-                tx.send(Err("Failed to encrypt data using OS key".to_string()))
-                    .unwrap();
-                return;
-            };
-            tx.send(Ok(encrypted_data)).unwrap();
-        });
-        rx.await.unwrap()?
-    } else {
-        encrypted_data
-    };
-
     let encrypted_base64 = general_purpose::STANDARD.encode(&encrypted_data);
     let nonce_base64 = general_purpose::STANDARD.encode(nonce_bytes);
 
@@ -707,28 +674,6 @@ async fn decrypt_message(
         .map_err(|e| format!("Failed to decode nonce: {}", e))?;
 
     let nonce = Nonce::from_slice(&nonce_bytes);
-
-    let encrypted_data = if is_tauri() {
-        let key_promise = tauri_invoke_no_args("get_os_encryption_key");
-        let key_future = JsFuture::from(key_promise);
-        let Ok(key_js) = key_future.await else {
-            return Err("Failed to get OS key".to_string());
-        };
-        let Some(key_string) = key_js.as_string() else {
-            return Err("OS key is not a string".to_string());
-        };
-        let Ok(key_bytes) = BASE64_STANDARD.decode(&key_string) else {
-            return Err("Failed to decode OS key".to_string());
-        };
-        let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
-        let os_cipher = Aes256Gcm::new(key);
-        let Ok(decrypted_data) = os_cipher.decrypt(nonce, encrypted_data.as_ref()) else {
-            return Err("Failed to decrypt data using OS key".to_string());
-        };
-        decrypted_data
-    } else {
-        encrypted_data
-    };
 
     let decrypted_data = cipher
         .cipher

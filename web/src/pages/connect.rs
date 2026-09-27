@@ -6,7 +6,7 @@ use chrono::Utc;
 use ed25519_dalek::SECRET_KEY_LENGTH;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
-use leptos_router::hooks::{use_location, use_navigate};
+use leptos_router::hooks::use_navigate;
 use near_min_api::types::{
     AccessKey, AccessKeyPermission, AccountId, Action, AddKeyAction, CryptoHash,
     FunctionCallPermission, NearToken,
@@ -16,17 +16,13 @@ use serde::{Deserialize, Deserializer, Serialize};
 use wasm_bindgen::JsCast;
 use web_sys::{Window, js_sys::Date};
 
+use crate::contexts::config_context::{ConfigContext, WalletConfig};
 use crate::{
     contexts::account_selector_context::AccountSelectorContext,
     pages::{
         settings::LedgerSelector,
         sign_message::{MessageDisplay, MessageToSign, SignedMessage},
     },
-    utils::tauri_invoke_no_args,
-};
-use crate::{
-    contexts::config_context::{ConfigContext, WalletConfig},
-    utils::is_tauri,
 };
 use crate::{
     contexts::connected_apps_context::GasAllowance,
@@ -180,52 +176,6 @@ struct LoginBridgeRequest {
     user_on_chain_public_key: PublicKey,
 }
 
-#[derive(Serialize, Debug)]
-struct SessionResponse {
-    message: String,
-}
-
-pub async fn submit_tauri_response(
-    session_id: String,
-    message: impl Serialize,
-    close_window: bool,
-) {
-    let response = SessionResponse {
-        message: serde_json::to_string(&message).unwrap(),
-    };
-
-    let url = dotenvy_macro::dotenv!("SHARED_LOGOUT_BRIDGE_SERVICE_ADDR");
-    let submit_url = format!("{url}/api/session/{session_id}/submit-response");
-
-    match reqwest::Client::new()
-        .post(&submit_url)
-        .json(&response)
-        .send()
-        .await
-    {
-        Ok(response) if response.status().is_success() => {
-            log::info!("Bridge: Successfully submitted response");
-        }
-        Ok(response) => {
-            log::error!(
-                "Bridge: Submit response failed with status {}",
-                response.status()
-            );
-        }
-        Err(e) => {
-            log::error!("Bridge: Failed to submit response: {e}");
-        }
-    }
-
-    if close_window {
-        if is_tauri() {
-            let _ = tauri_invoke_no_args("close_temporary_window");
-        } else {
-            let _ = window().close();
-        }
-    }
-}
-
 #[component]
 pub fn Connect() -> impl IntoView {
     let (loading, set_loading) = signal(true);
@@ -241,7 +191,6 @@ pub fn Connect() -> impl IntoView {
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
     let ConfigContext { config, .. } = expect_context::<ConfigContext>();
-    let (tauri_session_id, set_tauri_session_id) = signal::<Option<String>>(None);
     let (error, set_error) = signal::<Option<String>>(None);
     let navigate = use_navigate();
 
@@ -276,96 +225,6 @@ pub fn Connect() -> impl IntoView {
         set_loading(false);
         set_request_data(Some(data));
     };
-
-    let retrieve_bridge_session = move |session_id: String| {
-        spawn_local(async move {
-            let url = dotenvy_macro::dotenv!("SHARED_LOGOUT_BRIDGE_SERVICE_ADDR");
-            let retrieve_url = format!("{url}/api/session/{session_id}/retrieve-request");
-
-            match reqwest::Client::new().get(&retrieve_url).send().await {
-                Ok(response) if response.status().is_success() => {
-                    match response.json::<serde_json::Value>().await {
-                        Ok(json) => {
-                            if let Some(message) = json.get("message") {
-                                let Some(message) = message.as_str() else {
-                                    log::error!("Bridge: Message is not a string");
-                                    set_error(Some(
-                                        "Failed to receive connection details: unexpected response format".to_string(),
-                                    ));
-                                    set_loading(false);
-                                    return;
-                                };
-                                let message = match serde_json::from_str::<ReceiveMessage>(message)
-                                {
-                                    Ok(message) => message,
-                                    Err(e) => {
-                                        log::error!("Bridge: Failed to parse message: {e}");
-                                        set_error(Some(format!(
-                                            "Failed to parse the connection request from the app: {e}\nMessage: {message}"
-                                        )));
-                                        set_loading(false);
-                                        return;
-                                    }
-                                };
-                                log::info!("Bridge request data: {:?}", message);
-                                set_tauri_session_id(Some(session_id.clone()));
-                                match message {
-                                    ReceiveMessage::SignIn { data } => {
-                                        let origin = if matches!(data.version, ConnectorVersion::V1)
-                                        {
-                                            "".to_string()
-                                        } else {
-                                            data.actual_origin.clone().unwrap_or_default()
-                                        };
-                                        process_sign_in(data, origin);
-                                    }
-                                }
-                            } else {
-                                log::warn!("Bridge: No message field in response");
-                                set_error(Some("No message field in response".to_string()));
-                                set_loading(false);
-                            }
-                        }
-                        Err(e) => {
-                            log::error!("Bridge: Failed to parse response JSON: {e}");
-                            set_error(Some(format!("Failed to parse bridge response JSON: {e}")));
-                            set_loading(false);
-                        }
-                    }
-                }
-                Ok(response) => {
-                    log::error!(
-                        "Bridge: Bridge service responded with status {}",
-                        response.status()
-                    );
-                    set_error(Some(format!(
-                        "Bridge service returned an error (HTTP {})",
-                        response.status()
-                    )));
-                    set_loading(false);
-                }
-                Err(e) => {
-                    log::error!("Bridge: Failed to connect to bridge service: {e}");
-                    set_error(Some(
-                        "Failed to connect to the connection bridge service".to_string(),
-                    ));
-                    set_loading(false);
-                }
-            }
-        });
-    };
-
-    // Check for session_id in URL query parameters (e.g. ?session_id=abc123)
-    Effect::new(move |_| {
-        let location = use_location();
-        let params = location.query.get();
-        if let Some(session_id) = params.get("session_id")
-            && !session_id.is_empty()
-        {
-            log::info!("Found session_id in URL: {session_id}");
-            retrieve_bridge_session(session_id.clone());
-        }
-    });
 
     let message_to_sign = move || {
         let Some(request_data) = &*request_data.read() else {
@@ -461,21 +320,17 @@ pub fn Connect() -> impl IntoView {
         }
     });
 
-    let post_to_opener = move |message: SendMessage, close_window: bool| {
+    let post_to_opener = move |message: SendMessage| {
         if is_debug_enabled() {
             log::info!(
                 "Posting message to opener: {:?}",
                 serialize_to_js_value(&message)
             );
         }
-        if let Some(session_id) = tauri_session_id.get_untracked() {
-            spawn_local(submit_tauri_response(session_id, message, close_window));
-        } else {
-            let js_value = serialize_to_js_value(&message).unwrap();
-            opener()
-                .post_message(&js_value, &origin_for_post_message.read_untracked())
-                .expect("Failed to send message");
-        }
+        let js_value = serialize_to_js_value(&message).unwrap();
+        opener()
+            .post_message(&js_value, &origin_for_post_message.read_untracked())
+            .expect("Failed to send message");
     };
 
     Effect::new(move || {
@@ -483,7 +338,7 @@ pub fn Connect() -> impl IntoView {
             log::info!("Sending ready message");
         }
         let ready_message = SendMessage::Ready;
-        post_to_opener(ready_message, false);
+        post_to_opener(ready_message);
         if is_debug_enabled() {
             log::info!("Sent ready message");
         }
@@ -519,7 +374,7 @@ pub fn Connect() -> impl IntoView {
             let message = SendMessage::Error {
                 message: "Invalid signature or nonce".to_string(),
             };
-            post_to_opener(message, true);
+            post_to_opener(message);
             return;
         }
 
@@ -536,17 +391,10 @@ pub fn Connect() -> impl IntoView {
             let message = SendMessage::Error {
                 message: "App with the same key already connected".to_string(),
             };
-            post_to_opener(message, true);
+            post_to_opener(message);
             return;
         }
         let logout_key = SecretKey::from_random(KeyType::ED25519);
-
-        // Send login request to bridge service
-        let nonce = Date::now() as u64;
-        let message = format!(
-            "login|{nonce}|{selected_account_id}|{}",
-            request_data.auth_public_key,
-        );
 
         spawn_local({
             let selected_account_secret_key = selected_account.secret_key.clone();
@@ -602,7 +450,7 @@ pub fn Connect() -> impl IntoView {
                             let message = SendMessage::Error {
                                 message: "Failed to sign message".to_string(),
                             };
-                            post_to_opener(message, true);
+                            post_to_opener(message);
                             return;
                         }
                     }
@@ -619,38 +467,7 @@ pub fn Connect() -> impl IntoView {
                         ))
                     }
                 };
-                let signature = secret_key.sign(message.as_bytes());
 
-                let login_request = LoginBridgeRequest {
-                    account_id: selected_account_id.clone(),
-                    app_public_key: request_data.auth_public_key.clone(),
-                    user_logout_public_key: logout_key.public_key(),
-                    nonce,
-                    signature,
-                    user_on_chain_public_key: secret_key.public_key(),
-                };
-
-                let url = dotenvy_macro::dotenv!("SHARED_LOGOUT_BRIDGE_SERVICE_ADDR");
-                let network = match request_data.network_id {
-                    NetworkLowercase::Mainnet => "mainnet".to_string(),
-                    NetworkLowercase::Testnet => "testnet".to_string(),
-                    NetworkLowercase::Local(network) => network,
-                };
-
-                match reqwest::Client::new()
-                    .post(format!("{url}/api/login/{network}"))
-                    .json(&login_request)
-                    .send()
-                    .await
-                {
-                    Ok(failed_response) if !failed_response.status().is_success() => {
-                        log::error!("Logout bridge responsed with {failed_response:?}");
-                    }
-                    Ok(_successful_response) => (),
-                    Err(err) => {
-                        log::error!("Failed to connect to bridge service: {err:?}");
-                    }
-                }
                 let Ok(message) = serde_json::from_str::<ConnectMessage>(&request_data.message)
                 else {
                     return;
@@ -766,22 +583,18 @@ pub fn Connect() -> impl IntoView {
                                     },
                                     function_call_key_added: true,
                                     logout_key: logout_key.public_key(),
-                                    use_bridge: tauri_session_id.get_untracked().is_some(),
-                                    wallet_url: if is_tauri() {
-                                        "intear://".to_string()
-                                    } else {
-                                        location().origin().expect("No origin")
-                                    },
+                                    use_bridge: false,
+                                    wallet_url: location().origin().expect("No origin"),
                                     signed_message: signed_message.clone(),
                                 };
-                                post_to_opener(message, true);
+                                post_to_opener(message);
                             } else {
                                 let message = SendMessage::Error {
                                     message:
                                         TranslationKey::PagesConnectFailedAddFunctionCallKeyGas
                                             .format(&[]),
                                 };
-                                post_to_opener(message, true);
+                                post_to_opener(message);
                             }
                         }
                         Err(err) => {
@@ -789,7 +602,7 @@ pub fn Connect() -> impl IntoView {
                                 message: TranslationKey::PagesConnectFailedAddFunctionCallKey
                                     .format(&[("error", &err.to_string())]),
                             };
-                            post_to_opener(message, true);
+                            post_to_opener(message);
                         }
                     }
                 } else {
@@ -809,15 +622,11 @@ pub fn Connect() -> impl IntoView {
                         },
                         function_call_key_added: false,
                         logout_key: logout_key.public_key(),
-                        use_bridge: tauri_session_id.get_untracked().is_some(),
-                        wallet_url: if is_tauri() {
-                            "intear://".to_string()
-                        } else {
-                            location().origin().expect("No origin")
-                        },
+                        use_bridge: false,
+                        wallet_url: location().origin().expect("No origin"),
                         signed_message: signed_message.clone(),
                     };
-                    post_to_opener(message, true);
+                    post_to_opener(message);
                 }
             }
         });
@@ -827,7 +636,7 @@ pub fn Connect() -> impl IntoView {
         let message = SendMessage::Error {
             message: TranslationKey::PagesConnectUserRejectedConnection.format(&[]),
         };
-        post_to_opener(message, true);
+        post_to_opener(message);
     };
 
     let connect_network_label = move |network: &Network| -> String {

@@ -20,7 +20,7 @@ use near_min_api::{
 use serde::{Deserialize, Serialize};
 use std::{fmt::Display, ops::Deref, str::FromStr, sync::Arc, time::Duration};
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
-use web_sys::js_sys::{Array, Function, Object, Promise, Reflect};
+use web_sys::js_sys::{Array, Function, Object, Reflect};
 
 use crate::contexts::{
     accounts_context::{AccountsContext, SecretKeyHolder, UserCancelledSigning},
@@ -1279,30 +1279,6 @@ pub async fn sign_nep366(
     borsh::to_writer(&mut bytes, payload).unwrap();
     log::info!("Signing NEP-366 payload: {:?}", bytes);
     secret_key.hash_and_sign(&bytes, context, ledger_mode).await
-}
-
-pub fn is_tauri() -> bool {
-    if let Ok(tauri_value) = Reflect::get(&window(), &"__TAURI__".into()) {
-        return !tauri_value.is_undefined();
-    }
-    false
-}
-
-pub fn is_android() -> bool {
-    if !is_tauri() {
-        return false;
-    }
-    platform() == "android"
-}
-
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = ["__TAURI__", "core"], js_name = "invoke")]
-    pub fn tauri_invoke(cmd: &str, args: &JsValue) -> Promise;
-    #[wasm_bindgen(js_namespace = ["__TAURI__", "core"], js_name = "invoke")]
-    pub fn tauri_invoke_no_args(cmd: &str) -> Promise;
-    #[wasm_bindgen(js_namespace = ["__TAURI_PLUGIN_OS__"])]
-    pub fn platform() -> String;
 }
 
 pub enum Resolution {

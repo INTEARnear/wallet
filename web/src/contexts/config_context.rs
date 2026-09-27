@@ -10,7 +10,7 @@ use wasm_bindgen_futures::JsFuture;
 use crate::{
     pages::swap::Slippage,
     translations::{BuiltInLanguage, CURRENT_LANGUAGE, Language, TranslationKey},
-    utils::{is_tauri, serialize_to_js_value, tauri_invoke, tauri_invoke_no_args},
+    utils::serialize_to_js_value,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
@@ -128,7 +128,6 @@ pub enum LedgerMode {
     Disabled,
     WebUSB,
     WebBLE,
-    TauriDevice(String),
 }
 
 impl LedgerMode {
@@ -137,35 +136,12 @@ impl LedgerMode {
             Self::Disabled => TranslationKey::PagesSettingsPreferencesLedgerModeNone.format(&[]),
             Self::WebUSB => TranslationKey::PagesSettingsPreferencesLedgerModeUsb.format(&[]),
             Self::WebBLE => TranslationKey::PagesSettingsPreferencesLedgerModeBluetooth.format(&[]),
-            Self::TauriDevice(device_name) => device_name.clone(),
         }
     }
 
     pub async fn all_variants() -> Vec<Self> {
-        if is_tauri() {
-            get_tauri_ledger_devices()
-                .await
-                .unwrap()
-                .into_iter()
-                .map(Self::TauriDevice)
-                .collect()
-        } else {
-            vec![Self::WebUSB, Self::WebBLE]
-        }
+        vec![Self::WebUSB, Self::WebBLE]
     }
-}
-
-async fn get_tauri_ledger_devices() -> Result<Vec<String>, String> {
-    let promise = tauri_invoke_no_args("get_ledger_devices");
-    let future = JsFuture::from(promise);
-    let devices = future
-        .await
-        .map_err(|e| format!("Failed to get ledger devices: {e:?}"))?;
-    let devices: String = serde_wasm_bindgen::from_value(devices)
-        .map_err(|e| format!("Failed to deserialize ledger devices: {}", e))?;
-    let devices: Vec<String> = serde_json::from_str(&devices)
-        .map_err(|e| format!("Failed to deserialize ledger devices: {}", e))?;
-    Ok(devices)
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -763,14 +739,6 @@ fn save_config(config: &WalletConfig) {
     }
 }
 
-fn emit_config_change_event(config: &WalletConfig) {
-    if let Ok(js_value) = serialize_to_js_value(config) {
-        let wrapped_js_value = web_sys::js_sys::Object::new();
-        let _ = web_sys::js_sys::Reflect::set(&wrapped_js_value, &"newConfig".into(), &js_value);
-        let _ = tauri_invoke("update_config", &wrapped_js_value);
-    }
-}
-
 fn detect_browser_language() -> Option<BuiltInLanguage> {
     let languages = window().navigator().languages();
     for i in 0..languages.length() {
@@ -802,9 +770,6 @@ pub fn provide_config_context() {
     Effect::new(move |_| {
         let current_config = config.get();
         save_config(&current_config);
-        if is_tauri() {
-            emit_config_change_event(&current_config);
-        }
     });
 
     let language = Memo::new(move |_| config.get().language);

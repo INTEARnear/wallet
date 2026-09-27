@@ -7,7 +7,7 @@ use crate::contexts::modal_context::ModalContext;
 use crate::contexts::network_context::{Network, NetworkContext};
 use crate::contexts::tokens_context::{Token, TokensContext};
 use crate::translations::TranslationKey;
-use crate::utils::{USDT_DECIMALS, balance_to_decimal, format_usd_value, is_tauri, power_of_10};
+use crate::utils::{USDT_DECIMALS, balance_to_decimal, format_usd_value, power_of_10};
 use bigdecimal::{BigDecimal, ToPrimitive};
 use leptos::prelude::*;
 use leptos_icons::*;
@@ -43,9 +43,6 @@ pub fn TotalPortfolioValue() -> impl IntoView {
     };
 
     let storage_persisted = LocalResource::new(|| async {
-        if is_tauri() {
-            return true;
-        }
         match window()
             .navigator()
             .storage()

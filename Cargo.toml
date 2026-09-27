@@ -35,13 +35,11 @@ members = [
     "account-indexer",
     "history-service",
     "account-creation-service",
-    "logout-bridge-service",
     "password-storage-service",
     "nft-proxy-service",
     "ai-tools-service",
     "server",
     "web",
-    "src-tauri",
     "translation-macros",
     "intear-seed-phrase",
 ]

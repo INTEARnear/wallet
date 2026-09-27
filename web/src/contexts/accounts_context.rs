@@ -33,7 +33,7 @@ use crate::contexts::config_context::LedgerMode;
 use crate::contexts::security_log_context::reencrypt_security_logs;
 use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
 use crate::translations::TranslationKey;
-use crate::utils::{is_debug_enabled, is_tauri, serialize_to_js_value, tauri_invoke_no_args};
+use crate::utils::{is_debug_enabled, serialize_to_js_value};
 
 use super::{
     config_context::ConfigContext,
@@ -449,49 +449,6 @@ async fn save_encrypted_accounts(cipher: Cipher, accounts: AccountsState) -> Res
                 .format(&[("error", &e.to_string())])
         })?;
 
-    let encrypted_data = if is_tauri() {
-        let (tx, rx) = futures_channel::oneshot::channel();
-        let nonce = *nonce;
-        spawn_local(async move {
-            let key_promise = tauri_invoke_no_args("get_os_encryption_key");
-            let key_future = JsFuture::from(key_promise);
-            let Ok(key_js) = key_future.await else {
-                tx.send(Err(
-                    TranslationKey::MiscAccountsPersistenceFailedGetOsKey.format(&[])
-                ))
-                .unwrap();
-                return;
-            };
-            let Some(key_string) = key_js.as_string() else {
-                tx.send(Err(
-                    TranslationKey::MiscAccountsPersistenceOsKeyNotString.format(&[])
-                ))
-                .unwrap();
-                return;
-            };
-            let Ok(key_bytes) = BASE64_STANDARD.decode(&key_string) else {
-                tx.send(Err(
-                    TranslationKey::MiscAccountsPersistenceFailedDecodeOsKey.format(&[]),
-                ))
-                .unwrap();
-                return;
-            };
-            let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
-            let cipher = Aes256Gcm::new(key);
-            let Ok(encrypted_data) = cipher.encrypt(&nonce, encrypted_data.as_ref()) else {
-                tx.send(Err(
-                    TranslationKey::MiscAccountsPersistenceFailedEncryptWithOsKey.format(&[]),
-                ))
-                .unwrap();
-                return;
-            };
-            tx.send(Ok(encrypted_data)).unwrap();
-        });
-        rx.await.unwrap()?
-    } else {
-        encrypted_data
-    };
-
     let encrypted_accounts = EncryptedAccountsData {
         encrypted_data: general_purpose::STANDARD.encode(&encrypted_data),
         salt: general_purpose::STANDARD.encode(cipher.salt),
@@ -571,53 +528,6 @@ async fn try_decrypt_accounts(
         })?;
 
     let nonce = Nonce::from_slice(&nonce_bytes);
-    let encrypted_data = if is_tauri() {
-        let (tx, rx) = futures_channel::oneshot::channel();
-        let nonce = *nonce;
-        spawn_local(async move {
-            let key_promise = tauri_invoke_no_args("get_os_encryption_key");
-            let key_future = JsFuture::from(key_promise);
-            let Ok(key_js) = key_future.await else {
-                tx.send(Err(
-                    TranslationKey::MiscAccountsPersistenceFailedGetOsKey.format(&[])
-                ))
-                .unwrap();
-                return;
-            };
-            let Some(key_string) = key_js.as_string() else {
-                tx.send(Err(
-                    TranslationKey::MiscAccountsPersistenceOsKeyNotString.format(&[])
-                ))
-                .unwrap();
-                return;
-            };
-            let Ok(key_bytes) = BASE64_STANDARD.decode(&key_string) else {
-                tx.send(Err(
-                    TranslationKey::MiscAccountsPersistenceFailedDecodeOsKey.format(&[]),
-                ))
-                .unwrap();
-                return;
-            };
-            let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
-            let cipher = Aes256Gcm::new(key);
-            let decrypted_data = match cipher.decrypt(&nonce, encrypted_data.as_ref()) {
-                Ok(decrypted_data) => decrypted_data,
-                Err(e) => {
-                    let err = format!("{e:?}");
-                    tx.send(Err(
-                        TranslationKey::MiscAccountsPersistenceFailedDecryptWithOsKey
-                            .format(&[("error", &err)]),
-                    ))
-                    .unwrap();
-                    return;
-                }
-            };
-            tx.send(Ok(decrypted_data)).unwrap();
-        });
-        rx.await.unwrap()?
-    } else {
-        encrypted_data
-    };
 
     let params = ParamsBuilder::new()
         .m_cost(ENCRYPTION_MEMORY_COST_KB)
@@ -870,57 +780,6 @@ pub fn provide_accounts_context() {
                 };
 
                 let nonce = Nonce::from_slice(&nonce_bytes);
-                let encrypted_data = if is_tauri() {
-                    let (tx, rx) = futures_channel::oneshot::channel();
-                    let nonce = *nonce;
-                    spawn_local(async move {
-                        let key_promise = tauri_invoke_no_args("get_os_encryption_key");
-                        let key_future = JsFuture::from(key_promise);
-                        let Ok(key_js) = key_future.await else {
-                            tx.send(Err(
-                                TranslationKey::MiscAccountsPersistenceFailedGetOsKey.format(&[])
-                            ))
-                            .unwrap();
-                            return;
-                        };
-                        let Some(key_string) = key_js.as_string() else {
-                            tx.send(Err(
-                                TranslationKey::MiscAccountsPersistenceOsKeyNotString.format(&[])
-                            ))
-                            .unwrap();
-                            return;
-                        };
-                        let Ok(key_bytes) = BASE64_STANDARD.decode(&key_string) else {
-                            tx.send(Err(
-                                TranslationKey::MiscAccountsPersistenceFailedDecodeOsKey
-                                    .format(&[]),
-                            ))
-                            .unwrap();
-                            return;
-                        };
-                        let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
-                        let cipher = Aes256Gcm::new(key);
-                        let Ok(decrypted_data) = cipher.decrypt(&nonce, encrypted_data.as_ref())
-                        else {
-                            tx.send(Err(
-                                TranslationKey::MiscAccountsPersistenceFailedDecryptWithOsKey
-                                    .format(&[("error", "decryption failed")]),
-                            ))
-                            .unwrap();
-                            return;
-                        };
-                        tx.send(Ok(decrypted_data)).unwrap();
-                    });
-                    match rx.await.unwrap() {
-                        Ok(decrypted_data) => decrypted_data,
-                        Err(e) => {
-                            log::error!("Failed to decrypt data using OS key on client: {}", e);
-                            return;
-                        }
-                    }
-                } else {
-                    encrypted_data
-                };
 
                 if let Ok(decrypted_data) = retrieved_cipher
                     .cipher

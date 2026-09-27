@@ -13,7 +13,7 @@ use crate::{
     },
     pages::settings::ToggleSwitch,
     translations::TranslationKey,
-    utils::{intents_remove_public_key_batches, is_tauri, tauri_invoke_no_args},
+    utils::intents_remove_public_key_batches,
 };
 use argon2::{Argon2, ParamsBuilder};
 use leptos::prelude::*;
@@ -163,7 +163,6 @@ pub fn SecuritySettings() -> impl IntoView {
     let (persistence_denied, set_persistence_denied) = signal(false);
     let (clearing_cache, set_clearing_cache) = signal(false);
     let (cache_clear_result, set_cache_clear_result) = signal::<Option<Result<(), String>>>(None);
-    let (supports_biometry, set_supports_biometry) = signal(false);
     let (switching_key_type, set_switching_key_type) = signal(false);
 
     let selected_account = move || {
@@ -364,10 +363,6 @@ pub fn SecuritySettings() -> impl IntoView {
     };
 
     let check_storage_persistence = move || {
-        if is_tauri() {
-            set_storage_persisted(Some(true));
-            return;
-        }
         spawn_local(async move {
             // Check if storage is persisted
             match window()
@@ -486,31 +481,6 @@ pub fn SecuritySettings() -> impl IntoView {
 
     Effect::new(move || {
         check_storage_persistence();
-    });
-
-    Effect::new(move || {
-        spawn_local(async move {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase")]
-            struct BiometricStatus {
-                is_available: bool,
-            }
-            let status_promise = tauri_invoke_no_args("plugin:biometric|status");
-            let status = wasm_bindgen_futures::JsFuture::from(status_promise)
-                .await
-                .map_err(|e| format!("Failed to get biometric status: {:?}", e))
-                .and_then(|val| {
-                    serde_wasm_bindgen::from_value(val)
-                        .map_err(|e| format!("Failed to parse biometric status: {:?}", e))
-                })
-                .unwrap_or_else(|err| {
-                    log::error!("{}", err);
-                    BiometricStatus {
-                        is_available: false,
-                    }
-                });
-            set_supports_biometry(status.is_available);
-        });
     });
 
     let location = use_location();
@@ -692,25 +662,6 @@ pub fn SecuritySettings() -> impl IntoView {
                         .into_any()
                 }}
 
-                <Show when=move || supports_biometry.get()>
-                    <div class="flex flex-col gap-2">
-                        <div class="text-lg font-medium">{move || TranslationKey::PagesSettingsSecurityHeaderBiometric.format(&[])}</div>
-                        <div class="text-sm text-neutral-400">
-                            {move || TranslationKey::PagesSettingsSecurityBiometricDescription.format(&[])}
-                        </div>
-                        <div class="p-4 rounded-lg bg-neutral-900 border border-neutral-700">
-                            <ToggleSwitch
-                                label=Signal::derive(move || TranslationKey::PagesSettingsSecurityToggleBiometric.format(&[]))
-                                value=Signal::derive(move || config.get().biometric_enabled)
-                                disabled=Signal::derive(|| false)
-                                on_toggle=move || {
-                                    config.update(|c| c.biometric_enabled = !c.biometric_enabled);
-                                }
-                            />
-                        </div>
-                    </div>
-                </Show>
-
                 <div class="flex flex-col gap-2">
                     <div class="text-lg font-medium">{move || TranslationKey::PagesSettingsSecurityHeaderPassword.format(&[])}</div>
                     <div class="text-sm text-neutral-400">
@@ -886,7 +837,6 @@ pub fn SecuritySettings() -> impl IntoView {
                 <div
                     class="flex flex-col gap-2"
                     id="storage-section"
-                    class:hidden=move || is_tauri()
                 >
                     <Show when=move || storage_persisted.get().is_some()>
                         <div class="text-lg font-medium">{move || TranslationKey::PagesSettingsSecurityHeaderStoragePersistence.format(&[])}</div>
