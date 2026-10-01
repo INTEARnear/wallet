@@ -10,8 +10,8 @@ use inindexer::{
         views::{AccessKeyPermissionView, ActionView, ExecutionStatusView, ReceiptEnumView},
     },
     near_utils::{MAINNET_GENESIS_BLOCK_HEIGHT, TESTNET_GENESIS_BLOCK_HEIGHT},
-    neardata::NeardataProvider,
     run_indexer,
+    teardata::TeardataProvider,
 };
 use near_min_api::types::near_crypto::{KeyType, PublicKeyHandle};
 use sqlx::{PgPool, Postgres, Transaction, postgres::PgPoolOptions};
@@ -469,8 +469,8 @@ async fn main() {
     let mut indexer = AccountIndexer::new(pool);
 
     let (provider, genesis_block_height) = match network {
-        Network::Mainnet => (NeardataProvider::mainnet(), MAINNET_GENESIS_BLOCK_HEIGHT),
-        Network::Testnet => (NeardataProvider::testnet(), TESTNET_GENESIS_BLOCK_HEIGHT),
+        Network::Mainnet => (TeardataProvider::mainnet(), MAINNET_GENESIS_BLOCK_HEIGHT),
+        Network::Testnet => (TeardataProvider::testnet(), TESTNET_GENESIS_BLOCK_HEIGHT),
     };
 
     run_indexer(
