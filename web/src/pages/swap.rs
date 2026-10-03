@@ -1304,9 +1304,8 @@ pub fn Swap() -> impl IntoView {
                                         let requires_impact_confirmation = {
                                             let token_in_info = &token_in.token;
                                             let token_out_info = &token_out.token;
-                                            if !token_in_info.price_usd_hardcoded.is_zero()
-                                                && !token_out_info.price_usd_hardcoded.is_zero()
-                                            {
+                                            // Unknown (zero) output price counts as worthless output: 100% impact
+                                            if !token_in_info.price_usd_hardcoded.is_zero() {
                                                 let amount_in_decimal = balance_to_decimal(
                                                     amount_in,
                                                     token_in_info.metadata.decimals,
@@ -1319,8 +1318,7 @@ pub fn Swap() -> impl IntoView {
                                                     * &token_in_info.price_usd_hardcoded;
                                                 let output_usd_value = &estimated_amount_out_decimal
                                                     * &token_out_info.price_usd_hardcoded;
-                                                if !input_usd_value.is_zero() && !output_usd_value.is_zero()
-                                                {
+                                                if !input_usd_value.is_zero() {
                                                     let difference = &input_usd_value - &output_usd_value;
                                                     if difference.sign() == Sign::Plus {
                                                         ((difference / &input_usd_value) * 100) > 10
@@ -1689,7 +1687,8 @@ pub fn Swap() -> impl IntoView {
                                     input_usd,
                                     output_usd,
                                 ) {
-                                    if !input_usd_val.is_zero() && !output_usd_val.is_zero() {
+                                    // Unknown (zero) output price counts as worthless output: 100% impact
+                                    if !input_usd_val.is_zero() {
                                         let difference = &input_usd_val - &output_usd_val;
                                         if difference.sign() != Sign::Plus {
                                             return ().into_any();
@@ -2504,24 +2503,24 @@ fn SwapConfirmationModal(
         token_out.metadata.symbol
     );
 
-    // Calculate price impact if possible
-    let price_impact: Option<BigDecimal> =
-        if !token_in.price_usd_hardcoded.is_zero() && !token_out.price_usd_hardcoded.is_zero() {
-            let input_usd_value = &amount_in_decimal * &token_in.price_usd_hardcoded;
-            let output_usd_value = &estimated_amount_out_decimal * &token_out.price_usd_hardcoded;
-            if !input_usd_value.is_zero() && !output_usd_value.is_zero() {
-                let difference = &input_usd_value - &output_usd_value;
-                if difference.sign() == bigdecimal::num_bigint::Sign::Plus {
-                    Some((difference / &input_usd_value) * 100)
-                } else {
-                    None
-                }
+    // Calculate price impact if possible. Unknown (zero) output price counts as
+    // worthless output: 100% impact
+    let price_impact: Option<BigDecimal> = if !token_in.price_usd_hardcoded.is_zero() {
+        let input_usd_value = &amount_in_decimal * &token_in.price_usd_hardcoded;
+        let output_usd_value = &estimated_amount_out_decimal * &token_out.price_usd_hardcoded;
+        if !input_usd_value.is_zero() {
+            let difference = &input_usd_value - &output_usd_value;
+            if difference.sign() == bigdecimal::num_bigint::Sign::Plus {
+                Some((difference / &input_usd_value) * 100)
             } else {
                 None
             }
         } else {
             None
-        };
+        }
+    } else {
+        None
+    };
     let danger_confirmation: Option<(SwapPriceDangerTier, BigDecimal)> = match price_impact.as_ref()
     {
         Some(impact) if *impact > 90 => Some((SwapPriceDangerTier::Extreme, impact.clone())),
