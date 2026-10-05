@@ -782,6 +782,7 @@ translation_keys! {
                 ReceiveNear,
                 StorageDepositNear,
                 StorageDepositTooltip,
+                StorageWithdraw,
                 WrapNear,
                 UnwrapNear,
                 Swap,
@@ -1570,6 +1571,7 @@ translation_keys! {
             },
             Transaction {
                 StorageDeposit,
+                StorageWithdraw,
                 WithdrawFromRhea,
                 TerminateOtherSessions,
                 SwitchKeyAlgorithm,

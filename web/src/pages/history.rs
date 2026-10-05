@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
 
 use crate::{
     components::tooltip::Tooltip,
@@ -7,24 +10,27 @@ use crate::{
         config_context::{ConfigContext, TimestampFormat},
         network_context::Network,
         rpc_context::RpcContext,
+        transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
     translations::TranslationKey,
     utils::{
         EventLogData, FtBurnLog, FtMintLog, FtTransferLog, NEP141_EVENT_STANDARD_STRING,
-        NftBurnLog, NftMintLog, NftTransferLog, RefDclSwapLog, format_account_id, format_duration,
-        format_token_amount, get_ft_metadata, get_nft_collection_metadata,
+        NftBurnLog, NftMintLog, NftTransferLog, RefDclSwapLog, StorageBalance, format_account_id,
+        format_duration, format_token_amount, get_ft_metadata, get_nft_collection_metadata,
     },
 };
 use base64::{self, Engine};
 use chrono::{DateTime as ChronoDateTime, Local, Utc};
 use icondata::{LuArrowRight, LuCalendar, LuClock, LuPackage, LuPackageOpen};
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use leptos_icons::Icon;
 use near_min_api::{
-    ExperimentalTxDetails, RpcClient,
+    ExperimentalTxDetails, QueryFinality, RpcClient,
     types::{
-        AccessKeyPermissionView, AccountId, AccountIdRef, ActionView, Balance,
-        FinalExecutionOutcomeWithReceiptView, NearToken, ReceiptEnumView,
+        AccessKeyPermissionView, AccountId, AccountIdRef, Action, ActionView, Balance,
+        FinalExecutionOutcomeWithReceiptView, FinalExecutionStatus, Finality, FunctionCallAction,
+        NearGas, NearToken, ReceiptEnumView,
     },
 };
 use serde::Deserialize;
@@ -89,9 +95,33 @@ async fn fetch_transactions() -> Vec<TransactionResponse> {
     }
 }
 
+/// Lets actions rendered inside the history list scroll it to the top and reload it.
+#[derive(Clone, Copy)]
+struct HistoryRefresh {
+    transactions: LocalResource<Vec<TransactionResponse>>,
+    root: NodeRef<leptos::html::Div>,
+}
+
+impl HistoryRefresh {
+    fn scroll_to_top_and_refetch(&self) {
+        if let Some(root) = self.root.get_untracked() {
+            let options = web_sys::ScrollIntoViewOptions::new();
+            options.set_behavior(web_sys::ScrollBehavior::Smooth);
+            root.scroll_into_view_with_scroll_into_view_options(&options);
+        }
+        let transactions = self.transactions;
+        set_timeout(move || transactions.refetch(), Duration::from_millis(1200));
+    }
+}
+
 #[component]
 pub fn History() -> impl IntoView {
     let transactions = LocalResource::new(fetch_transactions);
+    let root_ref = NodeRef::<leptos::html::Div>::new();
+    provide_context(HistoryRefresh {
+        transactions,
+        root: root_ref,
+    });
     let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     let timestamp_format = move || config.get().timestamp_format;
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
@@ -101,7 +131,7 @@ pub fn History() -> impl IntoView {
     });
 
     view! {
-        <div class="md:p-4">
+        <div class="md:p-4" node_ref=root_ref>
             <div class="flex justify-between items-center mb-4 px-4">
                 <h1 class="text-white text-2xl font-bold pt-4 sm:pt-0">
                     {move || TranslationKey::PagesHistoryTitle.format(&[])}
@@ -942,6 +972,122 @@ fn add_near_actions(
     }
 }
 
+const STORAGE_WITHDRAW_THRESHOLD: NearToken = NearToken::from_millinear(100);
+
+#[component]
+fn StorageWithdrawButton(contract_id: AccountId, account_id: AccountId) -> impl IntoView {
+    let RpcContext { client } = expect_context::<RpcContext>();
+    let TransactionQueueContext {
+        add_transaction, ..
+    } = expect_context::<TransactionQueueContext>();
+    let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+    let refresh = expect_context::<HistoryRefresh>();
+    let (dismissed, set_dismissed) = signal(false);
+    let (submitted, set_submitted) = signal(false);
+
+    let withdrawable = LocalResource::new({
+        let contract_id = contract_id.clone();
+        move || {
+            let rpc_client = client.get_untracked();
+            let contract_id = contract_id.clone();
+            let account_id = account_id.clone();
+            async move {
+                let balance = rpc_client
+                    .call::<Option<StorageBalance>>(
+                        contract_id,
+                        "storage_balance_of",
+                        serde_json::json!({ "account_id": account_id }),
+                        QueryFinality::Finality(Finality::DoomSlug),
+                    )
+                    .await
+                    .ok()??;
+                (balance.available >= STORAGE_WITHDRAW_THRESHOLD).then_some(balance.available)
+            }
+        }
+    });
+
+    move || {
+        if dismissed() {
+            return ().into_any();
+        }
+        let Some(Some(amount)) = withdrawable.get() else {
+            return ().into_any();
+        };
+        let contract_id = contract_id.clone();
+        let formatted_amount = format_token_amount(amount.as_yoctonear(), 24, "NEAR");
+        let label = TranslationKey::PagesHistoryStorageWithdraw
+            .format(&[("amount", formatted_amount.as_str())]);
+        view! {
+            <button
+                class="bg-neutral-600 hover:bg-neutral-500 disabled:opacity-50 disabled:cursor-default text-white text-sm px-3 py-1 rounded-lg cursor-pointer transition-colors"
+                disabled=submitted
+                on:click=move |ev| {
+                    // The button lives inside the row's explorer link
+                    ev.prevent_default();
+                    ev.stop_propagation();
+                    if submitted.get_untracked() {
+                        return;
+                    }
+                    let Some(signer_id) = accounts.get_untracked().selected_account_id else {
+                        return;
+                    };
+                    set_submitted(true);
+                    let description = TranslationKey::MiscTransactionStorageWithdraw
+                        .format(&[("contract_id", contract_id.as_str())]);
+                    let (rx, tx) = EnqueuedTransaction::create(
+                        description,
+                        signer_id,
+                        contract_id.clone(),
+                        vec![
+                            Action::FunctionCall(
+                                Box::new(FunctionCallAction {
+                                    method_name: "storage_withdraw".to_string(),
+                                    args: serde_json::json!({ "amount": amount.as_yoctonear().to_string() })
+                                        .to_string()
+                                        .into_bytes(),
+                                    gas: NearGas::from_tgas(10).into(),
+                                    deposit: NearToken::from_yoctonear(1),
+                                }),
+                            ),
+                        ],
+                        false,
+                    );
+                    add_transaction.update(|txs| txs.push(tx));
+                    spawn_local(async move {
+                        let succeeded = match rx.await {
+                            Ok(Ok(details)) => {
+                                details
+                                    .final_execution_outcome
+                                    .is_some_and(|outcome| {
+                                        !matches!(
+                                            outcome.final_outcome.status,
+                                            FinalExecutionStatus::Failure(_)
+                                        )
+                                    })
+                            }
+                            Ok(Err(err)) => {
+                                log::error!("Storage withdraw failed: {err}");
+                                false
+                            }
+                            Err(err) => {
+                                log::error!("Storage withdraw was cancelled: {err}");
+                                false
+                            }
+                        };
+                        set_dismissed(true);
+                        if succeeded {
+                            refresh.scroll_to_top_and_refetch();
+                        }
+                    });
+                }
+            >
+                {label}
+            </button>
+        }
+            .into_any()
+    }
+}
+
 fn add_storage_actions(
     actions: &mut Vec<AnyView>,
     transaction: &FinalExecutionOutcomeWithReceiptView,
@@ -966,9 +1112,15 @@ fn add_storage_actions(
                     && receipt.predecessor_id == me
                 {
                     let deposit_amount = *deposit;
+                    let withdraw_button =
+                        (deposit_amount > STORAGE_WITHDRAW_THRESHOLD).then(|| {
+                            let contract_id = receipt.receiver_id.clone();
+                            let account_id = me.to_owned();
+                            view! { <StorageWithdrawButton contract_id account_id /> }
+                        });
                     actions.push(
                         view! {
-                            <div class="flex items-center gap-2">
+                            <div class="flex flex-wrap items-center gap-2">
                                 <img
                                     src=format!(
                                         "data:image/svg+xml;base64,{}",
@@ -996,6 +1148,7 @@ fn add_storage_actions(
                                         }
                                     }}
                                 </span>
+                                {withdraw_button}
                             </div>
                         }
                         .into_any(),
