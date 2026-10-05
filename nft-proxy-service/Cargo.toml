@@ -30,3 +30,4 @@ nanoid = "0.4.0"
 teloxide = { version = "0.12.2", features = ["macros"] }
 anyhow = "1.0.86"
 base64 = "0.22.1"
+resvg = "0.48.1"

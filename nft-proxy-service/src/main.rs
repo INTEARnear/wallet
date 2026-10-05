@@ -489,6 +489,12 @@ async fn proxy_handler(
         ));
     }
 
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+
     let bytes = match response.bytes().await {
         Ok(bytes) => bytes,
         Err(e) => {
@@ -508,6 +514,33 @@ async fn proxy_handler(
 
     let img = match image::load_from_memory(&bytes) {
         Ok(img) => img,
+        Err(_) if is_svg(content_type.as_deref(), &bytes) => {
+            let svg_bytes = bytes.clone();
+            let rasterized =
+                tokio::task::spawn_blocking(move || rasterize_svg(&svg_bytes, HIGH_RES_SIZE)).await;
+            match rasterized {
+                Ok(Ok(img)) => img,
+                Ok(Err(e)) => {
+                    tracing::warn!("Failed to rasterize SVG: {e}");
+                    let status = StatusCode::UNPROCESSABLE_ENTITY;
+                    state
+                        .cache
+                        .insert(cache_key_low, Err(status.as_u16()))
+                        .await;
+                    state
+                        .cache
+                        .insert(cache_key_high, Err(status.as_u16()))
+                        .await;
+                    return Err((status, format!("Failed to rasterize SVG: {e}")));
+                }
+                Err(e) => {
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("SVG rasterization task failed: {e}"),
+                    ));
+                }
+            }
+        }
         Err(e) => {
             tracing::warn!("Failed to decode image, proxying as is. Error: {e}");
             state.cache.insert(cache_key_low, Ok(bytes.clone())).await;
@@ -546,6 +579,38 @@ async fn proxy_handler(
 
     let webp_bytes = Bytes::from(buffer.into_inner());
     Ok(webp_bytes)
+}
+
+fn is_svg(content_type: Option<&str>, bytes: &[u8]) -> bool {
+    if content_type.is_some_and(|ct| ct.to_ascii_lowercase().contains("image/svg")) {
+        return true;
+    }
+    let head = &bytes[..bytes.len().min(1024)];
+    String::from_utf8_lossy(head).contains("<svg")
+}
+
+fn rasterize_svg(data: &[u8], target: u32) -> anyhow::Result<DynamicImage> {
+    let mut opt = resvg::usvg::Options::default();
+    opt.image_href_resolver.resolve_string = Box::new(|_, _| None);
+
+    let tree = resvg::usvg::Tree::from_data(data, &opt)?;
+    let size = tree.size();
+    let (width, height) = (size.width(), size.height());
+    let scale = target as f32 / width.max(height);
+    let pixel_width = (width * scale).round().max(1.0) as u32;
+    let pixel_height = (height * scale).round().max(1.0) as u32;
+
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(pixel_width, pixel_height)
+        .ok_or_else(|| anyhow!("Invalid SVG size {pixel_width}x{pixel_height}"))?;
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::from_scale(scale, scale),
+        &mut pixmap.as_mut(),
+    );
+
+    let rgba = image::RgbaImage::from_raw(pixel_width, pixel_height, pixmap.take_demultiplied())
+        .ok_or_else(|| anyhow!("Rasterized SVG buffer has unexpected size"))?;
+    Ok(DynamicImage::ImageRgba8(rgba))
 }
 
 async fn traits_proxy_handler(
