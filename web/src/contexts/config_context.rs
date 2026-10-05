@@ -5,12 +5,10 @@ use std::{
     collections::HashSet,
     hash::{Hash, Hasher},
 };
-use wasm_bindgen_futures::JsFuture;
 
 use crate::{
     pages::swap::Slippage,
     translations::{BuiltInLanguage, CURRENT_LANGUAGE, Language, TranslationKey},
-    utils::serialize_to_js_value,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
@@ -152,10 +150,6 @@ pub struct WalletConfig {
     pub timestamp_format: TimestampFormat,
     pub show_transaction_details: bool,
     pub play_transfer_sound: bool,
-    #[serde(default = "default_true")]
-    pub realtime_balance_updates: bool,
-    #[serde(default = "default_true")]
-    pub realtime_price_updates: bool,
     #[serde(default)]
     pub password_remember_duration: PasswordRememberDuration,
     #[serde(default)]
@@ -647,7 +641,6 @@ pub struct CustomNetwork {
     pub history_service_url: Option<String>,
     pub social_contract: Option<AccountId>,
     pub prices_api_url: Option<String>,
-    pub realtime_events_api_url: Option<String>,
     pub wrap_contract: Option<AccountId>,
     pub explorer_url: Option<String>,
     pub fastnear_api_url: Option<String>,
@@ -689,8 +682,6 @@ impl Default for WalletConfig {
             timestamp_format: TimestampFormat::TimeAgo,
             show_transaction_details: false,
             play_transfer_sound: false,
-            realtime_balance_updates: true,
-            realtime_price_updates: true,
             password_remember_duration: PasswordRememberDuration::default(),
             slippage: Slippage::default(),
             nfts_view_state: NftsViewState::default(),

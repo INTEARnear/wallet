@@ -1149,8 +1149,6 @@
   "pages.settings.preferences.toggle_disable_screenshots": "Вимкнути знімки екрана",
   "pages.settings.preferences.toggle_hide_amounts": "Приховати суми",
   "pages.settings.preferences.toggle_hide_to_tray": "Згортати у системний трей замість закриття",
-  "pages.settings.preferences.toggle_realtime_balances": "Оновлювати баланси в реальному часі",
-  "pages.settings.preferences.toggle_realtime_prices": "Оновлювати ціни токенів у реальному часі",
   "pages.settings.preferences.toggle_sound_effects": "Звук при отриманні переказів",
   "pages.settings.preferences_tab": "Налаштування",
   "pages.settings.security.biometric_description": "Використовуйте біометричну автентифікацію для розблокування гаманця.",

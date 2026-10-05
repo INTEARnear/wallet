@@ -123,6 +123,18 @@ pub fn TrendingTokensSection() -> impl IntoView {
         network.track();
         tokens.refetch();
     });
+    let tokens_context = expect_context::<TokensContext>();
+    tokens_context.watch_prices(move || {
+        tokens
+            .get()
+            .map(|tokens| {
+                tokens
+                    .iter()
+                    .map(|token| token.account_id.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
+    });
 
     view! {
         <div class="bg-neutral-900 rounded-xl p-4 mb-4">
@@ -183,7 +195,17 @@ pub fn TrendingTokensSection() -> impl IntoView {
                                                     </div>
                                                     <div class="text-right">
                                                         <div class="text-white">
-                                                            {format_token_price(token.price)}
+                                                            {
+                                                                let account_id = token.account_id.clone();
+                                                                let price = token.price.clone();
+                                                                move || {
+                                                                    format_token_price(
+                                                                        tokens_context
+                                                                            .live_price(&account_id)
+                                                                            .map_or(price.clone(), |live| live.price_usd),
+                                                                    )
+                                                                }
+                                                            }
                                                         </div>
                                                         <div style=format!(
                                                             "color: {}",

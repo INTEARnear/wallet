@@ -3,14 +3,13 @@ use std::collections::HashSet;
 use crate::translations::TranslationKey;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::Utc;
-use ed25519_dalek::SECRET_KEY_LENGTH;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use leptos_router::hooks::use_navigate;
 use near_min_api::types::{
     AccessKey, AccessKeyPermission, AccountId, Action, AddKeyAction, CryptoHash,
     FunctionCallPermission, NearToken,
-    near_crypto::{ED25519SecretKey, KeyType, PublicKey, SecretKey, Signature},
+    near_crypto::{KeyType, PublicKey, SecretKey, Signature},
 };
 use serde::{Deserialize, Deserializer, Serialize};
 use wasm_bindgen::JsCast;
@@ -32,7 +31,7 @@ use crate::{
 };
 use crate::{
     contexts::{
-        accounts_context::{AccountsContext, LedgerSigningState, SecretKeyHolder},
+        accounts_context::{AccountsContext, LedgerSigningState},
         connected_apps_context::{ConnectedApp, ConnectedAppsContext, ConnectorVersion},
         network_context::Network,
         security_log_context::{SecurityLogEvent, add_security_log},
@@ -164,16 +163,6 @@ pub enum ResponseAccounts {
     },
     #[serde(rename_all = "camelCase")]
     V3 { account_id: AccountId },
-}
-
-#[derive(Serialize, Debug)]
-struct LoginBridgeRequest {
-    account_id: AccountId,
-    app_public_key: PublicKey,
-    user_logout_public_key: PublicKey,
-    nonce: u64,
-    signature: Signature,
-    user_on_chain_public_key: PublicKey,
 }
 
 #[component]
@@ -456,16 +445,6 @@ pub fn Connect() -> impl IntoView {
                     }
                 } else {
                     None
-                };
-                let secret_key = match selected_account_secret_key {
-                    SecretKeyHolder::SecretKey(secret_key) => secret_key,
-                    SecretKeyHolder::Ledger { .. } => {
-                        // Don't ask for Ledger signing, it's too bad UX
-                        SecretKey::ED25519(ED25519SecretKey(
-                            ed25519_dalek::SigningKey::from_bytes(&[0; SECRET_KEY_LENGTH])
-                                .to_keypair_bytes(),
-                        ))
-                    }
                 };
 
                 let Ok(message) = serde_json::from_str::<ConnectMessage>(&request_data.message)

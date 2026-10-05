@@ -1149,8 +1149,6 @@
   "pages.settings.preferences.toggle_disable_screenshots": "Chống chụp màn hình",
   "pages.settings.preferences.toggle_hide_amounts": "Ẩn số dư",
   "pages.settings.preferences.toggle_hide_to_tray": "Ẩn vào thanh tác vụ thay vì thoát",
-  "pages.settings.preferences.toggle_realtime_balances": "Cập nhật số dư thời gian thực",
-  "pages.settings.preferences.toggle_realtime_prices": "Cập nhật giá token thời gian thực",
   "pages.settings.preferences.toggle_sound_effects": "Phát âm thanh khi nhận tiền",
   "pages.settings.preferences_tab": "Cấu hình",
   "pages.settings.security.biometric_description": "Sử dụng xác thực sinh trắc học để mở khóa ví của bạn.",

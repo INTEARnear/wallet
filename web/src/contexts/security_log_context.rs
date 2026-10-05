@@ -3,10 +3,9 @@ use std::fmt::{self, Display};
 use std::str::FromStr;
 
 use aes_gcm::{
-    Aes256Gcm, Key, KeyInit, Nonce,
+    Nonce,
     aead::{Aead, OsRng, rand_core::RngCore},
 };
-use base64::prelude::BASE64_STANDARD;
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
 use deli::{CursorDirection, Database, Model};
@@ -18,7 +17,6 @@ use near_min_api::types::{
     near_crypto::{PublicKey, SecretKey},
 };
 use serde::{Deserialize, Serialize};
-use wasm_bindgen_futures::JsFuture;
 
 use crate::contexts::accounts_context::{AccountsContext, Cipher, SecretKeyHolder};
 

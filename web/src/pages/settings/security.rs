@@ -11,7 +11,6 @@ use crate::{
         security_log_context::{SecurityLogEvent, add_security_log},
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
-    pages::settings::ToggleSwitch,
     translations::TranslationKey,
     utils::intents_remove_public_key_batches,
 };
@@ -28,7 +27,6 @@ use near_min_api::types::{
     Finality,
 };
 use rand::{RngCore, rngs::OsRng};
-use serde::Deserialize;
 use web_sys::js_sys::{Object, Reflect};
 
 const MIN_ROUNDS: u32 = 2;

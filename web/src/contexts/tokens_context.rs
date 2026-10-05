@@ -1,27 +1,29 @@
-use std::{collections::HashSet, future::Future, str::FromStr};
+use std::{
+    collections::{BTreeSet, HashMap, HashSet},
+    str::FromStr,
+    sync::{Arc, Mutex},
+};
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use bigdecimal::BigDecimal;
 use codee::string::FromToStringCodec;
-use futures_util::{TryFutureExt, future::join};
-use itertools::Either;
-use json_filter::{Filter, Operator};
+use futures_util::future::join5;
 use leptos::{prelude::*, task::spawn_local};
-use leptos_use::{core::ConnectionReadyState, use_websocket};
+use leptos_use::{
+    ReconnectLimit, UseWebSocketOptions, core::ConnectionReadyState, use_websocket_with_options,
+};
 use near_min_api::{
-    QueryFinality,
-    types::{AccountId, Balance, BlockHeight, BlockReference, CryptoHash, Finality, U128},
+    QueryFinality, RpcClient,
+    types::{AccountId, Balance, BlockReference, Finality, U128},
     utils::dec_format,
 };
 use serde::{Deserialize, Serialize};
 use web_sys::HtmlAudioElement;
 
-use crate::utils::{TOKEN_CACHE, USDT_DECIMALS, power_of_10};
+use crate::utils::{TOKEN_CACHE, power_of_10};
 
 use super::{
-    accounts_context::AccountsContext,
-    config_context::ConfigContext,
-    network_context::{Network, NetworkContext},
+    accounts_context::AccountsContext, config_context::ConfigContext, network_context::Network,
     rpc_context::RpcContext,
 };
 
@@ -90,58 +92,87 @@ pub struct TokenData {
 pub enum TokenBalanceSource {
     Direct,
     Rhea,
+    Native,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct FtTransferEvent {
-    pub old_owner_id: AccountId,
-    pub new_owner_id: AccountId,
-    #[serde(with = "dec_format")]
-    pub amount: Balance,
-    pub memo: Option<String>,
-    pub token_id: AccountId,
-    pub transaction_id: CryptoHash,
-    pub receipt_id: CryptoHash,
-    pub block_height: BlockHeight,
-    #[serde(with = "dec_format")]
-    pub block_timestamp_nanosec: u128,
+#[derive(Clone, Deserialize, Debug, PartialEq)]
+pub struct LivePrice {
+    pub price_usd: BigDecimal,
+    pub price_usd_hardcoded: BigDecimal,
+    pub price_usd_raw: BigDecimal,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct FtMintEvent {
-    pub owner_id: AccountId,
-    #[serde(with = "dec_format")]
-    pub amount: Balance,
-    pub memo: Option<String>,
-    pub token_id: AccountId,
-    pub transaction_id: CryptoHash,
-    pub receipt_id: CryptoHash,
-    pub block_height: BlockHeight,
-    #[serde(with = "dec_format")]
-    pub block_timestamp_nanosec: u128,
+impl LivePrice {
+    fn apply_to(&self, token: &mut TokenInfo) {
+        token.price_usd = self.price_usd.clone();
+        token.price_usd_hardcoded = self.price_usd_hardcoded.clone();
+        token.price_usd_raw = self.price_usd_raw.clone();
+    }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct FtBurnEvent {
-    pub owner_id: AccountId,
-    #[serde(with = "dec_format")]
-    pub amount: Balance,
-    pub memo: Option<String>,
-    pub token_id: AccountId,
-    pub transaction_id: CryptoHash,
-    pub receipt_id: CryptoHash,
-    pub block_height: BlockHeight,
-    #[serde(with = "dec_format")]
-    pub block_timestamp_nanosec: u128,
+enum TokensWsMessage {
+    UserTokens(UserTokens),
+    BalanceChanged(BalanceChanged),
+    Prices(Prices),
+    PriceChanged(PriceChanged),
+    Tokens(Tokens),
+    Other,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TokenPriceUpdate {
-    pub price_usd: String,
-    #[serde(with = "dec_format")]
-    pub timestamp_nanosec: u128,
-    pub token: AccountId,
+#[derive(Deserialize)]
+struct UserTokens {
+    account_id: AccountId,
+    tokens: Vec<TokenData>,
 }
+
+#[derive(Deserialize)]
+struct BalanceChanged {
+    account_id: AccountId,
+    token_id: AccountId,
+    #[serde(with = "dec_format")]
+    balance: Balance,
+}
+
+#[derive(Deserialize)]
+struct Prices {
+    prices: HashMap<AccountId, LivePrice>,
+}
+
+#[derive(Deserialize)]
+struct PriceChanged {
+    account_id: AccountId,
+    price_usd: BigDecimal,
+    price_usd_hardcoded: BigDecimal,
+    price_usd_raw: BigDecimal,
+}
+
+#[derive(Deserialize)]
+struct Tokens {
+    tokens: HashMap<AccountId, TokenInfo>,
+}
+
+impl TokensWsMessage {
+    // https://github.com/serde-rs/serde/issues/1183 workaround
+    fn parse(message: &str) -> serde_json::Result<Self> {
+        #[derive(Deserialize)]
+        struct Type {
+            r#type: String,
+        }
+        Ok(
+            match serde_json::from_str::<Type>(message)?.r#type.as_str() {
+                "user_tokens" => Self::UserTokens(serde_json::from_str(message)?),
+                "balance_changed" => Self::BalanceChanged(serde_json::from_str(message)?),
+                "prices" => Self::Prices(serde_json::from_str(message)?),
+                "price_changed" => Self::PriceChanged(serde_json::from_str(message)?),
+                "tokens" => Self::Tokens(serde_json::from_str(message)?),
+                _ => Self::Other,
+            },
+        )
+    }
+}
+
+/// The most tokens `/tokens/ws` takes in one request.
+const MAX_ACCOUNT_IDS: usize = 1_000;
 
 /// Tokens that selected account has
 #[derive(Clone, Copy)]
@@ -149,688 +180,559 @@ pub struct TokensContext {
     pub tokens: ReadSignal<Vec<TokenData>>,
     pub loading_tokens: ReadSignal<bool>,
     pub set_tokens: WriteSignal<Vec<TokenData>>,
+    live_prices: ReadSignal<HashMap<AccountId, LivePrice>>,
+    price_watchers: RwSignal<HashMap<AccountId, usize>>,
+    wrap_near: Memo<Option<AccountId>>,
+}
+
+impl TokensContext {
+    pub fn watch_prices(&self, tokens: impl Fn() -> Vec<Token> + 'static) {
+        let price_watchers = self.price_watchers;
+        let wrap_near = self.wrap_near;
+        let watched = Arc::new(Mutex::new(Vec::<AccountId>::new()));
+        let unwatch = move |token_ids: &[AccountId]| {
+            price_watchers.update(|watchers| {
+                for token_id in token_ids {
+                    if let Some(count) = watchers.get_mut(token_id) {
+                        *count -= 1;
+                        if *count == 0 {
+                            watchers.remove(token_id);
+                        }
+                    }
+                }
+            });
+        };
+        Effect::new({
+            let watched = Arc::clone(&watched);
+            move |_| {
+                let wrap_near = wrap_near.get();
+                let token_ids = tokens()
+                    .iter()
+                    .filter_map(|token| price_id(token, wrap_near.as_ref()))
+                    .collect::<Vec<_>>();
+                price_watchers.update(|watchers| {
+                    for token_id in &token_ids {
+                        *watchers.entry(token_id.clone()).or_default() += 1;
+                    }
+                });
+                let unwatched = std::mem::replace(&mut *watched.lock().unwrap(), token_ids);
+                unwatch(&unwatched);
+            }
+        });
+        on_cleanup(move || unwatch(&watched.lock().unwrap()));
+    }
+
+    pub fn live_price(&self, token: &Token) -> Option<LivePrice> {
+        let token_id = price_id(token, self.wrap_near.get().as_ref())?;
+        self.live_prices.get().get(&token_id).cloned()
+    }
+}
+
+/// The token id `token` is referred to as. NEAR is stored as wNEAR
+fn price_id(token: &Token, wrap_near: Option<&AccountId>) -> Option<AccountId> {
+    match token {
+        Token::Near => wrap_near.cloned(),
+        Token::Nep141(account_id) | Token::Rhea(account_id) => Some(account_id.clone()),
+    }
+}
+
+fn wrap_near_of(network: &Network) -> Option<AccountId> {
+    match network {
+        Network::Mainnet => Some("wrap.near".parse().unwrap()),
+        Network::Testnet => Some("wrap.testnet".parse().unwrap()),
+        Network::Localnet(network) => network.wrap_contract.clone(),
+    }
+}
+
+/// `/tokens/ws` of the network's prices API, if it has one.
+fn tokens_ws_url(network: &Network) -> Option<String> {
+    let prices_api_url = match network {
+        Network::Mainnet => "https://prices.intear.tech",
+        Network::Testnet => "https://prices-testnet.intear.tech",
+        Network::Localnet(network) => network.prices_api_url.as_deref()?,
+    };
+    let ws_url = if let Some(host) = prices_api_url.strip_prefix("https://") {
+        format!("wss://{host}")
+    } else if let Some(host) = prices_api_url.strip_prefix("http://") {
+        format!("ws://{host}")
+    } else {
+        log::error!("Prices API URL {prices_api_url} is neither http:// nor https://");
+        return None;
+    };
+    Some(format!("{ws_url}/tokens/ws?thumbnails=false"))
+}
+
+fn near_icon() -> String {
+    format!(
+        "data:image/svg+xml;base64,{}",
+        BASE64_STANDARD.encode(include_bytes!("../data/near.svg"))
+    )
+}
+
+fn worth_a_sound(amount: Balance, token: &TokenInfo) -> bool {
+    BigDecimal::from(amount) * &token.price_usd_hardcoded / power_of_10(token.metadata.decimals)
+        >= 1
+}
+
+fn play_transfer_sound() {
+    if let Ok(audio) = HtmlAudioElement::new() {
+        audio.set_src("/cash-register-sound.mp3");
+        let _ = audio.play();
+    }
+}
+
+fn unpriced_token(
+    account_id: Token,
+    metadata: TokenMetadata,
+    supply: Balance,
+    reputation: TokenScore,
+) -> TokenInfo {
+    TokenInfo {
+        account_id,
+        metadata,
+        price_usd: Default::default(),
+        price_usd_hardcoded: Default::default(),
+        price_usd_raw: Default::default(),
+        price_usd_raw_24h_ago: Default::default(),
+        volume_usd_24h: Default::default(),
+        liquidity_usd: Default::default(),
+        circulating_supply: supply,
+        total_supply: supply,
+        reputation,
+    }
+}
+
+/// What `account_id` holds of NEAR and `tokens`, read from RPC, for a network without a prices
+/// API: no prices, and not kept live.
+async fn fetch_tokens_over_rpc(
+    rpc_client: RpcClient,
+    account_id: AccountId,
+    tokens: Vec<AccountId>,
+) -> Vec<TokenData> {
+    let calls = |method: &'static str, args: serde_json::Value| {
+        tokens
+            .iter()
+            .map(|token| {
+                (
+                    token.clone(),
+                    method,
+                    args.clone(),
+                    QueryFinality::Finality(Finality::None),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let (account, block, balances, metadata, supplies) = join5(
+        rpc_client.view_account(account_id.clone(), QueryFinality::Finality(Finality::None)),
+        rpc_client.block(BlockReference::Finality(Finality::None)),
+        rpc_client.batch_call::<U128>(calls(
+            "ft_balance_of",
+            serde_json::json!({ "account_id": account_id }),
+        )),
+        rpc_client.batch_call::<TokenMetadata>(calls("ft_metadata", serde_json::json!({}))),
+        rpc_client.batch_call::<U128>(calls("ft_total_supply", serde_json::json!({}))),
+    )
+    .await;
+
+    let near_supply = block.map(|block| block.header.total_supply).unwrap_or(0);
+    let mut token_data = vec![TokenData {
+        balance: account
+            .map(|account| account.amount.as_yoctonear())
+            .unwrap_or(0),
+        token: unpriced_token(
+            Token::Near,
+            TokenMetadata {
+                name: "NEAR".to_string(),
+                symbol: "NEAR".to_string(),
+                decimals: 24,
+                icon: Some(near_icon()),
+            },
+            near_supply,
+            TokenScore::Reputable,
+        ),
+        source: TokenBalanceSource::Direct,
+    }];
+    if let (Ok(balances), Ok(metadata), Ok(supplies)) = (balances, metadata, supplies) {
+        token_data.extend(
+            balances
+                .into_iter()
+                .zip(&tokens)
+                .zip(metadata)
+                .zip(supplies)
+                .filter_map(|(((balance, token), metadata), supply)| {
+                    Some(TokenData {
+                        balance: *balance.ok()?,
+                        token: unpriced_token(
+                            Token::Nep141(token.clone()),
+                            metadata.ok()?,
+                            *supply.ok()?,
+                            TokenScore::NotFake,
+                        ),
+                        source: TokenBalanceSource::Direct,
+                    })
+                }),
+        );
+    }
+    token_data
 }
 
 pub fn provide_token_context() {
     let (tokens, set_tokens) = signal::<Vec<TokenData>>(vec![]);
     let (loading, set_loading) = signal(true);
+    let (live_prices, set_live_prices) = signal(HashMap::<AccountId, LivePrice>::new());
+    let price_watchers = RwSignal::new(HashMap::<AccountId, usize>::new());
     let accounts_context = expect_context::<AccountsContext>();
     let rpc_client = expect_context::<RpcContext>();
     let config_context = expect_context::<ConfigContext>();
 
-    // Set up WebSocket connection for token transfers
-    let (transfer_ws, set_transfer_ws) = signal(None);
-    let (mint_ws, set_mint_ws) = signal(None);
-    let (burn_ws, set_burn_ws) = signal(None);
-    let (price_ws, set_price_ws) = signal(None);
-
-    // Connect / disconnect from WebSocket when realtime balance updates are toggled or account changed
-    let realtime_balance_updates =
-        Memo::new(move |_| config_context.config.get().realtime_balance_updates);
-    Effect::new(move |_| {
-        if accounts_context.accounts.get().accounts.is_empty() {
-            // Not unlocked or loaded yet
-            return;
-        }
-        let network = accounts_context
+    // The selected account with its network, once accounts are unlocked
+    let selected = Memo::new(move |_| {
+        let accounts = accounts_context.accounts.get();
+        let account_id = accounts.selected_account_id?;
+        let network = accounts
             .accounts
-            .get()
-            .selected_account_id
-            .map(|acc| {
-                accounts_context
-                    .accounts
-                    .get()
-                    .accounts
-                    .into_iter()
-                    .find(|a| a.account_id == acc)
-                    .unwrap()
-                    .network
-            });
-        let ws_url = match network {
-            Some(Network::Mainnet) => "ws-events-v3.intear.tech".to_string(),
-            Some(Network::Testnet) => "ws-events-v3-testnet.intear.tech".to_string(),
-            Some(Network::Localnet(network)) => {
-                if let Some(url) = &network.realtime_events_api_url {
-                    url.clone()
-                } else {
-                    return;
-                }
-            }
-            None => return,
-        };
-        set_transfer_ws(if realtime_balance_updates() {
-            Some(use_websocket::<String, String, FromToStringCodec>(
-                &format!("wss://{ws_url}/events/ft_transfer"),
-            ))
-        } else {
-            None
-        });
-        set_mint_ws(if realtime_balance_updates() {
-            Some(use_websocket::<String, String, FromToStringCodec>(
-                &format!("wss://{ws_url}/events/ft_mint"),
-            ))
-        } else {
-            None
-        });
-        set_burn_ws(if realtime_balance_updates() {
-            Some(use_websocket::<String, String, FromToStringCodec>(
-                &format!("wss://{ws_url}/events/ft_burn"),
-            ))
-        } else {
-            None
-        });
+            .into_iter()
+            .find(|account| account.account_id == account_id)?
+            .network;
+        Some((account_id, network))
     });
+    let network = Memo::new(move |_| selected.get().map(|(_, network)| network));
+    let wrap_near = Memo::new(move |_| network.get().as_ref().and_then(wrap_near_of));
 
-    // Connect / disconnect from WebSocket when realtime price updates are toggled or account changed
-    let realtime_price_updates =
-        Memo::new(move |_| config_context.config.get().realtime_price_updates);
-    Effect::new(move |_| {
-        if accounts_context.accounts.get().accounts.is_empty() {
-            // Not unlocked or loaded yet
-            return;
-        }
-        let network = accounts_context
-            .accounts
-            .get()
-            .selected_account_id
-            .map(|acc| {
-                accounts_context
-                    .accounts
-                    .get()
-                    .accounts
-                    .into_iter()
-                    .find(|a| a.account_id == acc)
-                    .unwrap()
-                    .network
-            });
-        let ws_url = match network {
-            Some(Network::Mainnet) => "ws-events-v3.intear.tech".to_string(),
-            Some(Network::Testnet) => "ws-events-v3-testnet.intear.tech".to_string(),
-            Some(Network::Localnet(network)) => {
-                if let Some(url) = &network.realtime_events_api_url {
-                    url.clone()
-                } else {
-                    return;
-                }
-            }
-            None => return,
-        };
-        set_price_ws(if realtime_price_updates() {
-            Some(use_websocket::<String, String, FromToStringCodec>(
-                &format!("wss://{ws_url}/events/price_token"),
-            ))
-        } else {
-            None
-        });
-    });
+    // The account whose `user_tokens` reply `tokens` holds
+    let loaded = RwSignal::new(None::<AccountId>);
+    // Balances of tokens that aren't in `tokens` yet, until their `tokens` reply comes
+    let missing_tokens = RwSignal::new(HashMap::<AccountId, Balance>::new());
+    // What this connection has been asked for, forgotten on every reconnect
+    let followed = StoredValue::new(None::<AccountId>);
+    let sent_price_changes = StoredValue::new(None::<Vec<AccountId>>);
+    let requested_tokens = StoredValue::new(HashSet::<AccountId>::new());
 
-    // Send filter message when WebSocket connects
-    Effect::new(move |_| {
-        let Some(ws) = transfer_ws() else {
-            return;
-        };
-        if ws.ready_state.try_get() == Some(ConnectionReadyState::Open)
-            && let Some(account_id) = &accounts_context.accounts.get().selected_account_id
-        {
-            let filter = Operator::Or(vec![
-                Filter::new(
-                    "old_owner_id",
-                    Operator::Equals(serde_json::json!(account_id.to_string())),
-                ),
-                Filter::new(
-                    "new_owner_id",
-                    Operator::Equals(serde_json::json!(account_id.to_string())),
-                ),
-            ]);
-
-            let filter_json = serde_json::to_string(&filter).unwrap();
-            (ws.send)(&filter_json);
-        }
-    });
-
-    Effect::new(move |_| {
-        let Some(ws) = mint_ws() else {
-            return;
-        };
-        if ws.ready_state.try_get() == Some(ConnectionReadyState::Open)
-            && let Some(account_id) = &accounts_context.accounts.get().selected_account_id
-        {
-            let filter = Operator::And(vec![Filter::new(
-                "owner_id",
-                Operator::Equals(serde_json::json!(account_id.to_string())),
-            )]);
-
-            let filter_json = serde_json::to_string(&filter).unwrap();
-            (ws.send)(&filter_json);
-        }
-    });
-
-    Effect::new(move |_| {
-        let Some(ws) = burn_ws() else {
-            return;
-        };
-        if ws.ready_state.try_get() == Some(ConnectionReadyState::Open)
-            && let Some(account_id) = &accounts_context.accounts.get().selected_account_id
-        {
-            let filter = Operator::And(vec![Filter::new(
-                "owner_id",
-                Operator::Equals(serde_json::json!(account_id.to_string())),
-            )]);
-
-            let filter_json = serde_json::to_string(&filter).unwrap();
-            (ws.send)(&filter_json);
-        }
-    });
-
-    Effect::new(move |_| {
-        let Some(ws) = price_ws() else {
-            return;
-        };
-        if ws.ready_state.try_get() == Some(ConnectionReadyState::Open) {
-            let filter = Operator::And(vec![]);
-            let filter_json = serde_json::to_string(&filter).unwrap();
-            (ws.send)(&filter_json);
-        }
-    });
-
-    let mut transfer_events_processed = HashSet::new();
-    // Handle incoming transfer events
-    Effect::new(move |_| {
-        let Some(ws) = transfer_ws() else {
-            return;
-        };
-        if let Some(msg) = ws.message.get()
-            && let Ok(events) = serde_json::from_str::<Vec<FtTransferEvent>>(&msg)
-        {
-            for (i, event) in events.into_iter().enumerate() {
-                if !transfer_events_processed.insert((event.receipt_id, i)) {
-                    continue;
-                }
-                let current_account = accounts_context.accounts.get().selected_account_id;
-                log::info!("Received transfer: {event:?}");
-
-                let event_token_id = if event.token_id == "near" {
-                    Token::Near
-                } else {
-                    Token::Nep141(event.token_id.clone())
+    let apply_price = move |account_id: AccountId, price: LivePrice| {
+        let is_wrap_near = wrap_near.get_untracked().as_ref() == Some(&account_id);
+        set_tokens.maybe_update(|tokens| {
+            let mut changed = false;
+            for token in tokens.iter_mut() {
+                let has_this_price = match &token.token.account_id {
+                    Token::Near => is_wrap_near,
+                    Token::Nep141(token_id) | Token::Rhea(token_id) => *token_id == account_id,
                 };
-
-                if let Some(account_id) = &current_account {
-                    if event.old_owner_id == *account_id {
-                        log::info!("Decreasing balance for {event_token_id:?}");
-                        // Decrease balance
-                        set_tokens.update(|tokens| {
-                            if let Some(token) = tokens
-                                .iter_mut()
-                                .find(|token| token.token.account_id == event_token_id)
-                            {
-                                token.balance = token.balance.saturating_sub(event.amount);
-                            }
-                        });
-                    }
-                    if event.new_owner_id == *account_id {
-                        // Don't play sound for unwrapping wNEAR
-                        if event.old_owner_id != "wrap.near"
-                            && config_context.config.get().play_transfer_sound
-                            && let Ok(audio) = HtmlAudioElement::new()
-                        {
-                            audio.set_src("/cash-register-sound.mp3");
-                            let _ = audio.play();
-                        }
-
-                        // Increase balance
-                        set_tokens.update(|tokens| {
-                            if let Some(token) = tokens
-                                .iter_mut()
-                                .find(|token| token.token.account_id == event_token_id)
-                            {
-                                token.balance = token.balance.saturating_add(event.amount);
-                            } else {
-                                log::info!("Token not found in tokens list: {event_token_id:?}");
-                            }
-                        });
-                    }
+                if has_this_price {
+                    price.apply_to(&mut token.token);
+                    changed = true;
                 }
             }
+            changed
+        });
+        if price_watchers.read_untracked().contains_key(&account_id) {
+            set_live_prices.update(|live_prices| {
+                live_prices.insert(account_id, price);
+            });
         }
-    });
+    };
 
-    let mut mint_events_processed = HashSet::new();
-    // Handle incoming mint events
-    Effect::new(move |_| {
-        let Some(ws) = mint_ws() else {
-            return;
-        };
-        if let Some(msg) = ws.message.get()
-            && let Ok(events) = serde_json::from_str::<Vec<FtMintEvent>>(&msg)
+    let play_sound_for = move |amount: Balance, token: &TokenInfo| {
+        if selected
+            .get_untracked()
+            .is_some_and(|(_, network)| network == Network::Mainnet)
+            && config_context.config.get_untracked().play_transfer_sound
+            && worth_a_sound(amount, token)
         {
-            for (i, event) in events.into_iter().enumerate() {
-                if !mint_events_processed.insert((event.receipt_id, i)) {
-                    continue;
-                }
-                let current_account = accounts_context.accounts.get().selected_account_id.clone();
-                log::info!("Received mint: {event:?}");
+            play_transfer_sound();
+        }
+    };
 
-                if let Some(account_id) = &current_account
-                    && event.owner_id == *account_id
+    let handle_message = move |message: &String| {
+        let message = match TokensWsMessage::parse(message) {
+            Ok(message) => message,
+            Err(err) => {
+                log::error!("Unexpected message from /tokens/ws: {err}");
+                return;
+            }
+        };
+        match message {
+            TokensWsMessage::UserTokens(UserTokens {
+                account_id,
+                tokens: held,
+            }) => {
+                if selected.get_untracked().map(|(account_id, _)| account_id)
+                    != Some(account_id.clone())
                 {
-                    set_tokens.update(|tokens| {
-                        if let Some(token) = tokens.iter_mut().find(|token| {
-                            token.token.account_id == Token::Nep141(event.token_id.clone())
-                        }) {
-                            token.balance = token.balance.saturating_add(event.amount);
-                        } else {
-                            log::info!("Token not found in tokens list: {:?}", event.token_id);
-                        }
-                    });
-                }
-            }
-        }
-    });
-
-    let mut burn_events_processed = HashSet::new();
-    // Handle incoming burn events
-    Effect::new(move |_| {
-        let Some(ws) = burn_ws() else {
-            return;
-        };
-        if let Some(msg) = ws.message.get()
-            && let Ok(events) = serde_json::from_str::<Vec<FtBurnEvent>>(&msg)
-        {
-            for (i, event) in events.into_iter().enumerate() {
-                if !burn_events_processed.insert((event.receipt_id, i)) {
-                    continue;
-                }
-                let current_account = accounts_context.accounts.get().selected_account_id.clone();
-                log::info!("Received burn: {event:?}");
-
-                if let Some(account_id) = &current_account
-                    && event.owner_id == *account_id
-                {
-                    // Decrease balance
-                    set_tokens.update(|tokens| {
-                        if let Some(token) = tokens.iter_mut().find(|token| {
-                            token.token.account_id == Token::Nep141(event.token_id.clone())
-                        }) {
-                            token.balance = token.balance.saturating_sub(event.amount);
-                        } else {
-                            log::info!("Token not found in tokens list: {:?}", event.token_id);
-                        }
-                    });
-                }
-            }
-        }
-    });
-
-    // Handle incoming price updates
-    Effect::new(move |_| {
-        let Some(ws) = price_ws() else {
-            return;
-        };
-        if let Some(msg) = ws.message.get()
-            && let Ok(updates) = serde_json::from_str::<Vec<TokenPriceUpdate>>(&msg)
-        {
-            for update in updates {
-                set_tokens.update(|tokens| {
-                    if let Some(token) = tokens.iter_mut().find(
-                        |t| matches!(&t.token.account_id, Token::Nep141(id) if *id == update.token),
-                    ) && let Ok(raw_price) = update.price_usd.parse::<BigDecimal>()
-                    {
-                        let decimals = token.token.metadata.decimals;
-                        let multiplier = power_of_10(decimals) / power_of_10(USDT_DECIMALS);
-                        let normalized_price = &raw_price * &multiplier;
-                        token.token.price_usd_raw = raw_price.clone();
-                        token.token.price_usd = normalized_price.clone();
-                        if token.token.price_usd_hardcoded != 1 {
-                            // Don't update stablecoin prices in realtime. They're unlikely
-                            // to change in real time, but UX is shit when USDC costs $0.99
-                            // or $1.01.
-                            token.token.price_usd_hardcoded = normalized_price;
-                        }
-                    }
-                });
-            }
-        }
-    });
-
-    let selected_account_id_memo =
-        Memo::new(move |_| accounts_context.accounts.get().selected_account_id);
-
-    // When the selected account changes
-    Effect::new(move |_| {
-        let current_account = selected_account_id_memo();
-        let network = expect_context::<NetworkContext>().network.get();
-
-        spawn_local(async move {
-            set_loading(true);
-            set_tokens(vec![]);
-            let api_url: Either<String, Vec<AccountId>> = match &network {
-                Network::Mainnet => Either::Left("https://prices.intear.tech".to_string()),
-                Network::Testnet => Either::Left("https://prices-testnet.intear.tech".to_string()),
-                Network::Localnet(network) => {
-                    if let Some(url) = &network.prices_api_url {
-                        Either::Left(url.clone())
-                    } else {
-                        let mut tokens = network.tokens.clone();
-                        if let Some(wrapped_near) = &network.wrap_contract {
-                            tokens.insert(wrapped_near.clone());
-                        }
-                        Either::Right(tokens.into_iter().collect())
-                    }
-                }
-            };
-            let wrapped_near: AccountId = match &network {
-                Network::Mainnet => "wrap.near".parse().unwrap(),
-                Network::Testnet => "wrap.testnet".parse().unwrap(),
-                Network::Localnet(network) => {
-                    if let Some(contract) = &network.wrap_contract {
-                        contract.clone()
-                    } else {
-                        set_loading(false);
-                        return;
-                    }
-                }
-            };
-            if let Some(account_id) = current_account {
-                let account_id_clone = account_id.clone();
-                let (token_response, account_response) = join(
-                    match api_url {
-                        Either::Left(url) => Box::pin(
-                            reqwest::get(format!("{url}/get-user-tokens?account_id={account_id}&direct=true&rhea=true"))
-                                .and_then(|r| r.json::<Vec<TokenData>>())
-                                .map_err(|e| e.to_string()),
-                        )
-                            as std::pin::Pin<
-                                Box<dyn Future<Output = Result<Vec<TokenData>, String>>>,
-                            >,
-                        Either::Right(tokens) => Box::pin(async move {
-                            let near_supply = rpc_client
-                                .client
-                                .get_untracked()
-                                .block(BlockReference::Finality(Finality::None))
-                                .await
-                                .map(|a| a.header.total_supply)
-                                .unwrap_or(0);
-                            let near = TokenData {
-                                balance: rpc_client
-                                    .client
-                                    .get_untracked()
-                                    .view_account(account_id_clone.clone(), QueryFinality::Finality(Finality::None))
-                                    .await
-                                    .map(|a| a.amount.as_yoctonear())
-                                    .unwrap_or(0),
-                                token: TokenInfo {
-                                    account_id: Token::Near,
-                                    metadata: TokenMetadata {
-                                        name: "NEAR".to_string(),
-                                        symbol: "NEAR".to_string(),
-                                        decimals: 24,
-                                        icon: Some(format!(
-                                            "data:image/svg+xml;base64,{}",
-                                            BASE64_STANDARD.encode(include_bytes!("../data/near.svg"))
-                                        )),
-                                    },
-                                    price_usd: Default::default(),
-                                    price_usd_hardcoded: Default::default(),
-                                    price_usd_raw: Default::default(),
-                                    price_usd_raw_24h_ago: Default::default(),
-                                    volume_usd_24h: Default::default(),
-                                    liquidity_usd: Default::default(),
-                                    circulating_supply: near_supply,
-                                    total_supply: near_supply,
-                                    reputation: TokenScore::Reputable,
-                                },
-                                source: TokenBalanceSource::Direct,
-                            };
-
-                            let balance_queries = tokens
-                                .iter()
-                                .map(|token| {
-                                    (
-                                        token.clone(),
-                                        "ft_balance_of",
-                                        serde_json::json!({
-                                            "account_id": account_id_clone,
-                                        }),
-                                        QueryFinality::Finality(Finality::None),
-                                    )
-                                })
-                                .collect::<Vec<_>>();
-                            let metadata_queries = tokens
-                                .iter()
-                                .map(|token| {
-                                    (
-                                        token.clone(),
-                                        "ft_metadata",
-                                        serde_json::json!({}),
-                                        QueryFinality::Finality(Finality::None),
-                                    )
-                                })
-                                .collect::<Vec<_>>();
-                            let total_supply_queries = tokens
-                                .iter()
-                                .map(|token| {
-                                    (
-                                        token.clone(),
-                                        "ft_total_supply",
-                                        serde_json::json!({}),
-                                        QueryFinality::Finality(Finality::None),
-                                    )
-                                })
-                                .collect::<Vec<_>>();
-                            match rpc_client
-                                .client
-                                .get_untracked()
-                                .batch_call::<U128>(balance_queries)
-                                .await
-                            { Ok(response) => {
-                                match rpc_client
-                                    .client
-                                    .get_untracked()
-                                    .batch_call::<TokenMetadata>(metadata_queries)
-                                    .await
-                                { Ok(metadata_response) => {
-                                    match rpc_client
-                                        .client
-                                        .get_untracked()
-                                        .batch_call::<U128>(total_supply_queries)
-                                        .await
-                                    { Ok(total_supply_response) => {
-                                        let token_data = response
-                                            .into_iter()
-                                            .zip(tokens.iter())
-                                            .zip(metadata_response)
-                                            .zip(total_supply_response)
-                                            .filter_map(
-                                                |(((balance_result, token), metadata_result), supply_result)| {
-                                                    match (balance_result, metadata_result, supply_result)
-                                                    { (Ok(balance), Ok(metadata), Ok(supply)) => {
-                                                        Some((balance, token, metadata, supply))
-                                                    } _ => {
-                                                        None
-                                                    }}
-                                                },
-                                            )
-                                            .map(|(balance, token, metadata, supply)| TokenData {
-                                                balance: *balance,
-                                                token: TokenInfo {
-                                                    account_id: Token::Nep141(token.clone()),
-                                                    metadata,
-                                                    price_usd: Default::default(),
-                                                    price_usd_hardcoded: Default::default(),
-                                                    price_usd_raw: Default::default(),
-                                                    price_usd_raw_24h_ago: Default::default(),
-                                                    volume_usd_24h: Default::default(),
-                                                    liquidity_usd: Default::default(),
-                                                    circulating_supply: *supply,
-                                                    total_supply: *supply,
-                                                    reputation: TokenScore::NotFake,
-                                                },
-                                                source: TokenBalanceSource::Direct,
-                                            })
-                                            .collect::<Vec<_>>();
-                                        Ok(token_data)
-                                    } _ => {
-                                        Ok(vec![near])
-                                    }}
-                                } _ => {
-                                    Ok(vec![near])
-                                }}
-                            } _ => {
-                                Ok(vec![near])
-                            }}
-                        }),
-                    },
-                    rpc_client.client.get_untracked().view_account(
-                        account_id.clone(),
-                        QueryFinality::Finality(Finality::DoomSlug),
-                    ),
-                )
-                .await;
-
-                let Ok(token_data) = token_response else {
-                    log::error!("Failed to fetch token data");
-                    set_loading(false);
                     return;
-                };
-
-                // Process and validate icons
-                let mut token_data = token_data
+                }
+                let mut held = held
                     .into_iter()
                     .filter(|token| !matches!(token.token.reputation, TokenScore::Spam))
                     .map(|mut token| {
-                        // Validate icon is a data URL
-                        if let Some(icon) = &token.token.metadata.icon
-                            && !icon.starts_with("data:")
-                        {
-                            token.token.metadata.icon = None;
-                        }
-                        // Move Rhea tokens to Rhea variant
-                        if matches!(token.source, TokenBalanceSource::Rhea)
-                            && let Token::Nep141(account_id) = &token.token.account_id
-                        {
-                            token.token.account_id = Token::Rhea(account_id.clone());
+                        match token.source {
+                            TokenBalanceSource::Native => {
+                                token.token.account_id = Token::Near;
+                                token.token.metadata.icon = Some(near_icon());
+                                token.token.reputation = TokenScore::Reputable;
+                                token.source = TokenBalanceSource::Direct;
+                            }
+                            TokenBalanceSource::Rhea => {
+                                if let Token::Nep141(account_id) = &token.token.account_id {
+                                    token.token.account_id = Token::Rhea(account_id.clone());
+                                }
+                            }
+                            TokenBalanceSource::Direct => {}
                         }
                         token
                     })
                     .collect::<Vec<_>>();
-
-                if let Ok(account) = account_response {
-                    let wnear_token = token_data
-                        .iter()
-                        .find(|t| t.token.account_id == Token::Nep141(wrapped_near.clone()))
-                        .expect("wNEAR should be guaranteed to be present in prices.intear.tech response");
-                    let near = TokenData {
-                        balance: account.amount.saturating_sub(account.locked).as_yoctonear(),
-                        token: TokenInfo {
-                            account_id: Token::Near,
-                            metadata: TokenMetadata {
-                                name: "NEAR".to_string(),
-                                symbol: "NEAR".to_string(),
-                                decimals: 24,
-                                icon: Some(format!(
-                                    "data:image/svg+xml;base64,{}",
-                                    BASE64_STANDARD.encode(include_bytes!("../data/near.svg"))
-                                )),
-                            },
-                            price_usd: wnear_token.token.price_usd.clone(),
-                            price_usd_hardcoded: wnear_token.token.price_usd_hardcoded.clone(),
-                            price_usd_raw: wnear_token.token.price_usd_raw.clone(),
-                            price_usd_raw_24h_ago: wnear_token.token.price_usd_raw_24h_ago.clone(),
-                            volume_usd_24h: wnear_token.token.volume_usd_24h,
-                            liquidity_usd: wnear_token.token.liquidity_usd,
-                            circulating_supply: wnear_token.token.circulating_supply,
-                            total_supply: wnear_token.token.total_supply,
-                            reputation: TokenScore::Reputable,
-                        },
-                        source: TokenBalanceSource::Direct,
-                    };
-                    // NEAR always first
-                    token_data.insert(0, near);
-                }
-
-                // Set tokens immediately with API data
-                set_tokens(token_data.clone());
-
-                // Update balances in background using batch RPC calls
-                let nep141_tokens: Vec<_> = token_data
-                    .iter()
-                    .filter_map(|token| {
-                        if let Token::Nep141(contract_id) = &token.token.account_id {
-                            Some(contract_id.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-
-                let rpc_client = rpc_client.client.get_untracked();
-
-                leptos::task::spawn_local(async move {
-                    let near_balance_future = rpc_client.view_account(
-                        account_id.clone(),
-                        QueryFinality::Finality(Finality::DoomSlug),
-                    );
-
-                    let token_balances_future = async {
-                        if nep141_tokens.is_empty() {
-                            return Ok(vec![]);
-                        }
-
-                        let balance_requests: Vec<_> = nep141_tokens
+                if loaded.get_untracked().as_ref() == Some(&account_id) {
+                    for token in tokens.get_untracked() {
+                        if !held
                             .iter()
-                            .map(|contract_id| {
-                                (
-                                    contract_id.clone(),
-                                    "ft_balance_of",
-                                    serde_json::json!({
-                                        "account_id": account_id,
-                                    }),
-                                    QueryFinality::Finality(Finality::DoomSlug),
-                                )
-                            })
-                            .collect();
-
-                        rpc_client.batch_call::<U128>(balance_requests).await
+                            .any(|held| held.token.account_id == token.token.account_id)
+                        {
+                            // keep metadata
+                            held.push(TokenData {
+                                balance: 0,
+                                ..token
+                            });
+                        }
+                    }
+                }
+                set_tokens(held);
+                missing_tokens.set(HashMap::new());
+                loaded.set(Some(account_id));
+                set_loading(false);
+            }
+            TokensWsMessage::BalanceChanged(BalanceChanged {
+                account_id,
+                token_id,
+                balance,
+            }) => {
+                if loaded.get_untracked().as_ref() != Some(&account_id) {
+                    return;
+                }
+                let token = if token_id == "near" {
+                    Token::Near
+                } else {
+                    Token::Nep141(token_id.clone())
+                };
+                let mut found = false;
+                set_tokens.maybe_update(|tokens| {
+                    let Some(held) = tokens
+                        .iter_mut()
+                        .find(|held| held.token.account_id == token)
+                    else {
+                        return false;
                     };
-
-                    let (near_account_result, token_balance_results) =
-                        futures_util::future::join(near_balance_future, token_balances_future)
-                            .await;
-
-                    if let Ok(account) = near_account_result {
-                        let near_balance =
-                            account.amount.saturating_sub(account.locked).as_yoctonear();
-                        set_tokens.update(|tokens| {
-                            if let Some(near_token) = tokens
-                                .iter_mut()
-                                .find(|t| t.token.account_id == Token::Near)
-                            {
-                                near_token.balance = near_balance;
-                            }
+                    found = true;
+                    if balance > held.balance {
+                        play_sound_for(balance - held.balance, &held.token);
+                    }
+                    held.balance = balance;
+                    true
+                });
+                if !found {
+                    missing_tokens.update(|missing| {
+                        if balance > 0 {
+                            missing.insert(token_id, balance);
+                        } else {
+                            missing.remove(&token_id);
+                        }
+                    });
+                }
+            }
+            TokensWsMessage::Prices(Prices { prices }) => {
+                for (account_id, price) in prices {
+                    apply_price(account_id, price);
+                }
+            }
+            TokensWsMessage::PriceChanged(PriceChanged {
+                account_id,
+                price_usd,
+                price_usd_hardcoded,
+                price_usd_raw,
+            }) => apply_price(
+                account_id,
+                LivePrice {
+                    price_usd,
+                    price_usd_hardcoded,
+                    price_usd_raw,
+                },
+            ),
+            TokensWsMessage::Tokens(Tokens { tokens: infos }) => {
+                let mut added = vec![];
+                missing_tokens.update(|missing| {
+                    for (account_id, info) in infos {
+                        let Some(balance) = missing.remove(&account_id) else {
+                            continue;
+                        };
+                        if matches!(info.reputation, TokenScore::Spam) {
+                            continue;
+                        }
+                        play_sound_for(balance, &info);
+                        added.push(TokenData {
+                            balance,
+                            token: info,
+                            source: TokenBalanceSource::Direct,
                         });
                     }
-
-                    if let Ok(balance_results) = token_balance_results {
-                        for (contract_id, balance_result) in
-                            nep141_tokens.iter().zip(balance_results)
-                        {
-                            if let Ok(balance) = balance_result {
-                                set_tokens.update(|tokens| {
-                                    if let Some(token) = tokens.iter_mut().find(|t| {
-                                        matches!(&t.token.account_id, Token::Nep141(id) if id == contract_id)
-                                    }) {
-                                        token.balance = balance.into();
-                                    }
-                                });
-                            }
-                        }
-                    }
                 });
-            } else {
-                set_tokens(vec![]);
+                if !added.is_empty() {
+                    set_tokens.update(|tokens| tokens.extend(added));
+                }
             }
-            set_loading(false);
+            TokensWsMessage::Other => {}
+        }
+    };
+
+    let (socket, set_socket) = signal(None);
+    Effect::new(move |_| {
+        set_socket(network.get().as_ref().and_then(tokens_ws_url).map(|url| {
+            use_websocket_with_options::<String, String, FromToStringCodec, _, _>(
+                &url,
+                UseWebSocketOptions::default()
+                    .reconnect_limit(ReconnectLimit::Infinite)
+                    .reconnect_interval(1000)
+                    .on_message(handle_message),
+            )
+        }));
+    });
+
+    Effect::new(move |_| {
+        let Some(ws) = socket.get() else {
+            return;
+        };
+        if ws.ready_state.get() != ConnectionReadyState::Open {
+            followed.set_value(None);
+            sent_price_changes.set_value(None);
+            requested_tokens.set_value(HashSet::new());
+            return;
+        }
+        let Some((account_id, _)) = selected.get() else {
+            return;
+        };
+        if followed.get_value().as_ref() == Some(&account_id) {
+            return;
+        }
+        if let Some(previous) = followed.get_value() {
+            (ws.send)(
+                &serde_json::json!({ "type": "stop_user_tokens", "account_id": previous })
+                    .to_string(),
+            );
+        }
+        (ws.send)(
+            &serde_json::json!({
+                "type": "user_tokens",
+                "account_id": account_id,
+                "direct": true,
+                "rhea": true,
+                "native": true,
+            })
+            .to_string(),
+        );
+        followed.set_value(Some(account_id));
+    });
+
+    // Live track the prices of NEAR, the tokens in `tokens` and watched tokens
+    let token_price_ids = Memo::new(move |_| {
+        tokens()
+            .iter()
+            .filter_map(|token| match &token.token.account_id {
+                Token::Near => None,
+                Token::Nep141(account_id) | Token::Rhea(account_id) => Some(account_id.clone()),
+            })
+            .collect::<BTreeSet<_>>()
+    });
+    Effect::new(move |_| {
+        let Some(ws) = socket.get() else {
+            return;
+        };
+        if ws.ready_state.get() != ConnectionReadyState::Open {
+            return;
+        }
+        let mut token_ids = token_price_ids.get();
+        token_ids.extend(price_watchers.read().keys().cloned().collect::<Vec<_>>());
+        token_ids.extend(wrap_near.get());
+        let mut token_ids = token_ids.into_iter().collect::<Vec<_>>();
+        if token_ids.len() > MAX_ACCOUNT_IDS {
+            log::error!(
+                "Keeping only {MAX_ACCOUNT_IDS} of {} token prices live",
+                token_ids.len()
+            );
+            token_ids.truncate(MAX_ACCOUNT_IDS);
+        }
+        if sent_price_changes.get_value().as_ref() == Some(&token_ids) {
+            return;
+        }
+        (ws.send)(
+            &serde_json::json!({ "type": "price_changes", "account_ids": token_ids }).to_string(),
+        );
+        sent_price_changes.set_value(Some(token_ids));
+    });
+
+    // Fetch the tokens the account got balances of but doesn't have in `tokens` yet
+    Effect::new(move |_| {
+        let Some(ws) = socket.get() else {
+            return;
+        };
+        if ws.ready_state.get() != ConnectionReadyState::Open {
+            return;
+        }
+        let requested = requested_tokens.read_value();
+        let token_ids = missing_tokens
+            .read()
+            .keys()
+            .filter(|token_id| !requested.contains(*token_id))
+            .take(MAX_ACCOUNT_IDS)
+            .cloned()
+            .collect::<Vec<_>>();
+        if token_ids.is_empty() {
+            return;
+        }
+        requested_tokens.update_value(|requested| requested.extend(token_ids.iter().cloned()));
+        (ws.send)(&serde_json::json!({ "type": "tokens", "account_ids": token_ids }).to_string());
+    });
+
+    let selected_account_is = move |account_id: AccountId| {
+        selected
+            .get_untracked()
+            .is_some_and(|(selected, _)| selected == account_id)
+    };
+
+    Effect::new(move |_| {
+        let selected = selected.get();
+        set_tokens(vec![]);
+        loaded.set(None);
+        missing_tokens.set(HashMap::new());
+        let Some((account_id, network)) = selected else {
+            set_loading(
+                accounts_context
+                    .accounts
+                    .get()
+                    .selected_account_id
+                    .is_some(),
+            );
+            return;
+        };
+        set_loading(true);
+        if tokens_ws_url(&network).is_some() {
+            // The websocket loads tokens
+            return;
+        }
+        let Network::Localnet(localnet) = network else {
+            unreachable!("Mainnet and testnet have a prices API");
+        };
+        let mut token_ids = localnet.tokens.clone();
+        token_ids.extend(localnet.wrap_contract.clone());
+        let rpc_client = rpc_client.client.get_untracked();
+        spawn_local(async move {
+            let token_data = fetch_tokens_over_rpc(
+                rpc_client,
+                account_id.clone(),
+                token_ids.into_iter().collect(),
+            )
+            .await;
+            if selected_account_is(account_id) {
+                set_tokens(token_data);
+                set_loading(false);
+            }
         });
     });
 
@@ -893,5 +795,8 @@ pub fn provide_token_context() {
         tokens,
         set_tokens,
         loading_tokens: loading,
+        live_prices,
+        price_watchers,
+        wrap_near,
     });
 }

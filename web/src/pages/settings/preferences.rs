@@ -116,17 +116,8 @@ pub fn LedgerSelector(#[prop(optional, into)] on_change: Option<Callback<()>>) -
 pub fn PreferencesSettings() -> impl IntoView {
     let config_context = expect_context::<ConfigContext>();
 
-    let realtime_updates = Memo::new(move |_| config_context.config.get().realtime_balance_updates);
-    let realtime_prices = Memo::new(move |_| config_context.config.get().realtime_price_updates);
     let play_sound = Memo::new(move |_| config_context.config.get().play_transfer_sound);
-    let hide_to_tray = Memo::new(move |_| config_context.config.get().hide_to_tray);
-    let autostart = Memo::new(move |_| config_context.config.get().autostart);
     let amounts_hidden = Memo::new(move |_| config_context.config.get().amounts_hidden);
-    let prevent_screenshots = Memo::new(move |_| config_context.config.get().prevent_screenshots);
-
-    let updates_disabled = Signal::derive(|| false);
-    let prices_disabled = Signal::derive(|| false);
-    let sound_disabled = Signal::derive(move || !realtime_updates.get());
 
     let (custom_slippage_input, set_custom_slippage_input) = signal("".to_string());
 
@@ -191,48 +182,15 @@ pub fn PreferencesSettings() -> impl IntoView {
                 </div>
                 <ToggleSwitch
                     label=Signal::derive(move || {
-                        TranslationKey::PagesSettingsPreferencesToggleRealtimeBalances.format(&[])
-                    })
-                    value=realtime_updates
-                    disabled=updates_disabled
-                    on_toggle=move || {
-                        config_context
-                            .config
-                            .update(|config| {
-                                config.realtime_balance_updates = !config.realtime_balance_updates;
-                                if !config.realtime_balance_updates {
-                                    config.play_transfer_sound = false;
-                                }
-                            });
-                    }
-                />
-                <ToggleSwitch
-                    label=Signal::derive(move || {
                         TranslationKey::PagesSettingsPreferencesToggleSoundEffects.format(&[])
                     })
                     value=play_sound
-                    disabled=sound_disabled
-                    on_toggle=move || {
-                        if realtime_updates.get() {
-                            config_context
-                                .config
-                                .update(|config| {
-                                    config.play_transfer_sound = !config.play_transfer_sound;
-                                });
-                        }
-                    }
-                />
-                <ToggleSwitch
-                    label=Signal::derive(move || {
-                        TranslationKey::PagesSettingsPreferencesToggleRealtimePrices.format(&[])
-                    })
-                    value=realtime_prices
-                    disabled=prices_disabled
+                    disabled=Signal::derive(|| false)
                     on_toggle=move || {
                         config_context
                             .config
                             .update(|config| {
-                                config.realtime_price_updates = !config.realtime_price_updates;
+                                config.play_transfer_sound = !config.play_transfer_sound;
                             });
                     }
                 />

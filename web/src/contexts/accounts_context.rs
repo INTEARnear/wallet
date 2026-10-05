@@ -9,7 +9,6 @@ use std::time::Duration;
 use aes_gcm::aead::{Aead, OsRng, rand_core::RngCore};
 use aes_gcm::{Aes256Gcm, Key, KeyInit, Nonce};
 use argon2::{Argon2, ParamsBuilder};
-use base64::prelude::BASE64_STANDARD;
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
 use futures_timer::Delay;
@@ -26,7 +25,6 @@ use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::{JsCast, closure::Closure};
-use wasm_bindgen_futures::JsFuture;
 use web_sys::js_sys::Reflect;
 
 use crate::contexts::config_context::LedgerMode;

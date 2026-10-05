@@ -3,11 +3,7 @@ use chrono::Utc;
 use futures_channel::oneshot;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
-use near_min_api::types::{
-    AccountId, Action, DeleteKeyAction,
-    near_crypto::{PublicKey, Signature},
-};
-use serde::Deserialize;
+use near_min_api::types::{AccountId, Action, DeleteKeyAction, near_crypto::PublicKey};
 
 use crate::contexts::{
     accounts_context::AccountsContext,
@@ -21,25 +17,6 @@ enum AutoconfirmSetting {
     All,
     NonFinancial,
     Receiver(AccountId),
-}
-
-#[derive(Debug, Clone, Deserialize)]
-enum LogoutCause {
-    User,
-    App,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct LogoutInfo {
-    nonce: u64,
-    signature: Signature,
-    caused_by: LogoutCause,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-enum SessionStatus {
-    Active,
-    LoggedOut(LogoutInfo),
 }
 
 #[component]

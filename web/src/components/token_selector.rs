@@ -75,6 +75,7 @@ fn TokenSelectorModal(
         tokens,
         set_tokens,
         loading_tokens,
+        ..
     } = expect_context::<TokensContext>();
 
     let (search_query, set_search_query) = signal("".to_string());
@@ -358,16 +359,16 @@ fn TokenSelectorModal(
                                                         let owned_token = user_tokens
                                                             .iter()
                                                             .find(|t| t.token.account_id == token_info.account_id);
-                                                        let (balance, is_owned) = if let Some(owned) = owned_token {
-                                                            (owned.balance, true)
-                                                        } else {
-                                                            (0, false)
-                                                        };
-                                                        let token_data = TokenData {
-                                                            balance,
-                                                            token: token_info,
-                                                            source: TokenBalanceSource::Direct,
-                                                        };
+                                                        let is_owned = owned_token.is_some();
+                                                        // An owned token's price is live, the search result's isn't
+                                                        let token_data = owned_token
+                                                            .cloned()
+                                                            .unwrap_or(TokenData {
+                                                                balance: 0,
+                                                                token: token_info,
+                                                                source: TokenBalanceSource::Direct,
+                                                            });
+                                                        let balance = token_data.balance;
                                                         let token_clone = token_data.clone();
 
                                                         view! {

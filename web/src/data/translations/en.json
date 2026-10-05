@@ -1149,8 +1149,6 @@
   "pages.settings.preferences.toggle_disable_screenshots": "Disable screenshots",
   "pages.settings.preferences.toggle_hide_amounts": "Hide Amounts",
   "pages.settings.preferences.toggle_hide_to_tray": "Hide to system tray instead of closing",
-  "pages.settings.preferences.toggle_realtime_balances": "Update balances in real-time",
-  "pages.settings.preferences.toggle_realtime_prices": "Update token prices in real-time",
   "pages.settings.preferences.toggle_sound_effects": "Play sound effect when receiving transfers",
   "pages.settings.preferences_tab": "Preferences",
   "pages.settings.security.biometric_description": "Use biometric authentication to unlock your wallet.",
