@@ -1045,7 +1045,7 @@ fn StorageWithdrawButton(contract_id: AccountId, account_id: AccountId) -> impl 
                                     args: serde_json::json!({ "amount": amount.as_yoctonear().to_string() })
                                         .to_string()
                                         .into_bytes(),
-                                    gas: NearGas::from_tgas(10).into(),
+                                    gas: NearGas::from_tgas(30).into(),
                                     deposit: NearToken::from_yoctonear(1),
                                 }),
                             ),
