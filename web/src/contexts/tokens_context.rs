@@ -173,6 +173,10 @@ impl TokensWsMessage {
 
 /// The most tokens `/tokens/ws` takes in one request.
 const MAX_ACCOUNT_IDS: usize = 1_000;
+/// What [`TokenInfo`] reads, the only fields `/tokens/ws` sends of a token.
+const TOKEN_FIELDS: &str = "price_usd,price_usd_hardcoded,price_usd_raw,price_usd_raw_24h_ago,\
+    volume_usd_24h,liquidity_usd,circulating_supply,total_supply,reputation,metadata.name,\
+    metadata.symbol,metadata.decimals,metadata.icon";
 
 /// Tokens that selected account has
 #[derive(Clone, Copy)]
@@ -259,7 +263,9 @@ fn tokens_ws_url(network: &Network) -> Option<String> {
         log::error!("Prices API URL {prices_api_url} is neither http:// nor https://");
         return None;
     };
-    Some(format!("{ws_url}/tokens/ws?thumbnails=false"))
+    Some(format!(
+        "{ws_url}/tokens/ws?thumbnails=false&fields={TOKEN_FIELDS}"
+    ))
 }
 
 fn near_icon() -> String {
