@@ -230,7 +230,7 @@ async fn fetch_transfers(
         .query(&[
             ("account", account_id.as_str()),
             ("include_transactions", "true"),
-            ("limit", "50"),
+            ("limit", "10"),
         ]);
     if let Some(cursor) = cursor {
         request = request.query(&[("cursor", cursor)]);
