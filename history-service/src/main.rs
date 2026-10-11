@@ -1,82 +1,119 @@
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
-    response::IntoResponse,
     routing::get,
 };
 use futures::future::join_all;
 use near_min_api::{
     ExperimentalTxDetails, RpcClient,
     types::{AccountId, CryptoHash},
-    utils::dec_format,
 };
 use rocksdb::{DB, Options};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::env;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::EnvFilter;
 
-#[derive(Clone, Copy)]
-enum Network {
-    Mainnet,
-    Testnet,
-}
-
 #[derive(Clone)]
 struct AppState {
-    rpc_client: Arc<RpcClient>,
-    http_client: Arc<reqwest::Client>,
+    rpc_client: RpcClient,
+    http_client: reqwest::Client,
     db: Arc<DB>,
-    network: Network,
+    prices_api_url: String,
 }
 
-#[derive(Debug, Serialize)]
-enum TransactionType {
-    TxSigner,
-    TxReceiver,
-    // FtReceiver, // not implemented yet
+/// A page of price-indexer's `/transfers`, of transfers and transactions alike
+#[derive(Debug, Deserialize)]
+struct TransfersPage {
+    transfers: Vec<TransfersRow>,
+    next_cursor: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct HistoricalSignerTransaction {
-    #[serde(with = "dec_format")]
-    block_timestamp_nanosec: u64,
-    receiver_id: AccountId,
-    transaction_id: CryptoHash,
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum TransfersRow {
+    Transaction {
+        timestamp_millis: u64,
+        transaction_id: CryptoHash,
+        sender: AccountId,
+        receiver: AccountId,
+    },
+    /// `sender` is None for a mint, `receiver` is None for a burn
+    Transfer {
+        timestamp_millis: u64,
+        transaction_id: CryptoHash,
+        token: AccountId,
+        sender: Option<AccountId>,
+        receiver: Option<AccountId>,
+    },
+}
+
+impl TransfersRow {
+    /// The transaction this row puts in `account_id`'s history, with whoever is on the other side
+    /// of it, or the token for a mint or burn.
+    fn into_history_entry(self, account_id: &AccountId) -> HistoryEntry {
+        match self {
+            TransfersRow::Transaction {
+                timestamp_millis,
+                transaction_id,
+                sender,
+                receiver,
+            } => HistoryEntry {
+                transaction_id,
+                timestamp_millis,
+                other_account_id: if sender == *account_id {
+                    receiver
+                } else {
+                    sender
+                },
+            },
+            TransfersRow::Transfer {
+                timestamp_millis,
+                transaction_id,
+                token,
+                sender,
+                receiver,
+            } => HistoryEntry {
+                transaction_id,
+                timestamp_millis,
+                other_account_id: if sender.as_ref() == Some(account_id) {
+                    receiver
+                } else {
+                    sender
+                }
+                .unwrap_or(token),
+            },
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
-struct HistoricalReceiverTransaction {
-    #[serde(with = "dec_format")]
-    block_timestamp_nanosec: u64,
-    signer_id: AccountId,
+struct HistoryQuery {
+    cursor: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct HistoryPage {
+    transactions: Vec<HistoryTransaction>,
+    next_cursor: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct HistoryEntry {
     transaction_id: CryptoHash,
-}
-
-#[derive(Debug, Serialize)]
-struct TransactionResponse {
-    block_timestamp_nanosec: u64,
-    meta: TransactionMeta,
-    transaction: ExperimentalTxDetails,
-}
-
-#[derive(Debug, Serialize)]
-struct TransactionMeta {
+    timestamp_millis: u64,
     other_account_id: AccountId,
-    tx_type: TransactionType,
 }
 
-#[derive(Debug)]
-struct TransactionMetadata {
-    timestamp: u64,
-    account_id: AccountId,
-    tx_type: TransactionType,
-    transaction_id: CryptoHash,
+#[derive(Debug, Serialize)]
+struct HistoryTransaction {
+    #[serde(flatten)]
+    entry: HistoryEntry,
+    transaction: ExperimentalTxDetails,
 }
 
 #[tokio::main]
@@ -90,10 +127,41 @@ async fn main() {
         )
         .init();
 
-    tracing::info!("Starting history service...");
+    let rpc_urls: Vec<String> = env::var("RPC_URLS")
+        .expect("RPC_URLS must be set")
+        .split(',')
+        .map(String::from)
+        .collect();
+    let mut rpc_client = RpcClient::new(rpc_urls);
+    rpc_client.set_client(
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(1)) // Connection might just hang if it's not archival
+            .build()
+            .unwrap(),
+    );
+    let prices_api_url = env::var("PRICES_API_URL").expect("PRICES_API_URL must be set");
 
-    // Initialize RocksDB
-    let db_path = PathBuf::from("transaction_cache");
+    let state = AppState {
+        rpc_client,
+        http_client: reqwest::Client::new(),
+        db: Arc::new(open_transaction_cache()),
+        prices_api_url,
+    };
+    let app = Router::new()
+        .route("/api/transactions/{account_id}", get(get_transactions))
+        .layer(CorsLayer::permissive())
+        .with_state(state);
+
+    let addr = env::var("HISTORY_SERVICE_BIND")
+        .map(|s| s.parse().expect("Invalid HISTORY_SERVICE_BIND format"))
+        .unwrap_or_else(|_| SocketAddr::from(([127, 0, 0, 1], 3001)));
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    tracing::info!("Server listening on {addr}");
+    axum::serve(listener, app).await.unwrap();
+}
+
+/// Finished transactions' details by hash, so each is only fetched from RPC once
+fn open_transaction_cache() -> DB {
     let mut opts = Options::default();
     opts.create_if_missing(true);
     opts.set_compression_type(rocksdb::DBCompressionType::Zstd);
@@ -110,284 +178,100 @@ async fn main() {
         /*compression_strategy */ 0, dict_size, /*enabled */ true,
     );
     opts.set_bottommost_zstd_max_train_bytes(max_train_bytes, true);
-    let db = DB::open(&opts, &db_path).expect("Failed to open RocksDB");
-    let db = Arc::new(db);
-
-    let http_client = Arc::new(reqwest::Client::new());
-
-    let network = match env::var("NETWORK") {
-        Ok(network) => match network.as_str() {
-            "mainnet" => Network::Mainnet,
-            "testnet" => Network::Testnet,
-            _ => panic!(
-                "Invalid NETWORK environment variable. Should be either 'mainnet' or 'testnet'"
-            ),
-        },
-        Err(_) => {
-            panic!("Invalid NETWORK environment variable. Should be either 'mainnet' or 'testnet'")
-        }
-    };
-
-    let rpc_client = Arc::new({
-        let mut rpc_client = RpcClient::new(
-            env::var("RPC_URLS")
-                .map(|urls| urls.split(',').map(String::from).collect::<Vec<_>>())
-                .unwrap_or_else(|_| match network {
-                    Network::Mainnet => vec![
-                        "https://rpc.intea.rs".to_string(),
-                        "https://rpc.near.org".to_string(),
-                        "https://archival-rpc.mainnet.near.org".to_string(),
-                    ],
-                    Network::Testnet => vec!["https://rpc.testnet.near.org".to_string()],
-                }),
-        );
-        rpc_client.set_client(
-            reqwest::Client::builder()
-                .timeout(Duration::from_secs(1)) // Connection might just hang if it's not archival
-                .build()
-                .unwrap(),
-        );
-        rpc_client
-    });
-
-    let state = AppState {
-        rpc_client,
-        http_client,
-        db,
-        network: match env::var("NETWORK") {
-            Ok(network) => match network.as_str() {
-                "mainnet" => Network::Mainnet,
-                "testnet" => Network::Testnet,
-                _ => panic!(
-                    "Invalid NETWORK environment variable. Should be either 'mainnet' or 'testnet'"
-                ),
-            },
-            Err(_) => panic!(
-                "Invalid NETWORK environment variable. Should be either 'mainnet' or 'testnet'"
-            ),
-        },
-    };
-
-    let app = Router::new()
-        .route("/api/transactions/{account_id}", get(get_transactions))
-        .layer(CorsLayer::permissive())
-        .with_state(state);
-
-    let addr = env::var("HISTORY_SERVICE_BIND")
-        .map(|s| s.parse().expect("Invalid HISTORY_SERVICE_BIND format"))
-        .unwrap_or_else(|_| SocketAddr::from(([127, 0, 0, 1], 3001)));
-    tracing::info!("Server listening on {}", addr);
-
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    tracing::info!("Server started successfully");
-    axum::serve(listener, app).await.unwrap();
+    DB::open(&opts, "transaction_cache").expect("Failed to open RocksDB")
 }
 
+/// A page of the transactions `account_id` sent or received, and the ones that moved its tokens or
+/// NEAR, such as an incoming FT transfer, newest first.
 async fn get_transactions(
     State(state): State<AppState>,
-    Path(account_id): Path<String>,
-) -> Result<impl IntoResponse, (StatusCode, String)> {
-    tracing::debug!("Fetching transactions for account: {}", account_id);
+    Path(account_id): Path<AccountId>,
+    Query(query): Query<HistoryQuery>,
+) -> Result<Json<HistoryPage>, (StatusCode, String)> {
+    let page = fetch_transfers(&state, &account_id, query.cursor)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to fetch transfers of {account_id}: {e}");
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Failed to fetch transfers: {e}"),
+            )
+        })?;
 
-    let api_url = match state.network {
-        Network::Mainnet => "https://events-v3.intear.tech",
-        Network::Testnet => "https://events-v3-testnet.intear.tech",
-    };
-
-    // Run both requests in parallel
-    let (signer_response, receiver_response) = tokio::join!(
-        async {
-            tracing::debug!("Fetching signer transactions...");
-            let response = state
-                .http_client
-                .get(format!(
-                    "{api_url}/v3/tx_transaction/by_signer_newest?signer_id={account_id}"
-                ))
-                .send()
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to fetch signer transactions: {}", e);
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to fetch signer transactions: {e}"),
-                    )
-                })?;
-            tracing::debug!("Successfully fetched signer transactions");
-            response
-                .json::<Option<Vec<HistoricalSignerTransaction>>>()
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to parse signer transactions: {}", e);
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to parse signer transactions: {e}"),
-                    )
-                })
-                .map(|r| r.unwrap_or_default())
-        },
-        async {
-            tracing::debug!("Fetching receiver transactions...");
-            let response = state
-                .http_client
-                .get(format!(
-                    "{api_url}/v3/tx_transaction/by_receiver_newest?receiver_id={account_id}"
-                ))
-                .send()
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to fetch receiver transactions: {}", e);
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to fetch receiver transactions: {e}"),
-                    )
-                })?;
-            tracing::debug!("Successfully fetched receiver transactions");
-            response
-                .json::<Option<Vec<HistoricalReceiverTransaction>>>()
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to parse receiver transactions: {}", e);
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to parse receiver transactions: {e}"),
-                    )
-                })
-                .map(|r| r.unwrap_or_default())
-        }
-    );
-
-    let signer_response = signer_response?;
-    let receiver_response = receiver_response?;
-
-    tracing::debug!(
-        "Received {} signer and {} receiver transactions",
-        signer_response.len(),
-        receiver_response.len()
-    );
-
-    // Collect all transaction metadata
-    let mut transaction_metadata: Vec<TransactionMetadata> = Vec::new();
+    // A transaction and the transfers it made are separate rows, so each transaction is shown once
     let mut seen_transactions = HashSet::new();
+    let entries = page
+        .transfers
+        .into_iter()
+        .map(|row| row.into_history_entry(&account_id))
+        .filter(|entry| seen_transactions.insert(entry.transaction_id));
 
-    // Process signer transactions
-    for tx in signer_response.into_iter().take(50) {
-        if seen_transactions.insert(tx.transaction_id) {
-            let timestamp = tx.block_timestamp_nanosec;
-            transaction_metadata.push(TransactionMetadata {
-                timestamp,
-                account_id: tx.receiver_id,
-                tx_type: TransactionType::TxSigner,
-                transaction_id: tx.transaction_id,
-            });
-        }
-    }
-
-    // Process receiver transactions
-    for tx in receiver_response.into_iter().take(50) {
-        if seen_transactions.insert(tx.transaction_id) {
-            let timestamp = tx.block_timestamp_nanosec;
-            transaction_metadata.push(TransactionMetadata {
-                timestamp,
-                account_id: tx.signer_id,
-                tx_type: TransactionType::TxReceiver,
-                transaction_id: tx.transaction_id,
-            });
-        }
-    }
-
-    // Sort by timestamp in descending order (newest first)
-    transaction_metadata.sort_by_key(|t| std::cmp::Reverse(t.timestamp));
-    transaction_metadata.truncate(50);
-
-    tracing::debug!(
-        "Fetching details for {} transactions",
-        transaction_metadata.len()
-    );
-
-    // Fetch transaction details and create responses in parallel
-    let transactions = join_all(transaction_metadata.into_iter().map(|meta| {
-        let rpc_client = state.rpc_client.clone();
-        let db = state.db.clone();
-        async move {
-            let Ok(transaction) =
-                fetch_transaction_details(rpc_client, db, meta.transaction_id).await
-            else {
-                return None;
-            };
-            Some(TransactionResponse {
-                block_timestamp_nanosec: meta.timestamp,
-                meta: TransactionMeta {
-                    other_account_id: meta.account_id,
-                    tx_type: meta.tx_type,
-                },
-                transaction,
-            })
-        }
+    let state = &state;
+    let transactions = join_all(entries.map(|entry| async move {
+        let transaction = transaction_details(state, entry.transaction_id).await?;
+        Some(HistoryTransaction { entry, transaction })
     }))
     .await;
 
-    tracing::info!("Successfully processed request for account: {}", account_id);
-    Ok(Json(transactions.into_iter().flatten().collect::<Vec<_>>()))
+    Ok(Json(HistoryPage {
+        transactions: transactions.into_iter().flatten().collect(),
+        next_cursor: page.next_cursor,
+    }))
 }
 
-async fn fetch_transaction_details(
-    rpc_client: Arc<RpcClient>,
-    db: Arc<DB>,
+async fn fetch_transfers(
+    state: &AppState,
+    account_id: &AccountId,
+    cursor: Option<String>,
+) -> reqwest::Result<TransfersPage> {
+    let mut request = state
+        .http_client
+        .get(format!("{}/transfers", state.prices_api_url))
+        .query(&[
+            ("account", account_id.as_str()),
+            ("include_transactions", "true"),
+            ("limit", "50"),
+        ]);
+    if let Some(cursor) = cursor {
+        request = request.query(&[("cursor", cursor)]);
+    }
+    request.send().await?.error_for_status()?.json().await
+}
+
+/// From the cache, or from RPC, caching it once it's finished executing. None if RPC fails.
+async fn transaction_details(
+    state: &AppState,
     transaction_id: CryptoHash,
-) -> Result<ExperimentalTxDetails, near_min_api::Error> {
-    tracing::debug!("Fetching transaction details for: {}", transaction_id);
-
-    // Try to get from cache first using blocking thread
-    let cached_result = tokio::task::spawn_blocking({
-        let db = db.clone();
-        move || {
-            db.get(transaction_id.as_ref())
-                .map_err(|e| {
-                    tracing::error!("Failed to read from cache: {}", e);
-                    e
-                })
-                .ok()
-                .flatten()
-                .and_then(|cached| {
-                    serde_json::from_slice::<ExperimentalTxDetails>(&cached)
-                        .map_err(|e| {
-                            tracing::error!("Failed to deserialize cached transaction: {}", e);
-                            e
-                        })
-                        .ok()
-                })
-        }
-    })
-    .await
-    .unwrap_or(None);
-
-    if let Some(transaction) = cached_result {
-        tracing::debug!("Cache hit for transaction: {}", transaction_id);
-        return Ok(transaction);
+) -> Option<ExperimentalTxDetails> {
+    let db = Arc::clone(&state.db);
+    let cached = tokio::task::spawn_blocking(move || db.get(transaction_id))
+        .await
+        .expect("cache read panicked");
+    match cached {
+        Ok(Some(bytes)) => match serde_json::from_slice(&bytes) {
+            Ok(transaction) => return Some(transaction),
+            Err(e) => tracing::error!("Failed to parse cached {transaction_id}: {e}"),
+        },
+        Ok(None) => {}
+        Err(e) => tracing::error!("Failed to read {transaction_id} from the cache: {e}"),
     }
 
-    tracing::debug!("Cache miss for transaction: {}", transaction_id);
-    let tx_details = rpc_client
+    let transaction = state
+        .rpc_client
         .EXPERIMENTAL_tx_status(transaction_id)
         .await
-        .inspect_err(|e| {
-            tracing::error!("Failed to fetch transaction details: {:?}", e);
-        })?;
-
-    if tx_details.final_execution_outcome.is_some() {
-        // Cache the result using blocking thread
-        let db = db.clone();
-        let serialized = serde_json::to_vec(&tx_details).unwrap();
-
-        let _ = tokio::task::spawn_blocking(move || {
-            if let Err(e) = db.put(transaction_id.as_ref(), &serialized) {
-                tracing::error!("Failed to cache transaction {}: {}", transaction_id, e);
-            } else {
-                tracing::debug!("Cached transaction: {}", transaction_id);
+        .inspect_err(|e| tracing::error!("Failed to fetch {transaction_id}: {e:?}"))
+        .ok()?;
+    if transaction.final_execution_outcome.is_some() {
+        let db = Arc::clone(&state.db);
+        let serialized = serde_json::to_vec(&transaction).unwrap();
+        tokio::task::spawn_blocking(move || {
+            if let Err(e) = db.put(transaction_id, serialized) {
+                tracing::error!("Failed to cache {transaction_id}: {e}");
             }
         })
-        .await;
+        .await
+        .expect("cache write panicked");
     }
-
-    Ok(tx_details)
+    Some(transaction)
 }

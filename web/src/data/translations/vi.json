@@ -481,7 +481,6 @@
   "pages.history.nft_send_to": "Gửi {count} {collection} tới {recipient}",
   "pages.history.no_selected_account": "Chưa chọn tài khoản",
   "pages.history.receive_near": "Nhận {amount}",
-  "pages.history.receive_token": "Nhận token",
   "pages.history.row_app_interaction": "Tương tác ứng dụng",
   "pages.history.row_transaction_not_found": "Không tìm thấy giao dịch. Đây là một lỗi, vui lòng báo cáo.",
   "pages.history.row_unknown": "Không xác định",

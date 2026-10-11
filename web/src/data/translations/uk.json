@@ -481,7 +481,6 @@
   "pages.history.nft_send_to": "Надіслано {count} {collection} на {recipient}",
   "pages.history.no_selected_account": "Акаунт не обрано",
   "pages.history.receive_near": "Отримано {amount}",
-  "pages.history.receive_token": "Отримано токен",
   "pages.history.row_app_interaction": "Взаємодія з застосунком",
   "pages.history.row_transaction_not_found": "Транзакцію не знайдено. Це помилка, будь ласка, повідомте про неї.",
   "pages.history.row_unknown": "Невідомо",

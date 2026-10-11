@@ -481,7 +481,6 @@
   "pages.history.nft_send_to": "Send {count} {collection} to {recipient}",
   "pages.history.no_selected_account": "No selected account",
   "pages.history.receive_near": "Receive {amount}",
-  "pages.history.receive_token": "Receive token",
   "pages.history.row_app_interaction": "App Interaction",
   "pages.history.row_transaction_not_found": "Transaction not found. This is a bug, please report it.",
   "pages.history.row_unknown": "Unknown",

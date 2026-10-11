@@ -759,7 +759,6 @@ translation_keys! {
                 TimeAgo,
                 NoSelectedAccount,
                 EmptyTransaction,
-                ReceiveToken,
                 RowAppInteraction,
                 CreateAccount,
                 DeleteAccountWithBeneficiary,

@@ -1,12 +1,13 @@
 use std::{
     collections::{HashMap, HashSet},
+    sync::Arc,
     time::Duration,
 };
 
 use crate::{
     components::tooltip::Tooltip,
     contexts::{
-        accounts_context::AccountsContext,
+        accounts_context::{AccountsContext, AccountsState},
         config_context::{ConfigContext, TimestampFormat},
         network_context::Network,
         rpc_context::RpcContext,
@@ -20,114 +21,205 @@ use crate::{
     },
 };
 use base64::{self, Engine};
-use chrono::{DateTime as ChronoDateTime, Local, Utc};
+use chrono::{DateTime as ChronoDateTime, Local, NaiveDate, Utc};
 use icondata::{LuArrowRight, LuCalendar, LuClock, LuPackage, LuPackageOpen};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_icons::Icon;
+use leptos_use::use_intersection_observer;
 use near_min_api::{
     ExperimentalTxDetails, QueryFinality, RpcClient,
     types::{
-        AccessKeyPermissionView, AccountId, AccountIdRef, Action, ActionView, Balance,
+        AccessKeyPermissionView, AccountId, AccountIdRef, Action, ActionView, Balance, CryptoHash,
         FinalExecutionOutcomeWithReceiptView, FinalExecutionStatus, Finality, FunctionCallAction,
         NearGas, NearToken, ReceiptEnumView,
     },
 };
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize, Clone)]
-struct TransactionResponse {
-    block_timestamp_nanosec: u64,
-    meta: TransactionMeta,
+#[derive(Debug, Deserialize)]
+struct HistoryTransaction {
+    transaction_id: CryptoHash,
+    timestamp_millis: u64,
+    other_account_id: AccountId,
     transaction: ExperimentalTxDetails,
 }
 
-#[derive(Debug, Deserialize, Clone)]
-struct TransactionMeta {
-    other_account_id: AccountId,
-    tx_type: TransactionType,
+#[derive(Debug, Deserialize)]
+struct HistoryPage {
+    transactions: Vec<HistoryTransaction>,
+    next_cursor: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Clone, Copy)]
-enum TransactionType {
-    TxSigner,
-    TxReceiver,
-    FtReceiver,
-}
-
-async fn fetch_transactions() -> Vec<TransactionResponse> {
-    let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
-    let Some(selected_account_id) = accounts().selected_account_id else {
-        return vec![];
-    };
-    let Some(selected_account) = accounts()
+/// A page of the selected account's history older than `cursor`, or the newest without one. None
+/// when there's no history service to ask, or the page couldn't be loaded, which is logged.
+async fn fetch_history_page(
+    accounts: AccountsState,
+    cursor: Option<String>,
+) -> Option<HistoryPage> {
+    let selected_account_id = accounts.selected_account_id?;
+    let Some(selected_account) = accounts
         .accounts
         .into_iter()
         .find(|a| a.account_id == selected_account_id)
     else {
         log::error!("Selected account not found");
-        return vec![];
+        return None;
     };
 
     let history_service_addr = match selected_account.network {
         Network::Mainnet => dotenvy_macro::dotenv!("MAINNET_HISTORY_SERVICE_ADDR").to_string(),
         Network::Testnet => dotenvy_macro::dotenv!("TESTNET_HISTORY_SERVICE_ADDR").to_string(),
-        Network::Localnet(network) => {
-            if let Some(url) = &network.history_service_url {
-                url.clone()
-            } else {
-                return vec![];
-            }
-        }
+        Network::Localnet(network) => network.history_service_url?,
     };
-    match reqwest::get(format!(
+    let mut request = reqwest::Client::new().get(format!(
         "{history_service_addr}/api/transactions/{selected_account_id}"
-    ))
-    .await
-    {
-        Ok(response) => response
-            .json::<Vec<TransactionResponse>>()
-            .await
-            .unwrap_or_default(),
-        _ => {
-            vec![]
-        }
+    ));
+    if let Some(cursor) = cursor {
+        request = request.query(&[("cursor", cursor)]);
     }
+    let page: reqwest::Result<HistoryPage> =
+        async { request.send().await?.error_for_status()?.json().await }.await;
+    page.inspect_err(|e| log::error!("Failed to load history: {e}"))
+        .ok()
 }
 
-/// Lets actions rendered inside the history list scroll it to the top and reload it.
+/// The local day `tx` happened on, which the history is grouped by
+fn local_date(tx: &HistoryTransaction) -> NaiveDate {
+    ChronoDateTime::from_timestamp_millis(tx.timestamp_millis as i64)
+        .unwrap()
+        .with_timezone(&Local)
+        .date_naive()
+}
+
+/// Which page of history to load next
+#[derive(Debug, Clone, PartialEq)]
+enum NextPage {
+    /// The newest, replacing whatever is shown when it arrives
+    Newest,
+    Older(String),
+    End,
+}
+
+/// The selected account's history, loaded a page at a time, newest first. Also lets actions
+/// rendered inside it scroll it to the top and reload it.
 #[derive(Clone, Copy)]
-struct HistoryRefresh {
-    transactions: LocalResource<Vec<TransactionResponse>>,
+struct HistoryFeed {
+    transactions: RwSignal<Vec<Arc<HistoryTransaction>>>,
+    next_page: RwSignal<NextPage>,
+    /// Bumped by every reload, so a page requested before it is dropped instead of mixed in
+    generation: StoredValue<u64>,
+    load_more: leptos::prelude::Action<(), ()>,
     root: NodeRef<leptos::html::Div>,
 }
 
-impl HistoryRefresh {
-    fn scroll_to_top_and_refetch(&self) {
+impl HistoryFeed {
+    fn new(accounts: ReadSignal<AccountsState>, root: NodeRef<leptos::html::Div>) -> Self {
+        let transactions = RwSignal::new(Vec::<Arc<HistoryTransaction>>::new());
+        let next_page = RwSignal::new(NextPage::Newest);
+        let generation = StoredValue::new(0u64);
+        let load_more = leptos::prelude::Action::new_local(move |_input: &()| {
+            let requested_page = next_page.get_untracked();
+            let requested_generation = generation.get_value();
+            let accounts = accounts.get_untracked();
+            async move {
+                let cursor = match &requested_page {
+                    NextPage::Newest => None,
+                    NextPage::Older(cursor) => Some(cursor.clone()),
+                    NextPage::End => return,
+                };
+                let page = fetch_history_page(accounts, cursor).await;
+                // Reloaded since, or the page was left
+                if generation.try_get_value() != Some(requested_generation) {
+                    return;
+                }
+                let Some(page) = page else {
+                    next_page.set(NextPage::End);
+                    return;
+                };
+                next_page.set(page.next_cursor.map_or(NextPage::End, NextPage::Older));
+                transactions.update(|transactions| {
+                    if requested_page == NextPage::Newest {
+                        transactions.clear();
+                    }
+                    // A transaction and its transfers can be split between two pages
+                    let shown: HashSet<CryptoHash> =
+                        transactions.iter().map(|tx| tx.transaction_id).collect();
+                    transactions.extend(
+                        page.transactions
+                            .into_iter()
+                            .filter(|tx| !shown.contains(&tx.transaction_id))
+                            .map(Arc::new),
+                    );
+                });
+            }
+        });
+        Self {
+            transactions,
+            next_page,
+            generation,
+            load_more,
+            root,
+        }
+    }
+
+    /// Starts over from the newest page, keeping what's shown until it arrives.
+    fn reload(&self) {
+        self.generation.update_value(|generation| *generation += 1);
+        self.next_page.set(NextPage::Newest);
+        self.load_more.dispatch(());
+    }
+
+    fn scroll_to_top_and_reload(&self) {
         if let Some(root) = self.root.get_untracked() {
             let options = web_sys::ScrollIntoViewOptions::new();
             options.set_behavior(web_sys::ScrollBehavior::Smooth);
             root.scroll_into_view_with_scroll_into_view_options(&options);
         }
-        let transactions = self.transactions;
-        set_timeout(move || transactions.refetch(), Duration::from_millis(1200));
+        let feed = *self;
+        set_timeout(move || feed.reload(), Duration::from_millis(1200));
     }
 }
 
 #[component]
 pub fn History() -> impl IntoView {
-    let transactions = LocalResource::new(fetch_transactions);
+    let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let root_ref = NodeRef::<leptos::html::Div>::new();
-    provide_context(HistoryRefresh {
-        transactions,
-        root: root_ref,
-    });
+    let feed = HistoryFeed::new(accounts, root_ref);
+    provide_context(feed);
     let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     let timestamp_format = move || config.get().timestamp_format;
-    let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     Effect::new(move || {
         accounts.track();
-        transactions.refetch();
+        feed.reload();
+    });
+
+    let is_loading = feed.load_more.pending();
+    let bottom_ref = NodeRef::<leptos::html::Div>::new();
+    let (bottom_visible, set_bottom_visible) = signal(false);
+    use_intersection_observer(bottom_ref, move |entries, _observer| {
+        if let Some(entry) = entries.last() {
+            set_bottom_visible.set(entry.is_intersecting());
+        }
+    });
+    // Keeps loading while the bottom is in view, so a page too short to scroll leads to the next
+    Effect::new(move || {
+        if bottom_visible.get()
+            && feed.next_page.with(|next_page| *next_page != NextPage::End)
+            && !is_loading.get()
+        {
+            feed.load_more.dispatch(());
+        }
+    });
+    let dates = Memo::new(move |_| {
+        let mut dates = Vec::<NaiveDate>::new();
+        for tx in feed.transactions.get().iter() {
+            let date = local_date(tx);
+            if dates.last() != Some(&date) {
+                dates.push(date);
+            }
+        }
+        dates
     });
 
     view! {
@@ -157,238 +249,188 @@ pub fn History() -> impl IntoView {
                     }}
                 </button>
             </div>
-            <Transition fallback=move || {
-                view! {
-                    <div class="flex items-center justify-center h-32">
-                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+            <div class="space-y-6">
+                <For each=move || dates.get() key=|date| *date let:date>
+                    <div class="space-y-2">
+                        <h2 class="text-white text-lg font-semibold px-4 py-2 bg-neutral-950 sticky top-0 z-10">
+                            {move || {
+                                let today = Local::now().date_naive();
+                                if date == today {
+                                    TranslationKey::PagesHistoryGroupToday.format(&[])
+                                } else if today.pred_opt() == Some(date) {
+                                    TranslationKey::PagesHistoryGroupYesterday.format(&[])
+                                } else {
+                                    date.format("%B %d").to_string()
+                                }
+                            }}
+                        </h2>
+                        <div class="space-y-0 rounded-lg overflow-hidden">
+                            <For
+                                each=move || {
+                                    feed
+                                        .transactions
+                                        .get()
+                                        .into_iter()
+                                        .filter(|tx| local_date(tx) == date)
+                                        .collect::<Vec<_>>()
+                                }
+                                key=|tx| tx.transaction_id
+                                let:tx
+                            >
+                                <TransactionRow tx=tx />
+                            </For>
+                        </div>
                     </div>
-                }
-            }>
+                </For>
+            </div>
+            <div node_ref=bottom_ref>
                 {move || {
-                    if let Some(transactions) = transactions.get() {
-                        let mut grouped_transactions: HashMap<String, Vec<TransactionResponse>> = HashMap::new();
-                        let now = Local::now();
-                        let today = now.date_naive();
-                        let yesterday = today.pred_opt().unwrap();
-                        for tx in transactions.clone().into_iter() {
-                            let timestamp = tx.block_timestamp_nanosec / 1_000_000_000;
-                            let datetime = ChronoDateTime::from_timestamp(timestamp as i64, 0)
-                                .unwrap();
-                            let local_datetime = datetime.with_timezone(&Local);
-                            let date = local_datetime.date_naive();
-                            let group_key = if date == today {
-                                "Today".to_string()
-                            } else if date == yesterday {
-                                "Yesterday".to_string()
-                            } else {
-                                date.format("%B %d, %Y").to_string()
-                            };
-                            grouped_transactions.entry(group_key).or_default().push(tx);
-                        }
-                        let mut sorted_groups: Vec<(String, Vec<TransactionResponse>)> = grouped_transactions
-                            .into_iter()
-                            .collect();
-                        sorted_groups
-                            .sort_by(|a, b| {
-                                let a_date = if a.0 == "Today" {
-                                    today
-                                } else if a.0 == "Yesterday" {
-                                    yesterday
-                                } else {
-                                    chrono::NaiveDate::parse_from_str(&a.0, "%B %d, %Y").unwrap()
-                                };
-                                let b_date = if b.0 == "Today" {
-                                    today
-                                } else if b.0 == "Yesterday" {
-                                    yesterday
-                                } else {
-                                    chrono::NaiveDate::parse_from_str(&b.0, "%B %d, %Y").unwrap()
-                                };
-                                b_date.cmp(&a_date)
-                            });
-
-                        // Sort groups by date (most recent first)
-                        view! {
-                            <div class="space-y-6">
-                                {sorted_groups
-                                    .into_iter()
-                                    .map(|(date_label, transactions)| {
-                                        view! {
-                                            <div class="space-y-2">
-                                                <h2 class="text-white text-lg font-semibold px-4 py-2 bg-neutral-950 sticky top-0 z-10">
-                                                    {move || {
-                                                        if date_label == "Today" {
-                                                            TranslationKey::PagesHistoryGroupToday.format(&[])
-                                                        } else if date_label == "Yesterday" {
-                                                            TranslationKey::PagesHistoryGroupYesterday.format(&[])
-                                                        } else {
-                                                            chrono::NaiveDate::parse_from_str(&date_label, "%B %d, %Y")
-                                                                .unwrap()
-                                                                .format("%B %d")
-                                                                .to_string()
-                                                        }
-                                                    }}
-                                                </h2>
-                                                <div class="space-y-0 rounded-lg overflow-hidden">
-                                                    {transactions
-                                                        .into_iter()
-                                                        .map(|tx| {
-                                                            let timestamp = tx.block_timestamp_nanosec / 1_000_000_000;
-                                                            let datetime = ChronoDateTime::from_timestamp(
-                                                                    timestamp as i64,
-                                                                    0,
-                                                                )
-                                                                .unwrap();
-                                                            let now = Utc::now();
-                                                            let duration = now
-                                                                .signed_duration_since(datetime)
-                                                                .to_std()
-                                                                .unwrap();
-                                                            let time_ago = format_duration(duration);
-                                                            let formatted_datetime = datetime
-                                                                .with_timezone(&Local)
-                                                                .format("%Y-%m-%d %H:%M:%S")
-                                                                .to_string();
-                                                            let account_id = format_account_id(
-                                                                &tx.meta.other_account_id,
-                                                            );
-                                                            let tx_hash = tx
-                                                                .transaction
-                                                                .final_execution_outcome
-                                                                .as_ref()
-                                                                .map(|t| t.final_outcome.transaction.hash);
-                                                            let content = view! {
-                                                                <div class="flex flex-col gap-1">
-                                                                    <div class="text-white font-medium text-lg md:text-xl transition-all duration-100">
-                                                                        {match tx.transaction.final_execution_outcome {
-                                                                            Some(transaction) => {
-                                                                                display_transaction(&transaction, tx.meta.tx_type)
-                                                                                    .into_any()
-                                                                            }
-                                                                            None => {
-                                                                                view! {
-                                                                                    <div>
-                                                                                        {move || {
-                                                                                            TranslationKey::PagesHistoryRowUnknown.format(&[])
-                                                                                        }}
-                                                                                    </div>
-                                                                                }
-                                                                                    .into_any()
-                                                                            }
-                                                                        }}
-                                                                    </div>
-                                                                </div>
-                                                                <div class="flex flex-col gap-1 items-end justify-between h-35 text-right">
-                                                                    <div class="text-neutral-300">
-                                                                        {move || {
-                                                                            if timestamp_format() == TimestampFormat::DateTime {
-                                                                                formatted_datetime.clone()
-                                                                            } else {
-                                                                                TranslationKey::PagesHistoryTimeAgo
-                                                                                    .format(&[("duration", &time_ago)])
-                                                                            }
-                                                                        }}
-                                                                    </div>
-                                                                    <div class="text-neutral-400 text-sm max-w-[80px] w-[80px] md:max-w-[160px] md:w-[160px] sm:max-w-xs wrap-anywhere transition-all duration-100 ml-2">
-                                                                        {account_id}
-                                                                    </div>
-                                                                </div>
-                                                            };
-                                                            let has_hash = tx_hash.is_some();
-
-                                                            view! {
-                                                                <div
-                                                                    on:click=move |_| {
-                                                                        if !has_hash {
-                                                                            window()
-                                                                                .alert_with_message(
-                                                                                    &TranslationKey::PagesHistoryRowTransactionNotFound
-                                                                                        .format(&[]),
-                                                                                )
-                                                                                .unwrap();
-                                                                        }
-                                                                    }
-                                                                    class="cursor-pointer hover:bg-neutral-700 odd:bg-neutral-800 even:bg-neutral-900 transition-all duration-100"
-                                                                >
-                                                                    {match tx_hash {
-                                                                        Some(hash) => {
-                                                                            view! {
-                                                                                <div class="flex justify-between items-center p-4 md:p-6 min-h-35 transition-all duration-100">
-                                                                                    <a
-                                                                                        href=move || {
-                                                                                            let selected_account_network = accounts()
-                                                                                                .accounts
-                                                                                                .into_iter()
-                                                                                                .find(|a| {
-                                                                                                    a.account_id
-                                                                                                        == accounts()
-                                                                                                            .selected_account_id
-                                                                                                            .expect("No selected account")
-                                                                                                })
-                                                                                                .map(|a| a.network.clone())
-                                                                                                .unwrap_or_else(|| {
-                                                                                                    log::error!("Selected account not found");
-                                                                                                    Network::Mainnet
-                                                                                                });
-                                                                                            let explorer_url = match &selected_account_network {
-                                                                                                Network::Mainnet => "https://nearblocks.io".to_string(),
-                                                                                                Network::Testnet => {
-                                                                                                    "https://testnet.nearblocks.io".to_string()
-                                                                                                }
-                                                                                                Network::Localnet(network) => {
-                                                                                                    if let Some(url) = &network.explorer_url {
-                                                                                                        url.clone()
-                                                                                                    } else {
-                                                                                                        return "#".to_string();
-                                                                                                    }
-                                                                                                }
-                                                                                            };
-                                                                                            format!("{explorer_url}/txns/{hash}")
-                                                                                        }
-                                                                                        target="_blank"
-                                                                                        rel="noopener noreferrer"
-                                                                                        class="flex-1 flex justify-between items-center"
-                                                                                    >
-                                                                                        {content}
-                                                                                    </a>
-                                                                                </div>
-                                                                            }
-                                                                                .into_any()
-                                                                        }
-                                                                        None => {
-                                                                            view! {
-                                                                                <div class="flex justify-between items-center p-4 md:p-6 min-h-35 transition-all duration-100 odd:bg-neutral-800 even:bg-neutral-900">
-                                                                                    {content}
-                                                                                </div>
-                                                                            }
-                                                                                .into_any()
-                                                                        }
-                                                                    }}
-                                                                </div>
-                                                            }
-                                                        })
-                                                        .collect::<Vec<_>>()}
-                                                </div>
-                                            </div>
-                                        }
-                                    })
-                                    .collect::<Vec<_>>()}
-                            </div>
-                        }
-                            .into_any()
-                    } else {
-                        ().into_any()
-                    }
+                    is_loading
+                        .get()
+                        .then(|| {
+                            view! {
+                                <div class="flex items-center justify-center h-32">
+                                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                                </div>
+                            }
+                        })
                 }}
-            </Transition>
+            </div>
         </div>
     }
 }
 
-fn display_transaction(
-    transaction: &FinalExecutionOutcomeWithReceiptView,
-    tx_type: TransactionType,
-) -> impl IntoAny + use<> {
+#[component]
+fn TransactionRow(tx: Arc<HistoryTransaction>) -> impl IntoView {
+    let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+    let ConfigContext { config, .. } = expect_context::<ConfigContext>();
+    let timestamp_format = move || config.get().timestamp_format;
+    let datetime = ChronoDateTime::from_timestamp_millis(tx.timestamp_millis as i64).unwrap();
+    let now = Utc::now();
+    let duration = now.signed_duration_since(datetime).to_std().unwrap();
+    let time_ago = format_duration(duration);
+    let formatted_datetime = datetime
+        .with_timezone(&Local)
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string();
+    let account_id = format_account_id(&tx.other_account_id);
+    let tx_hash = tx
+        .transaction
+        .final_execution_outcome
+        .as_ref()
+        .map(|t| t.final_outcome.transaction.hash);
+    let content = view! {
+        <div class="flex flex-col gap-1">
+            <div class="text-white font-medium text-lg md:text-xl transition-all duration-100">
+                {match &tx.transaction.final_execution_outcome {
+                    Some(transaction) => {
+                        display_transaction(transaction)
+                            .into_any()
+                    }
+                    None => {
+                        view! {
+                            <div>
+                                {move || {
+                                    TranslationKey::PagesHistoryRowUnknown.format(&[])
+                                }}
+                            </div>
+                        }
+                            .into_any()
+                    }
+                }}
+            </div>
+        </div>
+        <div class="flex flex-col gap-1 items-end justify-between h-35 text-right">
+            <div class="text-neutral-300">
+                {move || {
+                    if timestamp_format() == TimestampFormat::DateTime {
+                        formatted_datetime.clone()
+                    } else {
+                        TranslationKey::PagesHistoryTimeAgo
+                            .format(&[("duration", &time_ago)])
+                    }
+                }}
+            </div>
+            <div class="text-neutral-400 text-sm max-w-[80px] w-[80px] md:max-w-[160px] md:w-[160px] sm:max-w-xs wrap-anywhere transition-all duration-100 ml-2">
+                {account_id}
+            </div>
+        </div>
+    };
+    let has_hash = tx_hash.is_some();
+
+    view! {
+        <div
+            on:click=move |_| {
+                if !has_hash {
+                    window()
+                        .alert_with_message(
+                            &TranslationKey::PagesHistoryRowTransactionNotFound
+                                .format(&[]),
+                        )
+                        .unwrap();
+                }
+            }
+            class="cursor-pointer hover:bg-neutral-700 odd:bg-neutral-800 even:bg-neutral-900 transition-all duration-100"
+        >
+            {match tx_hash {
+                Some(hash) => {
+                    view! {
+                        <div class="flex justify-between items-center p-4 md:p-6 min-h-35 transition-all duration-100">
+                            <a
+                                href=move || {
+                                    let selected_account_network = accounts()
+                                        .accounts
+                                        .into_iter()
+                                        .find(|a| {
+                                            a.account_id
+                                                == accounts()
+                                                    .selected_account_id
+                                                    .expect("No selected account")
+                                        })
+                                        .map(|a| a.network.clone())
+                                        .unwrap_or_else(|| {
+                                            log::error!("Selected account not found");
+                                            Network::Mainnet
+                                        });
+                                    let explorer_url = match &selected_account_network {
+                                        Network::Mainnet => "https://nearblocks.io".to_string(),
+                                        Network::Testnet => {
+                                            "https://testnet.nearblocks.io".to_string()
+                                        }
+                                        Network::Localnet(network) => {
+                                            if let Some(url) = &network.explorer_url {
+                                                url.clone()
+                                            } else {
+                                                return "#".to_string();
+                                            }
+                                        }
+                                    };
+                                    format!("{explorer_url}/txns/{hash}")
+                                }
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="flex-1 flex justify-between items-center"
+                            >
+                                {content}
+                            </a>
+                        </div>
+                    }
+                        .into_any()
+                }
+                None => {
+                    view! {
+                        <div class="flex justify-between items-center p-4 md:p-6 min-h-35 transition-all duration-100 odd:bg-neutral-800 even:bg-neutral-900">
+                            {content}
+                        </div>
+                    }
+                        .into_any()
+                }
+            }}
+        </div>
+    }
+}
+
+fn display_transaction(transaction: &FinalExecutionOutcomeWithReceiptView) -> impl IntoAny + use<> {
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let RpcContext { client, .. } = expect_context::<RpcContext>();
     let Some(me) = accounts().selected_account_id else {
@@ -396,58 +438,50 @@ fn display_transaction(
         .into_any();
     };
     let mut actions_config = ActionsConfig::default();
-    match tx_type {
-        TransactionType::TxSigner | TransactionType::TxReceiver => {
-            let mut actions = Vec::<AnyView>::new();
-            let fns = [
-                add_storage_actions,
-                add_lnc_actions,
-                add_harvestmoon_actions,
-                add_wrap_actions,
-                add_ft_actions,
-                add_near_actions,
-                add_dex_actions,
-                add_nft_actions,
-                add_staking_actions,
-                add_key_actions,
-                add_account_actions,
-            ];
-            // First pass: build actions config
-            for f in fns {
-                f(
-                    &mut Vec::new(),
-                    transaction,
-                    &me,
-                    &mut actions_config,
-                    client.get_untracked(),
-                );
-            }
-            // Second pass: build actions
-            for f in fns {
-                f(
-                    &mut actions,
-                    transaction,
-                    &me,
-                    &mut actions_config.clone(),
-                    client.get_untracked(),
-                );
-            }
-            if actions.is_empty() {
-                if transaction.final_outcome.transaction.actions.is_empty() {
-                    view! { <div>{move || TranslationKey::PagesHistoryEmptyTransaction.format(&[])}</div> }
-                    .into_any()
-                } else {
-                    view! { <div>{move || TranslationKey::PagesHistoryRowAppInteraction.format(&[])}</div> }
-                    .into_any()
-                }
-            } else {
-                view! { <div class="flex flex-col gap-2">{actions}</div> }.into_any()
-            }
-        }
-        TransactionType::FtReceiver => {
-            view! { <div>{move || TranslationKey::PagesHistoryReceiveToken.format(&[])}</div> }
+    let mut actions = Vec::<AnyView>::new();
+    let fns = [
+        add_storage_actions,
+        add_lnc_actions,
+        add_harvestmoon_actions,
+        add_wrap_actions,
+        add_ft_actions,
+        add_near_actions,
+        add_dex_actions,
+        add_nft_actions,
+        add_staking_actions,
+        add_key_actions,
+        add_account_actions,
+    ];
+    // First pass: build actions config
+    for f in fns {
+        f(
+            &mut Vec::new(),
+            transaction,
+            &me,
+            &mut actions_config,
+            client.get_untracked(),
+        );
+    }
+    // Second pass: build actions
+    for f in fns {
+        f(
+            &mut actions,
+            transaction,
+            &me,
+            &mut actions_config.clone(),
+            client.get_untracked(),
+        );
+    }
+    if actions.is_empty() {
+        if transaction.final_outcome.transaction.actions.is_empty() {
+            view! { <div>{move || TranslationKey::PagesHistoryEmptyTransaction.format(&[])}</div> }
+                .into_any()
+        } else {
+            view! { <div>{move || TranslationKey::PagesHistoryRowAppInteraction.format(&[])}</div> }
                 .into_any()
         }
+    } else {
+        view! { <div class="flex flex-col gap-2">{actions}</div> }.into_any()
     }
 }
 
@@ -981,7 +1015,7 @@ fn StorageWithdrawButton(contract_id: AccountId, account_id: AccountId) -> impl 
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
-    let refresh = expect_context::<HistoryRefresh>();
+    let feed = expect_context::<HistoryFeed>();
     let (dismissed, set_dismissed) = signal(false);
     let (submitted, set_submitted) = signal(false);
 
@@ -1076,7 +1110,7 @@ fn StorageWithdrawButton(contract_id: AccountId, account_id: AccountId) -> impl 
                         };
                         set_dismissed(true);
                         if succeeded {
-                            refresh.scroll_to_top_and_refetch();
+                            feed.scroll_to_top_and_reload();
                         }
                     });
                 }
