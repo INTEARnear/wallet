@@ -8881,6 +8881,7 @@ dependencies = [
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
+ "serde_urlencoded",
  "serde_with",
  "shell-words",
  "thaw",

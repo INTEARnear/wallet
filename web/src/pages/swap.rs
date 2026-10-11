@@ -6,12 +6,15 @@ use std::{
 };
 
 use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, Zero, num_bigint::Sign};
-use chrono::{DateTime, TimeDelta, Utc};
+use chrono::{DateTime, Utc};
+use codee::string::FromToStringCodec;
 use leptos::prelude::AnyView;
 use leptos::prelude::*;
-use leptos::task::spawn_local;
 use leptos_icons::Icon;
 use leptos_router::{components::A, hooks::use_location, location::Location};
+use leptos_use::{
+    ReconnectLimit, UseWebSocketOptions, core::ConnectionReadyState, use_websocket_with_options,
+};
 use near_min_api::{
     QueryFinality, RpcClient,
     types::{
@@ -23,7 +26,9 @@ use near_min_api::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    components::{danger_confirm_input::DangerConfirmInput, token_selector::TokenSelector},
+    components::{
+        danger_confirm_input::DangerConfirmInput, token_selector::TokenSelector, tooltip::Tooltip,
+    },
     contexts::{
         accounts_context::{Account, AccountsContext},
         config_context::ConfigContext,
@@ -57,6 +62,10 @@ pub struct SwapResult {
 
 #[derive(Debug, Clone)]
 pub struct SwapConfirmation {
+    // A confirmation is bound to the identity that requested the quote.
+    pub trader_account_id: AccountId,
+    pub signing_public_key: PublicKey,
+    pub network: Network,
     pub token_in: TokenInfo,
     pub token_out: TokenInfo,
     /// For ExactIn: the exact input amount. For ExactOut: the estimated input amount.
@@ -106,22 +115,77 @@ fn round_precision_or_significant(amount: BigDecimal) -> String {
 #[component]
 pub fn Swap() -> impl IntoView {
     let NetworkContext { network } = expect_context::<NetworkContext>();
+    view! {
+        <Show
+            when=move || network.get() == Network::Mainnet
+            fallback=move || view! { <SwapUnavailable/> }
+        >
+            <SwapMainnet/>
+        </Show>
+    }
+}
 
-    let TokensContext {
-        tokens, set_tokens, ..
-    } = expect_context::<TokensContext>();
+#[component]
+fn SwapUnavailable() -> impl IntoView {
+    view! {
+        <div class="flex flex-col items-center justify-center h-full p-8 text-center">
+            <div class="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mb-4">
+                <Icon icon=icondata::LuCircleX attr:class="w-8 h-8 text-red-500"/>
+            </div>
+            <h2 class="text-xl font-bold text-white mb-2">
+                {move || TranslationKey::PagesSwapMainnetOnlyTitle.format(&[])}
+            </h2>
+            <p class="text-gray-400 max-w-md mb-6">
+                {move || TranslationKey::PagesSwapMainnetOnlyDescription.format(&[])}
+            </p>
+            <A href="/" attr:class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors cursor-pointer">
+                {move || TranslationKey::PagesSwapGoBack.format(&[])}
+            </A>
+        </div>
+    }
+}
+
+#[component]
+fn SwapMainnet() -> impl IntoView {
+    let TokensContext { tokens, .. } = expect_context::<TokensContext>();
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     let Location { query, .. } = use_location();
 
-    let (token_in, set_token_in) = signal::<Option<TokenData>>(None);
-    let (token_out, set_token_out) = signal::<Option<TokenData>>(None);
+    let initial_query = query.get_untracked();
+    let (selected_token_in, set_selected_token_in) = signal(
+        initial_query
+            .get("from")
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(Token::Near),
+    );
+    let (selected_token_out, set_selected_token_out) = signal(
+        initial_query
+            .get("to")
+            .and_then(|value| value.parse().ok())
+            .unwrap_or_else(|| Token::Nep141("token.intear.near".parse().unwrap())),
+    );
+    let account_key = Memo::new(move |_| {
+        accounts.with(|state| {
+            let id = state.selected_account_id.as_ref()?;
+            let account = state
+                .accounts
+                .iter()
+                .find(|account| &account.account_id == id)?;
+            (account.network == Network::Mainnet)
+                .then(|| (account.account_id.clone(), account.network.clone()))
+        })
+    });
+    let token_in = use_swap_token(selected_token_in, tokens.into(), account_key);
+    let token_out = use_swap_token(selected_token_out, tokens.into(), account_key);
 
     let (show_slippage_settings, set_show_slippage_settings) = signal(false);
     let (custom_slippage_input, set_custom_slippage_input) =
         signal(match config.get_untracked().slippage {
             Slippage::Auto { .. } => "".to_string(),
-            Slippage::Fixed { slippage } => slippage.to_string(),
+            Slippage::Fixed { slippage } => (slippage * BigDecimal::from(100))
+                .normalized()
+                .to_plain_string(),
         });
 
     let ModalContext { modal } = expect_context::<ModalContext>();
@@ -137,175 +201,6 @@ pub fn Swap() -> impl IntoView {
         DexId::RNear,
         DexId::Plach,
     ]);
-
-    Effect::new(move |_| {
-        let tokens_list = tokens.get();
-        if tokens_list.is_empty() {
-            return;
-        }
-
-        let current_account = accounts.get().selected_account_id.map(|id| {
-            accounts
-                .get()
-                .accounts
-                .into_iter()
-                .find(|a| a.account_id == id)
-                .unwrap()
-        });
-
-        if let Some(account) = current_account {
-            // Set default input token (NEAR)
-            if token_in.get_untracked().is_none() {
-                let default_token_id = Token::Near;
-
-                let initial_token_in: Token = if let Some(from) = query.get().get("from") {
-                    from.parse().unwrap_or(default_token_id)
-                } else {
-                    default_token_id
-                };
-
-                let owned_token = tokens_list
-                    .iter()
-                    .find(|t| t.token.account_id == initial_token_in);
-
-                if let Some(token) = owned_token {
-                    // User owns the token, use it
-                    set_token_in.set(Some(token.clone()));
-                } else {
-                    // User doesn't own the token, fetch from API
-                    let account_clone = account.clone();
-                    let initial_token_in = match initial_token_in {
-                        Token::Near => unreachable!(), // user always owns NEAR
-                        Token::Nep141(token_id) => token_id,
-                        Token::Rhea(_) => unreachable!(),
-                    };
-                    spawn_local(async move {
-                        match fetch_token_info(initial_token_in.clone(), account_clone.network)
-                            .await
-                        {
-                            Some(token_info) => {
-                                let token_data = TokenData {
-                                    balance: 0,
-                                    token: token_info,
-                                    source: TokenBalanceSource::Direct,
-                                };
-                                set_tokens.update(|tokens| {
-                                    if let Some(token) = tokens.iter_mut().find(|t| {
-                                        t.token.account_id
-                                            == Token::Nep141(initial_token_in.clone())
-                                    }) {
-                                        *token = token_data.clone();
-                                    } else {
-                                        tokens.push(token_data.clone());
-                                    }
-                                });
-                                set_token_in.set(Some(token_data));
-                            }
-                            None => {
-                                log::warn!("Failed to fetch default output token");
-                            }
-                        }
-                    });
-                }
-            }
-
-            // Set default output token (USDC)
-            if token_out.get_untracked().is_none() {
-                let default_token_id = Token::Nep141(match &account.network {
-                    Network::Mainnet => {
-                        "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
-                            .parse()
-                            .unwrap()
-                    }
-                    Network::Testnet => "usdc.fakes.testnet".parse().unwrap(),
-                    Network::Localnet(network) => {
-                        if let Some(contract) = &network.wrap_contract {
-                            contract.clone()
-                        } else {
-                            return;
-                        }
-                    }
-                });
-
-                let initial_token_out: Token = if let Some(to) = query.get().get("to") {
-                    to.parse().unwrap_or(default_token_id)
-                } else {
-                    default_token_id
-                };
-
-                let owned_token = tokens_list
-                    .iter()
-                    .find(|t| t.token.account_id == initial_token_out);
-
-                if let Some(token) = owned_token {
-                    // User owns the token, use it
-                    set_token_out.set(Some(token.clone()));
-                } else {
-                    // User doesn't own the token, fetch from API
-                    let account_clone = account.clone();
-                    let initial_token_out = match initial_token_out {
-                        Token::Near => unreachable!(), // user always owns NEAR
-                        Token::Nep141(token_id) => token_id,
-                        Token::Rhea(_) => unreachable!(),
-                    };
-                    spawn_local(async move {
-                        match fetch_token_info(initial_token_out.clone(), account_clone.network)
-                            .await
-                        {
-                            Some(token_info) => {
-                                let token_data = TokenData {
-                                    balance: 0,
-                                    token: token_info,
-                                    source: TokenBalanceSource::Direct,
-                                };
-                                set_tokens.update(|tokens| {
-                                    if let Some(token) = tokens.iter_mut().find(|t| {
-                                        t.token.account_id
-                                            == Token::Nep141(initial_token_out.clone())
-                                    }) {
-                                        *token = token_data.clone();
-                                    } else {
-                                        tokens.push(token_data.clone());
-                                    }
-                                });
-                                set_token_out.set(Some(token_data));
-                            }
-                            None => {
-                                log::warn!("Failed to fetch default output token");
-                            }
-                        }
-                    });
-                }
-            }
-        }
-    });
-
-    // Update selected token balances when accounts or tokens change
-    Effect::new(move |_| {
-        accounts.track();
-        tokens.track();
-        let tokens_list = tokens.get();
-
-        if let Some(current_token_in) = token_in.get_untracked()
-            && let Some(updated_token) = tokens_list
-                .iter()
-                .find(|t| t.token.account_id == current_token_in.token.account_id)
-            && (updated_token.balance != current_token_in.balance
-                || updated_token.token.price_usd_hardcoded
-                    != current_token_in.token.price_usd_hardcoded)
-        {
-            set_token_in.set(Some(updated_token.clone()));
-        }
-
-        if let Some(current_token_out) = token_out.get_untracked()
-            && let Some(updated_token) = tokens_list
-                .iter()
-                .find(|t| t.token.account_id == current_token_out.token.account_id)
-            && updated_token.balance != current_token_out.balance
-        {
-            set_token_out.set(Some(updated_token.clone()));
-        }
-    });
 
     let (amount_entered, set_amount_entered) = signal("".to_string());
     let (swap_mode, set_swap_mode) = signal(SwapMode::ExactIn);
@@ -334,39 +229,64 @@ pub fn Swap() -> impl IntoView {
         Some(amount_raw)
     });
 
-    let (_routes_action_handle, set_routes_action_handle) =
-        signal::<Option<ActionAbortHandle>>(None);
-    let get_routes_action =
-        leptos::prelude::Action::new(move |(swap_request, router_url): &(SwapRequest, String)| {
-            let swap_request = swap_request.clone();
-            // This should always run before set_routes_action_handle.set(get_routes_action.dispatch(...)),
-            // so we have time to abort the previous request
-            if let Some(handle) = set_routes_action_handle.write().take() {
-                handle.abort();
-            }
-            let router_url = router_url.clone();
-            async move {
-                let (oneshot_tx, oneshot_rx) = futures_channel::oneshot::channel();
-                spawn_local(async move {
-                    let routes = get_routes(swap_request, router_url).await;
-                    let _ = oneshot_tx.send(routes);
-                });
-                oneshot_rx.await.unwrap()
-            }
-        });
-
-    Effect::new(move || {
-        validated_amount_entered.track();
-        get_routes_action.clear();
+    // Compare the serialized request so balance and unrelated config updates don't resend it.
+    let route_query = Memo::new(move |_| {
+        let token_in = token_in.get()?.token.account_id;
+        let token_out = token_out.get()?.token.account_id;
+        let amount_raw = validated_amount_entered.get()?;
+        let (trader_account_id, signing_public_key) = accounts.with(|state| {
+            let id = state.selected_account_id.as_ref()?;
+            let account = state
+                .accounts
+                .iter()
+                .find(|account| &account.account_id == id)?;
+            (account.network == Network::Mainnet)
+                .then(|| (account.account_id.clone(), account.secret_key.public_key()))
+        })?;
+        let to_router_token_id = |token: Token| match token {
+            Token::Near => TokenId::Near,
+            Token::Nep141(account_id) => TokenId::Nep141(account_id),
+            Token::Rhea(_) => unreachable!(),
+        };
+        let dexes = selected_dexes.get();
+        let request = SwapRequest {
+            token_in: to_router_token_id(token_in),
+            token_out: to_router_token_id(token_out),
+            amount: match swap_mode_memo.get() {
+                SwapMode::ExactIn => Amount::AmountIn(amount_raw),
+                SwapMode::ExactOut => Amount::AmountOut(amount_raw),
+            },
+            max_wait_ms: 2000,
+            slippage: config.get().slippage,
+            dexes: if dexes.is_empty() { None } else { Some(dexes) },
+            trader_account_id: Some(trader_account_id),
+            signing_public_key: Some(signing_public_key),
+            referrer_id: Some("wallet.intear.near".parse().unwrap()),
+        };
+        Some(serde_urlencoded::to_string(request).unwrap())
     });
 
-    Effect::new(move || {
-        if get_routes_action.value().get().is_some()
-            && validated_amount_entered.get_untracked().is_none()
-        {
-            get_routes_action.clear();
-        }
+    let router_ws_url = Memo::new(move |_| {
+        let router_url = config
+            .get()
+            .custom_router_url
+            .unwrap_or_else(|| dotenvy_macro::dotenv!("ROUTER_URL").to_string());
+        format!(
+            "{}/route/subscribe",
+            router_url.trim_end_matches('/').replacen("http", "ws", 1)
+        )
     });
+    let (routes, is_fetching_route) = use_route_subscription(router_ws_url, route_query);
+    let best_route = move || {
+        routes.with(|result| {
+            result
+                .as_ref()
+                .and_then(|result| result.as_ref().ok())
+                .and_then(|routes| routes.first().cloned())
+        })
+    };
+    let has_route =
+        move || routes.with(|result| matches!(result, Some(Ok(routes)) if !routes.is_empty()));
 
     let has_sufficient_balance = Memo::new(move |_| {
         let swap_mode = swap_mode_memo.get();
@@ -381,10 +301,8 @@ pub fn Swap() -> impl IntoView {
                     }
                 }
                 SwapMode::ExactOut => {
-                    if let (Some(Ok(routes)), Some(input_token)) =
-                        (get_routes_action.value().get(), token_in.get())
-                    {
-                        if let Some(route) = routes.routes.first() {
+                    if let (Some(Ok(routes)), Some(input_token)) = (routes.get(), token_in.get()) {
+                        if let Some(route) = routes.first() {
                             match route.estimated_amount {
                                 Amount::AmountIn(estimated_input_needed) => {
                                     estimated_input_needed <= input_token.balance
@@ -412,13 +330,12 @@ pub fn Swap() -> impl IntoView {
             _ => false,                          // All other combinations are read-only
         };
 
-        let no_routes_found = match get_routes_action.value().get() {
-            Some(Ok(routes)) => routes.routes.is_empty(),
+        let no_routes_found = match routes.get() {
+            Some(Ok(routes)) => routes.is_empty(),
             _ => false,
         };
 
-        let is_loading =
-            get_routes_action.pending().get() && get_routes_action.value().get().is_none();
+        let is_loading = is_fetching_route.get() && routes.get().is_none();
 
         if no_routes_found {
             "border: 2px solid rgb(234 179 8);".to_string() // No route found
@@ -443,71 +360,66 @@ pub fn Swap() -> impl IntoView {
         }
     };
 
-    let create_swap_request = move |token_in: TokenData,
-                                    token_out: TokenData,
-                                    amount_raw: Balance,
-                                    mode: SwapMode|
-          -> Option<SwapRequest> {
-        let current_account = accounts
-            .get_untracked()
-            .selected_account_id
-            .and_then(|id| {
-                accounts
-                    .get_untracked()
-                    .accounts
-                    .into_iter()
-                    .find(|a| a.account_id == id)
-            })?;
-
-        let token_in_id = match &token_in.token.account_id {
-            Token::Near => TokenId::Near,
-            Token::Nep141(account_id) => TokenId::Nep141(account_id.clone()),
-            Token::Rhea(_) => unreachable!(),
-        };
-
-        let token_out_id = match &token_out.token.account_id {
-            Token::Near => TokenId::Near,
-            Token::Nep141(account_id) => TokenId::Nep141(account_id.clone()),
-            Token::Rhea(_) => unreachable!(),
-        };
-
-        let amount = match mode {
-            SwapMode::ExactIn => Amount::AmountIn(amount_raw),
-            SwapMode::ExactOut => Amount::AmountOut(amount_raw),
-        };
-
-        Some(SwapRequest {
-            token_in: token_in_id,
-            token_out: token_out_id,
-            amount,
-            max_wait_ms: 2000,
-            slippage: config.get().slippage,
-            dexes: Some(selected_dexes.get()), // Use selected DEXes
-            trader_account_id: Some(current_account.account_id),
-            signing_public_key: Some(current_account.secret_key.public_key()),
-            referrer_id: Some("wallet.intear.near".parse().unwrap()),
-        })
-    };
+    // The amount the max button set, which for NEAR leaves out what the route needs for gas and
+    // storage, so it's re-quoted whenever the route changes. It only goes down, so routes
+    // flipping between amounts can't loop
+    let (max_input_amount, set_max_input_amount) = signal::<Option<String>>(None);
 
     Effect::new(move |_| {
-        let current_mode = swap_mode_memo.get();
-        let token_in_data = token_in.get();
-        let token_out_data = token_out.get();
-        validated_amount_entered.track();
-
-        if let (Some(token_in), Some(token_out)) = (token_in_data, token_out_data)
-            && let Some(validated_amount) = validated_amount_entered.get()
-            && let Some(swap_request) =
-                create_swap_request(token_in, token_out, validated_amount, current_mode)
-        {
-            get_routes_action.dispatch((
-                swap_request.clone(),
-                config
-                    .get()
-                    .custom_router_url
-                    .unwrap_or_else(|| dotenvy_macro::dotenv!("ROUTER_URL").to_string()),
-            ));
+        let Some(route) = best_route() else {
+            return;
+        };
+        let Some(token) = token_in.get() else {
+            return;
+        };
+        let is_max_near_input = swap_mode_memo.get() == SwapMode::ExactIn
+            && token.token.account_id == Token::Near
+            && max_input_amount.get().as_ref() == Some(&amount_entered.get());
+        if !is_max_near_input {
+            return;
         }
+        let required = route.gas_reserve() + route.max_storage_deposits;
+        // Keeps the amount so the missing NEAR error shows
+        if token.balance <= required {
+            return;
+        }
+        let max_amount_in = token.balance - required;
+        let Some(amount_in) = validated_amount_entered.get() else {
+            return;
+        };
+        if max_amount_in >= amount_in {
+            return;
+        }
+        let amount = balance_to_decimal(max_amount_in, token.token.metadata.decimals)
+            .normalized()
+            .to_plain_string();
+        set_max_input_amount.set(Some(amount.clone()));
+        set_amount_entered.set(amount);
+    });
+
+    // NEAR the wallet needs for the route's gas reserve and storage deposits, and for the input
+    // if it's NEAR, or None if it has enough
+    let missing_near = Memo::new(move |_| {
+        let route = best_route()?;
+        let token = token_in.get()?;
+        let mut required = route.gas_reserve() + route.max_storage_deposits;
+        if token.token.account_id == Token::Near {
+            required += match swap_mode_memo.get() {
+                SwapMode::ExactIn => validated_amount_entered.get()?,
+                SwapMode::ExactOut => {
+                    let Amount::AmountIn(worst_case_amount_in) = route.worst_case_amount else {
+                        return None;
+                    };
+                    worst_case_amount_in
+                }
+            };
+        }
+        let near_balance = tokens
+            .read()
+            .iter()
+            .find(|token| token.token.account_id == Token::Near)?
+            .balance;
+        (near_balance < required).then_some(required)
     });
 
     let handle_amount_change = move |value: String, mode: SwapMode| {
@@ -516,11 +428,10 @@ pub fn Swap() -> impl IntoView {
     };
 
     let handle_reverse = move |_| {
-        get_routes_action.clear();
-        let current_token_in = token_in.get();
-        let current_token_out = token_out.get();
-        set_token_in.set(current_token_out);
-        set_token_out.set(current_token_in);
+        let current_token_in = selected_token_in.get_untracked();
+        let current_token_out = selected_token_out.get_untracked();
+        set_selected_token_in.set(current_token_out);
+        set_selected_token_out.set(current_token_in);
         handle_amount_change(
             amount_entered.get(),
             match swap_mode_memo.get() {
@@ -530,82 +441,48 @@ pub fn Swap() -> impl IntoView {
         );
     };
 
-    let get_estimated_amount = move || -> Option<String> {
-        let routes = get_routes_action.value().get()?.ok()?;
-        let route = routes.routes.first()?;
-        let current_mode = swap_mode_memo.get();
-
-        match route.estimated_amount {
-            Amount::AmountIn(amount) => {
-                if let (Some(token_in), SwapMode::ExactOut) = (token_in.get(), current_mode) {
-                    let formatted_amount =
-                        balance_to_decimal(amount, token_in.token.metadata.decimals);
-                    let formatted_amount = round_precision_or_significant(formatted_amount);
-                    Some(formatted_amount)
-                } else {
-                    None
-                }
-            }
-            Amount::AmountOut(amount) => {
-                if let (Some(token_out), SwapMode::ExactIn) = (token_out.get(), current_mode) {
-                    let formatted_amount =
-                        balance_to_decimal(amount, token_out.token.metadata.decimals);
-                    let formatted_amount = round_precision_or_significant(formatted_amount);
-                    Some(formatted_amount)
-                } else {
-                    None
-                }
-            }
+    // Keep numeric values numeric until the final display conversion.
+    let estimated_amount = Memo::new(move |_| {
+        let estimated = routes.with(|result| {
+            result
+                .as_ref()
+                .and_then(|result| result.as_ref().ok())
+                .and_then(|routes| routes.first())
+                .map(|route| route.estimated_amount)
+        })?;
+        match (estimated, swap_mode.get()) {
+            (Amount::AmountIn(amount), SwapMode::ExactOut) => Some(balance_to_decimal(
+                amount,
+                token_in.get()?.token.metadata.decimals,
+            )),
+            (Amount::AmountOut(amount), SwapMode::ExactIn) => Some(balance_to_decimal(
+                amount,
+                token_out.get()?.token.metadata.decimals,
+            )),
+            _ => None,
         }
-    };
-
-    let (last_dispatched_at, set_last_dispatched_at) = signal::<Option<DateTime<Utc>>>(None);
-    Effect::new(move || {
-        let handle = set_interval_with_handle(
-            move || {
-                if let Some(Ok(_)) = get_routes_action.value().get_untracked() {
-                    if get_routes_action.pending().get_untracked() {
-                        return;
-                    }
-                    let Some(token_in) = token_in.get_untracked() else {
-                        return;
-                    };
-                    let Some(token_out) = token_out.get_untracked() else {
-                        return;
-                    };
-                    let Some(validated_amount) = validated_amount_entered.get_untracked() else {
-                        return;
-                    };
-                    if let Some(last_dispatched_at) = last_dispatched_at.get_untracked()
-                        && Utc::now() - last_dispatched_at
-                            < TimeDelta::from_std(Duration::from_secs(5)).unwrap()
-                    {
-                        return;
-                    }
-                    if let Some(swap_request) = create_swap_request(
-                        token_in,
-                        token_out,
-                        validated_amount,
-                        swap_mode_memo.get_untracked(),
-                    ) {
-                        set_last_dispatched_at.set(Some(Utc::now()));
-                        set_routes_action_handle.set(Some(get_routes_action.dispatch((
-                            swap_request,
-                            config.get_untracked().custom_router_url.unwrap_or_else(|| {
-                                dotenvy_macro::dotenv!("ROUTER_URL").to_string()
-                            }),
-                        ))));
-                    }
-                }
-            },
-            Duration::from_millis(100),
-        )
-        .unwrap();
-
-        on_cleanup(move || {
-            handle.clear();
-        });
     });
+    let get_estimated_amount = move || estimated_amount.get().map(round_precision_or_significant);
+    let numeric_input = Memo::new(move |_| match swap_mode.get() {
+        SwapMode::ExactIn => Some(balance_to_decimal(
+            validated_amount_entered.get()?,
+            token_in.get()?.token.metadata.decimals,
+        )),
+        SwapMode::ExactOut => estimated_amount.get(),
+    });
+    let numeric_output = Memo::new(move |_| match swap_mode.get() {
+        SwapMode::ExactOut => Some(balance_to_decimal(
+            validated_amount_entered.get()?,
+            token_out.get()?.token.metadata.decimals,
+        )),
+        SwapMode::ExactIn => estimated_amount.get(),
+    });
+    let input_usd =
+        Memo::new(move |_| Some(numeric_input.get()? * token_in.get()?.token.price_usd_hardcoded));
+    let output_usd = Memo::new(move |_| {
+        Some(numeric_output.get()? * token_out.get()?.token.price_usd_hardcoded)
+    });
+    let price_impact = Memo::new(move |_| swap_price_impact(input_usd.get()?, output_usd.get()?));
 
     let TransactionQueueContext {
         add_transaction,
@@ -614,33 +491,88 @@ pub fn Swap() -> impl IntoView {
     } = expect_context::<TransactionQueueContext>();
     let RpcContext { client: rpc_client } = expect_context::<RpcContext>();
 
-    view! {
-        <Show
-            when=move || network.get() == Network::Mainnet
-            fallback=move || {
-                view! {
-                    <div class="flex flex-col items-center justify-center h-full p-8 text-center">
-                        <div class="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mb-4">
-                            <Icon icon=icondata::LuCircleX attr:class="w-8 h-8 text-red-500" />
-                        </div>
-                        <h2 class="text-xl font-bold text-white mb-2">
-                            {move || TranslationKey::PagesSwapMainnetOnlyTitle.format(&[])}
-                        </h2>
-                        <p class="text-gray-400 max-w-md mb-6">
-                            {move || TranslationKey::PagesSwapMainnetOnlyDescription.format(&[])}
-                        </p>
-                        <A
-                            href="/"
-                            attr:class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors cursor-pointer"
-                        >
-                            {move || TranslationKey::PagesSwapGoBack.format(&[])}
-                        </A>
-                    </div>
-                }
+    // The action owns its asynchronous execution. Navigating away disables new submissions,
+    // but does not cancel transactions that have already been submitted to the queue.
+    let page_alive = ArcRwSignal::new(true);
+    on_cleanup({
+        let page_alive = page_alive.clone();
+        move || page_alive.set(false)
+    });
+    let execute_swap = leptos::prelude::Action::new_unsync(
+        move |(confirmation, account): &(SwapConfirmation, Account)| {
+            let confirmation = confirmation.clone();
+            let account = account.clone();
+            let rpc = rpc_client.get_untracked();
+            async move {
+                execute_route(
+                    match confirmation.swap_mode {
+                        SwapMode::ExactIn => confirmation.amount_in,
+                        SwapMode::ExactOut => confirmation.estimated_amount_out,
+                    },
+                    confirmation.swap_mode,
+                    confirmation.token_in,
+                    confirmation.token_out,
+                    confirmation.route,
+                    account,
+                    add_transaction,
+                    overlay_mode,
+                    rpc,
+                    modal,
+                )
+                .await;
             }
-        >
+        },
+    );
+    let swap_pending = execute_swap.pending();
+    // This callback may live in the global modal after the page has been disposed.
+    // Check the independently-owned lifetime flag before touching page-owned signals.
+    let can_submit: std::sync::Arc<dyn Fn() -> bool + Send + Sync> = {
+        let page_alive = page_alive.clone();
+        std::sync::Arc::new(move || page_alive.get() && !swap_pending.get())
+    };
+    let submit_swap: std::rc::Rc<dyn Fn(SwapConfirmation)> = {
+        let page_alive = page_alive.clone();
+        std::rc::Rc::new(move |confirmation| {
+            if !page_alive.get_untracked() || swap_pending.get_untracked() {
+                return;
+            }
+            let account = accounts.with_untracked(|state| {
+                let id = state.selected_account_id.as_ref()?;
+                state
+                    .accounts
+                    .iter()
+                    .find(|account| &account.account_id == id)
+                    .cloned()
+            });
+            let Some(account) = account else {
+                return;
+            };
+            let valid_identity = account.account_id == confirmation.trader_account_id
+                && account.network == confirmation.network
+                && account.secret_key.public_key() == confirmation.signing_public_key;
+            let expired = confirmation
+                .route
+                .deadline
+                .as_ref()
+                .is_some_and(|deadline| *deadline <= Utc::now() + chrono::Duration::seconds(3));
+            if !valid_identity || expired {
+                log::warn!("Swap confirmation is stale; request a new quote");
+                modal.set(Some(Box::new(move || {
+                    view! { <SwapErrorModal/> }.into_any()
+                })));
+                return;
+            }
+            modal.set(None);
+            execute_swap.dispatch_local((confirmation, account));
+            set_swap_mode.set(SwapMode::ExactIn);
+            set_amount_entered.set(String::new());
+            set_max_input_amount.set(None);
+        })
+    };
+
+    view! {
             <div class="max-w-lg mx-auto min-h-full flex flex-col">
-                <div class="flex items-center justify-center flex-1">
+                <div class="flex items-start justify-center flex-1">
                     <div class="w-full mt-8">
                         <div class="bg-neutral-900 rounded-2xl p-4 space-y-4 relative">
                             <div class="absolute -top-4 right-4">
@@ -798,12 +730,11 @@ pub fn Swap() -> impl IntoView {
                                 </div>
 
                                 <div class="flex gap-3">
-                                    <TokenSelector
+                                    <SwapTokenSelector
                                         selected_token=token_in
                                         on_select=move |token: TokenData| {
-                                            set_token_in.set(Some(token));
+                                            set_selected_token_in.set(token.token.account_id);
                                             set_amount_entered.set("".to_string());
-                                            get_routes_action.clear();
                                         }
                                         placeholder=move || {
                                             TranslationKey::PagesSwapSelectToken.format(&[])
@@ -819,9 +750,8 @@ pub fn Swap() -> impl IntoView {
                                                 style=move || get_input_style(true)
                                                 prop:placeholder=move || {
                                                     let no_input = validated_amount_entered.get().is_none();
-                                                    let no_routes_found = match get_routes_action.value().get()
-                                                    {
-                                                        Some(Ok(routes)) => routes.routes.is_empty(),
+                                                    let no_routes_found = match routes.get() {
+                                                        Some(Ok(routes)) => routes.is_empty(),
                                                         _ => false,
                                                     };
                                                     if no_routes_found {
@@ -852,54 +782,25 @@ pub fn Swap() -> impl IntoView {
                                                 class="absolute right-2 top-1/2 -translate-y-1/2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm px-3 py-1 rounded-lg transition-colors duration-200 no-mobile-ripple"
                                                 on:click=move |_| {
                                                     if let Some(token) = token_in.get() {
-                                                        let max_amount_decimal = balance_to_decimal(
-                                                            token.balance,
-                                                            token.token.metadata.decimals,
-                                                        );
-                                                        let gas_cost_decimal = match token.token.account_id {
-                                                            Token::Near => BigDecimal::from_str("0.05").unwrap(),
-                                                            Token::Nep141(_) => BigDecimal::from_u32(0).unwrap(),
-                                                            Token::Rhea(_) => unreachable!(),
-                                                        };
-                                                        let final_amount = (max_amount_decimal - gas_cost_decimal)
-                                                            .max(BigDecimal::from(0));
-                                                        let amount_str = round_precision_or_significant(
-                                                            final_amount,
-                                                        );
-                                                        handle_amount_change(amount_str, SwapMode::ExactIn);
+                                                        let amount = balance_to_decimal(
+                                                                token.balance,
+                                                                token.token.metadata.decimals,
+                                                            )
+                                                            .normalized()
+                                                            .to_plain_string();
+                                                        set_max_input_amount.set(Some(amount.clone()));
+                                                        handle_amount_change(amount, SwapMode::ExactIn);
                                                     }
                                                 }
                                             >
                                                 {move || TranslationKey::PagesSwapMaxButton.format(&[])}
                                             </button>
                                         </div>
-                                        {move || {
-                                            if let Some(token) = token_in.get() {
-                                                let amount_to_use = match swap_mode_memo.get() {
-                                                    SwapMode::ExactIn => amount_entered.get(),
-                                                    SwapMode::ExactOut => {
-                                                        get_estimated_amount().unwrap_or_default()
-                                                    }
-                                                };
-                                                if let Ok(amount_decimal) = amount_to_use
-                                                    .parse::<BigDecimal>()
-                                                {
-                                                    let price_decimal = token.token.price_usd_hardcoded.clone();
-                                                    let usd_value_decimal = amount_decimal * price_decimal;
-
-                                                    view! {
-                                                        <div class="absolute right-3 -bottom-5 text-xs text-gray-400">
-                                                            {format_usd_value_no_hide(usd_value_decimal)}
-                                                        </div>
-                                                    }
-                                                        .into_any()
-                                                } else {
-                                                    ().into_any()
-                                                }
-                                            } else {
-                                                ().into_any()
-                                            }
-                                        }}
+                                        {move || input_usd.get().map(|amount| view! {
+                                            <div class="absolute right-3 -bottom-5 text-xs text-gray-400">
+                                                {format_usd_value_no_hide(amount)}
+                                            </div>
+                                        })}
                                     </div>
                                 </div>
                             </div>
@@ -942,12 +843,11 @@ pub fn Swap() -> impl IntoView {
                                 </div>
 
                                 <div class="flex gap-3">
-                                    <TokenSelector
+                                    <SwapTokenSelector
                                         selected_token=token_out
                                         on_select=move |token: TokenData| {
-                                            set_token_out.set(Some(token));
+                                            set_selected_token_out.set(token.token.account_id);
                                             set_amount_entered.set("".to_string());
-                                            get_routes_action.clear();
                                         }
                                         placeholder=move || {
                                             TranslationKey::PagesSwapSelectToken.format(&[])
@@ -962,9 +862,8 @@ pub fn Swap() -> impl IntoView {
                                             style=move || get_input_style(false)
                                             prop:placeholder=move || {
                                                 let no_input = validated_amount_entered.get().is_none();
-                                                let no_routes_found = match get_routes_action.value().get()
-                                                {
-                                                    Some(Ok(routes)) => routes.routes.is_empty(),
+                                                let no_routes_found = match routes.get() {
+                                                    Some(Ok(routes)) => routes.is_empty(),
                                                     _ => false,
                                                 };
                                                 if no_routes_found {
@@ -991,41 +890,18 @@ pub fn Swap() -> impl IntoView {
                                                 handle_amount_change(value, SwapMode::ExactOut);
                                             }
                                         />
-                                        {move || {
-                                            if let Some(token) = token_out.get() {
-                                                let amount_to_use = match swap_mode_memo.get() {
-                                                    SwapMode::ExactOut => amount_entered.get(),
-                                                    SwapMode::ExactIn => {
-                                                        get_estimated_amount().unwrap_or_default()
-                                                    }
-                                                };
-                                                if let Ok(amount_decimal) = amount_to_use
-                                                    .parse::<BigDecimal>()
-                                                {
-                                                    let price_decimal = token.token.price_usd_hardcoded.clone();
-                                                    let usd_value_decimal = amount_decimal * price_decimal;
-
-                                                    view! {
-                                                        <div class="absolute right-3 -bottom-5 text-xs text-gray-400">
-                                                            {format_usd_value_no_hide(usd_value_decimal)}
-                                                        </div>
-                                                    }
-                                                        .into_any()
-                                                } else {
-                                                    ().into_any()
-                                                }
-                                            } else {
-                                                ().into_any()
-                                            }
-                                        }}
+                                        {move || output_usd.get().map(|amount| view! {
+                                            <div class="absolute right-3 -bottom-5 text-xs text-gray-400">
+                                                {format_usd_value_no_hide(amount)}
+                                            </div>
+                                        })}
                                     </div>
                                 </div>
                             </div>
 
                             {move || {
                                 let has_amount = validated_amount_entered.get().is_some();
-                                let is_loading = get_routes_action.pending().get()
-                                    && get_routes_action.value().get().is_none();
+                                let is_loading = is_fetching_route.get() && routes.get().is_none();
                                 if !has_amount {
                                     view! {
                                         <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-center gap-3 w-full min-h-[56px]">
@@ -1046,8 +922,8 @@ pub fn Swap() -> impl IntoView {
                                         </div>
                                     }
                                         .into_any()
-                                } else if let Some(Ok(routes)) = get_routes_action.value().get() {
-                                    if let Some(best_route) = routes.routes.first() {
+                                } else if let Some(Ok(routes)) = routes.get() {
+                                    if let Some(best_route) = routes.first() {
                                         view! {
                                             <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-between gap-3 w-full min-h-[56px]">
                                                 {match best_route.dex_id {
@@ -1194,7 +1070,7 @@ pub fn Swap() -> impl IntoView {
                                         }
                                             .into_any()
                                     }
-                                } else if let Some(Err(error)) = get_routes_action.value().get() {
+                                } else if let Some(Err(error)) = routes.get() {
                                     view! {
                                         <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-center gap-3 w-full min-h-[56px]">
                                             <span class="text-red-400 font-medium text-sm text-center">
@@ -1222,19 +1098,15 @@ pub fn Swap() -> impl IntoView {
                             <button
                                 class="w-full bg-linear-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 disabled:opacity-50 disabled:from-neutral-600 disabled:to-neutral-700 text-white rounded-xl px-4 py-4 font-medium transition-all cursor-pointer disabled:cursor-not-allowed"
                                 disabled=move || {
-                                    token_in.get().is_none() || token_out.get().is_none()
+                                    swap_pending.get() || token_in.get().is_none() || token_out.get().is_none()
                                         || amount_entered.get().is_empty()
                                         || validated_amount_entered.get().is_none()
                                         || !has_sufficient_balance.get()
-                                        || match get_routes_action.value().get() {
-                                            Some(Ok(routes)) => routes.routes.is_empty(),
-                                            _ => true,
-                                        }
+                                        || missing_near.get().is_some()
+                                        || !has_route()
                                 }
                                 on:click=move |_| {
-                                    if let Some(Ok(routes)) = get_routes_action.value().get()
-                                        && let Some(best_route) = routes.routes.first()
-                                    {
+                                    if let Some(best_route) = best_route() {
                                         let Some(validated_amount_entered) = validated_amount_entered
                                             .get() else {
                                             log::error!(
@@ -1301,112 +1173,62 @@ pub fn Swap() -> impl IntoView {
                                                 }
                                             }
                                         };
-                                        let requires_impact_confirmation = {
-                                            let token_in_info = &token_in.token;
-                                            let token_out_info = &token_out.token;
-                                            // Unknown (zero) output price counts as worthless output: 100% impact
-                                            if !token_in_info.price_usd_hardcoded.is_zero() {
-                                                let amount_in_decimal = balance_to_decimal(
-                                                    amount_in,
-                                                    token_in_info.metadata.decimals,
-                                                );
-                                                let estimated_amount_out_decimal = balance_to_decimal(
-                                                    estimated_amount_out,
-                                                    token_out_info.metadata.decimals,
-                                                );
-                                                let input_usd_value = &amount_in_decimal
-                                                    * &token_in_info.price_usd_hardcoded;
-                                                let output_usd_value = &estimated_amount_out_decimal
-                                                    * &token_out_info.price_usd_hardcoded;
-                                                if !input_usd_value.is_zero() {
-                                                    let difference = &input_usd_value - &output_usd_value;
-                                                    if difference.sign() == Sign::Plus {
-                                                        ((difference / &input_usd_value) * 100) > 10
-                                                    } else {
-                                                        false
-                                                    }
-                                                } else {
-                                                    false
-                                                }
-                                            } else {
-                                                false
-                                            }
+                                        if swap_pending.get_untracked() {
+                                            return;
+                                        }
+                                        let identity = accounts.with_untracked(|state| {
+                                            let id = state.selected_account_id.as_ref()?;
+                                            let account = state.accounts.iter().find(|account| &account.account_id == id)?;
+                                            Some((account.account_id.clone(), account.secret_key.public_key(), account.network.clone()))
+                                        });
+                                        let Some((trader_account_id, signing_public_key, network)) = identity else { return; };
+                                        let requires_impact_confirmation = swap_price_impact(
+                                            balance_to_decimal(amount_in, token_in.token.metadata.decimals)
+                                                * &token_in.token.price_usd_hardcoded,
+                                            balance_to_decimal(estimated_amount_out, token_out.token.metadata.decimals)
+                                                * &token_out.token.price_usd_hardcoded,
+                                        ).is_some_and(|impact| impact > 10);
+                                        let confirmation = SwapConfirmation {
+                                            trader_account_id,
+                                            signing_public_key,
+                                            network,
+                                            token_in: token_in.token,
+                                            token_out: token_out.token,
+                                            amount_in,
+                                            estimated_amount_out,
+                                            worst_case_amount_in,
+                                            worst_case_amount_out,
+                                            route: best_route,
+                                            swap_mode: swap_mode.get_untracked(),
                                         };
-                                        if config.get().swap_confirmation_enabled
+                                        if config.with_untracked(|config| config.swap_confirmation_enabled)
                                             || requires_impact_confirmation
                                         {
-                                            let confirmation = SwapConfirmation {
-                                                token_in: token_in.token.clone(),
-                                                token_out: token_out.token.clone(),
-                                                amount_in,
-                                                estimated_amount_out,
-                                                worst_case_amount_in,
-                                                worst_case_amount_out,
-                                                route: best_route.clone(),
-                                                swap_mode: swap_mode_memo.get(),
-                                            };
-                                            let confirmation_clone = confirmation.clone();
-                                            modal
-                                                .set(
-                                                    Some(
-                                                        Box::new(move || {
-                                                            view! {
-                                                                <SwapConfirmationModal
-                                                                    confirmation=confirmation_clone.clone()
-                                                                    accounts=accounts
-                                                                    add_transaction=add_transaction
-                                                                    overlay_mode=overlay_mode
-                                                                    rpc_client=rpc_client
-                                                                />
-                                                            }
-                                                                .into_any()
-                                                        }),
-                                                    ),
-                                                );
+                                            let submit_swap = submit_swap.clone();
+                                            let can_submit = can_submit.clone();
+                                            modal.set(Some(Box::new(move || {
+                                                view! {
+                                                    <SwapConfirmationModal
+                                                        confirmation=confirmation.clone()
+                                                        on_confirm=submit_swap.clone()
+                                                        can_submit=can_submit.clone()
+                                                    />
+                                                }.into_any()
+                                            })));
                                         } else {
-                                            let Some(selected_account_id) = accounts
-                                                .get_untracked()
-                                                .selected_account_id else {
-                                                return;
-                                            };
-                                            let Some(selected_account) = accounts
-                                                .get_untracked()
-                                                .accounts
-                                                .into_iter()
-                                                .find(|account| account.account_id == selected_account_id)
-                                            else {
-                                                return;
-                                            };
-                                            log::info!("Swapping with route: {best_route:?}");
-                                            spawn_local(
-                                                execute_route(
-                                                    validated_amount_entered,
-                                                    swap_mode_memo.get(),
-                                                    token_in.token,
-                                                    token_out.token,
-                                                    best_route.clone(),
-                                                    selected_account,
-                                                    add_transaction,
-                                                    overlay_mode,
-                                                    rpc_client.get_untracked(),
-                                                    modal,
-                                                ),
-                                            );
-                                            set_swap_mode.set(SwapMode::ExactIn);
-                                            set_amount_entered.set("".to_string());
+                                            submit_swap(confirmation);
                                         }
                                     }
                                 }
                             >
                                 {move || {
-                                    if (get_routes_action.pending().get()
-                                        && get_routes_action.value().get().is_none()
-                                        && validated_amount_entered.get().is_some())
-                                        || get_routes_action
-                                            .value()
+                                    if swap_pending.get()
+                                        || (is_fetching_route.get() && routes.get().is_none()
+                                            && validated_amount_entered.get().is_some())
+                                        || routes
                                             .get()
                                             .and_then(|routes| routes.ok())
-                                            .map(|routes| { routes.routes.is_empty() })
+                                            .map(|routes| { routes.is_empty() })
                                             .unwrap_or(false)
                                     {
                                         view! {
@@ -1416,6 +1238,23 @@ pub fn Swap() -> impl IntoView {
                                                     {move || TranslationKey::PagesSwapLoading.format(&[])}
                                                 </span>
                                             </div>
+                                        }
+                                            .into_any()
+                                    } else if missing_near.get().is_some() {
+                                        view! {
+                                            <span>
+                                                {move || {
+                                                    if best_route()
+                                                        .is_some_and(|route| route.max_storage_deposits > 0)
+                                                    {
+                                                        TranslationKey::PagesSwapButtonNotEnoughNearForGasAndStorage
+                                                            .format(&[])
+                                                    } else {
+                                                        TranslationKey::PagesSwapButtonNotEnoughNearForGas
+                                                            .format(&[])
+                                                    }
+                                                }}
+                                            </span>
                                         }
                                             .into_any()
                                     } else {
@@ -1428,6 +1267,111 @@ pub fn Swap() -> impl IntoView {
                                     }
                                 }}
                             </button>
+
+                            {move || {
+                                let route = best_route();
+                                let format_near = |amount: Balance| {
+                                    format_token_amount_no_hide(amount, 24, "NEAR")
+                                };
+                                let gas_fee_tooltip = TranslationKey::PagesSwapGasFeeTooltip
+                                    .format(
+                                        &[
+                                            (
+                                                "gas_reserve",
+                                                format_near(
+                                                        route.as_ref().map_or(0, |route| route.gas_reserve()),
+                                                    )
+                                                    .as_str(),
+                                            ),
+                                        ],
+                                    );
+                                let storage_deposit_tooltip = TranslationKey::PagesSwapStorageDepositTooltip
+                                    .format(&[]);
+                                let gas_fee = route
+                                    .as_ref()
+                                    .map_or_else(
+                                        || "-".to_string(),
+                                        |route| format_near(route.estimated_gas_usage),
+                                    );
+                                let storage_deposit = route
+                                    .as_ref()
+                                    .map_or_else(
+                                        || "-".to_string(),
+                                        |route| format_near(route.storage_deposits),
+                                    );
+                                view! {
+                                    <div class="bg-neutral-800 rounded-lg px-4 py-3 space-y-2 text-sm">
+                                        <div class="flex items-center justify-between gap-3">
+                                            <span class="flex items-center gap-1 text-gray-400">
+                                                {TranslationKey::PagesSwapGasFee.format(&[])}
+                                                <Tooltip text=gas_fee_tooltip />
+                                            </span>
+                                            <span class="text-white">{gas_fee}</span>
+                                        </div>
+                                        <Show when=move || route.as_ref().is_some_and(|r| !r.storage_deposits.is_zero())>
+                                            <div class="flex items-center justify-between gap-3">
+                                                <span class="flex items-center gap-1 text-gray-400">
+                                                    {TranslationKey::PagesSwapStorageDeposit.format(&[])}
+                                                    <Tooltip text=storage_deposit_tooltip.clone() />
+                                                </span>
+                                                <span class="text-white">{storage_deposit.clone()}</span>
+                                            </div>
+                                        </Show>
+                                    </div>
+                                }
+                            }}
+
+                            {move || {
+                                let missing_near = missing_near.get()?;
+                                let route = best_route()?;
+                                let format_near = |amount: Balance| {
+                                    format_token_amount_no_hide(amount, 24, "NEAR")
+                                };
+                                let mut message = TranslationKey::PagesSwapNearRequired
+                                    .format(
+                                        &[
+                                            ("amount", format_near(missing_near).as_str()),
+                                            ("gas_reserve", format_near(route.gas_reserve()).as_str()),
+                                        ],
+                                    );
+                                if route.max_storage_deposits > 0 {
+                                    message
+                                        += &TranslationKey::PagesSwapNearRequiredStorageDeposit
+                                            .format(
+                                                &[
+                                                    (
+                                                        "storage_deposit",
+                                                        format_near(route.max_storage_deposits).as_str(),
+                                                    ),
+                                                ],
+                                            );
+                                    let refunded_right_away = route.max_storage_deposits
+                                        - route.storage_deposits;
+                                    if refunded_right_away > 0 {
+                                        message
+                                            += &TranslationKey::PagesSwapNearRequiredStorageRefunded
+                                                .format(
+                                                    &[("refunded", format_near(refunded_right_away).as_str())],
+                                                );
+                                    }
+                                }
+                                if token_in.get()?.token.account_id == Token::Near {
+                                    message
+                                        += &TranslationKey::PagesSwapNearRequiredPlusSwappedNear
+                                            .format(&[]);
+                                }
+                                message.push('.');
+                                Some(
+                                    view! {
+                                        <div
+                                            class="bg-red-900/20 border border-red-500/30 rounded-lg px-4 py-3 text-red-300 text-sm"
+                                            role="alert"
+                                        >
+                                            {message}
+                                        </div>
+                                    },
+                                )
+                            }}
 
                             // Advanced Options Section
                             <div>
@@ -1485,8 +1429,8 @@ pub fn Swap() -> impl IntoView {
                                             </label>
                                         </div>
                                         {move || {
-                                            if let Some(Ok(routes)) = get_routes_action.value().get() {
-                                                if let Some(best_route) = routes.routes.first() {
+                                            if let Some(Ok(routes)) = routes.get() {
+                                                if let Some(best_route) = routes.first() {
                                                     let current_mode = swap_mode_memo.get();
                                                     match best_route.worst_case_amount {
                                                         Amount::AmountIn(amount) => {
@@ -1629,7 +1573,6 @@ pub fn Swap() -> impl IntoView {
                                                                                     dexes.push(dex);
                                                                                 }
                                                                             });
-                                                                        get_routes_action.clear();
                                                                     }
                                                                 >
                                                                     {move || pages_swap_dex_label(dex)}
@@ -1645,55 +1588,7 @@ pub fn Swap() -> impl IntoView {
                             </div>
 
                             {move || {
-                                let input_usd = if let Some(token_in_data) = token_in.get() {
-                                    let amount_to_use = match swap_mode_memo.get() {
-                                        SwapMode::ExactIn => amount_entered.get(),
-                                        SwapMode::ExactOut => {
-                                            get_estimated_amount().unwrap_or_default()
-                                        }
-                                    };
-                                    if let Ok(amount_decimal) = amount_to_use.parse::<BigDecimal>()
-                                    {
-                                        Some(
-                                            amount_decimal
-                                                * token_in_data.token.price_usd_hardcoded.clone(),
-                                        )
-                                    } else {
-                                        None
-                                    }
-                                } else {
-                                    None
-                                };
-                                let output_usd = if let Some(token_out_data) = token_out.get() {
-                                    let amount_to_use = match swap_mode_memo.get() {
-                                        SwapMode::ExactOut => amount_entered.get(),
-                                        SwapMode::ExactIn => {
-                                            get_estimated_amount().unwrap_or_default()
-                                        }
-                                    };
-                                    if let Ok(amount_decimal) = amount_to_use.parse::<BigDecimal>()
-                                    {
-                                        Some(
-                                            amount_decimal
-                                                * token_out_data.token.price_usd_hardcoded.clone(),
-                                        )
-                                    } else {
-                                        None
-                                    }
-                                } else {
-                                    None
-                                };
-                                if let (Some(input_usd_val), Some(output_usd_val)) = (
-                                    input_usd,
-                                    output_usd,
-                                ) {
-                                    // Unknown (zero) output price counts as worthless output: 100% impact
-                                    if !input_usd_val.is_zero() {
-                                        let difference = &input_usd_val - &output_usd_val;
-                                        if difference.sign() != Sign::Plus {
-                                            return ().into_any();
-                                        }
-                                        let percentage_diff = (&difference / &input_usd_val) * 100;
+                                if let Some(percentage_diff) = price_impact.get() {
                                         let five_percent = 5;
                                         let two_percent = 2;
                                         if percentage_diff > five_percent {
@@ -1735,9 +1630,6 @@ pub fn Swap() -> impl IntoView {
                                         } else {
                                             ().into_any()
                                         }
-                                    } else {
-                                        ().into_any()
-                                    }
                                 } else {
                                     ().into_any()
                                 }
@@ -1759,7 +1651,99 @@ pub fn Swap() -> impl IntoView {
                     </div>
                 </div>
             </div>
-        </Show>
+    }
+}
+
+/// The shared policy for the page, confirmation requirement, and confirmation modal.
+fn swap_price_impact(input_usd: BigDecimal, output_usd: BigDecimal) -> Option<BigDecimal> {
+    if input_usd <= 0 {
+        return None;
+    }
+    let difference = &input_usd - output_usd;
+    (difference.sign() == Sign::Plus).then(|| (difference / input_usd) * 100)
+}
+
+/// Selection is independent of metadata and balances. Fetch results never mutate selection
+/// or the account's token list, and are accepted only for the current request key.
+fn use_swap_token(
+    selected: ReadSignal<Token>,
+    tokens: Signal<Vec<TokenData>>,
+    account_key: Memo<Option<(AccountId, Network)>>,
+) -> Signal<Option<TokenData>> {
+    let RpcContext { client: rpc_client } = expect_context::<RpcContext>();
+    let missing_key = Memo::new(move |_| {
+        let (account_id, network) = account_key.get()?;
+        let selected = selected.get();
+        if tokens.with(|tokens| {
+            tokens
+                .iter()
+                .any(|token| token.token.account_id == selected)
+        }) {
+            return None;
+        }
+        match selected {
+            Token::Nep141(token_id) => Some((account_id, network, token_id)),
+            Token::Near | Token::Rhea(_) => None,
+        }
+    });
+    let metadata = LocalResource::new(move || {
+        let key = missing_key.get();
+        let rpc = rpc_client.get();
+        async move {
+            let (account_id, network, token_id) = key?;
+            let token = fetch_token_info(token_id.clone(), network.clone()).await?;
+            // Metadata success alone does not imply a zero balance.
+            let balance =
+                get_ft_balance(&account_id, Token::Nep141(token_id.clone()), &rpc).await?;
+            Some((
+                (account_id, network, token_id),
+                TokenData {
+                    token,
+                    balance,
+                    source: TokenBalanceSource::Direct,
+                },
+            ))
+        }
+    });
+    Signal::derive(move || {
+        account_key.get()?;
+        let selected = selected.get();
+        if let Some(token) = tokens.with(|tokens| {
+            tokens
+                .iter()
+                .find(|token| token.token.account_id == selected)
+                .cloned()
+        }) {
+            return Some(token);
+        }
+        let current_key = missing_key.get()?;
+        let (loaded_key, token) = metadata.get()??;
+        (loaded_key == current_key).then_some(token)
+    })
+}
+
+/// Compatibility boundary for TokenSelector's existing ReadSignal prop. This mirror is
+/// display-only: validation and submission always read the derived token data above.
+#[component]
+fn SwapTokenSelector(
+    selected_token: Signal<Option<TokenData>>,
+    on_select: impl Fn(TokenData) + Copy + Send + Sync + 'static,
+    placeholder: impl Fn() -> String + Copy + Send + Sync + 'static,
+    allow_native_near: bool,
+) -> impl IntoView {
+    let (display_token, set_display_token) = signal(selected_token.get_untracked());
+    Effect::watch(
+        move || selected_token.get(),
+        move |token, _, _| set_display_token.set(token.clone()),
+        true,
+    );
+    view! {
+        <TokenSelector
+            selected_token=display_token
+            on_select=on_select
+            placeholder=placeholder
+            allow_native_near=allow_native_near
+        />
     }
 }
 
@@ -1957,31 +1941,161 @@ async fn get_ft_balance(
     }
 }
 
-async fn get_routes(swap_request: SwapRequest, router_url: String) -> Result<Routes, String> {
-    let filtered_dexes = swap_request.dexes.clone().unwrap_or_default();
-    let swap_request = SwapRequest {
-        dexes: if filtered_dexes.is_empty() {
-            None
-        } else {
-            Some(filtered_dexes)
-        },
-        ..swap_request
+const ROUTE_REQUEST_INITIAL_RETRY_DELAY: Duration = Duration::from_millis(1500);
+const ROUTE_REQUEST_MAX_RETRY_DELAY: Duration = Duration::from_secs(30);
+
+/// Owns the socket, request generations, and application-level retries for a route stream.
+fn use_route_subscription(
+    url: Memo<String>,
+    query: Memo<Option<String>>,
+) -> (
+    ReadSignal<Option<Result<Vec<Route>, String>>>,
+    ReadSignal<bool>,
+) {
+    let (routes, set_routes) = signal(None);
+    let (is_fetching, set_is_fetching) = signal(false);
+    let (socket, set_socket) = signal(None);
+    let request_id = StoredValue::new(0u64);
+    let active_query = StoredValue::new(None::<String>);
+    let retry_timer = StoredValue::new(None::<TimeoutHandle>);
+    let retry_delay = StoredValue::new(ROUTE_REQUEST_INITIAL_RETRY_DELAY);
+    let retry_tick = RwSignal::new(0u64);
+
+    let clear_retry = move || {
+        if let Some(timer) = retry_timer.get_value() {
+            timer.clear();
+            retry_timer.set_value(None);
+        }
     };
-    let routes = reqwest::Client::new()
-        .get(format!("{}/route", router_url.trim_end_matches('/')))
-        .query(&swap_request)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json::<Vec<Route>>()
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(Routes { routes })
+    on_cleanup(clear_retry);
+
+    let on_message = move |message: &String| {
+        let update = match serde_json::from_str::<RouteUpdate>(message) {
+            Ok(update) => update,
+            Err(error) => {
+                log::error!("Failed to parse route update: {error}");
+                return;
+            }
+        };
+        let current_query = query.get_untracked();
+        if update.id != request_id.get_value()
+            || current_query.is_none()
+            || current_query != active_query.get_value()
+        {
+            return;
+        }
+
+        // A successful update cancels a pending retry; repeated errors replace it.
+        clear_retry();
+        set_is_fetching.set(false);
+        match update.result {
+            RouteUpdateResult::Routes(new_routes) => {
+                retry_delay.set_value(ROUTE_REQUEST_INITIAL_RETRY_DELAY);
+                set_routes.set(Some(Ok(new_routes)));
+            }
+            RouteUpdateResult::Error(error) => {
+                log::error!("Route request failed, retrying: {error}");
+                set_routes.set(Some(Err(error)));
+                let delay = retry_delay.get_value();
+                let failed_id = update.id;
+                match set_timeout_with_handle(
+                    move || {
+                        retry_timer.set_value(None);
+                        if request_id.get_value() == failed_id && query.get_untracked().is_some() {
+                            retry_tick.update(|tick| *tick += 1);
+                        }
+                    },
+                    delay,
+                ) {
+                    Ok(timer) => {
+                        retry_timer.set_value(Some(timer));
+                        retry_delay
+                            .set_value(delay.mul_f32(1.8).min(ROUTE_REQUEST_MAX_RETRY_DELAY));
+                    }
+                    Err(error) => log::error!("Failed to schedule route retry: {error:?}"),
+                }
+            }
+        }
+    };
+
+    // The hook takes a static URL. This effect intentionally owns each socket so a URL
+    // change disposes the old hook (including its reconnect timer) before creating another.
+    Effect::new(move |_| {
+        let url = url.get();
+        clear_retry();
+        request_id.update_value(|id| *id += 1);
+        active_query.set_value(None);
+        set_routes.set(None);
+        set_is_fetching.set(query.get_untracked().is_some());
+        set_socket.set(Some(use_websocket_with_options::<
+            String,
+            String,
+            FromToStringCodec,
+            _,
+            _,
+        >(
+            &url,
+            UseWebSocketOptions::default()
+                .reconnect_limit(ReconnectLimit::Infinite)
+                .reconnect_interval(1500)
+                .on_message(on_message),
+        )));
+    });
+
+    Effect::watch(
+        move || {
+            // Track readiness even with no query, so the first request and reconnects
+            // cannot be missed while waiting for the socket to open.
+            let ready_state = socket.get().map(|ws| ws.ready_state.get());
+            (query.get(), ready_state, retry_tick.get())
+        },
+        move |(query, ready_state, _), previous, _| {
+            let query_changed = previous.is_none_or(|(old_query, _, _)| old_query != query);
+            let connection_changed =
+                previous.is_none_or(|(_, old_state, _)| old_state != ready_state);
+            clear_retry();
+            request_id.update_value(|id| *id += 1);
+            active_query.set_value(query.clone());
+
+            if query_changed {
+                retry_delay.set_value(ROUTE_REQUEST_INITIAL_RETRY_DELAY);
+            }
+            if query_changed || connection_changed {
+                set_routes.set(None);
+            }
+            set_is_fetching.set(query.is_some());
+
+            if *ready_state != Some(ConnectionReadyState::Open) {
+                return;
+            }
+            let Some(ws) = socket.get_untracked() else {
+                return;
+            };
+            let id = request_id.get_value();
+            let request = match query {
+                Some(query) => serde_json::json!({ "id": id, "query": query }),
+                None => serde_json::json!({ "id": id }),
+            };
+            (ws.send)(&request.to_string());
+        },
+        true,
+    );
+
+    (routes, is_fetching)
 }
 
-#[derive(Debug, Clone)]
-struct Routes {
-    routes: Vec<Route>,
+#[derive(Debug, Deserialize)]
+struct RouteUpdate {
+    id: u64,
+    #[serde(flatten)]
+    result: RouteUpdateResult,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum RouteUpdateResult {
+    Routes(Vec<Route>),
+    Error(String),
 }
 
 impl Default for Slippage {
@@ -1998,7 +2112,7 @@ impl Display for Slippage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Slippage::Auto { .. } => write!(f, "Auto"),
-            Slippage::Fixed { slippage } => write!(f, "{:.2}%", slippage * 100),
+            Slippage::Fixed { slippage } => write!(f, "{:.2}%", slippage * BigDecimal::from(100)),
         }
     }
 }
@@ -2176,6 +2290,27 @@ pub struct Route {
     /// when we wrap too much NEAR into wNEAR (because we're accounting for slippage)
     /// but the resulting wNEAR amount spent is less than what we wrapped.
     pub needs_unwrap: bool,
+    /// yoctoNEAR the transactions cost in gas if all attached gas is burnt
+    #[serde(with = "dec_format")]
+    pub estimated_max_gas_cost: Balance,
+    /// yoctoNEAR the transactions are expected to cost in gas
+    #[serde(with = "dec_format")]
+    pub estimated_gas_usage: Balance,
+    /// yoctoNEAR the transactions attach to storage deposits, less what they withdraw right after
+    #[serde(with = "dec_format")]
+    pub storage_deposits: Balance,
+    /// yoctoNEAR the transactions attach to storage deposits, which the wallet needs to have
+    /// even if some is withdrawn right after
+    #[serde(with = "dec_format")]
+    pub max_storage_deposits: Balance,
+}
+
+impl Route {
+    /// Attached gas is bought at the minimum gas purchase price, 10x the gas price, and the
+    /// unused part is refunded after the transaction
+    fn gas_reserve(&self) -> Balance {
+        self.estimated_max_gas_cost * 10
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -2444,10 +2579,8 @@ enum SwapPriceDangerTier {
 #[component]
 fn SwapConfirmationModal(
     confirmation: SwapConfirmation,
-    accounts: ReadSignal<crate::contexts::accounts_context::AccountsState>,
-    add_transaction: WriteSignal<Vec<EnqueuedTransaction>>,
-    overlay_mode: RwSignal<OverlayMode>,
-    rpc_client: RwSignal<RpcClient>,
+    on_confirm: std::rc::Rc<dyn Fn(SwapConfirmation)>,
+    can_submit: std::sync::Arc<dyn Fn() -> bool + Send + Sync>,
 ) -> impl IntoView {
     let ModalContext { modal } = expect_context::<ModalContext>();
     // Clone all the values we need to avoid partial moves
@@ -2503,24 +2636,10 @@ fn SwapConfirmationModal(
         token_out.metadata.symbol
     );
 
-    // Calculate price impact if possible. Unknown (zero) output price counts as
-    // worthless output: 100% impact
-    let price_impact: Option<BigDecimal> = if !token_in.price_usd_hardcoded.is_zero() {
-        let input_usd_value = &amount_in_decimal * &token_in.price_usd_hardcoded;
-        let output_usd_value = &estimated_amount_out_decimal * &token_out.price_usd_hardcoded;
-        if !input_usd_value.is_zero() {
-            let difference = &input_usd_value - &output_usd_value;
-            if difference.sign() == bigdecimal::num_bigint::Sign::Plus {
-                Some((difference / &input_usd_value) * 100)
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    let price_impact = swap_price_impact(
+        &amount_in_decimal * &token_in.price_usd_hardcoded,
+        &estimated_amount_out_decimal * &token_out.price_usd_hardcoded,
+    );
     let danger_confirmation: Option<(SwapPriceDangerTier, BigDecimal)> = match price_impact.as_ref()
     {
         Some(impact) if *impact > 90 => Some((SwapPriceDangerTier::Extreme, impact.clone())),
@@ -2892,50 +3011,19 @@ fn SwapConfirmationModal(
                         </button>
                         <button
                             class="flex-1 bg-linear-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-xl px-4 py-3 font-medium transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-blue-500 disabled:hover:to-purple-500"
-                            disabled=move || {
-                                requires_danger_confirmation && !is_danger_confirmed.get()
+                            disabled={
+                                let can_submit = can_submit.clone();
+                                move || !can_submit()
+                                    || (requires_danger_confirmation && !is_danger_confirmed.get())
                             }
                             on:click={
-                                let confirmation_clone = confirmation.clone();
+                                let confirmation = confirmation.clone();
                                 move |_| {
-                                    if requires_danger_confirmation
-                                        && !is_danger_confirmed.get_untracked()
+                                    if requires_danger_confirmation && !is_danger_confirmed.get_untracked()
                                     {
                                         return;
                                     }
-                                    let Some(selected_account_id) = accounts
-                                        .get_untracked()
-                                        .selected_account_id else {
-                                        return;
-                                    };
-                                    let Some(selected_account) = accounts
-                                        .get_untracked()
-                                        .accounts
-                                        .into_iter()
-                                        .find(|account| account.account_id == selected_account_id)
-                                    else {
-                                        return;
-                                    };
-                                    modal.set(None);
-                                    let confirmation_exec = confirmation_clone.clone();
-                                    let modal_clone = modal;
-                                    spawn_local(
-                                        execute_route(
-                                            match confirmation_exec.swap_mode {
-                                                SwapMode::ExactIn => confirmation_exec.amount_in,
-                                                SwapMode::ExactOut => confirmation_exec.estimated_amount_out,
-                                            },
-                                            confirmation_exec.swap_mode,
-                                            confirmation_exec.token_in,
-                                            confirmation_exec.token_out,
-                                            confirmation_exec.route,
-                                            selected_account,
-                                            add_transaction,
-                                            overlay_mode,
-                                            rpc_client.get_untracked(),
-                                            modal_clone,
-                                        ),
-                                    );
+                                    on_confirm(confirmation.clone());
                                 }
                             }
                         >
