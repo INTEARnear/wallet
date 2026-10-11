@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO hourly_active_accounts (hour, account_id)\n                 SELECT * FROM UNNEST($1::timestamptz[], $2::text[])\n                 ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TimestamptzArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "299011295ca4bd67ff4ff5d8e1d2c624192d79455e1e267a5fdb86f06ab5e6b9"
+}

@@ -1,0 +1,50 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT hour, key_type, transaction_count FROM hourly_key_type_stats\n         ORDER BY hour, key_type",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "hour",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "hourly_key_type_stats",
+            "name": "hour"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "key_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "hourly_key_type_stats",
+            "name": "key_type"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "transaction_count",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "hourly_key_type_stats",
+            "name": "transaction_count"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "b0f2a2aca120ff4d563681501c9e31240a9ac86d1b0aa87c0d2f2f7478d09c99"
+}

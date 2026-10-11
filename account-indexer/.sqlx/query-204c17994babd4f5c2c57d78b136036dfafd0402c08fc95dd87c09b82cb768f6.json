@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO hourly_stats (hour, active_accounts_count, exclusively_pq_accounts_count)\n         SELECT h.hour, count(*), count(*) FILTER (WHERE c.is_exclusively_pq)\n         FROM hourly_active_accounts h\n         LEFT JOIN account_key_counts c ON c.account_id = h.account_id\n         WHERE h.hour < $1\n         GROUP BY h.hour\n         ON CONFLICT (hour) DO UPDATE SET\n             active_accounts_count = EXCLUDED.active_accounts_count,\n             exclusively_pq_accounts_count = EXCLUDED.exclusively_pq_accounts_count",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "204c17994babd4f5c2c57d78b136036dfafd0402c08fc95dd87c09b82cb768f6"
+}

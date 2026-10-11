@@ -1,7 +1,11 @@
 use axum::{Json, Router, routing::post};
-use rustyscript::{Module, Runtime, RuntimeOptions, json_args};
+use rquickjs::{CatchResultExt, Context, Function, Module, Runtime, Value};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, net::SocketAddr, time::Duration};
+use std::{
+    collections::HashMap,
+    net::SocketAddr,
+    time::{Duration, Instant},
+};
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::EnvFilter;
 
@@ -184,30 +188,57 @@ async fn execute_js_in_sandbox(
     js_code: &str,
     content: &str,
 ) -> Result<HashMap<String, f64>, String> {
-    let module = Module::new("extract.js", js_code);
-
     tracing::info!("Executing JavaScript in sandbox: {}", js_code);
 
+    let js_code = js_code.to_owned();
     let content = content.to_owned();
-    let value = tokio::task::spawn_blocking(move || {
-        let mut runtime = Runtime::new(RuntimeOptions {
-            timeout: Duration::from_secs(15),
-            ..Default::default()
-        })
-        .map_err(|e| format!("Failed to create runtime: {}", e))?;
-        let module = runtime
-            .load_module(&module)
-            .map_err(|e| format!("Failed to load module: {}", e))?;
-        let value: serde_json::Value = runtime
-            .call_entrypoint(&module, json_args!(content))
-            .map_err(|e| format!("Failed to call entrypoint: {}", e))?;
-        Result::<serde_json::Value, String>::Ok(value)
-    })
-    .await
-    .unwrap()?;
+    let value = tokio::task::spawn_blocking(move || run_js_module(&js_code, &content))
+        .await
+        .unwrap()?;
 
     tracing::info!("Parsed accounts from JavaScript in sandbox: {}", value);
     parse_accounts_from_json(value)
+}
+
+const JS_TIMEOUT: Duration = Duration::from_secs(15);
+const JS_MEMORY_LIMIT: usize = 256 * 1024 * 1024;
+
+/// Runs the module's default export with `content` as the only argument. The
+/// runtime has no module loader and no I/O, so imports and side effects fail.
+fn run_js_module(js_code: &str, content: &str) -> Result<serde_json::Value, String> {
+    let runtime = Runtime::new().map_err(|e| format!("Failed to create runtime: {}", e))?;
+    runtime.set_memory_limit(JS_MEMORY_LIMIT);
+    let deadline = Instant::now() + JS_TIMEOUT;
+    runtime.set_interrupt_handler(Some(Box::new(move || Instant::now() >= deadline)));
+    let context =
+        Context::full(&runtime).map_err(|e| format!("Failed to create context: {}", e))?;
+
+    context.with(|ctx| {
+        let (module, evaluated) = Module::declare(ctx.clone(), "extract.js", js_code)
+            .and_then(|module| module.eval())
+            .catch(&ctx)
+            .map_err(|e| format!("Failed to load module: {}", e))?;
+        evaluated
+            .finish::<()>()
+            .catch(&ctx)
+            .map_err(|e| format!("Failed to evaluate module: {}", e))?;
+        let entrypoint: Function = module
+            .get("default")
+            .catch(&ctx)
+            .map_err(|e| format!("Module has no default export function: {}", e))?;
+        let result: Value = entrypoint
+            .call((content,))
+            .catch(&ctx)
+            .map_err(|e| format!("Failed to call entrypoint: {}", e))?;
+        let json = ctx
+            .json_stringify(result)
+            .catch(&ctx)
+            .map_err(|e| format!("Failed to serialize result: {}", e))?
+            .ok_or("Entrypoint returned undefined")?
+            .to_string()
+            .map_err(|e| format!("Failed to read result: {}", e))?;
+        serde_json::from_str(&json).map_err(|e| format!("Failed to parse result: {}", e))
+    })
 }
 
 fn parse_openai_response(json: serde_json::Value) -> Result<HashMap<String, f64>, String> {

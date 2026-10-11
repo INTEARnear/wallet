@@ -258,17 +258,11 @@ pub fn Connect() -> impl IntoView {
                 let text_to_prove = format!("{}|{}", request_data.nonce, request_data.message);
                 let to_prove = text_to_prove.as_bytes();
                 let to_prove = CryptoHash::hash_bytes(to_prove); // sha256
-                let is_valid = request_data
+                request_data
                     .signature
                     .verify(to_prove.as_bytes(), &request_data.auth_public_key)
                     && request_data.nonce > Date::now() as u64 - 1000 * 60 * 5
-                    && request_data.nonce <= Date::now() as u64;
-
-                if !is_valid {
-                    return false;
-                }
-
-                true
+                    && request_data.nonce <= Date::now() as u64
             }
             _ => false,
         }

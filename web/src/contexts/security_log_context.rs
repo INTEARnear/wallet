@@ -485,10 +485,9 @@ fn parse_sent_transactions(s: &str) -> Option<SecurityLogEvent> {
         "Sent dangerous (not typed 'CONFIRM') transactions on /send-transactions from ",
     ) {
         (rest, TransactionDanger::NotConfirmed)
-    } else if let Some(rest) = s.strip_prefix("Sent transactions on /send-transactions from ") {
-        (rest, TransactionDanger::NotDangerous)
     } else {
-        return None;
+        let rest = s.strip_prefix("Sent transactions on /send-transactions from ")?;
+        (rest, TransactionDanger::NotDangerous)
     };
     let (origin, transactions) = rest.split_once(": ")?;
     Some(SecurityLogEvent::SentTransactions {

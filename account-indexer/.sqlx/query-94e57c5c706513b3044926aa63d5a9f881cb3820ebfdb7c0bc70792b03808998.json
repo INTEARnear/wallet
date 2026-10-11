@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT last_block_height FROM indexer_progress WHERE id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "last_block_height",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "indexer_progress",
+            "name": "last_block_height"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "94e57c5c706513b3044926aa63d5a9f881cb3820ebfdb7c0bc70792b03808998"
+}

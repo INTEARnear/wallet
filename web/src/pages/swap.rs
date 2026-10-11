@@ -1944,14 +1944,13 @@ async fn get_ft_balance(
 const ROUTE_REQUEST_INITIAL_RETRY_DELAY: Duration = Duration::from_millis(1500);
 const ROUTE_REQUEST_MAX_RETRY_DELAY: Duration = Duration::from_secs(30);
 
+type RoutesState = Option<Result<Vec<Route>, String>>;
+
 /// Owns the socket, request generations, and application-level retries for a route stream.
 fn use_route_subscription(
     url: Memo<String>,
     query: Memo<Option<String>>,
-) -> (
-    ReadSignal<Option<Result<Vec<Route>, String>>>,
-    ReadSignal<bool>,
-) {
+) -> (ReadSignal<RoutesState>, ReadSignal<bool>) {
     let (routes, set_routes) = signal(None);
     let (is_fetching, set_is_fetching) = signal(false);
     let (socket, set_socket) = signal(None);

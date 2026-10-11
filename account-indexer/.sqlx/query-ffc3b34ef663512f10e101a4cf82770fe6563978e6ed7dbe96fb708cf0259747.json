@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM hourly_active_accounts WHERE hour < $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ffc3b34ef663512f10e101a4cf82770fe6563978e6ed7dbe96fb708cf0259747"
+}

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "WITH inserted AS (\n                             INSERT INTO access_keys (key_handle, account_id)\n                             SELECT * FROM UNNEST($1::text[], $2::text[])\n                             ON CONFLICT DO NOTHING\n                             RETURNING account_id, key_handle\n                         ), deltas AS (\n                             SELECT account_id,\n                                    count(*)::int AS added_keys,\n                                    count(*) FILTER (WHERE key_handle LIKE 'ml-dsa-65-hash:%')::int\n                                        AS added_pq_keys\n                             FROM inserted\n                             GROUP BY account_id\n                         )\n                         INSERT INTO account_key_counts (account_id, full_access_key_count, pq_key_count)\n                         SELECT account_id, added_keys, added_pq_keys FROM deltas\n                         ON CONFLICT (account_id) DO UPDATE SET\n                             full_access_key_count = account_key_counts.full_access_key_count\n                                 + EXCLUDED.full_access_key_count,\n                             pq_key_count = account_key_counts.pq_key_count + EXCLUDED.pq_key_count",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3cb69eaf78647f8ff8f6bb9f3d166640aa6a74b9018fd8e62372df37951b2745"
+}

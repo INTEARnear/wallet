@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "WITH deleted AS (\n                             DELETE FROM access_keys\n                             WHERE (key_handle, account_id)\n                                 IN (SELECT * FROM UNNEST($1::text[], $2::text[]))\n                             RETURNING account_id, key_handle\n                         ), deltas AS (\n                             SELECT account_id,\n                                    count(*)::int AS removed_keys,\n                                    count(*) FILTER (WHERE key_handle LIKE 'ml-dsa-65-hash:%')::int\n                                        AS removed_pq_keys\n                             FROM deleted\n                             GROUP BY account_id\n                         )\n                         UPDATE account_key_counts SET\n                             full_access_key_count = account_key_counts.full_access_key_count\n                                 - deltas.removed_keys,\n                             pq_key_count = account_key_counts.pq_key_count - deltas.removed_pq_keys\n                         FROM deltas\n                         WHERE account_key_counts.account_id = deltas.account_id",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "af14e0ecd1c1b80ce8bb104418d5eff15bba4f07f1917eddeb2c410b342513fd"
+}

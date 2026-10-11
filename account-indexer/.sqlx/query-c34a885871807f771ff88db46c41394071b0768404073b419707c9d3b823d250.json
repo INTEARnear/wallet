@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT coalesce(sum(transaction_count), 0)::bigint FROM hourly_key_type_stats\n         WHERE key_type = 'ml-dsa-65'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "coalesce",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c34a885871807f771ff88db46c41394071b0768404073b419707c9d3b823d250"
+}
