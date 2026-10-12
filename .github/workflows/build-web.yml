@@ -64,7 +64,7 @@ jobs:
           sed -i "s/{{{VERSION}}}/$COMMIT_HASH/g" dist/service_worker.js
 
       - name: Create _redirects file
-        run: echo "/*   /index.html   200" > dist/_redirects
+        run: echo "/*   /app.html   200" > dist/_redirects
 
       - name: Create netlify.toml file
         run: |

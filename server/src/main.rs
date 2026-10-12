@@ -17,7 +17,16 @@ use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 
-pub fn shell(options: LeptosOptions) -> impl IntoView {
+/// Only the home page is for search engines.
+#[derive(Clone, Copy)]
+pub enum ShellPage {
+    /// index.html, served at `/`.
+    Home,
+    /// app.html, served at every other path.
+    App,
+}
+
+pub fn shell(options: LeptosOptions, page: ShellPage) -> impl IntoView {
     let hash_file = if cfg!(debug_assertions) {
         format!("target/debug/{}", options.hash_file)
     } else {
@@ -33,13 +42,46 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
         .map(|h| (h[0], h[1]))
         .collect::<HashMap<&str, &str>>();
     let css_hash = hash_map.get("css").expect("css hash not found");
+    let title = match page {
+        ShellPage::Home => "Intear Wallet — Fast and Secure NEAR Wallet",
+        ShellPage::App => "Intear Wallet",
+    };
     view! {
         <!DOCTYPE html>
         <html lang="en" dir="ltr" data-theme="dark">
             <head>
-                <title>"Intear Wallet"</title>
+                <title>{title}</title>
 
                 <meta charset="UTF-8" />
+                <meta
+                    name="description"
+                    content="The fastest and most secure wallet on NEAR, made for trading and using dApps. Swap, stake, and send tokens and NFTs, with Ledger support."
+                />
+                <meta property="og:type" content="website" />
+                <meta property="og:site_name" content="Intear Wallet" />
+                <meta property="og:title" content="Intear Wallet" />
+                <meta
+                    property="og:description"
+                    content="The fastest and most secure wallet on NEAR, made for trading and using dApps."
+                />
+                <meta property="og:image" content="https://wallet.intear.tech/og-image.png" />
+                <meta property="og:image:width" content="1200" />
+                <meta property="og:image:height" content="630" />
+                <meta property="og:image:alt" content="Intear Wallet" />
+                <meta name="twitter:card" content="summary_large_image" />
+                <meta name="twitter:site" content="@intea_rs" />
+                {match page {
+                    ShellPage::Home => {
+                        view! {
+                            <link rel="canonical" href="https://wallet.intear.tech/" />
+                            <script type="application/ld+json">
+                                r#"{"@context":"https://schema.org","@graph":[{"@type":"WebSite","name":"Intear Wallet","url":"https://wallet.intear.tech/"},{"@type":"WebApplication","name":"Intear Wallet","url":"https://wallet.intear.tech/","applicationCategory":"FinanceApplication","operatingSystem":"Web","publisher":{"@type":"Organization","name":"Intear","url":"https://intea.rs/"}}]}"#
+                            </script>
+                        }
+                            .into_any()
+                    }
+                    ShellPage::App => view! { <meta name="robots" content="noindex" /> }.into_any(),
+                }}
                 <meta
                     name="viewport"
                     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
@@ -378,25 +420,29 @@ async fn main() {
     let addr = conf.leptos_options.site_addr;
     let leptos_options = conf.leptos_options;
 
-    let index_path = PathBuf::from(&*leptos_options.site_root).join("index.html");
-
-    let html = shell(leptos_options.clone()).to_html();
-    assert!(
-        html.contains("`${root}/${pkg_path}/${wasm_output_name}.wasm`"),
-        "generated .html wasm loader format changed"
-    );
-    let html = if std::env::var("USE_ALTERNATIVE_WASM_PROTOCOL").is_ok_and(|v| v == "true") {
-        html.replace(
-            "`${root}/${pkg_path}/${wasm_output_name}.wasm`",
-            "`http://127.0.0.1:23878/${root}/${pkg_path}/${wasm_output_name}.wasm`",
-        )
-    } else {
-        html
-    };
-    tokio::fs::write(index_path, html)
-        .await
-        .expect("could not write index.html");
-    log::info!("Wrote index.html");
+    for (page, file_name) in [
+        (ShellPage::Home, "index.html"),
+        (ShellPage::App, "app.html"),
+    ] {
+        let html = shell(leptos_options.clone(), page).to_html();
+        assert!(
+            html.contains("`${root}/${pkg_path}/${wasm_output_name}.wasm`"),
+            "generated .html wasm loader format changed"
+        );
+        let html = if std::env::var("USE_ALTERNATIVE_WASM_PROTOCOL").is_ok_and(|v| v == "true") {
+            html.replace(
+                "`${root}/${pkg_path}/${wasm_output_name}.wasm`",
+                "`http://127.0.0.1:23878/${root}/${pkg_path}/${wasm_output_name}.wasm`",
+            )
+        } else {
+            html
+        };
+        let path = PathBuf::from(&*leptos_options.site_root).join(file_name);
+        tokio::fs::write(path, html)
+            .await
+            .unwrap_or_else(|error| panic!("could not write {file_name}: {error}"));
+        log::info!("Wrote {file_name}");
+    }
 
     if std::env::var("ONLY_CREATE_INDEX_HTML").is_ok() {
         return;
@@ -425,9 +471,9 @@ pub async fn file_and_error_handler(
     let root = options.site_root.clone();
     match get_static_file(uri.clone(), &root).await {
         Ok(res) => res.into_response(),
-        Err(_) => get_static_file(Uri::from_static("/index.html"), &root)
+        Err(_) => get_static_file(Uri::from_static("/app.html"), &root)
             .await
-            .expect("could not find index.html")
+            .expect("could not find app.html")
             .into_response(),
     }
 }
