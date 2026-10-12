@@ -42,16 +42,10 @@ pub fn shell(options: LeptosOptions, page: ShellPage) -> impl IntoView {
         .map(|h| (h[0], h[1]))
         .collect::<HashMap<&str, &str>>();
     let css_hash = hash_map.get("css").expect("css hash not found");
-    let title = match page {
-        ShellPage::Home => "Intear Wallet — Fast and Secure NEAR Wallet",
-        ShellPage::App => "Intear Wallet",
-    };
     view! {
         <!DOCTYPE html>
         <html lang="en" dir="ltr" data-theme="dark">
             <head>
-                <title>{title}</title>
-
                 <meta charset="UTF-8" />
                 <meta
                     name="description"
@@ -73,6 +67,7 @@ pub fn shell(options: LeptosOptions, page: ShellPage) -> impl IntoView {
                 {match page {
                     ShellPage::Home => {
                         view! {
+                            <title>"Intear Wallet — Fast and Secure NEAR Wallet"</title>
                             <link rel="canonical" href="https://wallet.intear.tech/" />
                             <script type="application/ld+json">
                                 r#"{"@context":"https://schema.org","@graph":[{"@type":"WebSite","name":"Intear Wallet","url":"https://wallet.intear.tech/"},{"@type":"WebApplication","name":"Intear Wallet","url":"https://wallet.intear.tech/","applicationCategory":"FinanceApplication","operatingSystem":"Web","publisher":{"@type":"Organization","name":"Intear","url":"https://intea.rs/"}}]}"#
@@ -80,7 +75,10 @@ pub fn shell(options: LeptosOptions, page: ShellPage) -> impl IntoView {
                         }
                             .into_any()
                     }
-                    ShellPage::App => view! { <meta name="robots" content="noindex" /> }.into_any(),
+                    ShellPage::App => view! {
+                        <title>"Intear Wallet"</title>
+                        <meta name="robots" content="noindex" />
+                    }.into_any(),
                 }}
                 <meta
                     name="viewport"
