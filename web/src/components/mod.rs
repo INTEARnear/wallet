@@ -29,6 +29,7 @@ pub mod tooltip;
 pub mod total_portfolio_value;
 pub mod transaction_modals;
 pub mod transaction_queue_overlay;
+pub mod welcome_screen;
 
 pub use number_format_settings::NumberFormatSettings;
 pub use toggle_switch::ToggleSwitch;

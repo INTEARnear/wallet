@@ -105,7 +105,7 @@ impl AccountCreateParent {
 }
 
 #[component]
-pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
+pub fn AccountCreationForm() -> impl IntoView {
     let AccountSelectorContext {
         set_modal_state,
         set_expanded,
@@ -657,23 +657,20 @@ pub fn AccountCreationForm(show_back_button: bool) -> impl IntoView {
 
     view! {
         <div class="absolute inset-0 bg-neutral-950 lg:rounded-3xl">
-            {move || {
-                if show_back_button {
-                    view! {
-                        <button
-                            class="absolute left-4 top-4 w-10 h-10 rounded-full flex items-center justify-center text-neutral-400 group hover:bg-neutral-300 z-10"
-                            on:click=move |_| set_modal_state.set(ModalState::AccountList)
-                        >
-                            <div class="group-hover:text-black">
-                                <Icon icon=icondata::LuArrowLeft width="20" height="20" />
-                            </div>
-                        </button>
+            <button
+                class="absolute left-4 top-4 w-10 h-10 rounded-full flex items-center justify-center text-neutral-400 group hover:bg-neutral-300 z-10"
+                on:click=move |_| {
+                    if accounts_context.accounts.get_untracked().accounts.is_empty() {
+                        set_modal_state.set(ModalState::Welcome)
+                    } else {
+                        set_modal_state.set(ModalState::AccountList)
                     }
-                        .into_any()
-                } else {
-                    ().into_any()
                 }
-            }} <div class="absolute inset-0 flex items-center justify-center">
+            >
+                <div class="group-hover:text-black">
+                    <Icon icon=icondata::LuArrowLeft width="20" height="20" />
+                </div>
+            </button> <div class="absolute inset-0 flex items-center justify-center">
                 <div class="bg-neutral-950 p-8 rounded-xl w-full max-w-md max-h-full overflow-y-auto">
                     {move || {
                         if is_on_gift_page() {

@@ -1415,5 +1415,18 @@
   "pages.token.warning_spam_title": "Cảnh báo: Đây là Token Spam",
   "pages.token.warning_unverified_body": "Token này chưa được xác minh. Hãy thận trọng khi tương tác với nó.",
   "pages.token.warning_unverified_title": "Cảnh báo: Token chưa xác minh",
-  "pages.token.your_balance": "Số dư của bạn"
+  "pages.token.your_balance": "Số dư của bạn",
+  "components.welcome_screen.title": "",
+  "components.welcome_screen.subtitle": "",
+  "components.welcome_screen.feature_swap_title": "",
+  "components.welcome_screen.feature_swap_description": "",
+  "components.welcome_screen.feature_stake_title": "",
+  "components.welcome_screen.feature_stake_description": "",
+  "components.welcome_screen.feature_ledger_title": "",
+  "components.welcome_screen.feature_ledger_description": "",
+  "components.welcome_screen.feature_open_source_title": "",
+  "components.welcome_screen.feature_open_source_description": "",
+  "components.welcome_screen.button_create_account": "",
+  "components.welcome_screen.button_log_in": "",
+  "components.welcome_screen.learn_more": ""
 }

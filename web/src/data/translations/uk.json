@@ -1415,5 +1415,18 @@
   "pages.token.warning_spam_title": "Попередження: це спам-токен",
   "pages.token.warning_unverified_body": "Цей токен не верифіковано. Будьте обережні під час взаємодії з ним.",
   "pages.token.warning_unverified_title": "Попередження: неверифікований токен",
-  "pages.token.your_balance": "Ваш баланс"
+  "pages.token.your_balance": "Ваш баланс",
+  "components.welcome_screen.title": "NEAR гаманець створений для трейдингу",
+  "components.welcome_screen.subtitle": "Intear Wallet це швидкий, безбечний і open-source NEAR гаманець. Обмінюй токени, користуйся стейкінгом, і відправляй NEAR токени і NFT прямо з браузеру.",
+  "components.welcome_screen.feature_swap_title": "Обмінюй будь-які токени на NEAR",
+  "components.welcome_screen.feature_swap_description": "З найкращою ціною в нашому Intear DEX Aggregator, не залишаючи гаманець.",
+  "components.welcome_screen.feature_stake_title": "Стейкінг NEAR",
+  "components.welcome_screen.feature_stake_description": "Отримуй пасивні винагороди за стейкінг NEAR, звичайний чи ліквідний.",
+  "components.welcome_screen.feature_ledger_title": "Підтримка Ledger",
+  "components.welcome_screen.feature_ledger_description": "Твої ключі не залишають гаманець Ledger, підтверджуй кожну транзакцію на свому Ledger і користуйся нашим інтерфейсом.",
+  "components.welcome_screen.feature_open_source_title": "Open source",
+  "components.welcome_screen.feature_open_source_description": "Весь код гаманця - в публічному доступі на GitHub.",
+  "components.welcome_screen.button_create_account": "Створити NEAR акаунт",
+  "components.welcome_screen.button_log_in": "У мене вже є NEAR гаманець",
+  "components.welcome_screen.learn_more": "Дізнатись більше про Intear Wallet"
 }

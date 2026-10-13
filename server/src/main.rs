@@ -26,6 +26,10 @@ pub enum ShellPage {
     App,
 }
 
+const DESCRIPTION: &str = "Intear Wallet is a fast, secure and open-source NEAR wallet. Create a .near account, swap and stake NEAR, send tokens and NFTs, and use your Ledger.";
+
+const STRUCTURED_DATA: &str = r#"{"@context":"https://schema.org","@graph":[{"@type":"WebSite","name":"Intear Wallet","url":"https://wallet.intear.tech/"},{"@type":"WebApplication","name":"Intear Wallet","url":"https://wallet.intear.tech/","description":"Intear Wallet is a fast, secure and open-source NEAR wallet. Create a .near account, swap and stake NEAR, send tokens and NFTs, and use your Ledger.","image":"https://wallet.intear.tech/og-image.png","applicationCategory":"FinanceApplication","operatingSystem":"Web","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Intear","url":"https://intea.rs/","logo":"https://intea.rs/assets/intear-logo-512.png","sameAs":["https://x.com/intea_rs","https://t.me/intearchat","https://github.com/INTEARnear"]}}]}"#;
+
 pub fn shell(options: LeptosOptions, page: ShellPage) -> impl IntoView {
     let hash_file = if cfg!(debug_assertions) {
         format!("target/debug/{}", options.hash_file)
@@ -42,48 +46,44 @@ pub fn shell(options: LeptosOptions, page: ShellPage) -> impl IntoView {
         .map(|h| (h[0], h[1]))
         .collect::<HashMap<&str, &str>>();
     let css_hash = hash_map.get("css").expect("css hash not found");
+    let title = match page {
+        ShellPage::Home => "NEAR Wallet — Swap, Stake and Send | Intear Wallet",
+        ShellPage::App => "Intear Wallet",
+    };
     view! {
         <!DOCTYPE html>
         <html lang="en" dir="ltr" data-theme="dark">
             <head>
                 <meta charset="UTF-8" />
-                <meta
-                    name="description"
-                    content="The fastest and most secure wallet on NEAR, made for trading and using dApps. Swap, stake, and send tokens and NFTs, with Ledger support."
-                />
+                // Text children get a `<!>` hydration marker, which would end up in the title text
+                <title inner_html=title />
+                <meta name="description" content=DESCRIPTION />
                 <meta property="og:type" content="website" />
                 <meta property="og:site_name" content="Intear Wallet" />
-                <meta property="og:title" content="Intear Wallet" />
-                <meta
-                    property="og:description"
-                    content="The fastest and most secure wallet on NEAR, made for trading and using dApps."
-                />
+                {leptos::html::meta().attr("property", "og:title").content(title)}
+                {leptos::html::meta().attr("property", "og:description").content(DESCRIPTION)}
                 <meta property="og:image" content="https://wallet.intear.tech/og-image.png" />
                 <meta property="og:image:width" content="1200" />
                 <meta property="og:image:height" content="630" />
                 <meta property="og:image:alt" content="Intear Wallet" />
                 <meta name="twitter:card" content="summary_large_image" />
                 <meta name="twitter:site" content="@intea_rs" />
+                <meta name="twitter:title" content=title />
+                <meta name="twitter:description" content=DESCRIPTION />
                 {match page {
                     ShellPage::Home => {
                         view! {
-                            <title>"Intear Wallet — Fast and Secure NEAR Wallet"</title>
                             <link rel="canonical" href="https://wallet.intear.tech/" />
-                            <script type="application/ld+json">
-                                r#"{"@context":"https://schema.org","@graph":[{"@type":"WebSite","name":"Intear Wallet","url":"https://wallet.intear.tech/"},{"@type":"WebApplication","name":"Intear Wallet","url":"https://wallet.intear.tech/","applicationCategory":"FinanceApplication","operatingSystem":"Web","publisher":{"@type":"Organization","name":"Intear","url":"https://intea.rs/"}}]}"#
-                            </script>
+                            {leptos::html::meta()
+                                .attr("property", "og:url")
+                                .content("https://wallet.intear.tech/")}
+                            <script type="application/ld+json" inner_html=STRUCTURED_DATA />
                         }
                             .into_any()
                     }
-                    ShellPage::App => view! {
-                        <title>"Intear Wallet"</title>
-                        <meta name="robots" content="noindex" />
-                    }.into_any(),
+                    ShellPage::App => view! { <meta name="robots" content="noindex" /> }.into_any(),
                 }}
-                <meta
-                    name="viewport"
-                    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
-                />
+                <meta name="viewport" content="width=device-width, initial-scale=1.0" />
                 <meta
                     http-equiv="Content-Security-Policy"
                     content="

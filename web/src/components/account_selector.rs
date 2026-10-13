@@ -22,6 +22,7 @@ use web_sys::TouchEvent;
 
 use crate::components::account_creation_form::AccountCreationForm;
 use crate::components::login_form::LoginForm;
+use crate::components::welcome_screen::WelcomeScreen;
 use crate::contexts::accounts_context::Account;
 use crate::contexts::network_context::{Network, NetworkContext};
 use crate::contexts::security_log_context::{SecurityLogEvent, add_security_log};
@@ -54,6 +55,7 @@ pub struct SocialImage {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ModalState {
+    Welcome,
     AccountList,
     Creating {
         parent: AccountCreateParent,
@@ -687,21 +689,29 @@ pub fn AccountSelector() -> impl IntoView {
         fetch_profile_images();
     });
 
-    // Show creation form immediately if there are no accounts
+    // Show welcome screen immediately if there are no accounts. Gift and custom relayer
+    // links skip it and go straight to the creation form they were made for.
     Effect::new(move |_| {
         if accounts_context.accounts.get().accounts.is_empty()
             && !accounts_context.is_encrypted.get()
             && location.pathname.get_untracked() != "/auto-import-secret-key"
         {
             set_expanded(true);
-            set_modal_state.set(ModalState::Creating {
-                parent: match network.network.get() {
-                    Network::Mainnet => AccountCreateParent::Mainnet,
-                    Network::Testnet => AccountCreateParent::Testnet,
-                    Network::Localnet { .. } => AccountCreateParent::Mainnet,
-                },
-                recovery_method: AccountCreateRecoveryMethod::RecoveryPhrase,
-            });
+            let is_gift_or_custom_relayer_link =
+                location.pathname.get_untracked().starts_with("/gifts/")
+                    || !location.hash.get_untracked().is_empty();
+            if is_gift_or_custom_relayer_link {
+                set_modal_state.set(ModalState::Creating {
+                    parent: match network.network.get() {
+                        Network::Mainnet => AccountCreateParent::Mainnet,
+                        Network::Testnet => AccountCreateParent::Testnet,
+                        Network::Localnet { .. } => AccountCreateParent::Mainnet,
+                    },
+                    recovery_method: AccountCreateRecoveryMethod::RecoveryPhrase,
+                });
+            } else {
+                set_modal_state.set(ModalState::Welcome);
+            }
         }
     });
     // Close selector when accounts change
@@ -715,12 +725,14 @@ pub fn AccountSelector() -> impl IntoView {
 
     #[derive(Clone, PartialEq)]
     enum ModalStateType {
+        Welcome,
         LoggingIn,
         Creating,
         AccountList,
         LoggedOut(Vec<AccountId>),
     }
     let modal_state_type = Memo::new(move |_| match modal_state.get() {
+        ModalState::Welcome => ModalStateType::Welcome,
         ModalState::LoggingIn => ModalStateType::LoggingIn,
         ModalState::Creating { .. } => ModalStateType::Creating,
         ModalState::AccountList => ModalStateType::AccountList,
@@ -739,26 +751,9 @@ pub fn AccountSelector() -> impl IntoView {
             }
         >
             {move || match modal_state_type.get() {
-                ModalStateType::LoggingIn => {
-                    view! {
-                        <LoginForm show_back_button=!accounts_context
-                            .accounts
-                            .get_untracked()
-                            .accounts
-                            .is_empty() />
-                    }
-                        .into_any()
-                }
-                ModalStateType::Creating => {
-                    view! {
-                        <AccountCreationForm show_back_button=!accounts_context
-                            .accounts
-                            .get_untracked()
-                            .accounts
-                            .is_empty() />
-                    }
-                        .into_any()
-                }
+                ModalStateType::Welcome => view! { <WelcomeScreen /> }.into_any(),
+                ModalStateType::LoggingIn => view! { <LoginForm /> }.into_any(),
+                ModalStateType::Creating => view! { <AccountCreationForm /> }.into_any(),
                 ModalStateType::AccountList => {
                     view! {
                         <div>

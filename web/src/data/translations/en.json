@@ -1415,5 +1415,18 @@
   "pages.token.warning_spam_title": "Warning: This is a spam token",
   "pages.token.warning_unverified_body": "This token has not been verified. Exercise caution when interacting with it.",
   "pages.token.warning_unverified_title": "Warning: Unverified token",
-  "pages.token.your_balance": "Your Balance"
+  "pages.token.your_balance": "Your Balance",
+  "components.welcome_screen.title": "The NEAR wallet made for trading",
+  "components.welcome_screen.subtitle": "Intear Wallet is a fast, secure and open-source NEAR wallet. Swap, stake and send NEAR tokens and NFTs right in your browser.",
+  "components.welcome_screen.feature_swap_title": "Swap any NEAR token",
+  "components.welcome_screen.feature_swap_description": "Get the best price with the built-in Intear DEX Aggregator, without leaving your wallet.",
+  "components.welcome_screen.feature_stake_title": "Stake NEAR",
+  "components.welcome_screen.feature_stake_description": "Earn rewards with a validator or liquid staking, and track every unstake.",
+  "components.welcome_screen.feature_ledger_title": "Ledger support",
+  "components.welcome_screen.feature_ledger_description": "Keep your keys on a Ledger hardware wallet and confirm every transaction on the device.",
+  "components.welcome_screen.feature_open_source_title": "Open source",
+  "components.welcome_screen.feature_open_source_description": "All of the wallet's code is public on GitHub.",
+  "components.welcome_screen.button_create_account": "Create a NEAR account",
+  "components.welcome_screen.button_log_in": "I already have a NEAR wallet",
+  "components.welcome_screen.learn_more": "Learn more about Intear Wallet"
 }

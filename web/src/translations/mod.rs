@@ -1508,6 +1508,21 @@ translation_keys! {
                 ErrPrivateKeyNoAccounts,
                 ErrLedgerImportFindAccountsFirst,
             },
+            WelcomeScreen {
+                Title,
+                Subtitle,
+                FeatureSwapTitle,
+                FeatureSwapDescription,
+                FeatureStakeTitle,
+                FeatureStakeDescription,
+                FeatureLedgerTitle,
+                FeatureLedgerDescription,
+                FeatureOpenSourceTitle,
+                FeatureOpenSourceDescription,
+                ButtonCreateAccount,
+                ButtonLogIn,
+                LearnMore,
+            },
         },
         Misc {
             App {
