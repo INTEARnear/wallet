@@ -18,18 +18,20 @@ use near_min_api::{
     utils::dec_format,
 };
 use serde::{Deserialize, Serialize};
-use std::{fmt::Display, ops::Deref, str::FromStr, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap, fmt::Display, ops::Deref, str::FromStr, sync::Arc, time::Duration,
+};
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use web_sys::js_sys::{Array, Function, Object, Reflect};
 
 use crate::contexts::{
     accounts_context::{AccountsContext, SecretKeyHolder, UserCancelledSigning},
+    api_context::{self, TokenRow, TokensGet},
     config_context::{
         CompactDisplay, ConfigContext, ConstrainedUsize, InsanelyCustomizableAmountFormat,
         LedgerMode, Notation, NumberConfig, RoundingIncrement, RoundingPriority, UseGrouping,
     },
     network_context::Network,
-    prices_context::{PricesContext, Table},
     rpc_context::RpcContext,
     tokens_context::{TOKEN_FIELDS, Token, TokenData, TokenInfo, TokenMetadata},
 };
@@ -1178,33 +1180,49 @@ pub fn is_debug_enabled() -> bool {
     false
 }
 
+/// The token as `network`'s Intear API has it, over HTTP, so it doesn't depend on the network the
+/// wallet is connected to. None if it isn't a token.
 #[cached(
     time = 5,
     option = true,
     key = "(AccountId, Network)",
     convert = "{ (token_id.clone(), network.clone()) }"
 )]
-pub async fn fetch_token_info(
-    prices: PricesContext,
-    token_id: AccountId,
-    network: Network,
-) -> Option<TokenInfo> {
-    let api_url = network.prices_api_url()?;
-    let found = prices
-        .request::<Table>(
-            &network,
-            "tokens.get",
-            serde_json::json!({ "ids": [token_id], "fields": TOKEN_FIELDS }),
-        )
+pub async fn fetch_token_info(token_id: AccountId, network: Network) -> Option<TokenInfo> {
+    fetch_token_infos(vec![token_id.clone()], &network)
         .await
-        .inspect_err(|error| log::error!("Fetching {token_id} failed: {error}"))
-        .ok()?;
-    // None if it isn't a token
-    let mut fields = found.into_records().next()?;
-    fields.remove("account_id");
-    TokenInfo::from_fields(Token::Nep141(token_id.clone()), fields, &api_url)
-        .inspect_err(|error| log::error!("Unexpected data of {token_id}: {error}"))
-        .ok()
+        .remove(&token_id)
+}
+
+/// The tokens of `token_ids` as `network`'s Intear API has them, in one request. Those that aren't
+/// tokens are left out.
+pub async fn fetch_token_infos(
+    token_ids: Vec<AccountId>,
+    network: &Network,
+) -> HashMap<AccountId, TokenInfo> {
+    if token_ids.is_empty() || network.api_url().is_none() {
+        return HashMap::new();
+    }
+    let request = TokensGet {
+        ids: Some(token_ids),
+        filter: None,
+        fields: TOKEN_FIELDS.to_vec(),
+    };
+    let rows = match api_context::fetch(network, &request).await {
+        Ok(rows) => rows.0,
+        Err(error) => {
+            log::error!("Fetching tokens failed: {error}");
+            return HashMap::new();
+        }
+    };
+    rows.into_iter()
+        .filter_map(|TokenRow { account_id, fields }| {
+            TokenInfo::new(Token::Nep141(account_id.clone()), fields, network)
+                .inspect_err(|error| log::error!("Unexpected data of {account_id}: {error}"))
+                .ok()
+                .map(|info| (account_id, info))
+        })
+        .collect()
 }
 
 pub async fn intents_remove_public_key_batches(

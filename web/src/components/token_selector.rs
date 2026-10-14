@@ -4,8 +4,8 @@ use leptos_icons::Icon;
 use crate::{
     contexts::{
         accounts_context::{Account, AccountsContext},
+        api_context::{ApiContext, TokenField, TokenRow, TokensSearch},
         modal_context::ModalContext,
-        prices_context::{PricesContext, Table},
         tokens_context::{
             TOKEN_FIELDS, Token, TokenBalanceSource, TokenData, TokenInfo, TokenScore,
             TokensContext,
@@ -16,41 +16,34 @@ use crate::{
 };
 
 async fn search_tokens(
-    prices: PricesContext,
+    api: ApiContext,
     query: &str,
     account: Account,
 ) -> Result<Vec<TokenInfo>, String> {
-    let Some(api_url) = account.network.prices_api_url() else {
+    if account.network.api_url().is_none() {
         return Ok(vec![]);
-    };
-    // Search finds deleted tokens too
-    let fields = [TOKEN_FIELDS.as_slice(), &["deleted"]].concat();
-    let found: Table = prices
-        .request(
-            &account.network,
-            "tokens.search",
-            serde_json::json!({
-                "q": query,
-                "fields": fields,
-                "limit": 50,
-                "holder": account.account_id,
-                "min_reputation": TokenScore::Unknown,
-            }),
-        )
-        .await?;
-    let mut token_infos = vec![];
-    for mut fields in found.into_records() {
-        if fields.remove("deleted") == Some(serde_json::Value::Bool(true)) {
-            continue;
-        }
-        let token_info = serde_json::from_value(fields.remove("account_id").unwrap_or_default())
-            .and_then(|account_id| {
-                TokenInfo::from_fields(Token::Nep141(account_id), fields, &api_url)
-            })
-            .map_err(|e| format!("Failed to parse response: {}", e))?;
-        token_infos.push(token_info);
     }
-    Ok(token_infos)
+    // Search finds deleted tokens too
+    let mut fields = TOKEN_FIELDS.to_vec();
+    fields.push(TokenField::Deleted);
+    let found = api
+        .request(TokensSearch {
+            q: query.to_string(),
+            fields,
+            limit: 50,
+            holder: account.account_id,
+            min_reputation: TokenScore::Unknown,
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+    found
+        .0
+        .into_iter()
+        .filter(|row| row.fields.deleted != Some(true))
+        .map(|TokenRow { account_id, fields }| {
+            TokenInfo::new(Token::Nep141(account_id), fields, &account.network)
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone)]
@@ -72,7 +65,7 @@ fn TokenSelectorModal(
         loading_tokens,
         ..
     } = expect_context::<TokensContext>();
-    let prices = expect_context::<PricesContext>();
+    let api = expect_context::<ApiContext>();
 
     let (search_query, set_search_query) = signal("".to_string());
 
@@ -92,7 +85,7 @@ fn TokenSelectorModal(
         });
 
         if let Some(current_account) = current_account {
-            search_tokens(prices, &query, current_account)
+            search_tokens(api, &query, current_account)
                 .await
                 .map_err(SearchError::SearchFailed)
         } else {

@@ -639,7 +639,8 @@ pub struct CustomNetwork {
     pub id: String,
     pub rpc_url: String,
     pub social_contract: Option<AccountId>,
-    pub prices_api_url: Option<String>,
+    #[serde(alias = "prices_api_url")]
+    pub api_url: Option<String>,
     pub wrap_contract: Option<AccountId>,
     pub explorer_url: Option<String>,
     pub fastnear_api_url: Option<String>,

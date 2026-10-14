@@ -11,11 +11,11 @@
 use components::legal_consents::provide_legal_consents_context;
 use contexts::account_selector_context::provide_account_selector_context;
 use contexts::accounts_context::provide_accounts_context;
+use contexts::api_context::provide_api_context;
 use contexts::config_context::provide_config_context;
 use contexts::connected_apps_context::provide_connected_apps_context;
 use contexts::network_context::provide_network_context;
 use contexts::nft_cache_context::provide_nft_cache_context;
-use contexts::prices_context::provide_prices_context;
 use contexts::tokens_context::provide_token_context;
 use contexts::transaction_queue_context::provide_transaction_queue_context;
 use contexts::translation_context::provide_translation_context;
@@ -148,7 +148,7 @@ pub fn App() -> impl IntoView {
     provide_legal_consents_context(); // depends on accounts and modal
     provide_network_context(); // depends on accounts for selecting the network for the selected account
     provide_rpc_context(); // depends on config for rpc configuration and network for default rpc
-    provide_prices_context(); // depends on network for connecting to its price API
+    provide_api_context(); // depends on network for connecting to its Intear API
     provide_token_context(); // depends on rpc for fetching near balance and prices for the rest
     provide_nft_cache_context(); // depends on accounts for resetting the cache when account changes
     provide_account_selector_context(); // depends on accounts

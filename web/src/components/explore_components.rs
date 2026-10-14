@@ -4,12 +4,12 @@ use leptos_icons::*;
 use leptos_router::components::A;
 use near_min_api::types::AccountId;
 use rand::seq::SliceRandom;
-use serde::Deserialize;
+use std::collections::BTreeMap;
 
 use crate::{
     contexts::{
+        api_context::{self, TokenField, TokenFilter, TokenRow, TokensGet},
         network_context::{Network, NetworkContext},
-        prices_context::{PricesContext, Table},
         tokens_context::{Token, TokenScore, TokensContext},
     },
     data::learn::ARTICLES,
@@ -33,8 +33,31 @@ pub struct Article {
     pub image_url: String,
 }
 
-/// A token that could be trending, as `tokens.get` reads it
-#[derive(Deserialize)]
+/// The tokens that could be trending: no rugs or illiquid tokens
+fn trending_candidates() -> TokensGet {
+    TokensGet {
+        ids: None,
+        filter: Some(TokenFilter {
+            min: BTreeMap::from([
+                (TokenField::LiquidityUsd, 3000.0),
+                (TokenField::VolumeUsd24h, 1000.0),
+            ]),
+            min_reputation: Some(TokenScore::Unknown),
+            deleted: Some(false),
+        }),
+        fields: vec![
+            TokenField::Name,
+            TokenField::Symbol,
+            TokenField::PriceUsd,
+            TokenField::PriceUsdHardcoded,
+            TokenField::PriceChange24h,
+            TokenField::VolumeUsd24h,
+            TokenField::LiquidityUsd,
+        ],
+    }
+}
+
+/// A token that could be trending, from what [`trending_candidates`] asks for
 struct Candidate {
     account_id: AccountId,
     name: String,
@@ -46,37 +69,33 @@ struct Candidate {
     liquidity_usd: f64,
 }
 
-async fn fetch_trending_tokens(prices: PricesContext, network: Network) -> Vec<TrendingToken> {
-    if network.prices_api_url().is_none() {
+impl Candidate {
+    fn new(TokenRow { account_id, fields }: TokenRow) -> Option<Self> {
+        Some(Candidate {
+            account_id,
+            name: fields.name?,
+            symbol: fields.symbol?,
+            price_usd: fields.price_usd?,
+            price_usd_hardcoded: fields.price_usd_hardcoded?,
+            price_change_24h: fields.price_change_24h?,
+            volume_usd_24h: fields.volume_usd_24h?,
+            liquidity_usd: fields.liquidity_usd?,
+        })
+    }
+}
+
+/// The same for everyone, so it's read over HTTP, which caches can keep
+async fn fetch_trending_tokens(network: Network) -> Vec<TrendingToken> {
+    if network.api_url().is_none() {
         return vec![];
     }
-    // No rugs / illiquid tokens
-    let candidates = prices
-        .request::<Table>(
-            &network,
-            "tokens.get",
-            serde_json::json!({
-                "fields": [
-                    "name",
-                    "symbol",
-                    "price_usd",
-                    "price_usd_hardcoded",
-                    "price_change_24h",
-                    "volume_usd_24h",
-                    "liquidity_usd",
-                ],
-                "where": {
-                    "min": { "liquidity_usd": 3000, "volume_usd_24h": 1000 },
-                    "min_reputation": TokenScore::Unknown,
-                    "deleted": false,
-                },
-            }),
-        )
+    let candidates = api_context::fetch(&network, &trending_candidates())
         .await
-        .and_then(|table| {
-            table
-                .deserialize::<Candidate>()
-                .map_err(|error| error.to_string())
+        .map(|rows| {
+            rows.0
+                .into_iter()
+                .filter_map(Candidate::new)
+                .collect::<Vec<_>>()
         });
     let candidates = match candidates {
         Ok(candidates) => candidates,
@@ -136,11 +155,8 @@ async fn fetch_trending_tokens(prices: PricesContext, network: Network) -> Vec<T
 pub fn TrendingTokensSection() -> impl IntoView {
     let (show_all, set_show_all) = signal(false);
     let network = expect_context::<NetworkContext>().network;
-    let prices = expect_context::<PricesContext>();
     let tokens =
-        LocalResource::new(
-            move || async move { fetch_trending_tokens(prices, network.get()).await },
-        );
+        LocalResource::new(move || async move { fetch_trending_tokens(network.get()).await });
     Effect::new(move || {
         network.track();
         tokens.refetch();

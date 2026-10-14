@@ -8,7 +8,6 @@ use crate::{
     components::tooltip::Tooltip,
     contexts::{
         network_context::{Network, NetworkContext},
-        prices_context::PricesContext,
         tokens_context::{
             Token, TokenBalanceSource, TokenData, TokenInfo, TokenScore, TokensContext,
         },
@@ -401,7 +400,6 @@ pub fn TokenDetails() -> impl IntoView {
         set_tokens,
         ..
     } = expect_context::<TokensContext>();
-    let prices = expect_context::<PricesContext>();
     let (loading_api, set_loading_api) = signal(false);
     let (api_error, set_api_error) = signal(false);
 
@@ -420,7 +418,7 @@ pub fn TokenDetails() -> impl IntoView {
             let network = expect_context::<NetworkContext>().network.get();
             spawn_local(async move {
                 if let Ok(token_id) = token_id.parse::<AccountId>() {
-                    if let Some(info) = fetch_token_info(prices, token_id.clone(), network).await {
+                    if let Some(info) = fetch_token_info(token_id.clone(), network).await {
                         set_tokens.update(|tokens| {
                             tokens
                                 .retain(|t| t.token.account_id != Token::Nep141(token_id.clone()));

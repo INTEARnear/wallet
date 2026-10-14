@@ -34,7 +34,6 @@ use crate::{
         config_context::ConfigContext,
         modal_context::ModalContext,
         network_context::{Network, NetworkContext},
-        prices_context::PricesContext,
         rpc_context::RpcContext,
         tokens_context::{Token, TokenBalanceSource, TokenData, TokenInfo, TokensContext},
         transaction_queue_context::{EnqueuedTransaction, OverlayMode, TransactionQueueContext},
@@ -1672,7 +1671,6 @@ fn use_swap_token(
     account_key: Memo<Option<(AccountId, Network)>>,
 ) -> Signal<Option<TokenData>> {
     let RpcContext { client: rpc_client } = expect_context::<RpcContext>();
-    let prices = expect_context::<PricesContext>();
     let missing_key = Memo::new(move |_| {
         let (account_id, network) = account_key.get()?;
         let selected = selected.get();
@@ -1693,7 +1691,7 @@ fn use_swap_token(
         let rpc = rpc_client.get();
         async move {
             let (account_id, network, token_id) = key?;
-            let token = fetch_token_info(prices, token_id.clone(), network.clone()).await?;
+            let token = fetch_token_info(token_id.clone(), network.clone()).await?;
             // Metadata success alone does not imply a zero balance.
             let balance =
                 get_ft_balance(&account_id, Token::Nep141(token_id.clone()), &rpc).await?;

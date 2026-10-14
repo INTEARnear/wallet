@@ -112,8 +112,8 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
             Network::Testnet => {
                 vec![HOME_ITEM, HISTORY_ITEM]
             }
-            // History comes from the price API
-            Network::Localnet(_) if network.prices_api_url().is_none() => vec![HOME_ITEM],
+            // History comes from the Intear API
+            Network::Localnet(_) if network.api_url().is_none() => vec![HOME_ITEM],
             Network::Localnet(_) => vec![HOME_ITEM, HISTORY_ITEM],
         }
     };

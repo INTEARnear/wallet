@@ -36,11 +36,10 @@ const NANOSECONDS_IN_YEAR: u64 = 365 * 24 * 60 * 60 * 1_000_000_000;
 use crate::components::projected_revenue::{ProjectedRevenue, ProjectedRevenueMode};
 use crate::components::transaction_modals::{TransactionErrorModal, TransactionSuccessModal};
 use crate::contexts::config_context::ConfigContext;
-use crate::contexts::prices_context::PricesContext;
 use crate::contexts::tokens_context::TokenInfo;
 use crate::translations::TranslationKey;
 use crate::utils::{
-    Resolution, StorageBalance, USDT_DECIMALS, fetch_token_info, format_number_for_input,
+    Resolution, StorageBalance, USDT_DECIMALS, fetch_token_infos, format_number_for_input,
     format_usd_value, power_of_10, proxify_url,
 };
 use crate::{
@@ -1154,7 +1153,6 @@ pub fn Stake() -> impl IntoView {
     let rpc_context = expect_context::<RpcContext>();
     let tokens_context = expect_context::<TokensContext>();
     let network_context = expect_context::<NetworkContext>();
-    let prices = expect_context::<PricesContext>();
     let accounts_context = expect_context::<AccountsContext>();
     let SearchContext {
         query: search_query,
@@ -1263,6 +1261,21 @@ pub fn Stake() -> impl IntoView {
                 let mut validator_farms: HashMap<AccountId, Vec<PoolFarm>> = HashMap::new();
                 let mut all_farm_data: HashMap<AccountId, Vec<PoolFarmRaw>> = HashMap::new();
 
+                // Every active farm's token, read together
+                let farm_tokens = fetch_token_infos(
+                    farms
+                        .iter()
+                        .flatten()
+                        .flatten()
+                        .filter(|farm| farm.active)
+                        .map(|farm| farm.token_id.clone())
+                        .collect::<HashSet<_>>()
+                        .into_iter()
+                        .collect(),
+                    &network_context.network.get_untracked(),
+                )
+                .await;
+
                 for (farm_pool, farm_result) in farm_pools.iter().zip(farms) {
                     if let Ok(all_farms) = farm_result {
                         all_farm_data.insert(farm_pool.account_id.clone(), all_farms.clone());
@@ -1271,10 +1284,7 @@ pub fn Stake() -> impl IntoView {
                             all_farms.into_iter().filter(|f| f.active).collect();
                         let mut farms = Vec::new();
                         for f in active_farms {
-                            if let Some(token_info) =
-                                fetch_token_info(prices, f.token_id, network_context.network.get())
-                                    .await
-                            {
+                            if let Some(token_info) = farm_tokens.get(&f.token_id).cloned() {
                                 farms.push(PoolFarm {
                                     farm_id: f.farm_id,
                                     name: f.name,
@@ -1529,15 +1539,14 @@ pub fn Stake() -> impl IntoView {
                                         }
                                     }
 
+                                    let mut reward_tokens = fetch_token_infos(
+                                        unclaimed_by_token.keys().cloned().collect(),
+                                        &network_context.network.get_untracked(),
+                                    )
+                                    .await;
                                     let mut unclaimed_rewards = Vec::new();
                                     for (token_id, total_amount) in unclaimed_by_token {
-                                        if let Some(token_info) = fetch_token_info(
-                                            prices,
-                                            token_id,
-                                            network_context.network.get(),
-                                        )
-                                        .await
-                                        {
+                                        if let Some(token_info) = reward_tokens.remove(&token_id) {
                                             unclaimed_rewards.push(UnclaimedReward {
                                                 token: token_info,
                                                 amount: total_amount,

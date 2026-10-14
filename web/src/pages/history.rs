@@ -8,9 +8,12 @@ use crate::{
     components::tooltip::Tooltip,
     contexts::{
         accounts_context::AccountsContext,
+        api_context::{
+            ApiContext, ErrorCode, HistoryQuery, HistorySubscribe, Subscription, SubscriptionEvent,
+            TransferRow,
+        },
         config_context::{ConfigContext, TimestampFormat},
-        network_context::Network,
-        prices_context::{PricesContext, SubscriptionMessage, Table},
+        network_context::{Network, NetworkContext},
         rpc_context::RpcContext,
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
@@ -38,20 +41,12 @@ use near_min_api::{
     },
 };
 use serde::Deserialize;
-use serde_json::Value;
 
 /// Rows in a page of history: transfers and the transactions they're part of, so a few
 /// transactions' worth
 const PAGE_ROWS: usize = 10;
-/// What a row has, in this order: `id`, which comes first anyway, then the fields asked for
-const ROW_COLUMNS: [&str; 6] = [
-    "id",
-    "timestamp_millis",
-    "transaction_id",
-    "token",
-    "sender",
-    "receiver",
-];
+/// How long a failed page waits before it's asked for again
+const RETRY_AFTER: std::time::Duration = std::time::Duration::from_secs(3);
 
 #[derive(Debug)]
 struct HistoryTransaction {
@@ -61,65 +56,14 @@ struct HistoryTransaction {
     transaction: ExperimentalTxDetails,
 }
 
-/// A row of `transfers.*` with `include_transactions`: a transfer of a token or NEAR the account
-/// sent or received, or a transaction it sent or received
-#[derive(Deserialize)]
-struct HistoryRow {
-    id: i64,
-    timestamp_millis: u64,
-    transaction_id: Option<CryptoHash>,
-    /// None for a transaction
-    token: Option<AccountId>,
-    /// None for a mint
-    sender: Option<AccountId>,
-    /// None for a burn
-    receiver: Option<AccountId>,
-}
-
-impl HistoryRow {
-    /// Whoever is on the other side of it from `account_id`, or the token for a mint or burn
-    fn other_account_id(&self, account_id: &AccountId) -> Option<AccountId> {
-        let other = if self.sender.as_ref() == Some(account_id) {
-            &self.receiver
-        } else {
-            &self.sender
-        };
-        other.clone().or_else(|| self.token.clone())
-    }
-}
-
-/// Rows from `transfers.query` or `transfers.subscribe`
-#[derive(Deserialize)]
-struct Rows {
-    rows: Vec<Vec<Value>>,
-    /// Where an older page starts, if there is one
-    #[serde(default)]
-    next_cursor: Option<String>,
-    /// The newest row id the API had, for picking up after it
-    #[serde(default)]
-    latest_id: Option<i64>,
-}
-
-impl Rows {
-    fn parse(rows: Vec<Vec<Value>>) -> serde_json::Result<Vec<HistoryRow>> {
-        Table {
-            columns: ROW_COLUMNS.map(String::from).to_vec(),
-            rows,
-        }
-        .deserialize()
-    }
-}
-
-/// `transfers.*` params for the account's rows
-fn rows_params(account_id: &AccountId) -> serde_json::Map<String, Value> {
-    let Value::Object(params) = serde_json::json!({
-        "account": account_id,
-        "include_transactions": true,
-        "fields": &ROW_COLUMNS[1..],
-    }) else {
-        unreachable!("an object literal is an object");
+/// Whoever is on the other side of `row` from `account_id`, or the token for a mint or burn
+fn other_account_id(row: &TransferRow, account_id: &AccountId) -> Option<AccountId> {
+    let other = if row.sender.as_ref() == Some(account_id) {
+        &row.receiver
+    } else {
+        &row.sender
     };
-    params
+    other.clone().or_else(|| row.token.clone())
 }
 
 lazy_static::lazy_static! {
@@ -207,29 +151,31 @@ impl HistoryFeed {
             generation: StoredValue::new(0),
             root,
         };
-        feed.follow(expect_context::<PricesContext>());
+        feed.follow(expect_context::<ApiContext>());
         feed
     }
 
     /// Keeps up with the account: subscribes for its newest page and then every block's rows,
     /// picks up after the last row it had when the connection comes back, and starts over for
     /// another account.
-    fn follow(self, prices: PricesContext) {
+    fn follow(self, api: ApiContext) {
+        let api_network = expect_context::<NetworkContext>().network;
         // The account followed, None before the first, the subscription following it, and the
         // newest row it had
         let followed = StoredValue::new(None::<Option<AccountId>>);
-        let sub = StoredValue::new(None::<u64>);
+        let sub = StoredValue::new(None::<Subscription>);
         let last_id = StoredValue::new(None::<i64>);
         // Notified when the subscription has to be made again
         let ended = Trigger::new();
         Effect::new(move |_| {
             ended.track();
             let account = self.account.get();
-            let open_network = prices.open_network();
+            let session = api.session();
+            let api_network = api_network.get();
             let account_id = account.as_ref().map(|(account_id, _)| account_id.clone());
             if followed.get_value().as_ref() != Some(&account_id) {
                 if let Some(sub) = sub.get_value() {
-                    prices.unsubscribe(sub);
+                    api.unsubscribe(sub);
                 }
                 sub.set_value(None);
                 last_id.set_value(None);
@@ -239,62 +185,42 @@ impl HistoryFeed {
             let Some((account_id, network)) = account else {
                 return;
             };
-            if open_network.as_ref() != Some(&network) {
+            let Some(session) = session.filter(|_| network == api_network) else {
                 // Its subscription is gone with the connection
                 sub.set_value(None);
                 return;
-            }
-            if sub.get_value().is_some() {
+            };
+            if sub.get_value().is_some_and(|sub| sub.session() == session) {
                 return;
             }
             let resumed_after = last_id.get_value();
-            let mut params = rows_params(&account_id);
-            match resumed_after {
-                Some(after_id) => params.insert("after_id".to_string(), after_id.into()),
-                None => params.insert("history".to_string(), PAGE_ROWS.into()),
+            let params = match resumed_after {
+                Some(after_id) => HistorySubscribe::after(account_id.clone(), after_id),
+                None => HistorySubscribe::newest(account_id.clone(), PAGE_ROWS),
             };
             let generation = self.generation.get_value();
-            let keep_up = move |rows: &[HistoryRow], latest_id: Option<i64>| {
+            let keep_up = move |rows: &[TransferRow], latest_id: Option<i64>| {
                 let newest = rows.iter().map(|row| row.id).chain(latest_id).max();
                 last_id.update_value(|last_id| *last_id = (*last_id).max(newest));
             };
-            let made = prices.subscribe("transfers.subscribe", Value::Object(params), {
+            let made = api.subscribe(params, {
                 let network = network.clone();
-                move |message| match message {
-                    SubscriptionMessage::Reply(Ok(result)) => {
-                        match serde_json::from_value::<Rows>(result).and_then(|result| {
-                            Ok((
-                                Rows::parse(result.rows)?,
-                                result.next_cursor,
-                                result.latest_id,
-                            ))
-                        }) {
-                            Ok((mut rows, next_cursor, latest_id)) => {
-                                keep_up(&rows, latest_id);
-                                if resumed_after.is_some() {
-                                    // What was missed, oldest first
-                                    rows.reverse();
-                                    self.add(generation, &account_id, &network, rows, None);
-                                } else {
-                                    let next_page =
-                                        next_cursor.map_or(NextPage::End, NextPage::Older);
-                                    self.add(
-                                        generation,
-                                        &account_id,
-                                        &network,
-                                        rows,
-                                        Some(next_page),
-                                    );
-                                }
-                            }
-                            Err(error) => {
-                                log::error!("Unexpected history of {account_id}: {error}")
-                            }
+                move |event| match event {
+                    SubscriptionEvent::Reply(Ok(page)) => {
+                        let mut rows = page.rows.0;
+                        keep_up(&rows, page.latest_id);
+                        if resumed_after.is_some() {
+                            // What was missed, oldest first
+                            rows.reverse();
+                            self.add(generation, &account_id, &network, rows, None);
+                        } else {
+                            let next_page = page.next_cursor.map_or(NextPage::End, NextPage::Older);
+                            self.add(generation, &account_id, &network, rows, Some(next_page));
                         }
                     }
-                    SubscriptionMessage::Reply(Err(error)) => {
+                    SubscriptionEvent::Reply(Err(error)) => {
                         log::error!("Following the history of {account_id} failed: {error}");
-                        if resumed_after.is_some() && error.code == "too_far_behind" {
+                        if resumed_after.is_some() && error.code == ErrorCode::TooFarBehind {
                             // Too much was missed to catch up on: start over
                             followed.set_value(None);
                             ended.notify();
@@ -302,22 +228,14 @@ impl HistoryFeed {
                             self.next_page.set(NextPage::End);
                         }
                     }
-                    SubscriptionMessage::Push(push) => {
-                        match serde_json::from_value::<Rows>(push)
-                            .and_then(|push| Rows::parse(push.rows))
-                        {
-                            Ok(mut rows) => {
-                                keep_up(&rows, None);
-                                // A block's rows come oldest first
-                                rows.reverse();
-                                self.add(generation, &account_id, &network, rows, None);
-                            }
-                            Err(error) => {
-                                log::error!("Unexpected history of {account_id}: {error}")
-                            }
-                        }
+                    SubscriptionEvent::Push(push) => {
+                        let mut rows = push.rows;
+                        keep_up(&rows, None);
+                        // A block's rows come oldest first
+                        rows.reverse();
+                        self.add(generation, &account_id, &network, rows, None);
                     }
-                    SubscriptionMessage::End(error) => {
+                    SubscriptionEvent::End(error) => {
                         log::warn!("The history of {account_id} stopped: {error}");
                         sub.set_value(None);
                         ended.notify();
@@ -329,7 +247,7 @@ impl HistoryFeed {
         // Nothing follows the account once the page is left
         on_cleanup(move || {
             if let Some(sub) = sub.try_get_value().flatten() {
-                prices.unsubscribe(sub);
+                api.unsubscribe(sub);
             }
         });
     }
@@ -342,7 +260,7 @@ impl HistoryFeed {
         self.transactions.set(Vec::new());
         self.loading_older.set(false);
         self.next_page.set(
-            if account.is_some_and(|(_, network)| network.prices_api_url().is_some()) {
+            if account.is_some_and(|(_, network)| network.api_url().is_some()) {
                 NextPage::Newest
             } else {
                 NextPage::End
@@ -358,7 +276,7 @@ impl HistoryFeed {
         generation: u64,
         account_id: &AccountId,
         network: &Network,
-        rows: Vec<HistoryRow>,
+        rows: Vec<TransferRow>,
         next_page: Option<NextPage>,
     ) {
         let read = self.read(account_id, network, rows);
@@ -381,7 +299,7 @@ impl HistoryFeed {
         self,
         account_id: &AccountId,
         network: &Network,
-        rows: Vec<HistoryRow>,
+        rows: Vec<TransferRow>,
     ) -> impl Future<Output = Vec<Arc<HistoryTransaction>>> + 'static {
         let new = self
             .known
@@ -389,7 +307,7 @@ impl HistoryFeed {
                 rows.into_iter()
                     .filter_map(|row| {
                         let transaction_id = row.transaction_id?;
-                        let other_account_id = row.other_account_id(account_id)?;
+                        let other_account_id = other_account_id(&row, account_id)?;
                         known.insert(transaction_id).then_some((
                             transaction_id,
                             row.timestamp_millis,
@@ -434,8 +352,9 @@ impl HistoryFeed {
         });
     }
 
-    /// Loads the next older page, unless one is loading or there's none.
-    fn load_older(self, prices: PricesContext) {
+    /// Loads the next older page, unless one is loading or there's none. One that fails is asked
+    /// for again a little later, while the bottom is in view.
+    fn load_older(self, api: ApiContext) {
         let NextPage::Older(cursor) = self.next_page.get_untracked() else {
             return;
         };
@@ -447,35 +366,33 @@ impl HistoryFeed {
         }
         self.loading_older.set(true);
         let generation = self.generation.get_value();
-        let mut params = rows_params(&account_id);
-        params.insert("limit".to_string(), PAGE_ROWS.into());
-        params.insert("cursor".to_string(), cursor.into());
         spawn_local(async move {
-            let page = prices
-                .request::<Rows>(&network, "transfers.query", Value::Object(params))
-                .await
-                .and_then(|page| {
-                    Ok((
-                        Rows::parse(page.rows).map_err(|e| e.to_string())?,
-                        page.next_cursor,
-                    ))
-                });
-            let (transactions, next_page) = match page {
-                Ok((rows, next_cursor)) => (
-                    self.read(&account_id, &network, rows).await,
-                    next_cursor.map_or(NextPage::End, NextPage::Older),
-                ),
+            let page = api
+                .request(HistoryQuery::new(account_id.clone(), PAGE_ROWS, cursor))
+                .await;
+            let page = match page {
+                Ok(page) => page,
                 Err(error) => {
                     log::error!("Failed to load history: {error}");
-                    (Vec::new(), NextPage::End)
+                    set_timeout(
+                        move || {
+                            if self.generation.try_get_value() == Some(generation) {
+                                self.loading_older.set(false);
+                            }
+                        },
+                        RETRY_AFTER,
+                    );
+                    return;
                 }
             };
+            let transactions = self.read(&account_id, &network, page.rows.0).await;
             // Started over, or the page was left
             if self.generation.try_get_value() != Some(generation) {
                 return;
             }
             self.show(transactions);
-            self.next_page.set(next_page);
+            self.next_page
+                .set(page.next_cursor.map_or(NextPage::End, NextPage::Older));
             self.loading_older.set(false);
         });
     }
@@ -491,7 +408,7 @@ impl HistoryFeed {
 
 #[component]
 pub fn History() -> impl IntoView {
-    let prices = expect_context::<PricesContext>();
+    let api = expect_context::<ApiContext>();
     let root_ref = NodeRef::<leptos::html::Div>::new();
     let feed = HistoryFeed::new(root_ref);
     provide_context(feed);
@@ -519,7 +436,7 @@ pub fn History() -> impl IntoView {
                 .with(|next_page| matches!(next_page, NextPage::Older(_)))
             && !feed.loading_older.get()
         {
-            feed.load_older(prices);
+            feed.load_older(api);
         }
     });
     let dates = Memo::new(move |_| {
