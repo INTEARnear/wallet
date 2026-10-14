@@ -29,8 +29,9 @@ use crate::contexts::{
         LedgerMode, Notation, NumberConfig, RoundingIncrement, RoundingPriority, UseGrouping,
     },
     network_context::Network,
+    prices_context::{PricesContext, Table},
     rpc_context::RpcContext,
-    tokens_context::{Token, TokenData, TokenInfo, TokenMetadata},
+    tokens_context::{TOKEN_FIELDS, Token, TokenData, TokenInfo, TokenMetadata},
 };
 use crate::translations::TranslationKey;
 
@@ -1177,24 +1178,33 @@ pub fn is_debug_enabled() -> bool {
     false
 }
 
-#[cached(time = 5, option = true)]
-pub async fn fetch_token_info(token_id: AccountId, network: Network) -> Option<TokenInfo> {
-    let api_url = match network {
-        Network::Mainnet => "https://prices.intear.tech".to_string(),
-        Network::Testnet => "https://prices-testnet.intear.tech".to_string(),
-        Network::Localnet(network) => {
-            if let Some(url) = &network.prices_api_url {
-                url.clone()
-            } else {
-                return None;
-            }
-        }
-    };
-    let response = reqwest::get(format!("{api_url}/token?token_id={token_id}"))
+#[cached(
+    time = 5,
+    option = true,
+    key = "(AccountId, Network)",
+    convert = "{ (token_id.clone(), network.clone()) }"
+)]
+pub async fn fetch_token_info(
+    prices: PricesContext,
+    token_id: AccountId,
+    network: Network,
+) -> Option<TokenInfo> {
+    let api_url = network.prices_api_url()?;
+    let found = prices
+        .request::<Table>(
+            &network,
+            "tokens.get",
+            serde_json::json!({ "ids": [token_id], "fields": TOKEN_FIELDS }),
+        )
         .await
+        .inspect_err(|error| log::error!("Fetching {token_id} failed: {error}"))
         .ok()?;
-    let token_data: TokenInfo = response.json().await.ok()?;
-    Some(token_data)
+    // None if it isn't a token
+    let mut fields = found.into_records().next()?;
+    fields.remove("account_id");
+    TokenInfo::from_fields(Token::Nep141(token_id.clone()), fields, &api_url)
+        .inspect_err(|error| log::error!("Unexpected data of {token_id}: {error}"))
+        .ok()
 }
 
 pub async fn intents_remove_public_key_batches(

@@ -27,7 +27,6 @@ enum NetworkStatus {
 struct NetworkForm {
     id: String,
     rpc_url: String,
-    history_service_url: Option<String>,
     social_contract: Option<AccountId>,
     prices_api_url: Option<String>,
     wrap_contract: Option<AccountId>,
@@ -44,7 +43,6 @@ impl From<&CustomNetwork> for NetworkForm {
         Self {
             id: network.id.clone(),
             rpc_url: network.rpc_url.clone(),
-            history_service_url: network.history_service_url.clone(),
             social_contract: network.social_contract.clone(),
             prices_api_url: network.prices_api_url.clone(),
             wrap_contract: network.wrap_contract.clone(),
@@ -63,7 +61,6 @@ impl From<NetworkForm> for CustomNetwork {
         Self {
             id: form.id,
             rpc_url: form.rpc_url,
-            history_service_url: form.history_service_url,
             social_contract: form.social_contract,
             prices_api_url: form.prices_api_url,
             wrap_contract: form.wrap_contract,

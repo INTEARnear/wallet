@@ -103,19 +103,18 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
         path: "/explore",
         icon: icondata::LuCompass,
     };
-    let nav_items = move || match network.get() {
-        Network::Mainnet => {
-            vec![HOME_ITEM, SWAP_ITEM, HISTORY_ITEM, EXPLORE_ITEM]
-        }
-        Network::Testnet => {
-            vec![HOME_ITEM, HISTORY_ITEM]
-        }
-        Network::Localnet(network) => {
-            let mut items = vec![HOME_ITEM, HISTORY_ITEM];
-            if network.history_service_url.is_none() {
-                items.retain(|item| item.path != HISTORY_ITEM.path);
+    let nav_items = move || {
+        let network = network.get();
+        match &network {
+            Network::Mainnet => {
+                vec![HOME_ITEM, SWAP_ITEM, HISTORY_ITEM, EXPLORE_ITEM]
             }
-            items
+            Network::Testnet => {
+                vec![HOME_ITEM, HISTORY_ITEM]
+            }
+            // History comes from the price API
+            Network::Localnet(_) if network.prices_api_url().is_none() => vec![HOME_ITEM],
+            Network::Localnet(_) => vec![HOME_ITEM, HISTORY_ITEM],
         }
     };
 

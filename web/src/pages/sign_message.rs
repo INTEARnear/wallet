@@ -25,6 +25,7 @@ use crate::{
         config_context::ConfigContext,
         connected_apps_context::ConnectedAppsContext,
         network_context::Network,
+        prices_context::PricesContext,
         security_log_context::{SecurityLogEvent, add_security_log},
     },
     utils::{
@@ -491,6 +492,7 @@ fn AuthCallView(call: intents::AuthCall) -> impl IntoView {
 #[component]
 fn FtWithdrawView(ft: intents::FtWithdraw) -> impl IntoView {
     let accounts_context = expect_context::<AccountsContext>();
+    let prices = expect_context::<PricesContext>();
     let network = accounts_context
         .accounts
         .get()
@@ -506,7 +508,7 @@ fn FtWithdrawView(ft: intents::FtWithdraw) -> impl IntoView {
             let network = network.clone();
             async move {
                 if let Some(network) = network {
-                    if let Some(token_info) = fetch_token_info(ft_token, network).await {
+                    if let Some(token_info) = fetch_token_info(prices, ft_token, network).await {
                         Some(token_info.metadata.symbol)
                     } else {
                         None
@@ -715,6 +717,7 @@ fn TokenAmount(
         intents::TokenId::Nep141(nep141) => Some(nep141.contract_id.clone()),
         _ => None,
     };
+    let prices = expect_context::<PricesContext>();
 
     let token_info_resource = LocalResource::new({
         move || {
@@ -722,7 +725,7 @@ fn TokenAmount(
             let contract_id = contract_id.clone();
             async move {
                 if let (Some(contract_id), Some(network)) = (contract_id, network) {
-                    fetch_token_info(contract_id, network).await
+                    fetch_token_info(prices, contract_id, network).await
                 } else {
                     None
                 }

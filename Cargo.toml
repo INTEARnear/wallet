@@ -33,7 +33,6 @@ panic = "abort"
 members = [
     "near-min-api",
     "account-indexer",
-    "history-service",
     "account-creation-service",
     "password-storage-service",
     "nft-proxy-service",

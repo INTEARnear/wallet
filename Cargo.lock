@@ -2316,26 +2316,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "history-service"
-version = "0.1.0"
-dependencies = [
- "axum",
- "chrono",
- "dotenvy",
- "futures",
- "hyper 1.11.1",
- "near-min-api",
- "reqwest 0.12.28",
- "rocksdb",
- "serde",
- "serde_json",
- "tokio",
- "tower-http",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "hkdf"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

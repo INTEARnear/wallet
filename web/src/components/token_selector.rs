@@ -1,60 +1,55 @@
 use leptos::prelude::*;
 use leptos_icons::Icon;
-use near_min_api::types::AccountId;
-use serde::Serialize;
 
 use crate::{
     contexts::{
         accounts_context::{Account, AccountsContext},
         modal_context::ModalContext,
-        network_context::Network,
+        prices_context::{PricesContext, Table},
         tokens_context::{
-            Token, TokenBalanceSource, TokenData, TokenInfo, TokenScore, TokensContext,
+            TOKEN_FIELDS, Token, TokenBalanceSource, TokenData, TokenInfo, TokenScore,
+            TokensContext,
         },
     },
     translations::TranslationKey,
     utils::{balance_to_decimal, format_token_amount, format_usd_value, format_usd_value_no_hide},
 };
 
-async fn search_tokens(query: &str, account: Account) -> Result<Vec<TokenInfo>, String> {
-    #[derive(Serialize)]
-    struct SearchParams {
-        q: String,
-        n: u32,
-        acc: AccountId,
-        rep: TokenScore,
-    }
-
-    let params = SearchParams {
-        q: query.to_string(),
-        n: 50,
-        acc: account.account_id,
-        rep: TokenScore::Unknown,
+async fn search_tokens(
+    prices: PricesContext,
+    query: &str,
+    account: Account,
+) -> Result<Vec<TokenInfo>, String> {
+    let Some(api_url) = account.network.prices_api_url() else {
+        return Ok(vec![]);
     };
-
-    let api_url = match account.network {
-        Network::Mainnet => "https://prices.intear.tech".to_string(),
-        Network::Testnet => "https://prices-testnet.intear.tech".to_string(),
-        Network::Localnet(network) => {
-            if let Some(url) = &network.prices_api_url {
-                url.clone()
-            } else {
-                return Ok(vec![]);
-            }
+    // Search finds deleted tokens too
+    let fields = [TOKEN_FIELDS.as_slice(), &["deleted"]].concat();
+    let found: Table = prices
+        .request(
+            &account.network,
+            "tokens.search",
+            serde_json::json!({
+                "q": query,
+                "fields": fields,
+                "limit": 50,
+                "holder": account.account_id,
+                "min_reputation": TokenScore::Unknown,
+            }),
+        )
+        .await?;
+    let mut token_infos = vec![];
+    for mut fields in found.into_records() {
+        if fields.remove("deleted") == Some(serde_json::Value::Bool(true)) {
+            continue;
         }
-    };
-    let response = reqwest::Client::new()
-        .get(format!("{api_url}/token-search"))
-        .query(&params)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch tokens: {}", e))?;
-
-    let token_infos: Vec<TokenInfo> = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
-
+        let token_info = serde_json::from_value(fields.remove("account_id").unwrap_or_default())
+            .and_then(|account_id| {
+                TokenInfo::from_fields(Token::Nep141(account_id), fields, &api_url)
+            })
+            .map_err(|e| format!("Failed to parse response: {}", e))?;
+        token_infos.push(token_info);
+    }
     Ok(token_infos)
 }
 
@@ -77,6 +72,7 @@ fn TokenSelectorModal(
         loading_tokens,
         ..
     } = expect_context::<TokensContext>();
+    let prices = expect_context::<PricesContext>();
 
     let (search_query, set_search_query) = signal("".to_string());
 
@@ -96,21 +92,8 @@ fn TokenSelectorModal(
         });
 
         if let Some(current_account) = current_account {
-            search_tokens(&query, current_account)
+            search_tokens(prices, &query, current_account)
                 .await
-                .map(|results| {
-                    results
-                        .into_iter()
-                        .map(|mut r| {
-                            if let Some(icon) = r.metadata.icon.as_ref()
-                                && !icon.starts_with("data:")
-                            {
-                                r.metadata.icon = None;
-                            }
-                            r
-                        })
-                        .collect::<Vec<_>>()
-                })
                 .map_err(SearchError::SearchFailed)
         } else {
             Ok(vec![])

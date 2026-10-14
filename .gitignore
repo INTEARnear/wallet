@@ -1,5 +1,4 @@
 /target
-/history-service/transaction_cache
 /password-storage-service/passwords
 .env
 /node_modules

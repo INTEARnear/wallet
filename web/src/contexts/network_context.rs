@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 use near_min_api::RpcClient;
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
 use crate::contexts::config_context::CustomNetwork;
@@ -31,6 +32,21 @@ impl Network {
                 .collect::<Vec<_>>(),
             Network::Localnet(network) => vec![network.rpc_url.clone()],
         })
+    }
+
+    pub fn prices_api_url(&self) -> Option<Url> {
+        let url = match self {
+            Network::Mainnet => "wss://api.intea.rs/ws",
+            Network::Testnet => "wss://api-testnet.intea.rs/ws",
+            Network::Localnet(network) => network.prices_api_url.as_deref()?,
+        };
+        match Url::parse(url) {
+            Ok(url) if matches!(url.scheme(), "ws" | "wss") => Some(url),
+            _ => {
+                log::error!("Price API URL {url} is neither ws:// nor wss://");
+                None
+            }
+        }
     }
 }
 

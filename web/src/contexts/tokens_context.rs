@@ -6,24 +6,25 @@ use std::{
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use bigdecimal::BigDecimal;
-use codee::string::FromToStringCodec;
 use futures_util::future::join5;
 use leptos::{prelude::*, task::spawn_local};
-use leptos_use::{
-    ReconnectLimit, UseWebSocketOptions, core::ConnectionReadyState, use_websocket_with_options,
-};
 use near_min_api::{
     QueryFinality, RpcClient,
     types::{AccountId, Balance, BlockReference, Finality, U128},
     utils::dec_format,
 };
-use serde::{Deserialize, Serialize};
+use reqwest::Url;
+use serde::{Deserialize, Serialize, de::Error as _};
+use serde_json::{Map, Value};
 use web_sys::HtmlAudioElement;
 
 use crate::utils::{TOKEN_CACHE, power_of_10};
 
 use super::{
-    accounts_context::AccountsContext, config_context::ConfigContext, network_context::Network,
+    accounts_context::AccountsContext,
+    config_context::ConfigContext,
+    network_context::Network,
+    prices_context::{ApiError, PricesContext, SubscriptionMessage, Table, icon_url},
     rpc_context::RpcContext,
 };
 
@@ -72,6 +73,77 @@ pub struct TokenInfo {
     pub reputation: TokenScore,
 }
 
+impl TokenInfo {
+    /// The token as the price API at `api_url` has it, from every one of [`TOKEN_FIELDS`]
+    pub fn from_fields(
+        account_id: Token,
+        mut fields: Map<String, Value>,
+        api_url: &Url,
+    ) -> serde_json::Result<Self> {
+        let mut token = unpriced_token(
+            account_id,
+            TokenMetadata {
+                name: String::new(),
+                symbol: String::new(),
+                decimals: 0,
+                icon: None,
+            },
+            0,
+            TokenScore::Unknown,
+        );
+        for field in TOKEN_FIELDS {
+            let value = fields
+                .remove(field)
+                .ok_or_else(|| serde_json::Error::missing_field(field))?;
+            token.set(field, value, api_url)?;
+        }
+        Ok(token)
+    }
+
+    /// Sets `field`, one of [`TOKEN_FIELDS`], to its `value` from the price API at `api_url`.
+    fn set(&mut self, field: &str, value: Value, api_url: &Url) -> serde_json::Result<()> {
+        match field {
+            "name" => self.metadata.name = serde_json::from_value(value)?,
+            "symbol" => self.metadata.symbol = serde_json::from_value(value)?,
+            "decimals" => self.metadata.decimals = serde_json::from_value(value)?,
+            "icon_hash" => {
+                self.metadata.icon = serde_json::from_value::<Option<String>>(value)?
+                    .map(|icon_hash| icon_url(api_url, &icon_hash));
+            }
+            "price_usd" => self.price_usd = serde_json::from_value(value)?,
+            "price_usd_hardcoded" => self.price_usd_hardcoded = serde_json::from_value(value)?,
+            "price_usd_raw" => self.price_usd_raw = serde_json::from_value(value)?,
+            "price_usd_raw_24h_ago" => self.price_usd_raw_24h_ago = serde_json::from_value(value)?,
+            "volume_usd_24h" => self.volume_usd_24h = serde_json::from_value(value)?,
+            "liquidity_usd" => self.liquidity_usd = serde_json::from_value(value)?,
+            "circulating_supply" => self.circulating_supply = dec_format::deserialize(value)?,
+            "total_supply" => self.total_supply = dec_format::deserialize(value)?,
+            "reputation" => self.reputation = serde_json::from_value(value)?,
+            _ => {
+                return Err(serde_json::Error::custom(format!(
+                    "unexpected field {field}"
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    /// wrap.near's data as native NEAR's: its prices and market, but not what it's called
+    fn into_native_near(self) -> Self {
+        TokenInfo {
+            account_id: Token::Near,
+            metadata: TokenMetadata {
+                name: "NEAR".to_string(),
+                symbol: "NEAR".to_string(),
+                icon: Some(near_icon()),
+                ..self.metadata
+            },
+            reputation: TokenScore::Reputable,
+            ..self
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct TokenMetadata {
     pub name: String,
@@ -89,6 +161,7 @@ pub struct TokenData {
 }
 
 #[derive(Clone, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "lowercase")]
 pub enum TokenBalanceSource {
     Direct,
     Rhea,
@@ -103,80 +176,93 @@ pub struct LivePrice {
 }
 
 impl LivePrice {
-    fn apply_to(&self, token: &mut TokenInfo) {
-        token.price_usd = self.price_usd.clone();
-        token.price_usd_hardcoded = self.price_usd_hardcoded.clone();
-        token.price_usd_raw = self.price_usd_raw.clone();
-    }
-}
-
-enum TokensWsMessage {
-    UserTokens(UserTokens),
-    BalanceChanged(BalanceChanged),
-    Prices(Prices),
-    PriceChanged(PriceChanged),
-    Tokens(Tokens),
-    Other,
-}
-
-#[derive(Deserialize)]
-struct UserTokens {
-    account_id: AccountId,
-    tokens: Vec<TokenData>,
-}
-
-#[derive(Deserialize)]
-struct BalanceChanged {
-    account_id: AccountId,
-    token_id: AccountId,
-    #[serde(with = "dec_format")]
-    balance: Balance,
-}
-
-#[derive(Deserialize)]
-struct Prices {
-    prices: HashMap<AccountId, LivePrice>,
-}
-
-#[derive(Deserialize)]
-struct PriceChanged {
-    account_id: AccountId,
-    price_usd: BigDecimal,
-    price_usd_hardcoded: BigDecimal,
-    price_usd_raw: BigDecimal,
-}
-
-#[derive(Deserialize)]
-struct Tokens {
-    tokens: HashMap<AccountId, TokenInfo>,
-}
-
-impl TokensWsMessage {
-    // https://github.com/serde-rs/serde/issues/1183 workaround
-    fn parse(message: &str) -> serde_json::Result<Self> {
-        #[derive(Deserialize)]
-        struct Type {
-            r#type: String,
+    /// Sets `field`, one of [`PRICE_FIELDS`], to its `value` from the price API.
+    fn set(&mut self, field: &str, value: Value) -> serde_json::Result<()> {
+        match field {
+            "price_usd" => self.price_usd = serde_json::from_value(value)?,
+            "price_usd_hardcoded" => self.price_usd_hardcoded = serde_json::from_value(value)?,
+            "price_usd_raw" => self.price_usd_raw = serde_json::from_value(value)?,
+            _ => {
+                return Err(serde_json::Error::custom(format!(
+                    "unexpected field {field}"
+                )));
+            }
         }
-        Ok(
-            match serde_json::from_str::<Type>(message)?.r#type.as_str() {
-                "user_tokens" => Self::UserTokens(serde_json::from_str(message)?),
-                "balance_changed" => Self::BalanceChanged(serde_json::from_str(message)?),
-                "prices" => Self::Prices(serde_json::from_str(message)?),
-                "price_changed" => Self::PriceChanged(serde_json::from_str(message)?),
-                "tokens" => Self::Tokens(serde_json::from_str(message)?),
-                _ => Self::Other,
-            },
-        )
+        Ok(())
     }
 }
 
-/// The most tokens `/tokens/ws` takes in one request.
-const MAX_ACCOUNT_IDS: usize = 1_000;
-/// What [`TokenInfo`] reads, the only fields `/tokens/ws` sends of a token.
-const TOKEN_FIELDS: &str = "price_usd,price_usd_hardcoded,price_usd_raw,price_usd_raw_24h_ago,\
-    volume_usd_24h,liquidity_usd,circulating_supply,total_supply,reputation,metadata.name,\
-    metadata.symbol,metadata.decimals,metadata.icon";
+/// `balances.subscribe`'s result
+#[derive(Deserialize)]
+struct Balances {
+    /// The `token`, `source` and `balance` of each token held
+    balances: Table,
+    /// The held tokens' [`TOKEN_FIELDS`], wrap.near's for native NEAR
+    tokens: Table,
+    /// Sources that couldn't be read, by name
+    errors: HashMap<String, ApiError>,
+}
+
+#[derive(Deserialize)]
+struct BalanceRow {
+    token: AccountId,
+    source: TokenBalanceSource,
+    balance: U128,
+}
+
+/// A push of `balances.subscribe`
+#[derive(Deserialize)]
+struct BalancesPush {
+    /// The direct balances that changed, and native NEAR's as `near`
+    #[serde(default)]
+    balances: HashMap<String, U128>,
+    /// The fields of held tokens that changed, and every field of tokens held for the first time
+    #[serde(default)]
+    set: HashMap<AccountId, Map<String, Value>>,
+}
+
+/// A push of `tokens.subscribe`
+#[derive(Deserialize)]
+struct TokensPush {
+    #[serde(default)]
+    set: HashMap<AccountId, Map<String, Value>>,
+}
+
+/// What [`TokenInfo`] reads of a token, the only fields asked of the price API
+pub const TOKEN_FIELDS: [&str; 13] = [
+    "name",
+    "symbol",
+    "decimals",
+    "icon_hash",
+    "price_usd",
+    "price_usd_hardcoded",
+    "price_usd_raw",
+    "price_usd_raw_24h_ago",
+    "volume_usd_24h",
+    "liquidity_usd",
+    "circulating_supply",
+    "total_supply",
+    "reputation",
+];
+/// What [`LivePrice`] reads of a token
+const PRICE_FIELDS: [&str; 3] = ["price_usd", "price_usd_hardcoded", "price_usd_raw"];
+/// How far a price moves before it's sent again, less than prices, values and 24h changes are
+/// shown with
+const PRICE_MIN_CHANGE: &str = "0.01%";
+
+/// How far each field of [`TOKEN_FIELDS`] that moves with trades does before it's sent again
+fn token_min_change() -> Value {
+    serde_json::json!({
+        "price_usd": PRICE_MIN_CHANGE,
+        "price_usd_hardcoded": PRICE_MIN_CHANGE,
+        "price_usd_raw": PRICE_MIN_CHANGE,
+        "price_usd_raw_24h_ago": PRICE_MIN_CHANGE,
+        "volume_usd_24h": "1%",
+        "liquidity_usd": "1%",
+        "circulating_supply": "0.1%",
+        "total_supply": "0.1%",
+    })
+}
 
 /// Tokens that selected account has
 #[derive(Clone, Copy)]
@@ -246,26 +332,6 @@ fn wrap_near_of(network: &Network) -> Option<AccountId> {
         Network::Testnet => Some("wrap.testnet".parse().unwrap()),
         Network::Localnet(network) => network.wrap_contract.clone(),
     }
-}
-
-/// `/tokens/ws` of the network's prices API, if it has one.
-fn tokens_ws_url(network: &Network) -> Option<String> {
-    let prices_api_url = match network {
-        Network::Mainnet => "https://prices.intear.tech",
-        Network::Testnet => "https://prices-testnet.intear.tech",
-        Network::Localnet(network) => network.prices_api_url.as_deref()?,
-    };
-    let ws_url = if let Some(host) = prices_api_url.strip_prefix("https://") {
-        format!("wss://{host}")
-    } else if let Some(host) = prices_api_url.strip_prefix("http://") {
-        format!("ws://{host}")
-    } else {
-        log::error!("Prices API URL {prices_api_url} is neither http:// nor https://");
-        return None;
-    };
-    Some(format!(
-        "{ws_url}/tokens/ws?thumbnails=false&fields={TOKEN_FIELDS}"
-    ))
 }
 
 fn near_icon() -> String {
@@ -382,6 +448,77 @@ async fn fetch_tokens_over_rpc(
     token_data
 }
 
+/// `token`'s data, as the price API has it for the token `token` is priced as: native NEAR is
+/// itself, and a Rhea deposit [`Token::Rhea`]
+fn held_as(token: Token, data: &TokenInfo) -> TokenInfo {
+    match token {
+        Token::Near => data.clone().into_native_near(),
+        token => TokenInfo {
+            account_id: token,
+            ..data.clone()
+        },
+    }
+}
+
+/// The data of the tokens `balances` has, by id, and the tokens as `tokens` lists them, but spam
+#[allow(clippy::type_complexity)]
+fn held_tokens(
+    balances: Balances,
+    wrap_near: Option<&AccountId>,
+    api_url: &Url,
+) -> serde_json::Result<(HashMap<AccountId, TokenInfo>, Vec<TokenData>)> {
+    for (source, error) in balances.errors {
+        log::error!("Reading {source} balances failed: {error}");
+    }
+    let mut data = HashMap::new();
+    for mut fields in balances.tokens.into_records() {
+        let account_id: AccountId =
+            serde_json::from_value(fields.remove("account_id").unwrap_or_default())?;
+        let info = TokenInfo::from_fields(Token::Nep141(account_id.clone()), fields, api_url)?;
+        data.insert(account_id, info);
+    }
+    let mut held = Vec::new();
+    for BalanceRow {
+        token,
+        source,
+        balance,
+    } in balances.balances.deserialize()?
+    {
+        let (token, source) = match source {
+            TokenBalanceSource::Native => (Token::Near, TokenBalanceSource::Direct),
+            TokenBalanceSource::Direct => (Token::Nep141(token), source),
+            TokenBalanceSource::Rhea => (Token::Rhea(token), source),
+        };
+        let Some(info) = price_id(&token, wrap_near).and_then(|id| data.get(&id)) else {
+            log::error!("No data came with the balance of {token:?}");
+            continue;
+        };
+        let info = held_as(token, info);
+        if matches!(info.reputation, TokenScore::Spam) {
+            continue;
+        }
+        held.push(TokenData {
+            balance: balance.0,
+            token: info,
+            source,
+        });
+    }
+    Ok((data, held))
+}
+
+/// Each row of `table`, a table of tokens, as its fields by token id
+fn by_id(table: Table) -> HashMap<AccountId, Map<String, Value>> {
+    table
+        .into_records()
+        .filter_map(|mut fields| {
+            let account_id = serde_json::from_value(fields.remove("account_id")?)
+                .inspect_err(|error| log::error!("Unexpected token id: {error}"))
+                .ok()?;
+            Some((account_id, fields))
+        })
+        .collect()
+}
+
 pub fn provide_token_context() {
     let (tokens, set_tokens) = signal::<Vec<TokenData>>(vec![]);
     let (loading, set_loading) = signal(true);
@@ -390,6 +527,7 @@ pub fn provide_token_context() {
     let accounts_context = expect_context::<AccountsContext>();
     let rpc_client = expect_context::<RpcContext>();
     let config_context = expect_context::<ConfigContext>();
+    let prices = expect_context::<PricesContext>();
 
     // The selected account with its network, once accounts are unlocked
     let selected = Memo::new(move |_| {
@@ -405,36 +543,22 @@ pub fn provide_token_context() {
     let network = Memo::new(move |_| selected.get().map(|(_, network)| network));
     let wrap_near = Memo::new(move |_| network.get().as_ref().and_then(wrap_near_of));
 
-    // The account whose `user_tokens` reply `tokens` holds
+    // The account whose balances `tokens` holds
     let loaded = RwSignal::new(None::<AccountId>);
-    // Balances of tokens that aren't in `tokens` yet, until their `tokens` reply comes
-    let missing_tokens = RwSignal::new(HashMap::<AccountId, Balance>::new());
-    // What this connection has been asked for, forgotten on every reconnect
-    let followed = StoredValue::new(None::<AccountId>);
-    let sent_price_changes = StoredValue::new(None::<Vec<AccountId>>);
-    let requested_tokens = StoredValue::new(HashSet::<AccountId>::new());
+    // The data the balances subscription follows, as the price API has it, by token id
+    let followed_data = StoredValue::new(HashMap::<AccountId, TokenInfo>::new());
+    // The connection's subscriptions: to an account's balances, and to prices of the tokens that
+    // are watched or in `tokens` without being followed with the balances
+    let balances_sub = StoredValue::new(None::<(u64, AccountId)>);
+    let prices_sub = StoredValue::new(None::<(u64, BTreeSet<AccountId>)>);
+    // Notified when the server ends one, for it to be made again
+    let balances_ended = Trigger::new();
+    let prices_ended = Trigger::new();
 
-    let apply_price = move |account_id: AccountId, price: LivePrice| {
-        let is_wrap_near = wrap_near.get_untracked().as_ref() == Some(&account_id);
-        set_tokens.maybe_update(|tokens| {
-            let mut changed = false;
-            for token in tokens.iter_mut() {
-                let has_this_price = match &token.token.account_id {
-                    Token::Near => is_wrap_near,
-                    Token::Nep141(token_id) | Token::Rhea(token_id) => *token_id == account_id,
-                };
-                if has_this_price {
-                    price.apply_to(&mut token.token);
-                    changed = true;
-                }
-            }
-            changed
-        });
-        if price_watchers.read_untracked().contains_key(&account_id) {
-            set_live_prices.update(|live_prices| {
-                live_prices.insert(account_id, price);
-            });
-        }
+    let selected_account_is = move |account_id: &AccountId| {
+        selected
+            .get_untracked()
+            .is_some_and(|(selected, _)| selected == *account_id)
     };
 
     let play_sound_for = move |amount: Balance, token: &TokenInfo| {
@@ -448,265 +572,350 @@ pub fn provide_token_context() {
         }
     };
 
-    let handle_message = move |message: &String| {
-        let message = match TokensWsMessage::parse(message) {
-            Ok(message) => message,
-            Err(err) => {
-                log::error!("Unexpected message from /tokens/ws: {err}");
-                return;
-            }
-        };
-        match message {
-            TokensWsMessage::UserTokens(UserTokens {
-                account_id,
-                tokens: held,
-            }) => {
-                if selected.get_untracked().map(|(account_id, _)| account_id)
-                    != Some(account_id.clone())
+    let apply_held = move |account_id: AccountId,
+                           data: HashMap<AccountId, TokenInfo>,
+                           mut held: Vec<TokenData>| {
+        if loaded.get_untracked().as_ref() == Some(&account_id) {
+            for token in tokens.get_untracked() {
+                if !held
+                    .iter()
+                    .any(|held| held.token.account_id == token.token.account_id)
                 {
-                    return;
+                    // keep metadata
+                    held.push(TokenData {
+                        balance: 0,
+                        ..token
+                    });
                 }
-                let mut held = held
-                    .into_iter()
-                    .filter(|token| !matches!(token.token.reputation, TokenScore::Spam))
-                    .map(|mut token| {
-                        match token.source {
-                            TokenBalanceSource::Native => {
-                                token.token.account_id = Token::Near;
-                                token.token.metadata.icon = Some(near_icon());
-                                token.token.reputation = TokenScore::Reputable;
-                                token.source = TokenBalanceSource::Direct;
+            }
+        }
+        followed_data.set_value(data);
+        set_tokens(held);
+        loaded.set(Some(account_id));
+        set_loading(false);
+    };
+
+    let apply_balances_push = move |account_id: &AccountId, api_url: &Url, push: BalancesPush| {
+        if loaded.get_untracked().as_ref() != Some(account_id) {
+            return;
+        }
+        let wrap_near = wrap_near.get_untracked();
+        let data_of = |token: &Token| {
+            let data_id = price_id(token, wrap_near.as_ref())?;
+            followed_data.with_value(|data| data.get(&data_id).cloned())
+        };
+        // Changed fields, and every field of the data of tokens held for the first time
+        let mut changed_data = HashSet::new();
+        followed_data.update_value(|data| {
+            for (data_id, fields) in push.set {
+                match data.get_mut(&data_id) {
+                    Some(info) => {
+                        for (field, value) in fields {
+                            if let Err(error) = info.set(&field, value, api_url) {
+                                log::error!("Unexpected {field} of {data_id}: {error}");
                             }
-                            TokenBalanceSource::Rhea => {
-                                if let Token::Nep141(account_id) = &token.token.account_id {
-                                    token.token.account_id = Token::Rhea(account_id.clone());
-                                }
-                            }
-                            TokenBalanceSource::Direct => {}
-                        }
-                        token
-                    })
-                    .collect::<Vec<_>>();
-                if loaded.get_untracked().as_ref() == Some(&account_id) {
-                    for token in tokens.get_untracked() {
-                        if !held
-                            .iter()
-                            .any(|held| held.token.account_id == token.token.account_id)
-                        {
-                            // keep metadata
-                            held.push(TokenData {
-                                balance: 0,
-                                ..token
-                            });
                         }
                     }
+                    None => match TokenInfo::from_fields(
+                        Token::Nep141(data_id.clone()),
+                        fields,
+                        api_url,
+                    ) {
+                        Ok(info) => {
+                            data.insert(data_id.clone(), info);
+                        }
+                        Err(error) => {
+                            log::error!("Unexpected data of {data_id}: {error}");
+                            continue;
+                        }
+                    },
                 }
-                set_tokens(held);
-                missing_tokens.set(HashMap::new());
-                loaded.set(Some(account_id));
-                set_loading(false);
+                changed_data.insert(data_id);
             }
-            TokensWsMessage::BalanceChanged(BalanceChanged {
-                account_id,
-                token_id,
-                balance,
-            }) => {
-                if loaded.get_untracked().as_ref() != Some(&account_id) {
-                    return;
+        });
+        set_tokens.maybe_update(|tokens| {
+            let mut changed = false;
+            for token in tokens.iter_mut() {
+                if price_id(&token.token.account_id, wrap_near.as_ref())
+                    .is_none_or(|data_id| !changed_data.contains(&data_id))
+                {
+                    continue;
                 }
+                if let Some(data) = data_of(&token.token.account_id) {
+                    token.token = held_as(token.token.account_id.clone(), &data);
+                    changed = true;
+                }
+            }
+            for (token_id, U128(balance)) in push.balances {
                 let token = if token_id == "near" {
                     Token::Near
                 } else {
-                    Token::Nep141(token_id.clone())
+                    match token_id.parse() {
+                        Ok(token_id) => Token::Nep141(token_id),
+                        Err(error) => {
+                            log::error!("Unexpected balance of {token_id}: {error}");
+                            continue;
+                        }
+                    }
                 };
-                let mut found = false;
-                set_tokens.maybe_update(|tokens| {
-                    let Some(held) = tokens
-                        .iter_mut()
-                        .find(|held| held.token.account_id == token)
-                    else {
-                        return false;
-                    };
-                    found = true;
+                if let Some(held) = tokens
+                    .iter_mut()
+                    .find(|held| held.token.account_id == token)
+                {
                     if balance > held.balance {
                         play_sound_for(balance - held.balance, &held.token);
                     }
                     held.balance = balance;
-                    true
+                    changed = true;
+                    continue;
+                }
+                // Held for the first time, if it's still held and a token the price API knows
+                if balance == 0 {
+                    continue;
+                }
+                let Some(data) = data_of(&token) else {
+                    continue;
+                };
+                let info = held_as(token, &data);
+                if matches!(info.reputation, TokenScore::Spam) {
+                    continue;
+                }
+                play_sound_for(balance, &info);
+                tokens.push(TokenData {
+                    balance,
+                    token: info,
+                    source: TokenBalanceSource::Direct,
                 });
-                if !found {
-                    missing_tokens.update(|missing| {
-                        if balance > 0 {
-                            missing.insert(token_id, balance);
-                        } else {
-                            missing.remove(&token_id);
-                        }
-                    });
-                }
+                changed = true;
             }
-            TokensWsMessage::Prices(Prices { prices }) => {
-                for (account_id, price) in prices {
-                    apply_price(account_id, price);
-                }
-            }
-            TokensWsMessage::PriceChanged(PriceChanged {
-                account_id,
-                price_usd,
-                price_usd_hardcoded,
-                price_usd_raw,
-            }) => apply_price(
-                account_id,
-                LivePrice {
-                    price_usd,
-                    price_usd_hardcoded,
-                    price_usd_raw,
-                },
-            ),
-            TokensWsMessage::Tokens(Tokens { tokens: infos }) => {
-                let mut added = vec![];
-                missing_tokens.update(|missing| {
-                    for (account_id, info) in infos {
-                        let Some(balance) = missing.remove(&account_id) else {
-                            continue;
-                        };
-                        if matches!(info.reputation, TokenScore::Spam) {
-                            continue;
-                        }
-                        play_sound_for(balance, &info);
-                        added.push(TokenData {
-                            balance,
-                            token: info,
-                            source: TokenBalanceSource::Direct,
-                        });
+            changed
+        });
+    };
+
+    // Follow the selected account's balances, with the data of the tokens it holds
+    Effect::new(move |_| {
+        balances_ended.track();
+        let open_network = prices.open_network();
+        let selected = selected.get();
+        let Some(open_network) = open_network else {
+            // Its subscriptions closed with it
+            balances_sub.set_value(None);
+            return;
+        };
+        let wanted = selected.filter(|(_, network)| *network == open_network);
+        let followed = balances_sub.get_value();
+        if followed.as_ref().map(|(_, account_id)| account_id)
+            == wanted.as_ref().map(|(account_id, _)| account_id)
+        {
+            return;
+        }
+        if let Some((sub, _)) = followed {
+            prices.unsubscribe(sub);
+            balances_sub.set_value(None);
+        }
+        let Some((account_id, network)) = wanted else {
+            return;
+        };
+        let Some(api_url) = network.prices_api_url() else {
+            return;
+        };
+        let sub = prices.subscribe(
+            "balances.subscribe",
+            serde_json::json!({
+                "account": account_id,
+                "sources": ["direct", "native", "rhea"],
+                "token_fields": TOKEN_FIELDS,
+                "token_min_change": token_min_change(),
+            }),
+            {
+                let account_id = account_id.clone();
+                move |message| {
+                    if !selected_account_is(&account_id) {
+                        return;
                     }
-                });
-                if !added.is_empty() {
-                    set_tokens.update(|tokens| tokens.extend(added));
+                    match message {
+                        SubscriptionMessage::Reply(Ok(result)) => {
+                            match serde_json::from_value(result).and_then(|balances| {
+                                held_tokens(balances, wrap_near.get_untracked().as_ref(), &api_url)
+                            }) {
+                                Ok((data, held)) => apply_held(account_id.clone(), data, held),
+                                Err(error) => {
+                                    log::error!("Unexpected balances of {account_id}: {error}")
+                                }
+                            }
+                        }
+                        SubscriptionMessage::Reply(Err(error)) => {
+                            log::error!("Following the balances of {account_id} failed: {error}")
+                        }
+                        SubscriptionMessage::Push(push) => match serde_json::from_value(push) {
+                            Ok(push) => apply_balances_push(&account_id, &api_url, push),
+                            Err(error) => {
+                                log::error!("Unexpected balance changes of {account_id}: {error}")
+                            }
+                        },
+                        SubscriptionMessage::End(error) => {
+                            log::warn!("The balances of {account_id} stopped: {error}");
+                            balances_sub.set_value(None);
+                            balances_ended.notify();
+                        }
+                    }
+                }
+            },
+        );
+        balances_sub.set_value(sub.map(|sub| (sub, account_id)));
+    });
+
+    // Tokens in `tokens` whose data the balances aren't followed with, like ones picked to swap to
+    let unfollowed_ids = Memo::new(move |_| {
+        let wrap_near = wrap_near.get();
+        tokens.with(|tokens| {
+            tokens
+                .iter()
+                .filter_map(|token| price_id(&token.token.account_id, wrap_near.as_ref()))
+                .filter(|id| !followed_data.with_value(|data| data.contains_key(id)))
+                .collect::<BTreeSet<_>>()
+        })
+    });
+
+    let apply_prices = move |api_url: &Url, changed: HashMap<AccountId, Map<String, Value>>| {
+        let watched = price_watchers.with_untracked(|watchers| {
+            changed
+                .keys()
+                .filter(|id| watchers.contains_key(*id))
+                .cloned()
+                .collect::<HashSet<_>>()
+        });
+        set_live_prices.maybe_update(|live_prices| {
+            let mut updated = false;
+            for (account_id, fields) in &changed {
+                if !watched.contains(account_id) {
+                    continue;
+                }
+                match live_prices.get_mut(account_id) {
+                    Some(price) => {
+                        for (field, value) in fields {
+                            if let Err(error) = price.set(field, value.clone()) {
+                                log::error!("Unexpected {field} of {account_id}: {error}");
+                            }
+                        }
+                    }
+                    // A token's first prices come with every field
+                    None => match serde_json::from_value(Value::Object(fields.clone())) {
+                        Ok(price) => {
+                            live_prices.insert(account_id.clone(), price);
+                        }
+                        Err(_) => continue,
+                    },
+                }
+                updated = true;
+            }
+            updated
+        });
+        let wrap_near = wrap_near.get_untracked();
+        set_tokens.maybe_update(|tokens| {
+            let mut updated = false;
+            for token in tokens.iter_mut() {
+                let Some(fields) = price_id(&token.token.account_id, wrap_near.as_ref())
+                    .and_then(|id| changed.get(&id))
+                else {
+                    continue;
+                };
+                for (field, value) in fields {
+                    if let Err(error) = token.token.set(field, value.clone(), api_url) {
+                        log::error!(
+                            "Unexpected {field} of {:?}: {error}",
+                            token.token.account_id
+                        );
+                    }
+                }
+                updated = true;
+            }
+            updated
+        });
+    };
+
+    // Live track the prices of watched tokens, and of the tokens in `tokens` whose data the
+    // balances aren't followed with
+    Effect::new(move |_| {
+        prices_ended.track();
+        let Some(network) = prices.open_network() else {
+            // Its subscriptions closed with it
+            prices_sub.set_value(None);
+            return;
+        };
+        let Some(api_url) = network.prices_api_url() else {
+            return;
+        };
+        let mut ids = unfollowed_ids.get();
+        price_watchers.with(|watchers| ids.extend(watchers.keys().cloned()));
+        let Some((sub, followed)) = prices_sub.get_value() else {
+            if ids.is_empty() {
+                return;
+            }
+            let sub = prices.subscribe(
+                "tokens.subscribe",
+                serde_json::json!({
+                    "fields": PRICE_FIELDS,
+                    "ids": ids,
+                    "min_change": {
+                        "price_usd": PRICE_MIN_CHANGE,
+                        "price_usd_hardcoded": PRICE_MIN_CHANGE,
+                        "price_usd_raw": PRICE_MIN_CHANGE,
+                    },
+                    "min_interval_ms": 1000,
+                }),
+                move |message| match message {
+                    SubscriptionMessage::Reply(Ok(result)) => {
+                        match serde_json::from_value::<Table>(result) {
+                            Ok(table) => apply_prices(&api_url, by_id(table)),
+                            Err(error) => log::error!("Unexpected prices: {error}"),
+                        }
+                    }
+                    SubscriptionMessage::Reply(Err(error)) => {
+                        log::error!("Following prices failed: {error}")
+                    }
+                    SubscriptionMessage::Push(push) => match serde_json::from_value(push) {
+                        Ok(TokensPush { set }) => apply_prices(&api_url, set),
+                        Err(error) => log::error!("Unexpected price changes: {error}"),
+                    },
+                    SubscriptionMessage::End(error) => {
+                        log::warn!("Prices stopped: {error}");
+                        prices_sub.set_value(None);
+                        prices_ended.notify();
+                    }
+                },
+            );
+            prices_sub.set_value(sub.map(|sub| (sub, ids)));
+            return;
+        };
+        let add = ids.difference(&followed).cloned().collect::<Vec<_>>();
+        let remove = followed.difference(&ids).cloned().collect::<Vec<_>>();
+        if add.is_empty() && remove.is_empty() {
+            return;
+        }
+        prices_sub.set_value(Some((sub, ids)));
+        spawn_local(async move {
+            match prices
+                .request::<Table>(
+                    &network,
+                    "tokens.update",
+                    serde_json::json!({ "sub": sub, "add": add, "remove": remove }),
+                )
+                .await
+            {
+                Ok(added) => apply_prices(&api_url, by_id(added)),
+                Err(error) => {
+                    log::error!("Changing the tokens whose prices are followed failed: {error}")
                 }
             }
-            TokensWsMessage::Other => {}
-        }
-    };
-
-    let (socket, set_socket) = signal(None);
-    Effect::new(move |_| {
-        set_socket(network.get().as_ref().and_then(tokens_ws_url).map(|url| {
-            use_websocket_with_options::<String, String, FromToStringCodec, _, _>(
-                &url,
-                UseWebSocketOptions::default()
-                    .reconnect_limit(ReconnectLimit::Infinite)
-                    .reconnect_interval(1000)
-                    .on_message(handle_message),
-            )
-        }));
+        });
     });
-
-    Effect::new(move |_| {
-        let Some(ws) = socket.get() else {
-            return;
-        };
-        if ws.ready_state.get() != ConnectionReadyState::Open {
-            followed.set_value(None);
-            sent_price_changes.set_value(None);
-            requested_tokens.set_value(HashSet::new());
-            return;
-        }
-        let Some((account_id, _)) = selected.get() else {
-            return;
-        };
-        if followed.get_value().as_ref() == Some(&account_id) {
-            return;
-        }
-        if let Some(previous) = followed.get_value() {
-            (ws.send)(
-                &serde_json::json!({ "type": "stop_user_tokens", "account_id": previous })
-                    .to_string(),
-            );
-        }
-        (ws.send)(
-            &serde_json::json!({
-                "type": "user_tokens",
-                "account_id": account_id,
-                "direct": true,
-                "rhea": true,
-                "native": true,
-            })
-            .to_string(),
-        );
-        followed.set_value(Some(account_id));
-    });
-
-    // Live track the prices of NEAR, the tokens in `tokens` and watched tokens
-    let token_price_ids = Memo::new(move |_| {
-        tokens()
-            .iter()
-            .filter_map(|token| match &token.token.account_id {
-                Token::Near => None,
-                Token::Nep141(account_id) | Token::Rhea(account_id) => Some(account_id.clone()),
-            })
-            .collect::<BTreeSet<_>>()
-    });
-    Effect::new(move |_| {
-        let Some(ws) = socket.get() else {
-            return;
-        };
-        if ws.ready_state.get() != ConnectionReadyState::Open {
-            return;
-        }
-        let mut token_ids = token_price_ids.get();
-        token_ids.extend(price_watchers.read().keys().cloned().collect::<Vec<_>>());
-        token_ids.extend(wrap_near.get());
-        let mut token_ids = token_ids.into_iter().collect::<Vec<_>>();
-        if token_ids.len() > MAX_ACCOUNT_IDS {
-            log::error!(
-                "Keeping only {MAX_ACCOUNT_IDS} of {} token prices live",
-                token_ids.len()
-            );
-            token_ids.truncate(MAX_ACCOUNT_IDS);
-        }
-        if sent_price_changes.get_value().as_ref() == Some(&token_ids) {
-            return;
-        }
-        (ws.send)(
-            &serde_json::json!({ "type": "price_changes", "account_ids": token_ids }).to_string(),
-        );
-        sent_price_changes.set_value(Some(token_ids));
-    });
-
-    // Fetch the tokens the account got balances of but doesn't have in `tokens` yet
-    Effect::new(move |_| {
-        let Some(ws) = socket.get() else {
-            return;
-        };
-        if ws.ready_state.get() != ConnectionReadyState::Open {
-            return;
-        }
-        let requested = requested_tokens.read_value();
-        let token_ids = missing_tokens
-            .read()
-            .keys()
-            .filter(|token_id| !requested.contains(*token_id))
-            .take(MAX_ACCOUNT_IDS)
-            .cloned()
-            .collect::<Vec<_>>();
-        if token_ids.is_empty() {
-            return;
-        }
-        requested_tokens.update_value(|requested| requested.extend(token_ids.iter().cloned()));
-        (ws.send)(&serde_json::json!({ "type": "tokens", "account_ids": token_ids }).to_string());
-    });
-
-    let selected_account_is = move |account_id: AccountId| {
-        selected
-            .get_untracked()
-            .is_some_and(|(selected, _)| selected == account_id)
-    };
 
     Effect::new(move |_| {
         let selected = selected.get();
         set_tokens(vec![]);
         loaded.set(None);
-        missing_tokens.set(HashMap::new());
+        followed_data.set_value(HashMap::new());
         let Some((account_id, network)) = selected else {
             set_loading(
                 accounts_context
@@ -718,7 +927,7 @@ pub fn provide_token_context() {
             return;
         };
         set_loading(true);
-        if tokens_ws_url(&network).is_some() {
+        if network.prices_api_url().is_some() {
             // The websocket loads tokens
             return;
         }
@@ -735,7 +944,7 @@ pub fn provide_token_context() {
                 token_ids.into_iter().collect(),
             )
             .await;
-            if selected_account_is(account_id) {
+            if selected_account_is(&account_id) {
                 set_tokens(token_data);
                 set_loading(false);
             }

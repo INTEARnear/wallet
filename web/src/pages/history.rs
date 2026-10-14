@@ -1,15 +1,16 @@
 use std::{
+    cmp::Reverse,
     collections::{HashMap, HashSet},
     sync::Arc,
-    time::Duration,
 };
 
 use crate::{
     components::tooltip::Tooltip,
     contexts::{
-        accounts_context::{AccountsContext, AccountsState},
+        accounts_context::AccountsContext,
         config_context::{ConfigContext, TimestampFormat},
         network_context::Network,
+        prices_context::{PricesContext, SubscriptionMessage, Table},
         rpc_context::RpcContext,
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
@@ -22,6 +23,7 @@ use crate::{
 };
 use base64::{self, Engine};
 use chrono::{DateTime as ChronoDateTime, Local, NaiveDate, Utc};
+use futures_util::{future::join_all, lock::Mutex};
 use icondata::{LuArrowRight, LuCalendar, LuClock, LuPackage, LuPackageOpen};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -32,12 +34,26 @@ use near_min_api::{
     types::{
         AccessKeyPermissionView, AccountId, AccountIdRef, Action, ActionView, Balance, CryptoHash,
         FinalExecutionOutcomeWithReceiptView, FinalExecutionStatus, Finality, FunctionCallAction,
-        NearGas, NearToken, ReceiptEnumView,
+        NearGas, NearToken, ReceiptEnumView, TxExecutionStatus,
     },
 };
 use serde::Deserialize;
+use serde_json::Value;
 
-#[derive(Debug, Deserialize)]
+/// Rows in a page of history: transfers and the transactions they're part of, so a few
+/// transactions' worth
+const PAGE_ROWS: usize = 10;
+/// What a row has, in this order: `id`, which comes first anyway, then the fields asked for
+const ROW_COLUMNS: [&str; 6] = [
+    "id",
+    "timestamp_millis",
+    "transaction_id",
+    "token",
+    "sender",
+    "receiver",
+];
+
+#[derive(Debug)]
 struct HistoryTransaction {
     transaction_id: CryptoHash,
     timestamp_millis: u64,
@@ -45,43 +61,93 @@ struct HistoryTransaction {
     transaction: ExperimentalTxDetails,
 }
 
-#[derive(Debug, Deserialize)]
-struct HistoryPage {
-    transactions: Vec<HistoryTransaction>,
-    next_cursor: Option<String>,
+/// A row of `transfers.*` with `include_transactions`: a transfer of a token or NEAR the account
+/// sent or received, or a transaction it sent or received
+#[derive(Deserialize)]
+struct HistoryRow {
+    id: i64,
+    timestamp_millis: u64,
+    transaction_id: Option<CryptoHash>,
+    /// None for a transaction
+    token: Option<AccountId>,
+    /// None for a mint
+    sender: Option<AccountId>,
+    /// None for a burn
+    receiver: Option<AccountId>,
 }
 
-/// A page of the selected account's history older than `cursor`, or the newest without one. None
-/// when there's no history service to ask, or the page couldn't be loaded, which is logged.
-async fn fetch_history_page(
-    accounts: AccountsState,
-    cursor: Option<String>,
-) -> Option<HistoryPage> {
-    let selected_account_id = accounts.selected_account_id?;
-    let Some(selected_account) = accounts
-        .accounts
-        .into_iter()
-        .find(|a| a.account_id == selected_account_id)
-    else {
-        log::error!("Selected account not found");
-        return None;
-    };
-
-    let history_service_addr = match selected_account.network {
-        Network::Mainnet => dotenvy_macro::dotenv!("MAINNET_HISTORY_SERVICE_ADDR").to_string(),
-        Network::Testnet => dotenvy_macro::dotenv!("TESTNET_HISTORY_SERVICE_ADDR").to_string(),
-        Network::Localnet(network) => network.history_service_url?,
-    };
-    let mut request = reqwest::Client::new().get(format!(
-        "{history_service_addr}/api/transactions/{selected_account_id}"
-    ));
-    if let Some(cursor) = cursor {
-        request = request.query(&[("cursor", cursor)]);
+impl HistoryRow {
+    /// Whoever is on the other side of it from `account_id`, or the token for a mint or burn
+    fn other_account_id(&self, account_id: &AccountId) -> Option<AccountId> {
+        let other = if self.sender.as_ref() == Some(account_id) {
+            &self.receiver
+        } else {
+            &self.sender
+        };
+        other.clone().or_else(|| self.token.clone())
     }
-    let page: reqwest::Result<HistoryPage> =
-        async { request.send().await?.error_for_status()?.json().await }.await;
-    page.inspect_err(|e| log::error!("Failed to load history: {e}"))
-        .ok()
+}
+
+/// Rows from `transfers.query` or `transfers.subscribe`
+#[derive(Deserialize)]
+struct Rows {
+    rows: Vec<Vec<Value>>,
+    /// Where an older page starts, if there is one
+    #[serde(default)]
+    next_cursor: Option<String>,
+    /// The newest row id the API had, for picking up after it
+    #[serde(default)]
+    latest_id: Option<i64>,
+}
+
+impl Rows {
+    fn parse(rows: Vec<Vec<Value>>) -> serde_json::Result<Vec<HistoryRow>> {
+        Table {
+            columns: ROW_COLUMNS.map(String::from).to_vec(),
+            rows,
+        }
+        .deserialize()
+    }
+}
+
+/// `transfers.*` params for the account's rows
+fn rows_params(account_id: &AccountId) -> serde_json::Map<String, Value> {
+    let Value::Object(params) = serde_json::json!({
+        "account": account_id,
+        "include_transactions": true,
+        "fields": &ROW_COLUMNS[1..],
+    }) else {
+        unreachable!("an object literal is an object");
+    };
+    params
+}
+
+lazy_static::lazy_static! {
+    /// Details of transactions that are final, by hash, so each is only read once
+    static ref FINAL_TRANSACTIONS: Mutex<HashMap<CryptoHash, ExperimentalTxDetails>> =
+        Mutex::new(HashMap::new());
+}
+
+/// The transaction's details from archival RPC, or None if RPC can't read it, which is logged.
+async fn transaction_details(
+    rpc_client: &RpcClient,
+    transaction_id: CryptoHash,
+) -> Option<ExperimentalTxDetails> {
+    if let Some(details) = FINAL_TRANSACTIONS.lock().await.get(&transaction_id) {
+        return Some(details.clone());
+    }
+    let details = rpc_client
+        .EXPERIMENTAL_tx_status(transaction_id)
+        .await
+        .inspect_err(|e| log::error!("Failed to fetch {transaction_id}: {e:?}"))
+        .ok()?;
+    if details.final_execution_status == TxExecutionStatus::Final {
+        FINAL_TRANSACTIONS
+            .lock()
+            .await
+            .insert(transaction_id, details.clone());
+    }
+    Some(details)
 }
 
 /// The local day `tx` happened on, which the history is grouped by
@@ -95,106 +161,349 @@ fn local_date(tx: &HistoryTransaction) -> NaiveDate {
 /// Which page of history to load next
 #[derive(Debug, Clone, PartialEq)]
 enum NextPage {
-    /// The newest, replacing whatever is shown when it arrives
+    /// The newest, which comes with following the account
     Newest,
     Older(String),
     End,
 }
 
-/// The selected account's history, loaded a page at a time, newest first. Also lets actions
-/// rendered inside it scroll it to the top and reload it.
+/// The selected account's history from the price API: the newest page and every transaction
+/// since as it happens, then older pages as they're scrolled to. Also lets actions rendered inside
+/// it scroll it to the top.
 #[derive(Clone, Copy)]
 struct HistoryFeed {
+    /// The account it's the history of, with its network
+    account: Memo<Option<(AccountId, Network)>>,
     transactions: RwSignal<Vec<Arc<HistoryTransaction>>>,
     next_page: RwSignal<NextPage>,
-    /// Bumped by every reload, so a page requested before it is dropped instead of mixed in
+    /// Whether an older page is loading
+    loading_older: RwSignal<bool>,
+    /// Transactions shown or being read, so each is read once
+    known: StoredValue<HashSet<CryptoHash>>,
+    /// Bumped whenever it starts over for another account, so what was being read is dropped
     generation: StoredValue<u64>,
-    load_more: leptos::prelude::Action<(), ()>,
     root: NodeRef<leptos::html::Div>,
 }
 
 impl HistoryFeed {
-    fn new(accounts: ReadSignal<AccountsState>, root: NodeRef<leptos::html::Div>) -> Self {
-        let transactions = RwSignal::new(Vec::<Arc<HistoryTransaction>>::new());
-        let next_page = RwSignal::new(NextPage::Newest);
-        let generation = StoredValue::new(0u64);
-        let load_more = leptos::prelude::Action::new_local(move |_input: &()| {
-            let requested_page = next_page.get_untracked();
-            let requested_generation = generation.get_value();
-            let accounts = accounts.get_untracked();
-            async move {
-                let cursor = match &requested_page {
-                    NextPage::Newest => None,
-                    NextPage::Older(cursor) => Some(cursor.clone()),
-                    NextPage::End => return,
-                };
-                let page = fetch_history_page(accounts, cursor).await;
-                // Reloaded since, or the page was left
-                if generation.try_get_value() != Some(requested_generation) {
-                    return;
+    fn new(root: NodeRef<leptos::html::Div>) -> Self {
+        let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+        let account = Memo::new(move |_| {
+            accounts.with(|accounts| {
+                let account_id = accounts.selected_account_id.clone()?;
+                let account = accounts
+                    .accounts
+                    .iter()
+                    .find(|account| account.account_id == account_id)?;
+                Some((account_id, account.network.clone()))
+            })
+        });
+        let feed = Self {
+            account,
+            transactions: RwSignal::new(Vec::new()),
+            next_page: RwSignal::new(NextPage::Newest),
+            loading_older: RwSignal::new(false),
+            known: StoredValue::new(HashSet::new()),
+            generation: StoredValue::new(0),
+            root,
+        };
+        feed.follow(expect_context::<PricesContext>());
+        feed
+    }
+
+    /// Keeps up with the account: subscribes for its newest page and then every block's rows,
+    /// picks up after the last row it had when the connection comes back, and starts over for
+    /// another account.
+    fn follow(self, prices: PricesContext) {
+        // The account followed, None before the first, the subscription following it, and the
+        // newest row it had
+        let followed = StoredValue::new(None::<Option<AccountId>>);
+        let sub = StoredValue::new(None::<u64>);
+        let last_id = StoredValue::new(None::<i64>);
+        // Notified when the subscription has to be made again
+        let ended = Trigger::new();
+        Effect::new(move |_| {
+            ended.track();
+            let account = self.account.get();
+            let open_network = prices.open_network();
+            let account_id = account.as_ref().map(|(account_id, _)| account_id.clone());
+            if followed.get_value().as_ref() != Some(&account_id) {
+                if let Some(sub) = sub.get_value() {
+                    prices.unsubscribe(sub);
                 }
-                let Some(page) = page else {
-                    next_page.set(NextPage::End);
-                    return;
-                };
-                next_page.set(page.next_cursor.map_or(NextPage::End, NextPage::Older));
-                transactions.update(|transactions| {
-                    if requested_page == NextPage::Newest {
-                        transactions.clear();
+                sub.set_value(None);
+                last_id.set_value(None);
+                followed.set_value(Some(account_id));
+                self.start_over(account.as_ref());
+            }
+            let Some((account_id, network)) = account else {
+                return;
+            };
+            if open_network.as_ref() != Some(&network) {
+                // Its subscription is gone with the connection
+                sub.set_value(None);
+                return;
+            }
+            if sub.get_value().is_some() {
+                return;
+            }
+            let resumed_after = last_id.get_value();
+            let mut params = rows_params(&account_id);
+            match resumed_after {
+                Some(after_id) => params.insert("after_id".to_string(), after_id.into()),
+                None => params.insert("history".to_string(), PAGE_ROWS.into()),
+            };
+            let generation = self.generation.get_value();
+            let keep_up = move |rows: &[HistoryRow], latest_id: Option<i64>| {
+                let newest = rows.iter().map(|row| row.id).chain(latest_id).max();
+                last_id.update_value(|last_id| *last_id = (*last_id).max(newest));
+            };
+            let made = prices.subscribe("transfers.subscribe", Value::Object(params), {
+                let network = network.clone();
+                move |message| match message {
+                    SubscriptionMessage::Reply(Ok(result)) => {
+                        match serde_json::from_value::<Rows>(result).and_then(|result| {
+                            Ok((
+                                Rows::parse(result.rows)?,
+                                result.next_cursor,
+                                result.latest_id,
+                            ))
+                        }) {
+                            Ok((mut rows, next_cursor, latest_id)) => {
+                                keep_up(&rows, latest_id);
+                                if resumed_after.is_some() {
+                                    // What was missed, oldest first
+                                    rows.reverse();
+                                    self.add(generation, &account_id, &network, rows, None);
+                                } else {
+                                    let next_page =
+                                        next_cursor.map_or(NextPage::End, NextPage::Older);
+                                    self.add(
+                                        generation,
+                                        &account_id,
+                                        &network,
+                                        rows,
+                                        Some(next_page),
+                                    );
+                                }
+                            }
+                            Err(error) => {
+                                log::error!("Unexpected history of {account_id}: {error}")
+                            }
+                        }
                     }
-                    // A transaction and its transfers can be split between two pages
-                    let shown: HashSet<CryptoHash> =
-                        transactions.iter().map(|tx| tx.transaction_id).collect();
-                    transactions.extend(
-                        page.transactions
-                            .into_iter()
-                            .filter(|tx| !shown.contains(&tx.transaction_id))
-                            .map(Arc::new),
-                    );
-                });
+                    SubscriptionMessage::Reply(Err(error)) => {
+                        log::error!("Following the history of {account_id} failed: {error}");
+                        if resumed_after.is_some() && error.code == "too_far_behind" {
+                            // Too much was missed to catch up on: start over
+                            followed.set_value(None);
+                            ended.notify();
+                        } else if resumed_after.is_none() {
+                            self.next_page.set(NextPage::End);
+                        }
+                    }
+                    SubscriptionMessage::Push(push) => {
+                        match serde_json::from_value::<Rows>(push)
+                            .and_then(|push| Rows::parse(push.rows))
+                        {
+                            Ok(mut rows) => {
+                                keep_up(&rows, None);
+                                // A block's rows come oldest first
+                                rows.reverse();
+                                self.add(generation, &account_id, &network, rows, None);
+                            }
+                            Err(error) => {
+                                log::error!("Unexpected history of {account_id}: {error}")
+                            }
+                        }
+                    }
+                    SubscriptionMessage::End(error) => {
+                        log::warn!("The history of {account_id} stopped: {error}");
+                        sub.set_value(None);
+                        ended.notify();
+                    }
+                }
+            });
+            sub.set_value(made);
+        });
+        // Nothing follows the account once the page is left
+        on_cleanup(move || {
+            if let Some(sub) = sub.try_get_value().flatten() {
+                prices.unsubscribe(sub);
             }
         });
-        Self {
-            transactions,
-            next_page,
-            generation,
-            load_more,
-            root,
+    }
+
+    /// Shows nothing until `account`'s newest page comes, or nothing at all for a network without
+    /// a price API.
+    fn start_over(self, account: Option<&(AccountId, Network)>) {
+        self.generation.update_value(|generation| *generation += 1);
+        self.known.set_value(HashSet::new());
+        self.transactions.set(Vec::new());
+        self.loading_older.set(false);
+        self.next_page.set(
+            if account.is_some_and(|(_, network)| network.prices_api_url().is_some()) {
+                NextPage::Newest
+            } else {
+                NextPage::End
+            },
+        );
+    }
+
+    /// Reads the transactions of `rows`, newest first, that aren't shown or being read yet, and
+    /// shows them where their time puts them, then moves on to `next_page` if given. Nothing is
+    /// shown if it started over since `generation`.
+    fn add(
+        self,
+        generation: u64,
+        account_id: &AccountId,
+        network: &Network,
+        rows: Vec<HistoryRow>,
+        next_page: Option<NextPage>,
+    ) {
+        let read = self.read(account_id, network, rows);
+        spawn_local(async move {
+            let transactions = read.await;
+            // Started over, or the page was left
+            if self.generation.try_get_value() != Some(generation) {
+                return;
+            }
+            self.show(transactions);
+            if let Some(next_page) = next_page {
+                self.next_page.set(next_page);
+            }
+        });
+    }
+
+    /// The transactions of `rows`, newest first, that aren't shown or being read yet, each once,
+    /// with its newest row, read from RPC. Transactions RPC can't read are left out.
+    fn read(
+        self,
+        account_id: &AccountId,
+        network: &Network,
+        rows: Vec<HistoryRow>,
+    ) -> impl Future<Output = Vec<Arc<HistoryTransaction>>> + 'static {
+        let new = self
+            .known
+            .try_update_value(|known| {
+                rows.into_iter()
+                    .filter_map(|row| {
+                        let transaction_id = row.transaction_id?;
+                        let other_account_id = row.other_account_id(account_id)?;
+                        known.insert(transaction_id).then_some((
+                            transaction_id,
+                            row.timestamp_millis,
+                            other_account_id,
+                        ))
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let rpc_client = network.default_rpc_client();
+        async move {
+            join_all(
+                new.into_iter()
+                    .map(|(transaction_id, timestamp_millis, other_account_id)| {
+                        let rpc_client = &rpc_client;
+                        async move {
+                            let transaction =
+                                transaction_details(rpc_client, transaction_id).await?;
+                            Some(Arc::new(HistoryTransaction {
+                                transaction_id,
+                                timestamp_millis,
+                                other_account_id,
+                                transaction,
+                            }))
+                        }
+                    }),
+            )
+            .await
+            .into_iter()
+            .flatten()
+            .collect()
         }
     }
 
-    /// Starts over from the newest page, keeping what's shown until it arrives.
-    fn reload(&self) {
-        self.generation.update_value(|generation| *generation += 1);
-        self.next_page.set(NextPage::Newest);
-        self.load_more.dispatch(());
+    fn show(self, new: Vec<Arc<HistoryTransaction>>) {
+        if new.is_empty() {
+            return;
+        }
+        self.transactions.update(|transactions| {
+            transactions.extend(new);
+            transactions.sort_by_key(|tx| Reverse(tx.timestamp_millis));
+        });
     }
 
-    fn scroll_to_top_and_reload(&self) {
+    /// Loads the next older page, unless one is loading or there's none.
+    fn load_older(self, prices: PricesContext) {
+        let NextPage::Older(cursor) = self.next_page.get_untracked() else {
+            return;
+        };
+        let Some((account_id, network)) = self.account.get_untracked() else {
+            return;
+        };
+        if self.loading_older.get_untracked() {
+            return;
+        }
+        self.loading_older.set(true);
+        let generation = self.generation.get_value();
+        let mut params = rows_params(&account_id);
+        params.insert("limit".to_string(), PAGE_ROWS.into());
+        params.insert("cursor".to_string(), cursor.into());
+        spawn_local(async move {
+            let page = prices
+                .request::<Rows>(&network, "transfers.query", Value::Object(params))
+                .await
+                .and_then(|page| {
+                    Ok((
+                        Rows::parse(page.rows).map_err(|e| e.to_string())?,
+                        page.next_cursor,
+                    ))
+                });
+            let (transactions, next_page) = match page {
+                Ok((rows, next_cursor)) => (
+                    self.read(&account_id, &network, rows).await,
+                    next_cursor.map_or(NextPage::End, NextPage::Older),
+                ),
+                Err(error) => {
+                    log::error!("Failed to load history: {error}");
+                    (Vec::new(), NextPage::End)
+                }
+            };
+            // Started over, or the page was left
+            if self.generation.try_get_value() != Some(generation) {
+                return;
+            }
+            self.show(transactions);
+            self.next_page.set(next_page);
+            self.loading_older.set(false);
+        });
+    }
+
+    fn scroll_to_top(&self) {
         if let Some(root) = self.root.get_untracked() {
             let options = web_sys::ScrollIntoViewOptions::new();
             options.set_behavior(web_sys::ScrollBehavior::Smooth);
             root.scroll_into_view_with_scroll_into_view_options(&options);
         }
-        let feed = *self;
-        set_timeout(move || feed.reload(), Duration::from_millis(1200));
     }
 }
 
 #[component]
 pub fn History() -> impl IntoView {
-    let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
+    let prices = expect_context::<PricesContext>();
     let root_ref = NodeRef::<leptos::html::Div>::new();
-    let feed = HistoryFeed::new(accounts, root_ref);
+    let feed = HistoryFeed::new(root_ref);
     provide_context(feed);
     let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     let timestamp_format = move || config.get().timestamp_format;
-    Effect::new(move || {
-        accounts.track();
-        feed.reload();
-    });
 
-    let is_loading = feed.load_more.pending();
+    let is_loading = move || {
+        feed.loading_older.get()
+            || feed
+                .next_page
+                .with(|next_page| *next_page == NextPage::Newest)
+    };
     let bottom_ref = NodeRef::<leptos::html::Div>::new();
     let (bottom_visible, set_bottom_visible) = signal(false);
     use_intersection_observer(bottom_ref, move |entries, _observer| {
@@ -205,10 +514,12 @@ pub fn History() -> impl IntoView {
     // Keeps loading while the bottom is in view, so a page too short to scroll leads to the next
     Effect::new(move || {
         if bottom_visible.get()
-            && feed.next_page.with(|next_page| *next_page != NextPage::End)
-            && !is_loading.get()
+            && feed
+                .next_page
+                .with(|next_page| matches!(next_page, NextPage::Older(_)))
+            && !feed.loading_older.get()
         {
-            feed.load_more.dispatch(());
+            feed.load_older(prices);
         }
     });
     let dates = Memo::new(move |_| {
@@ -285,8 +596,7 @@ pub fn History() -> impl IntoView {
             </div>
             <div node_ref=bottom_ref>
                 {move || {
-                    is_loading
-                        .get()
+                    is_loading()
                         .then(|| {
                             view! {
                                 <div class="flex items-center justify-center h-32">
@@ -1109,8 +1419,9 @@ fn StorageWithdrawButton(contract_id: AccountId, account_id: AccountId) -> impl 
                             }
                         };
                         set_dismissed(true);
+                        // The withdrawal comes in at the top
                         if succeeded {
-                            feed.scroll_to_top_and_reload();
+                            feed.scroll_to_top();
                         }
                     });
                 }

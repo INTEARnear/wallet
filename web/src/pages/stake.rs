@@ -36,6 +36,7 @@ const NANOSECONDS_IN_YEAR: u64 = 365 * 24 * 60 * 60 * 1_000_000_000;
 use crate::components::projected_revenue::{ProjectedRevenue, ProjectedRevenueMode};
 use crate::components::transaction_modals::{TransactionErrorModal, TransactionSuccessModal};
 use crate::contexts::config_context::ConfigContext;
+use crate::contexts::prices_context::PricesContext;
 use crate::contexts::tokens_context::TokenInfo;
 use crate::translations::TranslationKey;
 use crate::utils::{
@@ -1153,6 +1154,7 @@ pub fn Stake() -> impl IntoView {
     let rpc_context = expect_context::<RpcContext>();
     let tokens_context = expect_context::<TokensContext>();
     let network_context = expect_context::<NetworkContext>();
+    let prices = expect_context::<PricesContext>();
     let accounts_context = expect_context::<AccountsContext>();
     let SearchContext {
         query: search_query,
@@ -1270,7 +1272,8 @@ pub fn Stake() -> impl IntoView {
                         let mut farms = Vec::new();
                         for f in active_farms {
                             if let Some(token_info) =
-                                fetch_token_info(f.token_id, network_context.network.get()).await
+                                fetch_token_info(prices, f.token_id, network_context.network.get())
+                                    .await
                             {
                                 farms.push(PoolFarm {
                                     farm_id: f.farm_id,
@@ -1529,6 +1532,7 @@ pub fn Stake() -> impl IntoView {
                                     let mut unclaimed_rewards = Vec::new();
                                     for (token_id, total_amount) in unclaimed_by_token {
                                         if let Some(token_info) = fetch_token_info(
+                                            prices,
                                             token_id,
                                             network_context.network.get(),
                                         )

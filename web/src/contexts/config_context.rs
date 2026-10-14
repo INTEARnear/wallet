@@ -638,7 +638,6 @@ impl Notation {
 pub struct CustomNetwork {
     pub id: String,
     pub rpc_url: String,
-    pub history_service_url: Option<String>,
     pub social_contract: Option<AccountId>,
     pub prices_api_url: Option<String>,
     pub wrap_contract: Option<AccountId>,

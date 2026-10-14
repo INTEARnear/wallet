@@ -40,7 +40,7 @@ npm run build
 
 The output will be in `dist/`
 
-You need to set up some env variables in `.env` to external services, and if you don't use `.env.prod`, you'd need to set up history-service, account-creation-service, and other services in their respective directories in this repo.
+You need to set up some env variables in `.env` to external services, and if you don't use `.env.prod`, you'd need to set up account-creation-service and other services in their respective directories in this repo.
 
 Built with Leptos, TailwindCSS, ESBuild, and `near-min-api` (a wasm-ready crate built for this wallet).
 

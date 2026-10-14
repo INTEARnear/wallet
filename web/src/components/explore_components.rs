@@ -1,14 +1,16 @@
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
+use bigdecimal::{BigDecimal, FromPrimitive};
 use leptos::prelude::*;
 use leptos_icons::*;
 use leptos_router::components::A;
+use near_min_api::types::AccountId;
 use rand::seq::SliceRandom;
-use std::collections::HashMap;
+use serde::Deserialize;
 
 use crate::{
     contexts::{
         network_context::{Network, NetworkContext},
-        tokens_context::{Token, TokenInfo, TokenScore, TokensContext},
+        prices_context::{PricesContext, Table},
+        tokens_context::{Token, TokenScore, TokensContext},
     },
     data::learn::ARTICLES,
     translations::TranslationKey,
@@ -31,43 +33,69 @@ pub struct Article {
     pub image_url: String,
 }
 
-async fn fetch_trending_tokens(network: Network) -> Vec<TrendingToken> {
-    let api_url = match network {
-        Network::Mainnet => "https://prices.intear.tech".to_string(),
-        Network::Testnet => "https://prices-testnet.intear.tech".to_string(),
-        Network::Localnet(network) => {
-            if let Some(url) = &network.prices_api_url {
-                url.clone()
-            } else {
-                return vec![];
-            }
+/// A token that could be trending, as `tokens.get` reads it
+#[derive(Deserialize)]
+struct Candidate {
+    account_id: AccountId,
+    name: String,
+    symbol: String,
+    price_usd: BigDecimal,
+    price_usd_hardcoded: BigDecimal,
+    price_change_24h: Option<f64>,
+    volume_usd_24h: f64,
+    liquidity_usd: f64,
+}
+
+async fn fetch_trending_tokens(prices: PricesContext, network: Network) -> Vec<TrendingToken> {
+    if network.prices_api_url().is_none() {
+        return vec![];
+    }
+    // No rugs / illiquid tokens
+    let candidates = prices
+        .request::<Table>(
+            &network,
+            "tokens.get",
+            serde_json::json!({
+                "fields": [
+                    "name",
+                    "symbol",
+                    "price_usd",
+                    "price_usd_hardcoded",
+                    "price_change_24h",
+                    "volume_usd_24h",
+                    "liquidity_usd",
+                ],
+                "where": {
+                    "min": { "liquidity_usd": 3000, "volume_usd_24h": 1000 },
+                    "min_reputation": TokenScore::Unknown,
+                    "deleted": false,
+                },
+            }),
+        )
+        .await
+        .and_then(|table| {
+            table
+                .deserialize::<Candidate>()
+                .map_err(|error| error.to_string())
+        });
+    let candidates = match candidates {
+        Ok(candidates) => candidates,
+        Err(error) => {
+            log::error!("Fetching trending tokens failed: {error}");
+            return vec![];
         }
     };
-    let response = reqwest::get(format!("{api_url}/tokens"))
-        .await
-        .unwrap()
-        .json::<HashMap<String, TokenInfo>>()
-        .await
-        .unwrap();
 
     #[allow(clippy::float_arithmetic)] // Ranking is not precision-critical
-    let mut tokens_with_scores: Vec<(f64, TrendingToken)> = response
+    let mut tokens_with_scores: Vec<(f64, TrendingToken)> = candidates
         .into_iter()
-        .filter(|(_, data)| {
-            data.account_id != Token::Nep141("wrap.near".parse().unwrap())
-                && data.account_id != Token::Nep141("wrap.testnet".parse().unwrap())
-                && data.account_id != Token::Near
+        .filter(|data| {
+            data.account_id != "wrap.near"
+                && data.account_id != "wrap.testnet"
                 && data.price_usd_hardcoded != 1
         })
-        .map(|(_, data)| {
-            let change_24h = if data.price_usd_raw_24h_ago > 0 {
-                ((&data.price_usd_raw - &data.price_usd_raw_24h_ago) / &data.price_usd_raw_24h_ago)
-                    .to_f64()
-                    .expect("Could not convert to f64")
-                    * 100.0
-            } else {
-                0.0
-            };
+        .map(|data| {
+            let change_24h = data.price_change_24h.map_or(0.0, |change| change * 100.0);
 
             let trending_score = data.volume_usd_24h.sqrt() * data.liquidity_usd.log2();
             let trending_score = match change_24h {
@@ -78,25 +106,16 @@ async fn fetch_trending_tokens(network: Network) -> Vec<TrendingToken> {
                 ..100.0 => trending_score * 1.25,
                 _ => trending_score * 1.5,
             };
-            // No rugs / illiquid tokens
-            let trending_score = if data.liquidity_usd < 3000.0
-                || matches!(data.reputation, TokenScore::Spam)
-                || data.volume_usd_24h < 1000.0
-            {
-                0.0
-            } else {
-                trending_score
-            };
 
             (
                 trending_score,
                 TrendingToken {
-                    name: data.metadata.name,
-                    symbol: data.metadata.symbol,
+                    name: data.name,
+                    symbol: data.symbol,
                     price: data.price_usd,
                     change_24h: BigDecimal::from_f64(change_24h)
                         .expect("Could not convert to BigDecimal"),
-                    account_id: data.account_id,
+                    account_id: Token::Nep141(data.account_id),
                 },
             )
         })
@@ -117,8 +136,11 @@ async fn fetch_trending_tokens(network: Network) -> Vec<TrendingToken> {
 pub fn TrendingTokensSection() -> impl IntoView {
     let (show_all, set_show_all) = signal(false);
     let network = expect_context::<NetworkContext>().network;
+    let prices = expect_context::<PricesContext>();
     let tokens =
-        LocalResource::new(move || async move { fetch_trending_tokens(network.get()).await });
+        LocalResource::new(
+            move || async move { fetch_trending_tokens(prices, network.get()).await },
+        );
     Effect::new(move || {
         network.track();
         tokens.refetch();

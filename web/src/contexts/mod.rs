@@ -6,6 +6,7 @@ pub mod legal_consents_context;
 pub mod modal_context;
 pub mod network_context;
 pub mod nft_cache_context;
+pub mod prices_context;
 pub mod rpc_context;
 pub mod search_context;
 pub mod security_log_context;
