@@ -1,7 +1,6 @@
 use std::sync::LazyLock;
 use std::{fmt::Display, str::FromStr};
 
-use chrono::{DateTime, Utc};
 use near_min_api::types::near_crypto::PublicKey;
 use near_min_api::types::{AccountId, Action, Balance, CryptoHash};
 use near_min_api::utils::dec_format;
@@ -20,8 +19,7 @@ pub enum Amount {
 pub enum TokenId {
     Near,
     Nep141(AccountId),
-    // Nep141OnRhea(AccountId),
-    // Nep141OnIntents(AccountId),
+    Nep141OnRhea(AccountId),
 }
 
 impl Serialize for TokenId {
@@ -32,8 +30,7 @@ impl Serialize for TokenId {
         match self {
             TokenId::Near => "near".to_string(),
             TokenId::Nep141(account_id) => format!("{account_id}"),
-            // TokenId::Nep141OnRhea(account_id) => format!("rhea-nep141:{account_id}"),
-            // TokenId::Nep141OnIntents(account_id) => format!("intents-nep141:{account_id}"),
+            TokenId::Nep141OnRhea(account_id) => format!("rhea-nep141:{account_id}"),
         }
         .serialize(serializer)
     }
@@ -55,14 +52,10 @@ impl FromStr for TokenId {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s == "near" {
             Ok(TokenId::Near)
-        // } else if let Some(account_id) = s.strip_prefix("rhea-nep141:") {
-        //     Ok(TokenId::Nep141OnRhea(
-        //         account_id.parse().map_err(|_| "Invalid token ID")?,
-        //     ))
-        // } else if let Some(account_id) = s.strip_prefix("intents-nep141:") {
-        //     Ok(TokenId::Nep141OnIntents(
-        //         account_id.parse().map_err(|_| "Invalid token ID")?,
-        //     ))
+        } else if let Some(account_id) = s.strip_prefix("rhea-nep141:") {
+            Ok(TokenId::Nep141OnRhea(
+                account_id.parse().map_err(|_| "Invalid token ID")?,
+            ))
         } else if let Some(account_id) = s.strip_prefix("nep141:") {
             Ok(TokenId::Nep141(
                 account_id.parse().map_err(|_| "Invalid token ID")?,
@@ -174,13 +167,6 @@ pub enum Slippage {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Route {
-    /// The deadline for the route. If provided, you should refresh the route by
-    /// calling the /route endpoint again 2-3 seconds before the deadline to account
-    /// for network and block production latency.
-    pub deadline: Option<DateTime<Utc>>,
-    /// Whether the route has slippage. Usually it's true for AMM models like Rhea
-    /// and false for OTC / guaranteed-quote models like Near Intents.
-    pub has_slippage: bool,
     /// The amount of tokens this route will swap. If you provided `Amount::AmountOut`,
     /// this amount will be `Amount::AmountIn` and vice versa.
     pub estimated_amount: Amount,
@@ -194,15 +180,6 @@ pub struct Route {
     pub dex_id: DexId,
     /// How to execute the swap. Need to be executed sequentially.
     pub execution_instructions: Vec<ExecutionInstruction>,
-    /// Whether the route needs to unwrap the tokens after completing the swap. Only
-    /// true for dexes that don't auto-unwrap tokens, and when token_out is NEAR.
-    /// A transaction is not included in `execution_instructions` because the unwrapping
-    /// can't be done deterministically due to slippage. The recommended behavior is
-    /// to remember the current wrap.near balance and compare it to the balance after the
-    /// swap, and unwrap the difference. When choosing amount_out, it can also happen
-    /// when we wrap too much NEAR into wNEAR (because we're accounting for slippage)
-    /// but the resulting wNEAR amount spent is less than what we wrapped.
-    pub needs_unwrap: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -229,31 +206,6 @@ pub enum DexId {
     ///
     /// Supports AmountIn, doesn't support AmountOut
     Rhea,
-    /// https://app.near-intents.org/
-    /// guaranteed-quote DEX & Bridge
-    ///
-    /// Supports both AmountIn and AmountOut
-    NearIntents,
-    /// https://app.veax.com/
-    /// AMM DEX
-    ///
-    /// Supports both AmountIn and AmountOut
-    Veax,
-    /// https://aidols.bot/
-    /// bonding-curve launchpad
-    ///
-    /// Supports both AmountIn and AmountOut, only *.aidols.near tokens
-    Aidols,
-    /// https://gra.fun/
-    /// bonding-curve launchpad
-    ///
-    /// Supports AmountIn, doesn't support AmountOut, only *.gra-fun.near tokens
-    GraFun,
-    /// https://app.jumpdefi.xyz/swap
-    /// AMM DEX
-    ///
-    /// Not implemented yet
-    Jumpdefi,
     /// Directly wrap NEAR to wNEAR, or unwrap wNEAR to NEAR
     ///
     /// Supports both AmountIn and AmountOut
@@ -263,28 +215,24 @@ pub enum DexId {
     ///
     /// Supports both AmountIn and AmountOut
     RheaDcl,
+    /// AMM DEX
+    ///
+    /// Supports AmountIn, doesn't support AmountOut
+    Plach,
 }
 
 const RHEA_STR: &str = "Rhea";
-const NEAR_INTENTS_STR: &str = "NearIntents";
-const VEAX_STR: &str = "Veax";
-const AIDOLS_STR: &str = "Aidols";
-const GRA_FUN_STR: &str = "GraFun";
-const JUMPDEFI_STR: &str = "Jumpdefi";
 const WRAP_STR: &str = "Wrap";
 const RHEA_DCL_STR: &str = "RheaDcl";
+const PLACH_STR: &str = "Plach";
 
 impl Display for DexId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DexId::Rhea => f.write_str(RHEA_STR),
-            DexId::NearIntents => f.write_str(NEAR_INTENTS_STR),
-            DexId::Veax => f.write_str(VEAX_STR),
-            DexId::Aidols => f.write_str(AIDOLS_STR),
-            DexId::GraFun => f.write_str(GRA_FUN_STR),
-            DexId::Jumpdefi => f.write_str(JUMPDEFI_STR),
             DexId::Wrap => f.write_str(WRAP_STR),
             DexId::RheaDcl => f.write_str(RHEA_DCL_STR),
+            DexId::Plach => f.write_str(PLACH_STR),
         }
     }
 }
@@ -295,13 +243,9 @@ impl FromStr for DexId {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s {
             RHEA_STR => DexId::Rhea,
-            NEAR_INTENTS_STR => DexId::NearIntents,
-            VEAX_STR => DexId::Veax,
-            AIDOLS_STR => DexId::Aidols,
-            GRA_FUN_STR => DexId::GraFun,
-            JUMPDEFI_STR => DexId::Jumpdefi,
             WRAP_STR => DexId::Wrap,
             RHEA_DCL_STR => DexId::RheaDcl,
+            PLACH_STR => DexId::Plach,
             _ => return Err(format!("Invalid dex id: {}", s)),
         })
     }

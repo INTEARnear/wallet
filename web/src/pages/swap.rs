@@ -6,7 +6,6 @@ use std::{
 };
 
 use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, Zero, num_bigint::Sign};
-use chrono::{DateTime, Utc};
 use codee::string::FromToStringCodec;
 use leptos::prelude::AnyView;
 use leptos::prelude::*;
@@ -191,16 +190,8 @@ fn SwapMainnet() -> impl IntoView {
     let ModalContext { modal } = expect_context::<ModalContext>();
     let (show_advanced_options, set_show_advanced_options) = signal(false);
 
-    let (selected_dexes, set_selected_dexes) = signal(vec![
-        DexId::Rhea,
-        DexId::Aidols,
-        DexId::Wrap,
-        DexId::RheaDcl,
-        DexId::MetaPool,
-        DexId::XRhea,
-        DexId::RNear,
-        DexId::Plach,
-    ]);
+    let (selected_dexes, set_selected_dexes) =
+        signal(vec![DexId::Rhea, DexId::Wrap, DexId::RheaDcl, DexId::Plach]);
 
     let (amount_entered, set_amount_entered) = signal("".to_string());
     let (swap_mode, set_swap_mode) = signal(SwapMode::ExactIn);
@@ -378,7 +369,7 @@ fn SwapMainnet() -> impl IntoView {
         if !is_max_near_input {
             return;
         }
-        let required = route.gas_reserve() + route.max_storage_deposits;
+        let required = route.gas_reserve() + route.storage_deposits;
         // Keeps the amount so the missing NEAR error shows
         if token.balance <= required {
             return;
@@ -402,7 +393,7 @@ fn SwapMainnet() -> impl IntoView {
     let missing_near = Memo::new(move |_| {
         let route = best_route()?;
         let token = token_in.get()?;
-        let mut required = route.gas_reserve() + route.max_storage_deposits;
+        let mut required = route.gas_reserve() + route.storage_deposits;
         if token.token.account_id == Token::Near {
             required += match swap_mode_memo.get() {
                 SwapMode::ExactIn => validated_amount_entered.get()?,
@@ -550,12 +541,7 @@ fn SwapMainnet() -> impl IntoView {
             let valid_identity = account.account_id == confirmation.trader_account_id
                 && account.network == confirmation.network
                 && account.secret_key.public_key() == confirmation.signing_public_key;
-            let expired = confirmation
-                .route
-                .deadline
-                .as_ref()
-                .is_some_and(|deadline| *deadline <= Utc::now() + chrono::Duration::seconds(3));
-            if !valid_identity || expired {
+            if !valid_identity {
                 log::warn!("Swap confirmation is stale; request a new quote");
                 modal.set(Some(Box::new(move || {
                     view! { <SwapErrorModal/> }.into_any()
@@ -927,16 +913,6 @@ fn SwapMainnet() -> impl IntoView {
                                         view! {
                                             <div class="bg-neutral-800 rounded-lg px-4 py-3 flex items-center justify-between gap-3 w-full min-h-[56px]">
                                                 {match best_route.dex_id {
-                                                    DexId::Aidols => {
-                                                        view! {
-                                                            <img
-                                                                src="/aidols.svg"
-                                                                alt=move || pages_swap_dex_label(DexId::Aidols)
-                                                                class="w-auto h-8"
-                                                            />
-                                                        }
-                                                            .into_any()
-                                                    }
                                                     DexId::Rhea => {
                                                         view! {
                                                             <img
@@ -967,50 +943,6 @@ fn SwapMainnet() -> impl IntoView {
                                                         }
                                                             .into_any()
                                                     }
-                                                    DexId::MetaPool => {
-                                                        view! {
-                                                            <img
-                                                                src="/metapool.svg"
-                                                                alt=move || pages_swap_dex_label(DexId::MetaPool)
-                                                                class="w-auto h-8"
-                                                            />
-                                                        }
-                                                            .into_any()
-                                                    }
-                                                    DexId::XRhea => {
-                                                        view! {
-                                                            <div class="flex items-center gap-2">
-                                                                <img
-                                                                    src="/rhea.svg"
-                                                                    alt=move || pages_swap_dex_label(DexId::XRhea)
-                                                                    class="w-auto h-8"
-                                                                />
-                                                                <span class="text-white font-medium text-sm">
-                                                                    {move || {
-                                                                        TranslationKey::PagesSwapRouteStakeRhea.format(&[])
-                                                                    }}
-                                                                </span>
-                                                            </div>
-                                                        }
-                                                            .into_any()
-                                                    }
-                                                    DexId::RNear => {
-                                                        view! {
-                                                            <div class="flex items-center gap-2">
-                                                                <img
-                                                                    src="/rhea.svg"
-                                                                    alt=move || pages_swap_dex_label(DexId::RNear)
-                                                                    class="w-auto h-8"
-                                                                />
-                                                                <span class="text-white font-medium text-sm">
-                                                                    {move || {
-                                                                        TranslationKey::PagesSwapRouteStakeNear.format(&[])
-                                                                    }}
-                                                                </span>
-                                                            </div>
-                                                        }
-                                                            .into_any()
-                                                    }
                                                     DexId::Plach => {
                                                         view! {
                                                             <div class="flex items-center gap-2">
@@ -1030,18 +962,6 @@ fn SwapMainnet() -> impl IntoView {
                                                     <span class="text-white font-medium text-sm">
                                                         {move || TranslationKey::PagesSwapBestRoute.format(&[])}
                                                     </span>
-                                                    {if !best_route.has_slippage {
-                                                        view! {
-                                                            <span class="hidden md:inline bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded-full">
-                                                                {move || {
-                                                                    TranslationKey::PagesSwapBadgeNoSlippage.format(&[])
-                                                                }}
-                                                            </span>
-                                                        }
-                                                            .into_any()
-                                                    } else {
-                                                        ().into_any()
-                                                    }}
                                                 </div>
                                             </div>
                                         }
@@ -1245,7 +1165,7 @@ fn SwapMainnet() -> impl IntoView {
                                             <span>
                                                 {move || {
                                                     if best_route()
-                                                        .is_some_and(|route| route.max_storage_deposits > 0)
+                                                        .is_some_and(|route| route.storage_deposits > 0)
                                                     {
                                                         TranslationKey::PagesSwapButtonNotEnoughNearForGasAndStorage
                                                             .format(&[])
@@ -1334,26 +1254,17 @@ fn SwapMainnet() -> impl IntoView {
                                             ("gas_reserve", format_near(route.gas_reserve()).as_str()),
                                         ],
                                     );
-                                if route.max_storage_deposits > 0 {
+                                if route.storage_deposits > 0 {
                                     message
                                         += &TranslationKey::PagesSwapNearRequiredStorageDeposit
                                             .format(
                                                 &[
                                                     (
                                                         "storage_deposit",
-                                                        format_near(route.max_storage_deposits).as_str(),
+                                                        format_near(route.storage_deposits).as_str(),
                                                     ),
                                                 ],
                                             );
-                                    let refunded_right_away = route.max_storage_deposits
-                                        - route.storage_deposits;
-                                    if refunded_right_away > 0 {
-                                        message
-                                            += &TranslationKey::PagesSwapNearRequiredStorageRefunded
-                                                .format(
-                                                    &[("refunded", format_near(refunded_right_away).as_str())],
-                                                );
-                                    }
                                 }
                                 if token_in.get()?.token.account_id == Token::Near {
                                     message
@@ -1538,11 +1449,7 @@ fn SwapMainnet() -> impl IntoView {
                                                     let all_dexes = vec![
                                                         DexId::Rhea,
                                                         DexId::RheaDcl,
-                                                        DexId::Aidols,
                                                         DexId::Wrap,
-                                                        DexId::MetaPool,
-                                                        DexId::XRhea,
-                                                        DexId::RNear,
                                                         DexId::Plach,
                                                     ];
                                                     all_dexes
@@ -2260,13 +2167,6 @@ pub enum Slippage {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Route {
-    /// The deadline for the route. If provided, you should refresh the route by
-    /// calling the /route endpoint again 2-3 seconds before the deadline to account
-    /// for network and block production latency.
-    pub deadline: Option<DateTime<Utc>>,
-    /// Whether the route has slippage. Usually it's true for AMM models like Rhea
-    /// and false for OTC / guaranteed-quote models like Near Intents.
-    pub has_slippage: bool,
     /// The amount of tokens this route will swap. If you provided `Amount::AmountOut`,
     /// this amount will be `Amount::AmountIn` and vice versa.
     pub estimated_amount: Amount,
@@ -2298,10 +2198,6 @@ pub struct Route {
     /// yoctoNEAR the transactions attach to storage deposits, less what they withdraw right after
     #[serde(with = "dec_format")]
     pub storage_deposits: Balance,
-    /// yoctoNEAR the transactions attach to storage deposits, which the wallet needs to have
-    /// even if some is withdrawn right after
-    #[serde(with = "dec_format")]
-    pub max_storage_deposits: Balance,
 }
 
 impl Route {
@@ -2328,11 +2224,6 @@ pub enum DexId {
     ///
     /// Supports AmountIn, doesn't support AmountOut
     Rhea,
-    /// https://aidols.bot/
-    /// bonding-curve launchpad
-    ///
-    /// Supports both AmountIn and AmountOut, only *.aidols.near tokens
-    Aidols,
     /// Directly wrap NEAR to wNEAR, or unwrap wNEAR to NEAR
     ///
     /// Supports both AmountIn and AmountOut
@@ -2342,21 +2233,6 @@ pub enum DexId {
     ///
     /// Supports both AmountIn and AmountOut
     RheaDcl,
-    /// https://metapool.app/
-    /// Liquid Staking provider
-    ///
-    /// Supports NEAR -> STNEAR and STNEAR -> NEAR, both AmountIn and AmountOut
-    MetaPool,
-    /// https://app.rhea.finance/stake
-    /// Staked $RHEA
-    ///
-    /// Supports RHEA -> XRHEA and XRHEA -> RHEA, both AmountIn and AmountOut
-    XRhea,
-    /// https://app.rhea.finance/stake
-    /// Liquid Staking provider
-    ///
-    /// Supports NEAR -> rNEAR and rNEAR -> NEAR, both AmountIn and AmountOut
-    RNear,
     /// AMM DEX
     ///
     /// Supports AmountIn, doesn't support AmountOut
@@ -2364,24 +2240,16 @@ pub enum DexId {
 }
 
 const RHEA_STR: &str = "Rhea";
-const AIDOLS_STR: &str = "Aidols";
 const WRAP_STR: &str = "Wrap";
 const RHEA_DCL_STR: &str = "RheaDcl";
-const METAPOOL_STR: &str = "MetaPool";
-const XRHEA_STR: &str = "XRhea";
-const RNEAR_STR: &str = "RNear";
 const PLACH_STR: &str = "Plach";
 
 impl Display for DexId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DexId::Rhea => f.write_str(RHEA_STR),
-            DexId::Aidols => f.write_str(AIDOLS_STR),
             DexId::Wrap => f.write_str(WRAP_STR),
             DexId::RheaDcl => f.write_str(RHEA_DCL_STR),
-            DexId::MetaPool => f.write_str(METAPOOL_STR),
-            DexId::XRhea => f.write_str(XRHEA_STR),
-            DexId::RNear => f.write_str(RNEAR_STR),
             DexId::Plach => f.write_str(PLACH_STR),
         }
     }
@@ -2390,12 +2258,8 @@ impl Display for DexId {
 fn pages_swap_dex_label(dex: DexId) -> String {
     match dex {
         DexId::Rhea => TranslationKey::PagesSwapDexRhea.format(&[]),
-        DexId::Aidols => TranslationKey::PagesSwapDexAidols.format(&[]),
         DexId::Wrap => TranslationKey::PagesSwapDexWrap.format(&[]),
         DexId::RheaDcl => TranslationKey::PagesSwapDexRheaDcl.format(&[]),
-        DexId::MetaPool => TranslationKey::PagesSwapDexMetaPool.format(&[]),
-        DexId::XRhea => TranslationKey::PagesSwapDexXRhea.format(&[]),
-        DexId::RNear => TranslationKey::PagesSwapDexRNear.format(&[]),
         DexId::Plach => TranslationKey::PagesSwapDexPlach.format(&[]),
     }
 }
@@ -2406,12 +2270,8 @@ impl FromStr for DexId {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s {
             RHEA_STR => DexId::Rhea,
-            AIDOLS_STR => DexId::Aidols,
             WRAP_STR => DexId::Wrap,
             RHEA_DCL_STR => DexId::RheaDcl,
-            METAPOOL_STR => DexId::MetaPool,
-            XRHEA_STR => DexId::XRhea,
-            RNEAR_STR => DexId::RNear,
             PLACH_STR => DexId::Plach,
             _ => return Err(format!("Invalid dex id: {}", s)),
         })
@@ -2785,16 +2645,6 @@ fn SwapConfirmationModal(
                                 </span>
                                 <div class="flex items-center gap-2">
                                     {match route.dex_id {
-                                        DexId::Aidols => {
-                                            view! {
-                                                <img
-                                                    src="/aidols.svg"
-                                                    alt=move || pages_swap_dex_label(DexId::Aidols)
-                                                    class="w-auto h-5"
-                                                />
-                                            }
-                                                .into_any()
-                                        }
                                         DexId::Rhea => {
                                             view! {
                                                 <img
@@ -2822,50 +2672,6 @@ fn SwapConfirmationModal(
                                                         TranslationKey::PagesSwapRouteWrapDirectly.format(&[])
                                                     }}
                                                 </span>
-                                            }
-                                                .into_any()
-                                        }
-                                        DexId::MetaPool => {
-                                            view! {
-                                                <img
-                                                    src="/metapool.svg"
-                                                    alt=move || pages_swap_dex_label(DexId::MetaPool)
-                                                    class="w-auto h-5"
-                                                />
-                                            }
-                                                .into_any()
-                                        }
-                                        DexId::XRhea => {
-                                            view! {
-                                                <div class="flex items-center gap-1">
-                                                    <img
-                                                        src="/rhea.svg"
-                                                        alt=move || pages_swap_dex_label(DexId::XRhea)
-                                                        class="w-auto h-5"
-                                                    />
-                                                    <span class="text-white text-sm">
-                                                        {move || {
-                                                            TranslationKey::PagesSwapRouteStakeRhea.format(&[])
-                                                        }}
-                                                    </span>
-                                                </div>
-                                            }
-                                                .into_any()
-                                        }
-                                        DexId::RNear => {
-                                            view! {
-                                                <div class="flex items-center gap-1">
-                                                    <img
-                                                        src="/rhea.svg"
-                                                        alt=move || pages_swap_dex_label(DexId::RNear)
-                                                        class="w-auto h-5"
-                                                    />
-                                                    <span class="text-white text-sm">
-                                                        {move || {
-                                                            TranslationKey::PagesSwapRouteStakeNear.format(&[])
-                                                        }}
-                                                    </span>
-                                                </div>
                                             }
                                                 .into_any()
                                         }
