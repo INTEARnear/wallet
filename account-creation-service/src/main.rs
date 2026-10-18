@@ -1017,7 +1017,6 @@ async fn swap_for_gas(
         token_in: TokenId::Near,
         token_out: TokenId::Nep141(payload.token_contract_id.clone()),
         amount: Amount::AmountIn("0.3 NEAR".parse::<NearToken>().unwrap().as_yoctonear()),
-        max_wait_ms: 3_000,
         slippage: Slippage::Auto {
             max_slippage: 0.1,
             min_slippage: 0.001,

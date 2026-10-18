@@ -247,7 +247,6 @@ fn SwapMainnet() -> impl IntoView {
                 SwapMode::ExactIn => Amount::AmountIn(amount_raw),
                 SwapMode::ExactOut => Amount::AmountOut(amount_raw),
             },
-            max_wait_ms: 2000,
             slippage: config.get().slippage,
             dexes: if dexes.is_empty() { None } else { Some(dexes) },
             trader_account_id: Some(trader_account_id),
@@ -2085,10 +2084,6 @@ pub struct SwapRequest {
     /// The amount to swap. If it's AmountOut, some dexes might not support this.
     #[serde(flatten)]
     pub amount: Amount,
-    /// The maximum amount of time to wait for the route to be found. Some dexes
-    /// like near intents might show a better quote if you wait a bit longer.
-    /// Usually, 2-3 seconds is enough. Maximum is 60 seconds.
-    pub max_wait_ms: u64,
     /// The slippage tolerance. `1.00` means 100%, `0.001` means 0.1%.
     #[serde(flatten)]
     pub slippage: Slippage,
@@ -2106,7 +2101,7 @@ pub struct SwapRequest {
     pub signing_public_key: Option<PublicKey>,
     /// The account ID of the referrer. If provided, the route will include referral
     /// parameter for DEXes that support it (DexId::Rhea, DexId::NearIntents,
-    /// DexId::Aidols, DexId::Plach)
+    /// DexId::Plach)
     pub referrer_id: Option<AccountId>,
 }
 
