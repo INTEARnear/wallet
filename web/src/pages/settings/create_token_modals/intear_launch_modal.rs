@@ -23,7 +23,7 @@ use crate::{
     utils::decimal_to_balance,
 };
 
-const INTEAR_LAUNCH_ACCOUNT: &str = "launch.intear.near";
+const INTEAR_LAUNCH_ACCOUNT: &str = "launch-v2.intear.near";
 const LONG_ID_BASE_DEPOSIT: NearToken = NearToken::from_millinear(33);
 const SHORT_ID_COST: NearToken = NearToken::from_near(1);
 const SHORT_ID_BASE_DEPOSIT: NearToken =
@@ -935,7 +935,7 @@ fn IntearLaunchSuccessModal(token_symbol: String, token_account_id: AccountId) -
         modal_context.modal.set(None);
     };
 
-    let launch_url = format!("https://dex.intea.rs/launch?token={token_account_id}");
+    let launch_url = format!("https://dex.intea.rs/?from=near&to={token_account_id}");
 
     view! {
         <div
