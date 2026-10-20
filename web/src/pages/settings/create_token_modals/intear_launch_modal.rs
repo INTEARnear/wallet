@@ -2,13 +2,13 @@ use bigdecimal::BigDecimal;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
 use near_min_api::{
-    CallError, QueryFinality,
+    QueryFinality,
     types::{
-        AccountId, Action, CryptoHash, FinalExecutionStatus, Finality, FunctionCallAction, NearGas,
-        NearToken,
+        AccountId, Action, CryptoHash, ExecutionStatusView, FinalExecutionStatus, Finality,
+        FunctionCallAction, NearGas, NearToken,
     },
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     components::select::{Select, SelectOption},
@@ -24,27 +24,20 @@ use crate::{
 };
 
 const INTEAR_LAUNCH_ACCOUNT: &str = "launch-v2.intear.near";
-const LONG_ID_BASE_DEPOSIT: NearToken = NearToken::from_millinear(33);
-const SHORT_ID_COST: NearToken = NearToken::from_near(1);
-const SHORT_ID_BASE_DEPOSIT: NearToken =
-    NearToken::from_yoctonear(SHORT_ID_COST.as_yoctonear() + LONG_ID_BASE_DEPOSIT.as_yoctonear());
-const STORAGE_ESTIMATE_OVERHEAD_BYTES: usize = 400;
-const MAX_SOCIAL_LINK_LENGTH: usize = 50;
-const MAX_DESCRIPTION_LENGTH: usize = 200;
+const LAUNCH_GAS: NearGas = NearGas::from_tgas(400);
+const LAUNCH_GAS_PER_ARGS_BYTE: NearGas = NearGas::from_gas(400_000_000);
 
-fn validate_max_length(value: &str, field_name: &str, max_len: usize) -> Option<String> {
-    let char_count = value.chars().count();
-    if char_count > max_len {
-        let max_len_str = max_len.to_string();
-        Some(
-            TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchMaxLengthError.format(&[
-                ("field_name", field_name),
-                ("max_len", max_len_str.as_str()),
-            ]),
-        )
-    } else {
-        None
-    }
+#[derive(Clone, Debug, Deserialize)]
+struct LaunchPreparation {
+    token_account_id: Option<AccountId>,
+    deposit: Option<NearToken>,
+    errors: Vec<String>,
+}
+
+fn parse_near_amount(value: &str) -> Option<NearToken> {
+    let amount = value.parse::<BigDecimal>().ok()?;
+    let yoctonear = decimal_to_balance(amount, 24);
+    (yoctonear > 0).then(|| NearToken::from_yoctonear(yoctonear))
 }
 
 #[component]
@@ -66,7 +59,7 @@ where
         add_transaction, ..
     } = expect_context::<TransactionQueueContext>();
 
-    #[derive(Clone, Debug, Default)]
+    #[derive(Clone, Debug, Default, PartialEq)]
     struct IntearLaunchForm {
         telegram: String,
         x: String,
@@ -157,264 +150,31 @@ where
             Some(trimmed.to_string())
         }
     };
-    let validate_telegram_link = |telegram: &str| -> Option<String> {
-        if telegram.is_empty() {
-            return None;
-        }
-        if let Some(error) = validate_max_length(telegram, "Telegram link", MAX_SOCIAL_LINK_LENGTH)
-        {
-            return Some(error);
-        }
-        let prefix = "https://t.me/";
-        let Some(handle) = telegram.strip_prefix(prefix) else {
-            return Some(
-                TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchMustStartWith
-                    .format(&[("prefix", prefix)]),
-            );
-        };
-        if handle.is_empty() {
-            return Some(
-                TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchMustIncludeHandle
-                    .format(&[("prefix", prefix)]),
-            );
-        }
-        if handle.contains('/') {
-            return Some(
-                TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchCannotContainSlash
-                    .format(&[("prefix", prefix)]),
-            );
-        }
-        None
-    };
-    let validate_x_link = |x: &str| -> Option<String> {
-        if x.is_empty() {
-            return None;
-        }
-        if let Some(error) = validate_max_length(x, "X link", MAX_SOCIAL_LINK_LENGTH) {
-            return Some(error);
-        }
-        let prefix = "https://x.com/";
-        let Some(handle) = x.strip_prefix(prefix) else {
-            return Some(
-                TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchMustStartWith
-                    .format(&[("prefix", prefix)]),
-            );
-        };
-        if handle.is_empty() {
-            return Some(
-                TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchMustIncludeHandle
-                    .format(&[("prefix", prefix)]),
-            );
-        }
-        if handle.contains('/') {
-            return Some(
-                TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchCannotContainSlash
-                    .format(&[("prefix", prefix)]),
-            );
-        }
-        None
-    };
-    let validate_website = |website: &str| -> Option<String> {
-        if website.is_empty() {
-            return None;
-        }
-        let website_link_label =
-            TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchWebsiteLink.format(&[]);
-        if let Some(error) =
-            validate_max_length(website, &website_link_label, MAX_SOCIAL_LINK_LENGTH)
-        {
-            return Some(error);
-        }
-        if !website.starts_with("https://") {
-            return Some(
-                TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchMustStartHttps
-                    .format(&[]),
-            );
-        }
-        if reqwest::Url::parse(website).is_err() {
-            return Some(
-                TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchMustBeValidUrl
-                    .format(&[]),
-            );
-        }
-        None
-    };
-    let validate_description = |description: &str| -> Option<String> {
-        validate_max_length(description, "Description", MAX_DESCRIPTION_LENGTH)
-    };
     let validate_first_buy = move |buy_str: &str| -> Option<String> {
         if buy_str.is_empty() {
             return None;
         }
 
         match buy_str.parse::<BigDecimal>() {
-            Ok(amount) => {
-                if amount <= 0 {
-                    Some(
-                        TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchAmountGt0
-                            .format(&[]),
-                    )
-                } else {
-                    None
-                }
-            }
+            Ok(_) if parse_near_amount(buy_str).is_none() => Some(
+                TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchAmountGt0.format(&[]),
+            ),
+            Ok(_) => None,
             Err(_) => Some(
                 TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchInvalidNumber
                     .format(&[]),
             ),
         }
     };
-    let preview_id_resource = LocalResource::new({
-        let token_symbol = token_symbol.clone();
-        move || {
-            let short_id = form.get().short_id;
-            let symbol = token_symbol.clone();
-            let rpc_client = client.get();
-
-            async move {
-                let contract_id = INTEAR_LAUNCH_ACCOUNT
-                    .parse::<AccountId>()
-                    .map_err(|e| format!("Invalid contract ID: {e}"))?;
-
-                rpc_client
-                    .call::<AccountId>(
-                        contract_id,
-                        "preview_id",
-                        serde_json::json!({
-                            "symbol": symbol,
-                            "short_id": short_id,
-                        }),
-                        QueryFinality::Finality(Finality::DoomSlug),
-                    )
-                    .await
-                    .map_err(|e| {
-                        if let CallError::ExecutionError(e) = &e
-                            && e.contains("Short account ID for this symbol is already taken.")
-                        {
-                            TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchShortIdTaken.format(&[])
-                        } else {
-                            let err = e.to_string();
-                            TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchErrPreviewFailed
-                                .format(&[("error", err.as_str())])
-                        }
-                    })
-            }
-        }
-    });
-
     let selected_account = move || accounts_context.accounts.get().selected_account_id;
 
-    let token_image_for_deposit = token_image.clone();
-    let token_name_for_deposit = token_name.clone();
-    let token_symbol_for_deposit = token_symbol.clone();
-    let calculate_storage_deposit = move || {
-        let values = form.get();
-        let estimated_size_bytes = token_image_for_deposit.len()
-            + token_name_for_deposit.len()
-            + token_symbol_for_deposit.len()
-            + values.telegram.len()
-            + values.x.len()
-            + values.website.len()
-            + values.description.len()
-            + STORAGE_ESTIMATE_OVERHEAD_BYTES;
-        let size_bd = BigDecimal::from(estimated_size_bytes as u64);
-        let divisor = BigDecimal::from(100_000_u64);
-        let size_near = size_bd / divisor;
-        let size_yoctonear = decimal_to_balance(size_near, 24);
-        NearToken::from_yoctonear(size_yoctonear)
-    };
-    let calculate_storage_deposit_for_total = calculate_storage_deposit.clone();
-    let calculate_total_deposit = move || {
-        let values = form.get();
-        let base_deposit = if values.short_id {
-            SHORT_ID_BASE_DEPOSIT
-        } else {
-            LONG_ID_BASE_DEPOSIT
-        };
-        let with_storage = base_deposit
-            .checked_add(calculate_storage_deposit_for_total())
-            .unwrap_or(base_deposit);
-        let first_buy_token = if first_buy.get().is_empty() {
-            NearToken::from_yoctonear(0)
-        } else {
-            match first_buy.get().parse::<BigDecimal>() {
-                Ok(amount) => {
-                    if amount <= 0 {
-                        NearToken::from_yoctonear(0)
-                    } else {
-                        let yoctonear = decimal_to_balance(amount, 24);
-                        NearToken::from_yoctonear(yoctonear)
-                    }
-                }
-                Err(_) => NearToken::from_yoctonear(0),
-            }
-        };
-        with_storage
-            .checked_add(first_buy_token)
-            .unwrap_or(with_storage)
-    };
-    let calculate_total_deposit_label = calculate_total_deposit.clone();
-
-    let is_valid = move || {
-        let values = form.get();
-        if selected_account().is_none() {
-            return false;
-        }
-        if validate_telegram_link(&values.telegram).is_some() {
-            return false;
-        }
-        if validate_x_link(&values.x).is_some() {
-            return false;
-        }
-        if validate_website(&values.website).is_some() {
-            return false;
-        }
-        if validate_description(&values.description).is_some() {
-            return false;
-        }
-        if validate_first_buy(&first_buy.get()).is_some() {
-            return false;
-        }
-        matches!(preview_id_resource.get(), Some(Ok(_)))
-    };
-
-    let close_modal = move || {
-        modal_context.modal.set(None);
-    };
-
-    let token_symbol_clone = token_symbol.clone();
-    let token_name_clone = token_name.clone();
-    let token_supply_clone = token_supply.clone();
-    let token_image_clone = token_image.clone();
-
-    let handle_confirm = move || {
-        let values = form.get();
-        let Some(Ok(preview_id)) = preview_id_resource.get() else {
-            return;
-        };
-
-        let token_symbol = token_symbol_clone.clone();
-        let token_name = token_name_clone.clone();
-        let token_supply = token_supply_clone.clone();
-        let token_image = token_image_clone.clone();
-        let first_buy_value = first_buy.get();
-        let signer_id = accounts_context
-            .accounts
-            .get_untracked()
-            .selected_account_id;
-        let deposit = calculate_total_deposit();
-        let add_transaction = add_transaction;
-
-        on_confirm();
-        close_modal();
-
-        spawn_local(async move {
-            let Some(signer_id) = signer_id else {
-                log::error!("No account selected");
-                return;
-            };
-
-            let total_supply = decimal_to_balance(token_supply, token_decimals as u32);
+    let launch_args = {
+        let token_symbol = token_symbol.clone();
+        let token_name = token_name.clone();
+        let token_supply = token_supply.clone();
+        let token_image = token_image.clone();
+        move |values: &IntearLaunchForm, first_buy: &str, signer_id: &AccountId| {
+            let total_supply = decimal_to_balance(token_supply.clone(), token_decimals as u32);
             let now_nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap() as u64;
             let one_hour_nanos = 60 * 60 * 1_000_000_000;
             let fees: Option<Vec<FeeEntryArg>> = match values.fee_preset {
@@ -448,42 +208,137 @@ where
                     },
                 )]),
             };
-            let first_buy_token = if first_buy_value.is_empty() {
-                None
-            } else {
-                match first_buy_value.parse::<BigDecimal>() {
-                    Ok(amount) => {
-                        if amount <= 0 {
-                            None
-                        } else {
-                            let yoctonear = decimal_to_balance(amount, 24);
-                            Some(NearToken::from_yoctonear(yoctonear))
-                        }
-                    }
-                    Err(_) => None,
-                }
-            };
-            let args = serde_json::json!({
+            serde_json::json!({
                 "name": token_name,
-                "symbol": token_symbol.clone(),
+                "symbol": token_symbol,
                 "icon": optional_string(&token_image),
                 "decimals": token_decimals,
                 "total_supply": total_supply.to_string(),
                 "short_id": values.short_id,
                 "fees": fees,
-                "first_buy": first_buy_token,
+                "first_buy": parse_near_amount(first_buy),
                 "launch_data": {
                     "telegram": optional_string(&values.telegram),
                     "x": optional_string(&values.x),
                     "website": optional_string(&values.website),
                     "description": optional_string(&values.description),
                 },
-            });
+            })
+        }
+    };
+
+    #[derive(Clone)]
+    struct PreparedLaunch {
+        values: IntearLaunchForm,
+        first_buy: String,
+        signer_id: AccountId,
+        preparation: LaunchPreparation,
+    }
+
+    let launch_preparation_resource = LocalResource::new({
+        let launch_args = launch_args.clone();
+        move || {
+            let values = form.get();
+            let first_buy_value = first_buy.get();
+            let signer_id = selected_account();
+            let rpc_client = client.get();
+            let launch_args = launch_args.clone();
+
+            async move {
+                let Some(signer_id) = signer_id else {
+                    return Ok::<_, String>(None);
+                };
+                let mut args = launch_args(&values, &first_buy_value, &signer_id);
+                args["account_id"] = serde_json::json!(signer_id);
+                let preparation = rpc_client
+                    .call::<LaunchPreparation>(
+                        INTEAR_LAUNCH_ACCOUNT.parse().unwrap(),
+                        "prepare_launch",
+                        args,
+                        QueryFinality::Finality(Finality::DoomSlug),
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(Some(PreparedLaunch {
+                    values,
+                    first_buy: first_buy_value,
+                    signer_id,
+                    preparation,
+                }))
+            }
+        }
+    });
+    let current_preparation = move || match launch_preparation_resource.get() {
+        Some(Ok(Some(prepared)))
+            if prepared.values == form.get()
+                && prepared.first_buy == first_buy.get()
+                && Some(&prepared.signer_id) == selected_account().as_ref() =>
+        {
+            Some(prepared.preparation)
+        }
+        _ => None,
+    };
+    let current_deposit = move || current_preparation().and_then(|preparation| preparation.deposit);
+
+    // A first buy that isn't a valid amount is sent as no first buy, so the deposit isn't for it
+    let is_valid =
+        move || validate_first_buy(&first_buy.get()).is_none() && current_deposit().is_some();
+
+    let close_modal = move || {
+        modal_context.modal.set(None);
+    };
+
+    let token_symbol_clone = token_symbol.clone();
+
+    let handle_confirm = move || {
+        if !is_valid() {
+            return;
+        }
+        let values = form.get();
+        // launch_token takes only the exact deposit, which is for these inputs
+        let Some(LaunchPreparation {
+            token_account_id: Some(preview_id),
+            deposit: Some(deposit),
+            ..
+        }) = current_preparation()
+        else {
+            return;
+        };
+
+        let token_symbol = token_symbol_clone.clone();
+        let first_buy_value = first_buy.get();
+        let signer_id = accounts_context
+            .accounts
+            .get_untracked()
+            .selected_account_id;
+        let launch_args = launch_args.clone();
+        let add_transaction = add_transaction;
+
+        on_confirm();
+        close_modal();
+
+        spawn_local(async move {
+            let Some(signer_id) = signer_id else {
+                log::error!("No account selected");
+                return;
+            };
+
+            let args =
+                serde_json::to_vec(&launch_args(&values, &first_buy_value, &signer_id)).unwrap();
+            // A larger name or icon needs more gas for the token's `new`, and all arguments need
+            // gas to be parsed
+            let gas = LAUNCH_GAS
+                .checked_add(
+                    LAUNCH_GAS_PER_ARGS_BYTE
+                        .checked_mul(args.len() as u64)
+                        .unwrap(),
+                )
+                .unwrap();
 
             let action = Action::FunctionCall(Box::new(FunctionCallAction {
                 method_name: "launch_token".to_string(),
-                args: serde_json::to_vec(&args).unwrap(),
-                gas: NearGas::from_tgas(300).into(),
+                args,
+                gas: gas.into(),
                 deposit,
             }));
 
@@ -515,7 +370,27 @@ where
                     };
 
                     let tx_hash = outcome.final_outcome.transaction.hash;
+                    let any_receipt_failed =
+                        outcome
+                            .final_outcome
+                            .receipts_outcome
+                            .iter()
+                            .any(|receipt| {
+                                matches!(receipt.outcome.status, ExecutionStatusView::Failure(_))
+                            });
                     match outcome.final_outcome.status {
+                        FinalExecutionStatus::SuccessValue(_) if any_receipt_failed => {
+                            modal_context.modal.set(Some(Box::new(move || {
+                                view! {
+                                    <IntearLaunchErrorModal
+                                        tx_hash=Some(tx_hash)
+                                        error_message=Signal::derive(move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchErrLaunchFailed
+                                            .format(&[]))
+                                    />
+                                }
+                                .into_any()
+                            })));
+                        }
                         FinalExecutionStatus::SuccessValue(value) => {
                             match serde_json::from_slice::<AccountId>(&value) {
                                 Ok(token_account_id) => {
@@ -655,7 +530,7 @@ where
                             {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchCaPreview.format(&[])}
                         </div>
                         {move || {
-                            match preview_id_resource.get() {
+                            match launch_preparation_resource.get() {
                                 None => {
                                     view! {
                                         <div class="text-xs text-yellow-300">
@@ -665,15 +540,29 @@ where
                                     }
                                         .into_any()
                                 }
-                                Some(Ok(account_id)) => {
+                                Some(Ok(None)) => {
+                                    view! {
+                                        <div class="text-xs text-yellow-300">
+                                            {move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchSelectAccountFirst
+                                                .format(&[])}
+                                        </div>
+                                    }
+                                        .into_any()
+                                }
+                                Some(Ok(Some(prepared))) => {
                                     view! {
                                         <div class="text-sm font-mono text-white break-all">
-                                            {account_id.to_string()}
+                                            {prepared
+                                                .preparation
+                                                .token_account_id
+                                                .map_or_else(|| "-".to_string(), |account_id| account_id.to_string())}
                                         </div>
                                     }
                                         .into_any()
                                 }
                                 Some(Err(e)) => {
+                                    let e = TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchErrPreviewFailed
+                                        .format(&[("error", e.as_str())]);
                                     view! { <div class="text-xs text-red-400">{e}</div> }.into_any()
                                 }
                             }
@@ -700,14 +589,6 @@ where
                             class="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded text-base text-white"
                             placeholder="https://t.me/yourchat"
                         />
-                        {move || {
-                            if let Some(error_msg) = validate_telegram_link(&form.get().telegram) {
-                                view! { <div class="text-xs text-red-400 mt-1">{error_msg}</div> }
-                                    .into_any()
-                            } else {
-                                ().into_any()
-                            }
-                        }}
                     </div>
 
                     // X Link
@@ -730,14 +611,6 @@ where
                             class="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded text-base text-white"
                             placeholder="https://x.com/yourhandle"
                         />
-                        {move || {
-                            if let Some(error_msg) = validate_x_link(&form.get().x) {
-                                view! { <div class="text-xs text-red-400 mt-1">{error_msg}</div> }
-                                    .into_any()
-                            } else {
-                                ().into_any()
-                            }
-                        }}
                     </div>
 
                     // Website
@@ -759,14 +632,6 @@ where
                             class="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded text-base text-white"
                             placeholder="https://example.com"
                         />
-                        {move || {
-                            if let Some(error_msg) = validate_website(&form.get().website) {
-                                view! { <div class="text-xs text-red-400 mt-1">{error_msg}</div> }
-                                    .into_any()
-                            } else {
-                                ().into_any()
-                            }
-                        }}
                     </div>
 
                     // Description
@@ -787,14 +652,6 @@ where
                             class="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded text-base text-white min-h-24"
                             placeholder=move || TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchDescriptionPlaceholder.format(&[])
                         />
-                        {move || {
-                            if let Some(error_msg) = validate_description(&form.get().description) {
-                                view! { <div class="text-xs text-red-400 mt-1">{error_msg}</div> }
-                                    .into_any()
-                            } else {
-                                ().into_any()
-                            }
-                        }}
                     </div>
 
                     // First Buy
@@ -902,6 +759,20 @@ where
                         </div>
                     </div>
 
+                    {move || {
+                        if let Some(Ok(Some(prepared))) = launch_preparation_resource.get() {
+                            prepared
+                                .preparation
+                                .errors
+                                .into_iter()
+                                .map(|error| view! { <div class="text-xs text-red-400">{error}</div> })
+                                .collect_view()
+                                .into_any()
+                        } else {
+                            ().into_any()
+                        }
+                    }}
+
                     // Buttons
                     <div class="flex gap-2 mt-4">
                         <button
@@ -910,7 +781,10 @@ where
                             class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded cursor-pointer"
                         >
                             {move || {
-                                let deposit = calculate_total_deposit_label().to_string();
+                                let deposit = match current_deposit() {
+                                    Some(deposit) => deposit.to_string(),
+                                    None => "…".to_string(),
+                                };
                                 TranslationKey::PagesSettingsDeveloperCreateTokenIntearLaunchCreateButton
                                     .format(&[("deposit", deposit.as_str())])
                             }}
