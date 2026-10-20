@@ -1335,7 +1335,7 @@
   "pages.swap.error_modal.close": "Đóng",
   "pages.swap.error_modal.description": "Giao dịch Swap thất bại. Vui lòng thử lại.",
   "pages.swap.error_modal.title": "Swap thất bại",
-  "pages.swap.fee": "",
+  "pages.swap.fee": "Phí giao dịch qua ví",
   "pages.swap.fetching_best_route": "Đang tìm tuyến đường tốt nhất",
   "pages.swap.gas_fee": "Phí gas",
   "pages.swap.gas_fee_tooltip": "{gas_reserve}",
