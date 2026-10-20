@@ -1229,7 +1229,7 @@ fn SwapMainnet() -> impl IntoView {
                                                 {TranslationKey::PagesSwapFee.format(&[])}
                                             </span>
                                             <span class="text-white">
-                                                {format!("{:.2}%", SWAP_FEE * 100.0)}
+                                                {format!("{:.2}%", BigDecimal::from_f64(SWAP_FEE).unwrap() * BigDecimal::from(100))}
                                             </span>
                                         </div>
                                         <div class="flex items-center justify-between gap-3">
@@ -1724,7 +1724,7 @@ async fn execute_route(
 
     let swap_hash_receivers = enqueue_route_transactions(
         swap_instructions,
-        &describe_step,
+        describe_step,
         &account.account_id,
         add_transaction,
     );
