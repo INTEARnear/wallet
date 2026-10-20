@@ -874,6 +874,7 @@ translation_keys! {
                 NoRoutesHintExactIn,
                 NoRoutesHintExactOut,
                 RouterConnectionError,
+                Fee,
                 GasFee,
                 GasFeeTooltip,
                 StorageDeposit,
@@ -915,7 +916,6 @@ translation_keys! {
                 SuccessModal {
                     Title,
                     YouSpent,
-                    IncludingGasNote,
                     YouReceived,
                     ButtonClose,
                 },

@@ -212,7 +212,7 @@ pub enum DexId {
     RheaDcl,
     /// AMM DEX
     ///
-    /// Supports AmountIn, doesn't support AmountOut
+    /// Supports AmountIn and AmountOut
     Plach,
 }
 

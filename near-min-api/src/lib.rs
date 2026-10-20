@@ -579,6 +579,10 @@ impl<'a> PendingTransaction<'a> {
     pub fn from_parts(rpc_client: &'a RpcClient, tx_hash: CryptoHash) -> Self {
         Self(rpc_client, tx_hash)
     }
+
+    pub fn hash(&self) -> CryptoHash {
+        self.1
+    }
 }
 
 #[allow(clippy::large_enum_variant)]

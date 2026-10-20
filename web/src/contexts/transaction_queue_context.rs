@@ -527,6 +527,8 @@ pub struct EnqueuedTransaction {
     pub transaction_type: TransactionType,
     /// None if the transaction has been taken
     details_tx: Option<oneshot::Sender<Result<ExperimentalTxDetails, String>>>,
+    /// Receives the hash as soon as the transaction is sent, before it executes
+    hash_tx: Option<oneshot::Sender<CryptoHash>>,
     queue_id: u128,
 }
 
@@ -556,6 +558,7 @@ impl EnqueuedTransaction {
                 },
                 queue_id: OsRng.r#gen(),
                 details_tx: Some(details_tx),
+                hash_tx: None,
             },
         )
     }
@@ -579,6 +582,7 @@ impl EnqueuedTransaction {
                 transaction_type,
                 queue_id: OsRng.r#gen(),
                 details_tx: Some(details_tx),
+                hash_tx: None,
             },
         )
     }
@@ -588,6 +592,17 @@ impl EnqueuedTransaction {
             queue_id: other.queue_id,
             ..self
         }
+    }
+
+    pub fn with_hash_notification(self) -> (oneshot::Receiver<CryptoHash>, Self) {
+        let (hash_tx, hash_rx) = oneshot::channel();
+        (
+            hash_rx,
+            Self {
+                hash_tx: Some(hash_tx),
+                ..self
+            },
+        )
     }
 
     fn clone_and_take(&mut self) -> Self {
@@ -604,6 +619,7 @@ impl EnqueuedTransaction {
             signer_id: self.signer_id.clone(),
             transaction_type: self.transaction_type.clone_and_take(),
             details_tx: Some(tx),
+            hash_tx: self.hash_tx.take(),
             queue_id: self.queue_id,
         }
     }
@@ -719,6 +735,11 @@ pub fn provide_transaction_queue_context() {
                         signing_tx_id.set(None);
                         set_queue
                             .update(|q| q[tx_current_index].stage = TransactionStage::Included);
+                        if let TransactionResult::PendingTransaction(tx) = &pending_tx
+                            && let Some(hash_tx) = transaction.hash_tx
+                        {
+                            hash_tx.send(tx.hash()).ok();
+                        }
 
                         match pending_tx
                             .wait_for(
