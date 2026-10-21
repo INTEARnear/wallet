@@ -22,11 +22,12 @@ use std::fmt::Display;
 use std::str::FromStr;
 
 pub const SWAP_FOR_GAS_WHITELIST: &[&str] = &[
-    "jambo-1679.meme-cooking.near",
     "usdt.tether-token.near",
     "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
-    "nbtc.bridge.near",
-    "zec.omft.near",
+    "token.intear.near",
+    "token.0xshitzu.near",
+    "blackdragon.tkn.near",
+    "jambo-1679.meme-cooking.near",
 ];
 
 pub const MIN_TOKEN_VALUE_USD: &str = "0.5";
