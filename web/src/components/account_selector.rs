@@ -5,6 +5,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::Duration;
 
 use chrono::Utc;
+use futures_timer::Delay;
 use leptos::ev::{mousemove, mouseup, scroll, touchcancel, touchend, touchmove};
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
@@ -16,7 +17,8 @@ use leptos_use::{
 };
 use near_min_api::types::AccountId;
 use near_min_api::types::Finality;
-use near_min_api::{Error, QueryFinality};
+use near_min_api::types::{BlockHeight, BlockId};
+use near_min_api::{Error, QueryFinality, RpcClient};
 use serde::Deserialize;
 use web_sys::TouchEvent;
 
@@ -310,6 +312,7 @@ const DRAG_ACTIVATION_DELAY_MS: u64 = 200;
 const AUTO_SCROLL_INTERVAL_MS: u64 = 16;
 const AUTO_SCROLL_EDGE_ZONE_PX: f64 = 50.0;
 const AUTO_SCROLL_SPEED_PX: f64 = 7.0;
+const KEY_REMOVAL_CONFIRMATION_DELAY: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone)]
 pub struct DragState {
@@ -338,6 +341,37 @@ fn handle_drag_reorder(drag: &DragState, accounts_context: &AccountsContext) {
             accounts.accounts.insert(target_index, account);
         });
     }
+}
+
+async fn accounts_with_missing_access_key(
+    rpc_client: &RpcClient,
+    accounts: Vec<Account>,
+    block_height: BlockHeight,
+) -> Result<Vec<Account>, Error> {
+    let requests = accounts
+        .iter()
+        .map(|account| {
+            (
+                account.account_id.clone(),
+                account.secret_key.public_key(),
+                QueryFinality::BlockId(BlockId::Height(block_height)),
+            )
+        })
+        .collect();
+    let results = rpc_client.batch_get_access_key(requests).await?;
+    Ok(accounts
+        .into_iter()
+        .zip(results)
+        .filter(|(account, result)| {
+            let public_key = account.secret_key.public_key();
+            matches!(
+                result,
+                Err(Error::OtherQueryError(err))
+                    if *err == format!("access key {public_key} does not exist while viewing")
+            )
+        })
+        .map(|(account, _)| account)
+        .collect())
 }
 
 #[component]
@@ -508,19 +542,19 @@ pub fn AccountSelector() -> impl IntoView {
         let accounts = accounts_context.accounts.get_untracked();
 
         spawn_local(async move {
-            let mut logged_out_accounts = Vec::new();
+            let mut missing_key_accounts = Vec::new();
 
             // Group accounts by network to leverage Intear RPC batching
-            let mut grouped: HashMap<Network, Vec<&Account>> = HashMap::new();
+            let mut grouped: HashMap<Network, Vec<Account>> = HashMap::new();
 
-            for account in accounts.accounts.iter() {
+            for account in accounts.accounts {
                 grouped
                     .entry(account.network.clone())
                     .or_default()
                     .push(account);
             }
 
-            for (network, accs) in grouped {
+            for (network, network_accounts) in grouped {
                 // Don't remove accounts if RPC has problems
                 let rpc_client = network.default_rpc_client();
                 let Ok(network_info) = rpc_client.status().await else {
@@ -532,64 +566,90 @@ pub fn AccountSelector() -> impl IntoView {
                 {
                     continue;
                 }
+                let block_height = network_info.sync_info.latest_block_height;
 
-                let requests: Vec<_> = accs
-                    .iter()
-                    .map(|account| {
-                        (
-                            account.account_id.clone(),
-                            account.secret_key.public_key(),
-                            QueryFinality::Finality(Finality::None),
-                        )
-                    })
-                    .collect();
-
-                let Ok(results) = rpc_client.batch_get_access_key(requests).await else {
+                let Ok(missing_at_block) =
+                    accounts_with_missing_access_key(&rpc_client, network_accounts, block_height)
+                        .await
+                else {
                     continue;
                 };
-
-                for (account, result) in accs.into_iter().zip(results) {
-                    if account.protected_until > Utc::now() {
-                        continue;
-                    }
-                    let public_key = account.secret_key.public_key();
-                    if let Err(Error::OtherQueryError(err)) = result
-                        && err == format!("access key {public_key} does not exist while viewing")
-                    {
-                        logged_out_accounts.push(account.clone());
-                    }
-                }
-            }
-
-            if !logged_out_accounts.is_empty() {
-                let logged_out_account_ids = logged_out_accounts
-                    .iter()
-                    .map(|a| a.account_id.clone())
-                    .collect::<Vec<_>>();
-                accounts_context.set_accounts.update(|accounts| {
-                    accounts
-                        .accounts
-                        .retain(|a| !logged_out_account_ids.contains(&a.account_id));
-                    if let Some(selected_id) = accounts.selected_account_id.as_ref()
-                        && logged_out_account_ids.contains(selected_id)
-                    {
-                        accounts.selected_account_id = None;
-                    }
-                });
-
-                for account in logged_out_accounts.iter() {
-                    add_security_log(
-                        SecurityLogEvent::AccountLoggedOutRemoteKeyRemoval {
-                            secret_key: account.secret_key.clone(),
-                        },
-                        account.account_id.clone(),
-                        accounts_context,
-                    );
+                if missing_at_block.is_empty() {
+                    continue;
                 }
 
-                set_modal_state.set(ModalState::LoggedOut(logged_out_account_ids));
-                set_expanded(true);
+                // Confirm on a newer block, so one wrong RPC response can't log the user out
+                Delay::new(KEY_REMOVAL_CONFIRMATION_DELAY).await;
+                let Ok(next_network_info) = rpc_client.status().await else {
+                    continue;
+                };
+                let next_block_height = next_network_info.sync_info.latest_block_height;
+                if next_block_height <= block_height {
+                    continue;
+                }
+                let Ok(missing_at_next_block) = accounts_with_missing_access_key(
+                    &rpc_client,
+                    missing_at_block,
+                    next_block_height,
+                )
+                .await
+                else {
+                    continue;
+                };
+                missing_key_accounts.extend(missing_at_next_block);
             }
+
+            if missing_key_accounts.is_empty() {
+                return;
+            }
+
+            // Accounts could have changed while waiting for RPC (e.g. a key rotation
+            // finished), so only remove those that still use the missing key
+            let now = Utc::now();
+            let mut logged_out_accounts = Vec::new();
+            accounts_context.set_accounts.maybe_update(|accounts| {
+                (logged_out_accounts, accounts.accounts) = std::mem::take(&mut accounts.accounts)
+                    .into_iter()
+                    .partition(|account| {
+                        account.protected_until <= now
+                            && missing_key_accounts.iter().any(|missing| {
+                                missing.account_id == account.account_id
+                                    && missing.network == account.network
+                                    && missing.secret_key.public_key()
+                                        == account.secret_key.public_key()
+                            })
+                    });
+                if let Some(selected_id) = accounts.selected_account_id.as_ref()
+                    && logged_out_accounts
+                        .iter()
+                        .any(|account| &account.account_id == selected_id)
+                {
+                    accounts.selected_account_id = None;
+                }
+                !logged_out_accounts.is_empty()
+            });
+
+            if logged_out_accounts.is_empty() {
+                return;
+            }
+
+            for account in logged_out_accounts.iter() {
+                add_security_log(
+                    SecurityLogEvent::AccountLoggedOutRemoteKeyRemoval {
+                        secret_key: account.secret_key.clone(),
+                    },
+                    account.account_id.clone(),
+                    accounts_context,
+                );
+            }
+
+            set_modal_state.set(ModalState::LoggedOut(
+                logged_out_accounts
+                    .into_iter()
+                    .map(|account| account.account_id)
+                    .collect(),
+            ));
+            set_expanded(true);
         });
     };
 
