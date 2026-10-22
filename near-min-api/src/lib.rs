@@ -71,6 +71,11 @@ impl RpcClient {
         self
     }
 
+    pub fn with_client(mut self, client: reqwest::Client) -> Self {
+        self.client = client;
+        self
+    }
+
     pub fn set_exponential_backoff_settings(
         &mut self,
         starting_delay: Duration,
