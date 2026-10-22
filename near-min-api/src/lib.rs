@@ -31,6 +31,7 @@ pub struct RpcClient {
     max_retries: usize,
     starting_delay: Duration,
     backoff_multiplier: f64,
+    request_timeout: Option<Duration>,
 }
 
 #[allow(non_snake_case)]
@@ -47,6 +48,7 @@ impl RpcClient {
             max_retries: 5,
             starting_delay: Duration::from_millis(500),
             backoff_multiplier: 2.0,
+            request_timeout: None,
         }
     }
 
@@ -71,8 +73,8 @@ impl RpcClient {
         self
     }
 
-    pub fn with_client(mut self, client: reqwest::Client) -> Self {
-        self.client = client;
+    pub fn with_request_timeout(mut self, request_timeout: Duration) -> Self {
+        self.request_timeout = Some(request_timeout);
         self
     }
 
@@ -127,7 +129,9 @@ impl RpcClient {
         loop {
             let mut error = None;
             for url in &self.urls {
-                match jsonrpc_request(&self.client, url, method, &params).await {
+                match jsonrpc_request(&self.client, url, self.request_timeout, method, &params)
+                    .await
+                {
                     Ok(response) => return Ok(response),
                     Err(
                         e @ Error::JsonRpc(RpcError {
@@ -651,11 +655,15 @@ pub struct ExperimentalTxDetails {
 async fn jsonrpc_request<Request: Serialize, Response: DeserializeOwned>(
     client: &reqwest::Client,
     url: &reqwest::Url,
+    timeout: Option<Duration>,
     method: &str,
     params: Request,
 ) -> Result<Response, Error> {
-    let response = client
-        .post(url.clone())
+    let mut request = client.post(url.clone());
+    if let Some(timeout) = timeout {
+        request = request.timeout(timeout);
+    }
+    let response = request
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "method": method,

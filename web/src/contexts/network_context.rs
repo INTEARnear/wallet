@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use leptos::prelude::*;
 use near_min_api::RpcClient;
 use reqwest::Url;
@@ -34,12 +32,6 @@ impl Network {
                 .collect::<Vec<_>>(),
             Network::Localnet(network) => vec![network.rpc_url.clone()],
         })
-        .with_client(
-            reqwest::Client::builder()
-                .timeout(Duration::from_secs(5))
-                .build()
-                .unwrap(),
-        )
     }
 
     pub fn api_url(&self) -> Option<Url> {

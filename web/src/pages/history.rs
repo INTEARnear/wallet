@@ -2,6 +2,7 @@ use std::{
     cmp::Reverse,
     collections::{HashMap, HashSet},
     sync::Arc,
+    time::Duration,
 };
 
 use crate::{
@@ -46,7 +47,8 @@ use serde::Deserialize;
 /// transactions' worth
 const PAGE_ROWS: usize = 10;
 /// How long a failed page waits before it's asked for again
-const RETRY_AFTER: std::time::Duration = std::time::Duration::from_secs(3);
+const RETRY_AFTER: Duration = Duration::from_secs(3);
+const TRANSACTION_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Debug)]
 struct HistoryTransaction {
@@ -317,7 +319,10 @@ impl HistoryFeed {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        let rpc_client = network.default_rpc_client();
+        let rpc_client = network
+            .default_rpc_client()
+            .with_request_timeout(TRANSACTION_TIMEOUT)
+            .with_max_retries(1);
         async move {
             join_all(
                 new.into_iter()
