@@ -14,6 +14,7 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
     let (is_unlocking, set_is_unlocking) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
     let (is_hovered, set_is_hovered) = signal(false);
+    let (is_password_visible, set_is_password_visible) = signal(false);
     let (auto_attempt_abortable, set_auto_attempt_abortable) =
         signal::<Option<ActionAbortHandle>>(None);
 
@@ -231,8 +232,8 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
                             <div class="relative">
                                 <input
                                     node_ref=input_ref
-                                    type="password"
-                                    class="w-full bg-neutral-900/50 text-white rounded-xl px-4 py-3 focus:outline-none transition-all duration-200 border-2 border-neutral-700 focus:border-blue-500 text-base"
+                                    type=move || if is_password_visible.get() { "text" } else { "password" }
+                                    class="w-full bg-neutral-900/50 text-white rounded-xl pl-4 pr-12 py-3 focus:outline-none transition-all duration-200 border-2 border-neutral-700 focus:border-blue-500 text-base"
                                     placeholder=move || {
                                         TranslationKey::ComponentsPasswordUnlockPlaceholderPassword
                                             .format(&[])
@@ -245,6 +246,19 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
                                             && auto_attempt_abortable.read_untracked().is_none()
                                     }
                                 />
+                                <button
+                                    type="button"
+                                    class="absolute inset-y-0 right-0 flex items-center px-4 text-neutral-400 hover:text-neutral-300 transition-colors cursor-pointer no-mobile-ripple"
+                                    on:mousedown=move |ev| ev.prevent_default()
+                                    on:click=move |_| set_is_password_visible.update(|v| *v = !*v)
+                                >
+                                    <Show when=move || is_password_visible.get()>
+                                        <Icon icon=icondata::LuEyeOff width="20" height="20" />
+                                    </Show>
+                                    <Show when=move || !is_password_visible.get()>
+                                        <Icon icon=icondata::LuEye width="20" height="20" />
+                                    </Show>
+                                </button>
                             </div>
                             {move || {
                                 if let Some(err) = error.get() {

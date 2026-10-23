@@ -148,6 +148,7 @@ pub fn SecuritySettings() -> impl IntoView {
     let ConfigContext { config, .. } = expect_context::<ConfigContext>();
     let (benchmarking_password, set_benchmarking_password) = signal(false);
     let (password_input, set_password_input) = signal(String::new());
+    let (is_password_visible, set_is_password_visible) = signal(false);
     let (benchmark_result, set_benchmark_result) = signal::<Option<(u32, f64)>>(None);
     let (encrypting_accounts, set_encrypting_accounts) = signal(false);
     let (encryption_result, set_encryption_result) = signal::<Option<Result<(), String>>>(None);
@@ -667,28 +668,43 @@ pub fn SecuritySettings() -> impl IntoView {
                     </div>
 
                     <div class="flex flex-col gap-3">
-                        <input
-                            type="password"
-                            placeholder=move || TranslationKey::PagesSettingsSecurityPasswordPlaceholder.format(&[])
-                            prop:value=move || password_input.get()
-                            on:input=move |ev| {
-                                let password = event_target_value(&ev);
-                                set_password_input(password.clone());
-                            }
-                            on:focus=move |_| {
-                                if benchmark_result.get().is_none() && !benchmarking_password.get()
-                                {
-                                    set_benchmarking_password(true);
-                                    set_benchmark_result(None);
-                                    spawn_local(async move {
-                                        let result = benchmark_argon2().await;
-                                        set_benchmark_result(Some(result));
-                                        set_benchmarking_password(false);
-                                    });
+                        <div class="relative">
+                            <input
+                                type=move || if is_password_visible.get() { "text" } else { "password" }
+                                placeholder=move || TranslationKey::PagesSettingsSecurityPasswordPlaceholder.format(&[])
+                                prop:value=move || password_input.get()
+                                on:input=move |ev| {
+                                    let password = event_target_value(&ev);
+                                    set_password_input(password.clone());
                                 }
-                            }
-                            class="w-full p-3 rounded-lg bg-neutral-800 border border-neutral-700 focus:border-blue-500 focus:outline-none text-base"
-                        />
+                                on:focus=move |_| {
+                                    if benchmark_result.get().is_none() && !benchmarking_password.get()
+                                    {
+                                        set_benchmarking_password(true);
+                                        set_benchmark_result(None);
+                                        spawn_local(async move {
+                                            let result = benchmark_argon2().await;
+                                            set_benchmark_result(Some(result));
+                                            set_benchmarking_password(false);
+                                        });
+                                    }
+                                }
+                                class="w-full py-3 pl-3 pr-12 rounded-lg bg-neutral-800 border border-neutral-700 focus:border-blue-500 focus:outline-none text-base"
+                            />
+                            <button
+                                type="button"
+                                class="absolute inset-y-0 right-0 flex items-center px-4 text-neutral-400 hover:text-neutral-300 transition-colors cursor-pointer no-mobile-ripple"
+                                on:mousedown=move |ev| ev.prevent_default()
+                                on:click=move |_| set_is_password_visible.update(|v| *v = !*v)
+                            >
+                                <Show when=move || is_password_visible.get()>
+                                    <Icon icon=icondata::LuEyeOff width="20" height="20" />
+                                </Show>
+                                <Show when=move || !is_password_visible.get()>
+                                    <Icon icon=icondata::LuEye width="20" height="20" />
+                                </Show>
+                            </button>
+                        </div>
 
                         <button
                             class="flex items-center justify-center gap-2 p-4 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
