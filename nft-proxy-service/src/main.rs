@@ -10,14 +10,20 @@ use axum::{
 };
 use base64::{Engine, engine::general_purpose};
 use bytes::Bytes;
-use image::{DynamicImage, imageops::FilterType};
+use image::{DynamicImage, ImageReader, Limits, imageops::FilterType};
 use moka::future::Cache;
 use near_min_api::types::AccountId;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use reqwest::Client;
 use rocksdb::{DB, Options};
-use serde::{Deserialize, Serialize};
-use std::{env, io::Cursor, net::SocketAddr, sync::Arc, time::Duration};
+use serde::{Deserialize, Serialize, de::IgnoredAny};
+use std::{
+    env,
+    io::Cursor,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    sync::Arc,
+    time::Duration,
+};
 use teloxide::{
     Bot,
     dispatching::UpdateHandler,
@@ -25,12 +31,22 @@ use teloxide::{
     types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode},
     utils::markdown,
 };
+use tokio::sync::Semaphore;
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::EnvFilter;
 use url::{Host, Url};
 
 const LOW_RES_SIZE: u32 = 64;
 const HIGH_RES_SIZE: u32 = 576;
+const MAX_CACHE_BYTES: u64 = 1024 * 1024 * 1024;
+// Approximate moka bookkeeping per entry (key Arc, entry info, deque nodes, hash bucket).
+const CACHE_ENTRY_OVERHEAD_BYTES: usize = 512;
+const MAX_REDIRECTS: usize = 5;
+// Images over these limits are proxied as-is instead of being resized.
+const MAX_DECODED_IMAGE_DIMENSION: u32 = 8192;
+const MAX_DECODER_ALLOC_BYTES: u64 = 256 * 1024 * 1024;
+// usvg decompresses svgz without any size limit.
+const GZIP_MAGIC: [u8; 2] = [0x1f, 0x8b];
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub enum HiddenNft {
@@ -49,6 +65,7 @@ struct AppState {
     client: Client,
     cache: Cache<String, Result<Bytes, u16>>,
     max_size: u64,
+    image_jobs: Arc<Semaphore>,
     spam_db: Arc<DB>,
     reported_db: Arc<DB>,
     bot: Bot,
@@ -91,8 +108,18 @@ async fn main() {
         .expect("Failed to parse CACHE_DURATION_SECONDS");
 
     let cache: Cache<String, Result<Bytes, u16>> = Cache::builder()
+        .weigher(|key: &String, value: &Result<Bytes, u16>| {
+            let body_len = value.as_ref().map_or(0, Bytes::len);
+            u32::try_from(key.len() + body_len + CACHE_ENTRY_OVERHEAD_BYTES).unwrap_or(u32::MAX)
+        })
+        .max_capacity(MAX_CACHE_BYTES)
         .time_to_live(Duration::from_secs(cache_duration))
         .build();
+
+    // Image work runs on blocking threads
+    let image_job_permits = std::thread::available_parallelism()
+        .expect("Failed to determine available parallelism")
+        .get();
 
     let bot = Bot::from_env();
     let telegram_chat_id = env::var("TELEGRAM_CHAT_ID").expect("TELEGRAM_CHAT_ID must be set");
@@ -100,10 +127,14 @@ async fn main() {
     let state = AppState {
         client: Client::builder()
             .timeout(Duration::from_secs(10))
+            .dns_resolver(Arc::new(PublicAddressResolver))
+            .redirect(public_redirect_policy())
+            .no_proxy()
             .build()
             .unwrap(),
         cache,
         max_size,
+        image_jobs: Arc::new(Semaphore::new(image_job_permits)),
         spam_db: Arc::new(spam_db),
         reported_db: Arc::new(reported_db),
         bot: bot.clone(),
@@ -495,9 +526,24 @@ async fn proxy_handler(
         .and_then(|v| v.to_str().ok())
         .map(str::to_owned);
 
-    let bytes = match response.bytes().await {
+    let bytes = match read_body_limited(response, state.max_size).await {
         Ok(bytes) => bytes,
-        Err(e) => {
+        Err(LimitedBodyError::TooLarge) => {
+            let status = StatusCode::PAYLOAD_TOO_LARGE;
+            state
+                .cache
+                .insert(cache_key_low, Err(status.as_u16()))
+                .await;
+            state
+                .cache
+                .insert(cache_key_high, Err(status.as_u16()))
+                .await;
+            return Err((
+                status,
+                "Image size exceeds the maximum allowed limit".into(),
+            ));
+        }
+        Err(LimitedBodyError::Read(e)) => {
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to read image bytes: {e}"),
@@ -505,43 +551,48 @@ async fn proxy_handler(
         }
     };
 
-    if bytes.len() as u64 > state.max_size {
-        return Err((
-            StatusCode::PAYLOAD_TOO_LARGE,
-            "Image size exceeds the maximum allowed limit".into(),
-        ));
-    }
+    let looks_like_svg = is_svg(content_type.as_deref(), &bytes);
+    let image_job = state
+        .image_jobs
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Image job queue closed: {e}"),
+            )
+        })?;
+    let input = bytes.clone();
+    let processed = tokio::task::spawn_blocking(move || {
+        let processed = process_image(&input, looks_like_svg);
+        drop(image_job);
+        processed
+    })
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Image processing task failed: {e}"),
+        )
+    })?;
 
-    let img = match image::load_from_memory(&bytes) {
-        Ok(img) => img,
-        Err(_) if is_svg(content_type.as_deref(), &bytes) => {
-            let svg_bytes = bytes.clone();
-            let rasterized =
-                tokio::task::spawn_blocking(move || rasterize_svg(&svg_bytes, HIGH_RES_SIZE)).await;
-            match rasterized {
-                Ok(Ok(img)) => img,
-                Ok(Err(e)) => {
-                    tracing::warn!("Failed to rasterize SVG: {e}");
-                    let status = StatusCode::UNPROCESSABLE_ENTITY;
-                    state
-                        .cache
-                        .insert(cache_key_low, Err(status.as_u16()))
-                        .await;
-                    state
-                        .cache
-                        .insert(cache_key_high, Err(status.as_u16()))
-                        .await;
-                    return Err((status, format!("Failed to rasterize SVG: {e}")));
-                }
-                Err(e) => {
-                    return Err((
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("SVG rasterization task failed: {e}"),
-                    ));
-                }
-            }
+    let (low_res, high_res) = match processed {
+        ProcessedImage::Resized { low_res, high_res } => (low_res, high_res),
+        ProcessedImage::SvgRasterizeFailed(e) => {
+            tracing::warn!("Failed to rasterize SVG: {e}");
+            let status = StatusCode::UNPROCESSABLE_ENTITY;
+            state
+                .cache
+                .insert(cache_key_low, Err(status.as_u16()))
+                .await;
+            state
+                .cache
+                .insert(cache_key_high, Err(status.as_u16()))
+                .await;
+            return Err((status, format!("Failed to rasterize SVG: {e}")));
         }
-        Err(e) => {
+        ProcessedImage::Undecodable(e) => {
             tracing::warn!("Failed to decode image, proxying as is. Error: {e}");
             state.cache.insert(cache_key_low, Ok(bytes.clone())).await;
             state.cache.insert(cache_key_high, Ok(bytes.clone())).await;
@@ -549,36 +600,88 @@ async fn proxy_handler(
         }
     };
 
-    let process_and_cache = |size: u32, img: DynamicImage, cache_key: String| {
-        let state = state.clone();
-        async move {
-            let resized_img = img.resize(size, size, FilterType::Lanczos3);
-            let mut buffer = Cursor::new(Vec::new());
-            if let Err(e) = resized_img.write_to(&mut buffer, image::ImageFormat::WebP) {
-                tracing::error!("Failed to encode resized image to WebP: {e}");
-                return;
-            }
-            let webp_bytes = Bytes::from(buffer.into_inner());
-            state.cache.insert(cache_key, Ok(webp_bytes)).await;
+    for (cache_key, resized) in [(cache_key_low, &low_res), (cache_key_high, &high_res)] {
+        match resized {
+            Ok(webp_bytes) => state.cache.insert(cache_key, Ok(webp_bytes.clone())).await,
+            Err(e) => tracing::error!("Failed to encode resized image to WebP: {e}"),
         }
+    }
+
+    let requested = if size == LOW_RES_SIZE {
+        low_res
+    } else {
+        high_res
     };
-
-    tokio::join!(
-        process_and_cache(LOW_RES_SIZE, img.clone(), cache_key_low),
-        process_and_cache(HIGH_RES_SIZE, img.clone(), cache_key_high)
-    );
-
-    let resized_img = img.resize(size, size, FilterType::Lanczos3);
-    let mut buffer = Cursor::new(Vec::new());
-    if let Err(e) = resized_img.write_to(&mut buffer, image::ImageFormat::WebP) {
-        return Err((
+    requested.map_err(|e| {
+        (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to encode resized image to WebP: {e}"),
-        ));
-    };
+        )
+    })
+}
 
-    let webp_bytes = Bytes::from(buffer.into_inner());
-    Ok(webp_bytes)
+enum LimitedBodyError {
+    TooLarge,
+    Read(reqwest::Error),
+}
+
+async fn read_body_limited(
+    mut response: reqwest::Response,
+    max_size: u64,
+) -> Result<Bytes, LimitedBodyError> {
+    if response.content_length().is_some_and(|len| len > max_size) {
+        return Err(LimitedBodyError::TooLarge);
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(LimitedBodyError::Read)? {
+        if (body.len() + chunk.len()) as u64 > max_size {
+            return Err(LimitedBodyError::TooLarge);
+        }
+        body.extend_from_slice(&chunk);
+    }
+    // Bytes::from(Vec) would keep the unused capacity alive in the cache.
+    Ok(Bytes::from(body.into_boxed_slice()))
+}
+
+enum ProcessedImage {
+    Resized {
+        low_res: image::ImageResult<Bytes>,
+        high_res: image::ImageResult<Bytes>,
+    },
+    SvgRasterizeFailed(anyhow::Error),
+    Undecodable(image::ImageError),
+}
+
+fn process_image(bytes: &[u8], looks_like_svg: bool) -> ProcessedImage {
+    let img = match decode_image(bytes) {
+        Ok(img) => img,
+        Err(_) if looks_like_svg => match rasterize_svg(bytes, HIGH_RES_SIZE) {
+            Ok(img) => img,
+            Err(e) => return ProcessedImage::SvgRasterizeFailed(e),
+        },
+        Err(e) => return ProcessedImage::Undecodable(e),
+    };
+    ProcessedImage::Resized {
+        low_res: resize_to_webp(&img, LOW_RES_SIZE),
+        high_res: resize_to_webp(&img, HIGH_RES_SIZE),
+    }
+}
+
+fn decode_image(bytes: &[u8]) -> image::ImageResult<DynamicImage> {
+    let mut limits = Limits::default();
+    limits.max_image_width = Some(MAX_DECODED_IMAGE_DIMENSION);
+    limits.max_image_height = Some(MAX_DECODED_IMAGE_DIMENSION);
+    limits.max_alloc = Some(MAX_DECODER_ALLOC_BYTES);
+    let mut reader = ImageReader::new(Cursor::new(bytes)).with_guessed_format()?;
+    reader.limits(limits);
+    reader.decode()
+}
+
+fn resize_to_webp(img: &DynamicImage, size: u32) -> image::ImageResult<Bytes> {
+    let resized_img = img.resize(size, size, FilterType::Lanczos3);
+    let mut buffer = Cursor::new(Vec::new());
+    resized_img.write_to(&mut buffer, image::ImageFormat::WebP)?;
+    Ok(Bytes::from(buffer.into_inner().into_boxed_slice()))
 }
 
 fn is_svg(content_type: Option<&str>, bytes: &[u8]) -> bool {
@@ -590,8 +693,27 @@ fn is_svg(content_type: Option<&str>, bytes: &[u8]) -> bool {
 }
 
 fn rasterize_svg(data: &[u8], target: u32) -> anyhow::Result<DynamicImage> {
+    if data.starts_with(&GZIP_MAGIC) {
+        return Err(anyhow!("Compressed SVG is not supported"));
+    }
     let mut opt = resvg::usvg::Options::default();
     opt.image_href_resolver.resolve_string = Box::new(|_, _| None);
+    // resvg decodes embedded rasters without limits; nested SVGs reuse this resolver.
+    let default_data_resolver = resvg::usvg::ImageHrefResolver::default_data_resolver();
+    opt.image_href_resolver.resolve_data = Box::new(move |mime, data, opts| {
+        if data.starts_with(&GZIP_MAGIC) {
+            return None;
+        }
+        let kind = default_data_resolver(mime, data, opts)?;
+        let within_limits = match &kind {
+            resvg::usvg::ImageKind::SVG(_) => true,
+            resvg::usvg::ImageKind::JPEG(raster)
+            | resvg::usvg::ImageKind::PNG(raster)
+            | resvg::usvg::ImageKind::GIF(raster)
+            | resvg::usvg::ImageKind::WEBP(raster) => raster_within_decoder_limits(raster),
+        };
+        within_limits.then_some(kind)
+    });
 
     let tree = resvg::usvg::Tree::from_data(data, &opt)?;
     let size = tree.size();
@@ -611,6 +733,16 @@ fn rasterize_svg(data: &[u8], target: u32) -> anyhow::Result<DynamicImage> {
     let rgba = image::RgbaImage::from_raw(pixel_width, pixel_height, pixmap.take_demultiplied())
         .ok_or_else(|| anyhow!("Rasterized SVG buffer has unexpected size"))?;
     Ok(DynamicImage::ImageRgba8(rgba))
+}
+
+fn raster_within_decoder_limits(data: &[u8]) -> bool {
+    ImageReader::new(Cursor::new(data))
+        .with_guessed_format()
+        .ok()
+        .and_then(|reader| reader.into_dimensions().ok())
+        .is_some_and(|(width, height)| {
+            width <= MAX_DECODED_IMAGE_DIMENSION && height <= MAX_DECODED_IMAGE_DIMENSION
+        })
 }
 
 async fn traits_proxy_handler(
@@ -666,9 +798,17 @@ async fn traits_proxy_handler(
         ));
     }
 
-    let bytes = match response.bytes().await {
+    let bytes = match read_body_limited(response, state.max_size).await {
         Ok(bytes) => bytes,
-        Err(e) => {
+        Err(LimitedBodyError::TooLarge) => {
+            let status = StatusCode::PAYLOAD_TOO_LARGE;
+            state.cache.insert(cache_key, Err(status.as_u16())).await;
+            return Err((
+                status,
+                "Traits size exceeds the maximum allowed limit".into(),
+            ));
+        }
+        Err(LimitedBodyError::Read(e)) => {
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to read traits bytes: {e}"),
@@ -676,7 +816,7 @@ async fn traits_proxy_handler(
         }
     };
 
-    if serde_json::from_slice::<serde_json::Value>(&bytes).is_err() {
+    if serde_json::from_slice::<IgnoredAny>(&bytes).is_err() {
         return Err((StatusCode::BAD_REQUEST, "Response is not valid JSON".into()));
     }
 
@@ -762,13 +902,64 @@ fn is_local(host: Option<Host<&str>>) -> bool {
         Some(Host::Domain(host)) if (host == "localhost" || !host.contains('.')) => {
             return true;
         }
-        Some(Host::Ipv4(ip)) if !ip.is_global() => {
+        Some(Host::Ipv4(ip)) if !is_global_ip(IpAddr::V4(ip)) => {
             return true;
         }
-        Some(Host::Ipv6(ip)) if !ip.is_global() => {
+        Some(Host::Ipv6(ip)) if !is_global_ip(IpAddr::V6(ip)) => {
             return true;
         }
         _ => {}
     }
     false
+}
+
+fn is_global_ip(ip: IpAddr) -> bool {
+    match ip.to_canonical() {
+        // NAT64 (RFC 6052) translates these to the embedded IPv4 address.
+        IpAddr::V6(v6) if matches!(v6.segments(), [0x64, 0xff9b, 0, 0, 0, 0, _, _]) => {
+            let [.., a, b, c, d] = v6.octets();
+            Ipv4Addr::new(a, b, c, d).is_global()
+        }
+        ip => ip.is_global(),
+    }
+}
+
+// Literal-IP hosts never reach the resolver, so they are checked by is_local
+// before the request and in public_redirect_policy for every redirect hop.
+struct PublicAddressResolver;
+
+impl reqwest::dns::Resolve for PublicAddressResolver {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        Box::pin(resolve_public_addrs(name))
+    }
+}
+
+async fn resolve_public_addrs(
+    name: reqwest::dns::Name,
+) -> Result<reqwest::dns::Addrs, Box<dyn std::error::Error + Send + Sync>> {
+    let host = name.as_str();
+    let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host, 0)).await?.collect();
+    if let Some(addr) = addrs.iter().find(|addr| !is_global_ip(addr.ip())) {
+        return Err(format!("{host} resolves to non-global address {}", addr.ip()).into());
+    }
+    Ok(Box::new(addrs.into_iter()))
+}
+
+fn public_redirect_policy() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        let url = attempt.url();
+        let rejection = if attempt.previous().len() > MAX_REDIRECTS {
+            Some(format!("Too many redirects (max {MAX_REDIRECTS})"))
+        } else if !matches!(url.scheme(), "http" | "https") {
+            Some(format!("Redirect to unsupported scheme: {url}"))
+        } else if is_local(url.host()) {
+            Some(format!("Redirect to local host is forbidden: {url}"))
+        } else {
+            None
+        };
+        match rejection {
+            Some(reason) => attempt.error(reason),
+            None => attempt.follow(),
+        }
+    })
 }

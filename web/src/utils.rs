@@ -1350,3 +1350,9 @@ pub fn serialize_to_js_value_old<T: Serialize>(
 ) -> Result<JsValue, serde_wasm_bindgen::Error> {
     value.serialize(&serde_wasm_bindgen::Serializer::default())
 }
+
+pub fn is_message_from_this_window(event: &web_sys::MessageEvent) -> bool {
+    event
+        .source()
+        .is_some_and(|source| JsValue::from(source) == JsValue::from(window()))
+}

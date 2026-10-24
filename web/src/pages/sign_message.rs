@@ -662,6 +662,7 @@ fn TokenDiffView(diff: intents::TokenDiff) -> impl IntoView {
                             token_id=(token_out.0).clone()
                             amount={token_out.1}
                             network=network.clone()
+                            incoming=Some(false)
                         />
                     </div>
                     <Icon
@@ -675,6 +676,7 @@ fn TokenDiffView(diff: intents::TokenDiff) -> impl IntoView {
                             token_id=(token_in.0).clone()
                             amount={token_in.1}
                             network=network.clone()
+                            incoming=Some(true)
                         />
                     </div>
                 </div>
@@ -688,12 +690,14 @@ fn TokenDiffView(diff: intents::TokenDiff) -> impl IntoView {
                     .iter()
                     .map(|(token, amount)| {
                         let abs_amount = amount.unsigned_abs();
+                        let incoming = *amount >= 0;
                         view! {
                             <div class="flex items-center gap-2 p-1 bg-neutral-700/20 rounded">
                                 <TokenAmount
                                     token_id=token.clone()
                                     amount=abs_amount
                                     network=network.clone()
+                                    incoming=Some(incoming)
                                 />
                             </div>
                         }
@@ -710,10 +714,24 @@ fn TokenAmount(
     token_id: intents::TokenId,
     amount: u128,
     network: Option<Network>,
+    /// Some(true) = received (green, +), Some(false) = sent (red, -), None = no direction
+    #[prop(optional)]
+    incoming: Option<bool>,
 ) -> impl IntoView {
     let contract_id = match &token_id {
         intents::TokenId::Nep141(nep141) => Some(nep141.contract_id.clone()),
         _ => None,
+    };
+
+    let sign = match incoming {
+        Some(true) => "+",
+        Some(false) => "-",
+        None => "",
+    };
+    let amount_class = match incoming {
+        Some(true) => "text-sm text-green-400",
+        Some(false) => "text-sm text-red-400",
+        None => "text-sm",
     };
 
     let token_info_resource = LocalResource::new({
@@ -751,11 +769,14 @@ fn TokenAmount(
                                     token_info.metadata.decimals,
                                     &token_info.metadata.symbol,
                                 );
-                                view! { <span class="text-sm">{formatted}</span> }.into_any()
+                                view! { <span class=amount_class>{format!("{sign}{formatted}")}</span> }
+                                    .into_any()
                             } else {
                                 // Fallback for non-NEP141 tokens or when fetch fails
                                 view! {
-                                    <span class="text-sm">{amount} {format!("{token_id:?}")}</span>
+                                    <span class=amount_class>
+                                        {format!("{sign}{amount}")} {format!("{token_id:?}")}
+                                    </span>
                                 }
                                     .into_any()
                             }

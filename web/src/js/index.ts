@@ -100,7 +100,7 @@ async function connectLedger(mode: string) {
 }
 
 window.addEventListener('message', async (event) => {
-    if (event.origin !== window.location.origin) {
+    if (event.source !== window) {
         return;
     }
     let data = event.data;

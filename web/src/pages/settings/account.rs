@@ -16,7 +16,9 @@ use crate::contexts::{
     transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
 };
 use crate::translations::TranslationKey;
-use crate::utils::{intents_remove_public_key_batches, serialize_to_js_value};
+use crate::utils::{
+    intents_remove_public_key_batches, is_message_from_this_window, serialize_to_js_value,
+};
 use chrono::NaiveDate;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::*;
@@ -805,6 +807,9 @@ pub fn AccountSettings() -> impl IntoView {
         use_window(),
         leptos::ev::message,
         move |event: web_sys::MessageEvent| {
+            if !is_message_from_this_window(&event) {
+                return;
+            }
             log::info!(
                 "Message: {:?}",
                 serde_json::to_string(
@@ -1487,6 +1492,14 @@ pub fn AccountSettings() -> impl IntoView {
                                                         ),
                                                     );
 
+                                                add_security_log(
+                                                    SecurityLogEvent::DisconnectedLedger {
+                                                        new_public_key: new_public_key.clone(),
+                                                        new_secret_key: new_secret_key.clone(),
+                                                    },
+                                                    selected_account_id.clone(),
+                                                    accounts_context,
+                                                );
                                                 accounts_context.set_accounts.update(|accounts| {
                                                     accounts
                                                         .accounts
@@ -1517,14 +1530,6 @@ pub fn AccountSettings() -> impl IntoView {
                                                                     }
                                                                 }
                                                             });
-                                                        add_security_log(
-                                                            SecurityLogEvent::DisconnectedLedger {
-                                                                new_public_key: new_public_key.clone(),
-                                                                new_secret_key: new_secret_key.clone(),
-                                                            },
-                                                            selected_account_id.clone(),
-                                                            accounts_context,
-                                                        );
                                                     }
                                                     Ok(Err(err)) => {
                                                         log::error!("Failed to disconnect Ledger: {}", err);

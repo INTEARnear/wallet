@@ -31,7 +31,7 @@ use crate::contexts::config_context::LedgerMode;
 use crate::contexts::security_log_context::reencrypt_security_logs;
 use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
 use crate::translations::TranslationKey;
-use crate::utils::{is_debug_enabled, serialize_to_js_value};
+use crate::utils::{is_debug_enabled, is_message_from_this_window, serialize_to_js_value};
 
 use super::{
     config_context::ConfigContext,
@@ -1034,13 +1034,12 @@ pub fn provide_accounts_context() {
 
     {
         let tx = ledger_sign_tx.clone();
-        let origin = window().location().origin().unwrap_or_default();
 
         let _ = use_event_listener(
             use_window(),
             leptos::ev::message,
             move |msg_event: web_sys::MessageEvent| {
-                if msg_event.origin() != origin {
+                if !is_message_from_this_window(&msg_event) {
                     return;
                 }
 

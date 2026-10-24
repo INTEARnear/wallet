@@ -36,7 +36,7 @@ use crate::contexts::security_log_context::{SecurityLogEvent, add_security_log};
 use crate::contexts::transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext};
 use crate::pages::settings::LedgerSelector;
 use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
-use crate::utils::serialize_to_js_value;
+use crate::utils::{is_message_from_this_window, serialize_to_js_value};
 use bs58;
 use leptos_use::{use_event_listener, use_window};
 use serde_wasm_bindgen;
@@ -552,6 +552,9 @@ pub fn AccountCreationForm() -> impl IntoView {
         use_window(),
         leptos::ev::message,
         move |event: web_sys::MessageEvent| {
+            if !is_message_from_this_window(&event) {
+                return;
+            }
             if let Ok(data) = serde_wasm_bindgen::from_value::<JsWalletResponse>(event.data()) {
                 match data {
                     JsWalletResponse::LedgerConnected => {

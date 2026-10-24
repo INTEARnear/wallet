@@ -1077,6 +1077,20 @@ async fn validate_signed_delegate_action(
     if !signed_delegate_action.verify() {
         return Err((StatusCode::BAD_REQUEST, "Invalid signature".to_string()));
     }
+    let attaches_more_than_one_yocto =
+        signed_delegate_action
+            .delegate_action
+            .actions
+            .iter()
+            .any(|action| {
+                Action::from(action.clone()).get_deposit_balance() > NearToken::from_yoctonear(1)
+            });
+    if attaches_more_than_one_yocto {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Attached deposit is too high".to_string(),
+        ));
+    }
     let is_subaccount_creation = {
         if !signed_delegate_action
             .delegate_action

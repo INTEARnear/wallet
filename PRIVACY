@@ -27,7 +27,7 @@ We use collected information solely to:
 4. Third-Party Services
 
 The Wallet may rely on third-party infrastructure and services when you use these specific features:
-- Indexers: Token balances (IP is anonymized) and account lookup by public key (during account import; not anonymized) are provided by Fastnear (https://fastnear.com/privacy)
+- Indexers: Token balances (IP is anonymized), account lookup by public key (during account import; not anonymized), and RPC (used for old transactions on the History page or during outages of Intear RPC; not anonymized) are provided by Fastnear (https://fastnear.com/privacy)
 - Live support chat: chatwoot.com (https://www.chatwoot.com/privacy-policy)
 
 These providers may process limited technical data as required to perform their functions. It's your responsibility to keep updated with their privacy policies when you use these features.

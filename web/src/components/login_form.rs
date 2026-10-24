@@ -25,7 +25,7 @@ use crate::contexts::security_log_context::{
 use crate::pages::settings::LedgerSelector;
 use crate::pages::settings::{JsWalletRequest, JsWalletResponse};
 use crate::translations::TranslationKey;
-use crate::utils::serialize_to_js_value;
+use crate::utils::{is_message_from_this_window, serialize_to_js_value};
 
 async fn find_accounts_by_public_key(
     public_key: PublicKey,
@@ -189,6 +189,9 @@ pub fn LoginForm() -> impl IntoView {
         use_window(),
         leptos::ev::message,
         move |event: web_sys::MessageEvent| {
+            if !is_message_from_this_window(&event) {
+                return;
+            }
             if let Ok(data) = serde_wasm_bindgen::from_value::<JsWalletResponse>(event.data()) {
                 match data {
                     JsWalletResponse::LedgerConnected => {
