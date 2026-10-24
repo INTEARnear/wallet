@@ -662,7 +662,7 @@ fn TokenDiffView(diff: intents::TokenDiff) -> impl IntoView {
                             token_id=(token_out.0).clone()
                             amount={token_out.1}
                             network=network.clone()
-                            incoming=Some(false)
+                            incoming=false
                         />
                     </div>
                     <Icon
@@ -676,7 +676,7 @@ fn TokenDiffView(diff: intents::TokenDiff) -> impl IntoView {
                             token_id=(token_in.0).clone()
                             amount={token_in.1}
                             network=network.clone()
-                            incoming=Some(true)
+                            incoming=true
                         />
                     </div>
                 </div>
@@ -697,7 +697,7 @@ fn TokenDiffView(diff: intents::TokenDiff) -> impl IntoView {
                                     token_id=token.clone()
                                     amount=abs_amount
                                     network=network.clone()
-                                    incoming=Some(incoming)
+                                    incoming=incoming
                                 />
                             </div>
                         }

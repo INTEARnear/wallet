@@ -196,19 +196,40 @@ pub fn Connect() -> impl IntoView {
 
     let process_sign_in = move |data: SignInRequest, evt_origin: String| {
         if matches!(data.version, ConnectorVersion::V1) {
-            // In V1 the event origin is the dapp. In V2+ it's an iframe which can't
-            // possibly navigate to a different location under normal circumstances,
-            // so we can use "*"
+            // In V1 the event origin is the dapp
             set_origin_for_post_message(evt_origin.clone());
             set_actual_origin(Some(evt_origin.clone()));
         } else {
-            let Some(origin) = data.actual_origin.clone() else {
-                set_error(Some(
-                    "Protocol error: sign-in request is missing required in V2+ actual_origin field".to_string(),
-                ));
-                set_loading(false);
-                return;
+            // wallet-connector-iframe.html replaces actualOrigin with the event.origin of its
+            // parent, so actualOrigin can only be trusted when one of these iframes relayed the
+            // request. They are usually hosted on wallet.intear.tech, even for other wallet origins.
+            let wallet_origin = window()
+                .location()
+                .origin()
+                .expect("Failed to get wallet origin");
+            let is_relayed_by_connector_iframe = evt_origin == wallet_origin
+                || dotenvy_macro::dotenv!("CONNECTOR_IFRAME_ORIGINS")
+                    .split(',')
+                    .any(|origin| origin.trim() == evt_origin);
+            let origin = if is_relayed_by_connector_iframe {
+                let Some(origin) = data.actual_origin.clone() else {
+                    set_error(Some(
+                        "Protocol error: sign-in request is missing required in V2+ actual_origin field".to_string(),
+                    ));
+                    set_loading(false);
+                    return;
+                };
+                origin
+            } else {
+                // Sent by the app itself (e.g. NEAR Connect, direct popup), so only the
+                // browser-provided origin can be trusted
+                evt_origin.clone()
             };
+            set_origin_for_post_message(if evt_origin == "null" {
+                "*".to_string()
+            } else {
+                evt_origin.clone()
+            });
             set_actual_origin(Some(origin));
         }
         set_loading(false);
