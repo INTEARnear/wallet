@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use crate::components::dapp_origin::{DappOrigin, is_local_dev_origin};
 use crate::translations::TranslationKey;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use borsh::BorshSerialize;
@@ -1644,28 +1645,17 @@ pub fn SignMessage() -> impl IntoView {
                                             </p>
                                             <p class="text-white font-medium wrap-anywhere">
                                                 {if let Some(app) = connected_app() {
-                                                    let domain = app
-                                                        .origin
-                                                        .trim_start_matches("http://")
-                                                        .trim_start_matches("https://")
-                                                        .split("/")
-                                                        .next()
-                                                        .unwrap()
-                                                        .split(":")
-                                                        .next()
-                                                        .unwrap();
-                                                    if domain == "localhost" || domain == "127.0.0.1"
-                                                        || domain.starts_with("192.168.")
-                                                        || domain.ends_with(".local")
-                                                        || domain.ends_with(".localhost")
-                                                    {
+                                                    let label = if is_local_dev_origin(&app.origin) {
                                                         TranslationKey::PagesSignMessageLocalhostBadge.format(&[])
                                                     } else {
-                                                        app.origin.to_string()
-                                                    }
+                                                        app.origin.clone()
+                                                    };
+                                                    view! { <DappOrigin origin=app.origin label=label /> }
+                                                        .into_any()
                                                 } else {
                                                     TranslationKey::PagesSignMessageUnknownNotConnected
                                                         .format(&[])
+                                                        .into_any()
                                                 }}
                                             </p>
                                         </div>

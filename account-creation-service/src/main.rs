@@ -2,7 +2,7 @@ mod router;
 
 use axum::{
     Router,
-    extract::{Json, Path, State},
+    extract::{Json, Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{get, post},
@@ -24,7 +24,7 @@ use rand::seq::SliceRandom;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::serde_as;
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     env,
     fmt::Display,
     hash::Hash,
@@ -33,7 +33,10 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime},
 };
-use tokio::sync::{Mutex, RwLock};
+use tokio::{
+    io::AsyncWriteExt,
+    sync::{Mutex, RwLock},
+};
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::EnvFilter;
 
@@ -405,6 +408,73 @@ struct AppState {
     relayers: Arc<RwLock<HashMap<String, RelayerState>>>,
     configs: Arc<RwLock<HashMap<String, RelayerConfig>>>,
     account_creation_timestamps: Arc<RwLock<HashMap<String, Vec<SystemTime>>>>,
+    known_apps: Arc<KnownApps>,
+    apps_used_log: Arc<Mutex<tokio::fs::File>>,
+}
+
+/// Contents of knownapps.toml
+#[derive(Deserialize)]
+struct KnownAppsFile {
+    safe: Vec<String>,
+    #[serde(rename = "unsafe")]
+    unsafe_origins: Vec<String>,
+}
+
+struct KnownApps {
+    safe: HashSet<String>,
+    unsafe_origins: HashSet<String>,
+}
+
+#[derive(Debug, Serialize, Clone, Copy)]
+enum DappSafety {
+    Safe,
+    Unsafe,
+    Unknown,
+}
+
+#[derive(Deserialize)]
+struct DappSafetyQuery {
+    origin: String,
+}
+
+const MAX_ORIGIN_LENGTH: usize = 300;
+
+fn normalize_origin(origin: &str) -> Option<String> {
+    let url = reqwest::Url::parse(origin).ok()?;
+    let normalized = url.origin().ascii_serialization();
+    (matches!(url.scheme(), "http" | "https") && normalized.len() <= MAX_ORIGIN_LENGTH)
+        .then_some(normalized)
+}
+
+async fn dapp_safety(
+    State(app_state): State<AppState>,
+    Query(query): Query<DappSafetyQuery>,
+) -> Result<Json<DappSafety>, (StatusCode, String)> {
+    let origin = normalize_origin(&query.origin)
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Invalid origin".to_string()))?;
+    let safety = if app_state.known_apps.unsafe_origins.contains(&origin) {
+        DappSafety::Unsafe
+    } else if app_state.known_apps.safe.contains(&origin) {
+        DappSafety::Safe
+    } else {
+        DappSafety::Unknown
+    };
+
+    let log_line = format!(
+        "{}\t{origin}\t{safety:?}\n",
+        chrono::Utc::now().to_rfc3339()
+    );
+    if let Err(e) = app_state
+        .apps_used_log
+        .lock()
+        .await
+        .write_all(log_line.as_bytes())
+        .await
+    {
+        tracing::error!("Failed to write to appsused.txt: {e}");
+    }
+
+    Ok(Json(safety))
 }
 
 const MAINNET_RELAYER_NAME: &str = "mainnet";
@@ -480,10 +550,38 @@ async fn main() {
         relayers.insert(relayer_id, relayer_state);
     }
 
+    let known_apps_file: KnownAppsFile = toml::from_str(
+        &tokio::fs::read_to_string("knownapps.toml")
+            .await
+            .expect("Failed to read knownapps.toml"),
+    )
+    .expect("Failed to parse knownapps.toml");
+    let normalize_known_origins = |origins: Vec<String>| -> HashSet<String> {
+        origins
+            .iter()
+            .map(|origin| {
+                normalize_origin(origin)
+                    .unwrap_or_else(|| panic!("Invalid origin in knownapps.toml: {origin}"))
+            })
+            .collect()
+    };
+    let known_apps = KnownApps {
+        safe: normalize_known_origins(known_apps_file.safe),
+        unsafe_origins: normalize_known_origins(known_apps_file.unsafe_origins),
+    };
+    let apps_used_log = tokio::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("appsused.txt")
+        .await
+        .expect("Failed to open appsused.txt");
+
     let state = AppState {
         relayers: Arc::new(RwLock::new(relayers)),
         configs: Arc::new(RwLock::new(configs)),
         account_creation_timestamps: Arc::new(RwLock::new(HashMap::new())),
+        known_apps: Arc::new(known_apps),
+        apps_used_log: Arc::new(Mutex::new(apps_used_log)),
     };
 
     let app = Router::new()
@@ -494,6 +592,7 @@ async fn main() {
         )
         .route("/swap-for-gas", post(swap_for_gas))
         .route("/get-root", get(get_root))
+        .route("/dappsafety", get(dapp_safety))
         .route("/configuration/read/{id}", get(configuration_read))
         .route("/configuration/create/{id}", post(configuration_create))
         .route("/configuration/edit/{id}", post(configuration_edit))

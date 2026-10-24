@@ -3,6 +3,7 @@ pub mod account_selector;
 pub mod copy_button;
 pub mod copyable_address;
 pub mod danger_confirm_input;
+pub mod dapp_origin;
 pub mod derivation_path_input;
 pub mod explore_components;
 pub mod gift_amount_display;

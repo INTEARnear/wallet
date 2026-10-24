@@ -1,4 +1,4 @@
-Last updated: April 27, 2026
+Last updated: October 24, 2026
 
 1. Overview
 
@@ -12,6 +12,7 @@ We collect only limited information necessary to operate the Wallet, which may i
 - User-provided inputs (account ID you provided when creating a wallet, or other data submitted through use of the Wallet)
 - Technical data (IP address, device/browser type, other request data). This data comes transiently with every web request, and is not stored or logged
 - Temporary encrypted session data to support application functionality, such as migration to a different device, cross-device connection to dApps, connection of dApps to the native Wallet app, your password (if you enabled "Remember Password" feature). This data is immediately disposed of when it's been used and no longer necessary for work of the app
+- Domain names of dApps you're trying to connect, to show you whether it's a legitimate verified app or a lookalike scam app
 
 We do not collect or store private keys, seed phrases, or unencrypted passwords.
 

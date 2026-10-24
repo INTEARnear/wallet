@@ -55,6 +55,7 @@ All public endpoints require the `x-relayer-id` header.
 - `POST /recover` - Recover an account using Ethereum/Solana signature
 - `POST /relay-signed-delegate-action` - Relay a signed delegate action
 - `POST /swap-for-gas` - Generate swap-for-gas authorized trade intent
+- `GET /dappsafety?origin=<origin>` - Returns `"Safe"`, `"Unsafe"` or `"Unknown"` for a dApp origin, based on `knownapps.toml`. Every request is appended to `appsused.txt` (timestamp, origin, status)
 
 ## Maintenance
 

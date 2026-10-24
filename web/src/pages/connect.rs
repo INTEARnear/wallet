@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use crate::components::dapp_origin::{DappOrigin, is_local_dev_origin};
 use crate::translations::TranslationKey;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::Utc;
@@ -791,26 +792,16 @@ pub fn Connect() -> impl IntoView {
                                                 {move || {
                                                     let Some(actual_origin) = actual_origin() else {
                                                         return TranslationKey::PagesConnectUnknownOriginWarning
-                                                            .format(&[]);
+                                                            .format(&[])
+                                                            .into_any();
                                                     };
-                                                    let domain = actual_origin
-                                                        .trim_start_matches("http://")
-                                                        .trim_start_matches("https://")
-                                                        .split("/")
-                                                        .next()
-                                                        .unwrap()
-                                                        .split(":")
-                                                        .next()
-                                                        .unwrap();
-                                                    if domain == "localhost" || domain == "127.0.0.1"
-                                                        || domain.starts_with("192.168.")
-                                                        || domain.ends_with(".local")
-                                                        || domain.ends_with(".localhost")
-                                                    {
+                                                    let label = if is_local_dev_origin(&actual_origin) {
                                                         TranslationKey::PagesConnectLocalhostBadge.format(&[])
                                                     } else {
-                                                        actual_origin.to_string()
-                                                    }
+                                                        actual_origin.clone()
+                                                    };
+                                                    view! { <DappOrigin origin=actual_origin label=label /> }
+                                                        .into_any()
                                                 }}
                                             </p>
                                         </div>

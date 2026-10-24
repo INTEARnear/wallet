@@ -28,7 +28,10 @@ const ESTIMATED_BLOCK_TIME: Duration = Duration::from_millis(600);
 const LONG_DELEGATE_TTL_THRESHOLD: Duration = Duration::from_secs(10 * 60);
 
 use crate::{
-    components::danger_confirm_input::DangerConfirmInput,
+    components::{
+        danger_confirm_input::DangerConfirmInput,
+        dapp_origin::{DappOrigin, is_local_dev_origin},
+    },
     contexts::{
         accounts_context::{Account, AccountsContext},
         connected_apps_context::{
@@ -610,24 +613,6 @@ pub fn SendTransactions() -> impl IntoView {
     let (expanded_actions, set_expanded_actions) =
         signal::<HashSet<(usize, usize)>>(HashSet::new());
 
-    let is_localhost_app = move |app: &crate::contexts::connected_apps_context::ConnectedApp| {
-        let domain = app
-            .origin
-            .trim_start_matches("http://")
-            .trim_start_matches("https://")
-            .split("/")
-            .next()
-            .unwrap()
-            .split(":")
-            .next()
-            .unwrap();
-        domain == "localhost"
-            || domain == "127.0.0.1"
-            || domain.starts_with("192.168.")
-            || domain.ends_with(".local")
-            || domain.ends_with(".localhost")
-    };
-
     let process_sign_and_send = move |data: SendTransactionsRequest, evt_origin: String| {
         set_origin(evt_origin);
         set_loading(false);
@@ -1207,15 +1192,18 @@ pub fn SendTransactions() -> impl IntoView {
                                             </p>
                                             <p class="text-white font-medium wrap-anywhere">
                                                 {if let Some(app) = connected_app() {
-                                                    if is_localhost_app(&app) {
+                                                    let label = if is_local_dev_origin(&app.origin) {
                                                         TranslationKey::PagesSendTransactionsLocalhostBadge
                                                             .format(&[])
                                                     } else {
-                                                        app.origin.to_string()
-                                                    }
+                                                        app.origin.clone()
+                                                    };
+                                                    view! { <DappOrigin origin=app.origin label=label /> }
+                                                        .into_any()
                                                 } else {
                                                     TranslationKey::PagesSendTransactionsUnknownOrigin
                                                         .format(&[])
+                                                        .into_any()
                                                 }}
                                             </p>
                                         </div>
@@ -1285,7 +1273,7 @@ pub fn SendTransactions() -> impl IntoView {
                                             );
                                     }
                                     if let Some(app) = connected_app() {
-                                        if is_localhost_app(&app) && !warnings.is_empty() {
+                                        if is_local_dev_origin(&app.origin) && !warnings.is_empty() {
                                             view! {
                                                 <div class="p-4 bg-yellow-500/10 backdrop-blur-sm rounded-xl border border-yellow-500/20 flex flex-col gap-4">
                                                     {warnings}

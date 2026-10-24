@@ -1,0 +1,27 @@
+safe = [
+    "https://dex.intea.rs",
+    "https://intea.rs",
+    "https://connect.intea.rs",
+    "https://deltatrade.ai",
+    "https://pikespeak.ai",
+    "https://nearblocks.io",
+    "https://near.pumpopoly.com",
+    "https://near.com",
+    "https://near-intents.org",
+    "https://app.rhea.finance",
+    "https://x.rhea.finance",
+    "https://meme.cooking",
+    "https://namesky.app",
+    "https://nearly.trade",
+    "https://noamarket.xyz",
+    "https://near.cooking",
+    "https://sendler.xyz",
+    "https://linearprotocol.io",
+    "https://nearlegion.com",
+    "https://feedback.nearbuilders.org",
+    "https://nearbuilders.org",
+    "https://hotcraft.art",
+    "https://main.metapool.app",
+]
+
+unsafe = []
