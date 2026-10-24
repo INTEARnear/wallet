@@ -47,7 +47,7 @@ pub fn shell(options: LeptosOptions, page: ShellPage) -> impl IntoView {
         .collect::<HashMap<&str, &str>>();
     let css_hash = hash_map.get("css").expect("css hash not found");
     let title = match page {
-        ShellPage::Home => "NEAR Wallet — Swap, Stake and Send | Intear Wallet",
+        ShellPage::Home => "Intear Wallet — Swap, Stake and Send tokens on NEAR",
         ShellPage::App => "Intear Wallet",
     };
     view! {
