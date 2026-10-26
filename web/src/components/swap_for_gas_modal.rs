@@ -125,7 +125,6 @@ struct OtcTradeIntent {
 #[derive(Default, PartialEq, Serialize, Deserialize, Debug, BorshSerialize)]
 struct OtcValidity {
     expiry: Option<OtcExpiryCondition>,
-    nonce: Option<U128>,
     only_for_whitelisted_parties: Option<Vec<AccountId>>,
 }
 
@@ -138,7 +137,11 @@ enum OtcExpiryCondition {
 #[derive(Serialize, Deserialize, Debug, BorshSerialize)]
 #[serde_as]
 enum OtcAuthorizationMethod {
-    Signature(#[serde_as(as = "Base64")] Vec<u8>),
+    Signature {
+        #[serde_as(as = "Base64")]
+        signature: Vec<u8>,
+        nonce: U128,
+    },
     Predecessor,
 }
 

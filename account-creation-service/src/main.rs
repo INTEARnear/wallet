@@ -1085,12 +1085,12 @@ async fn swap_for_gas(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let state = get_relayer_state(&app_state, &headers).await?;
 
-    if state.intear_dex.is_none() {
+    let Some(intear_dex) = state.intear_dex.clone() else {
         return Err((
             StatusCode::NOT_FOUND,
             "Swap for gas functionality is not available on this network".to_string(),
         ));
-    }
+    };
 
     if !SWAP_FOR_GAS_WHITELIST.contains(&payload.token_contract_id.as_str()) {
         return Err((
@@ -1143,11 +1143,14 @@ async fn swap_for_gas(
             expiry: Some(OtcExpiryCondition::Timestamp {
                 milliseconds: U64::from(expiry_millis),
             }),
-            nonce: Some(U128::from(nonce)),
             only_for_whitelisted_parties: Some(vec![payload.user_id]),
         },
     };
-    let hash = CryptoHash::hash_borsh(&trade_intent);
+    let nonce = U128::from(nonce);
+    let hash =
+        otc_trade_intent_signature_hash(&state.rpc_client, &intear_dex, &trade_intent, nonce)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     let signature = relayer_key.sign(hash.as_bytes());
     let signature_bytes = match signature {
         near_min_api::types::near_crypto::Signature::ED25519(signature) => {
@@ -1162,7 +1165,10 @@ async fn swap_for_gas(
     };
     let authorized_trade_intent = OtcAuthorizedTradeIntent {
         trade_intent,
-        authorization_method: OtcAuthorizationMethod::Signature(signature_bytes),
+        authorization_method: OtcAuthorizationMethod::Signature {
+            signature: signature_bytes,
+            nonce,
+        },
     };
     Ok(Json(SwapForGasResponse {
         authorized_trade_intent,
@@ -1310,26 +1316,39 @@ async fn validate_signed_delegate_action(
                                                     &match_args.authorized_trade_intents[0];
 
                                                 let valid_signature =
-                                                    if let OtcAuthorizationMethod::Signature(
-                                                        sig_bytes,
-                                                    ) = &first_intent.authorization_method
+                                                    if let OtcAuthorizationMethod::Signature {
+                                                        signature: sig_bytes,
+                                                        nonce,
+                                                    } = &first_intent.authorization_method
                                                     {
                                                         let relayer_key = state
                                                             .relayer_keys
                                                             .first()
                                                             .expect("No relayer keys");
-                                                        let hash = CryptoHash::hash_borsh(
+                                                        match otc_trade_intent_signature_hash(
+                                                            &state.rpc_client,
+                                                            intear_dex,
                                                             &first_intent.trade_intent,
-                                                        );
-                                                        if let Ok(signature) = near_min_api::types::near_crypto::Signature::from_parts(relayer_key.key_type(), sig_bytes) {
-                                                        signature.verify(
-                                                            hash.as_bytes(),
-                                                            &relayer_key.public_key(),
+                                                            *nonce,
                                                         )
-                                                    } else {
-                                                        tracing::error!("Failed to deserialize signature");
-                                                        false
-                                                    }
+                                                        .await
+                                                        {
+                                                            Ok(hash) => {
+                                                                if let Ok(signature) = near_min_api::types::near_crypto::Signature::from_parts(relayer_key.key_type(), sig_bytes) {
+                                                                    signature.verify(
+                                                                        hash.as_bytes(),
+                                                                        &relayer_key.public_key(),
+                                                                    )
+                                                                } else {
+                                                                    tracing::error!("Failed to deserialize signature");
+                                                                    false
+                                                                }
+                                                            }
+                                                            Err(e) => {
+                                                                tracing::error!("{e}");
+                                                                false
+                                                            }
+                                                        }
                                                     } else {
                                                         tracing::error!(
                                                             "First intent authorization method is not Signature"
@@ -1733,7 +1752,6 @@ struct OtcMatchArgs {
 #[derive(Default, PartialEq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Debug)]
 struct OtcValidity {
     expiry: Option<OtcExpiryCondition>,
-    nonce: Option<U128>,
     only_for_whitelisted_parties: Option<Vec<AccountId>>,
 }
 
@@ -1748,7 +1766,11 @@ enum OtcExpiryCondition {
 #[derive(Serialize, Deserialize, BorshSerialize, BorshDeserialize, Debug)]
 #[serde_as]
 enum OtcAuthorizationMethod {
-    Signature(#[serde_as(as = "Base64")] Vec<u8>),
+    Signature {
+        #[serde_as(as = "Base64")]
+        signature: Vec<u8>,
+        nonce: U128,
+    },
     Predecessor,
 }
 
@@ -1775,6 +1797,44 @@ struct SwapForGasRequest {
 #[derive(Serialize, Debug)]
 struct SwapForGasResponse {
     authorized_trade_intent: OtcAuthorizedTradeIntent,
+}
+
+async fn otc_trade_intent_signature_hash(
+    rpc_client: &RpcClient,
+    intear_dex: &AccountId,
+    trade_intent: &OtcTradeIntent,
+    nonce: U128,
+) -> Result<CryptoHash, String> {
+    #[derive(BorshSerialize)]
+    struct IntearDexId {
+        deployer: AccountId,
+        id: String,
+    }
+
+    #[derive(BorshSerialize)]
+    struct OtcTradeIntentSignaturePayload<'a> {
+        chain_id: String,
+        engine_contract_id: &'a AccountId,
+        dex_id: IntearDexId,
+        trade_intent: &'a OtcTradeIntent,
+        nonce: U128,
+    }
+
+    let chain_id = rpc_client
+        .status()
+        .await
+        .map_err(|e| format!("Failed to get the chain id: {e}"))?
+        .chain_id;
+    Ok(CryptoHash::hash_borsh(&OtcTradeIntentSignaturePayload {
+        chain_id,
+        engine_contract_id: intear_dex,
+        dex_id: IntearDexId {
+            deployer: "slimedragon.near".parse().unwrap(),
+            id: "otc".to_string(),
+        },
+        trade_intent,
+        nonce,
+    }))
 }
 
 /// None if the relayer hasn't registered the asset, so trades can't credit it
