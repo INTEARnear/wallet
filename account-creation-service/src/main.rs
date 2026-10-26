@@ -1777,12 +1777,13 @@ struct SwapForGasResponse {
     authorized_trade_intent: OtcAuthorizedTradeIntent,
 }
 
+/// None if the relayer hasn't registered the asset, so trades can't credit it
 async fn get_otc_balance(
     rpc_client: &RpcClient,
     intear_dex: &AccountId,
     relayer_id: AccountId,
     asset_id: AssetId,
-) -> Result<U128, String> {
+) -> Result<Option<U128>, String> {
     #[derive(BorshSerialize)]
     struct GetBalanceArgs {
         user_id: AccountId,
@@ -1808,8 +1809,12 @@ async fn get_otc_balance(
     let Ok(result_bytes) = BASE64_STANDARD.decode(result) else {
         return Err("Failed to decode result".to_string());
     };
-    let result: Option<U128> = borsh::from_slice(&result_bytes).map_err(|e| e.to_string())?;
-    Ok(result.unwrap_or_default())
+    borsh::from_slice(&result_bytes).map_err(|e| e.to_string())
+}
+
+#[derive(BorshSerialize)]
+struct RegisterAssetsArgs {
+    asset_ids: Vec<AssetId>,
 }
 
 #[derive(BorshSerialize)]
@@ -1831,6 +1836,7 @@ async fn check_otc_balances(state: &RelayerState, intear_dex: &AccountId, relaye
         relayer_id
     );
 
+    let mut assets_to_register = Vec::new();
     let mut assets_to_withdraw = Vec::new();
 
     for token_contract_id in SWAP_FOR_GAS_WHITELIST {
@@ -1848,7 +1854,15 @@ async fn check_otc_balances(state: &RelayerState, intear_dex: &AccountId, relaye
         )
         .await
         {
-            Ok(balance) => {
+            Ok(None) => {
+                tracing::info!(
+                    "[{}] {} is not registered in OTC",
+                    relayer_id,
+                    token_contract_id
+                );
+                assets_to_register.push(asset_id);
+            }
+            Ok(Some(balance)) => {
                 let balance_u128: u128 = balance.into();
                 tracing::info!(
                     "[{}] OTC Balance for {}: {}",
@@ -1877,63 +1891,90 @@ async fn check_otc_balances(state: &RelayerState, intear_dex: &AccountId, relaye
         }
     }
 
+    let mut dex_calls = Vec::new();
+    if !assets_to_register.is_empty() {
+        tracing::info!(
+            "[{}] Registering {} assets in OTC",
+            relayer_id,
+            assets_to_register.len()
+        );
+        dex_calls.push((
+            "register_assets",
+            borsh::to_vec(&RegisterAssetsArgs {
+                asset_ids: assets_to_register,
+            })
+            .unwrap(),
+        ));
+    }
     if !assets_to_withdraw.is_empty() {
         tracing::info!(
             "[{}] Withdrawing {} assets from OTC",
             relayer_id,
             assets_to_withdraw.len()
         );
+        dex_calls.push((
+            "withdraw_assets",
+            borsh::to_vec(&WithdrawAssetsArgs {
+                assets: assets_to_withdraw,
+            })
+            .unwrap(),
+        ));
+    }
+    if dex_calls.is_empty() {
+        return;
+    }
 
-        let relayer_key = state
-            .relayer_keys
-            .first()
-            .expect("No private keys available");
+    let relayer_key = state
+        .relayer_keys
+        .first()
+        .expect("No private keys available");
 
-        let access_key = match state
-            .rpc_client
-            .get_access_key(
-                state.relayer_id.clone(),
-                relayer_key.public_key(),
-                QueryFinality::Finality(Finality::None),
-            )
-            .await
-        {
-            Ok(key) => key,
-            Err(e) => {
-                tracing::error!(
-                    "[{}] Failed to get access key for withdrawal: {}",
-                    relayer_id,
-                    e
-                );
-                return;
-            }
-        };
+    let access_key = match state
+        .rpc_client
+        .get_access_key(
+            state.relayer_id.clone(),
+            relayer_key.public_key(),
+            QueryFinality::Finality(Finality::None),
+        )
+        .await
+    {
+        Ok(key) => key,
+        Err(e) => {
+            tracing::error!(
+                "[{}] Failed to get access key for OTC calls: {}",
+                relayer_id,
+                e
+            );
+            return;
+        }
+    };
 
-        let block_hash = match state
-            .rpc_client
-            .block(BlockReference::Finality(Finality::Final))
-            .await
-            .map(|block| block.header.hash)
-        {
-            Ok(hash) => hash,
-            Err(e) => {
-                tracing::error!(
-                    "[{}] Failed to fetch block hash for withdrawal: {}",
-                    relayer_id,
-                    e
-                );
-                return;
-            }
-        };
+    let block_hash = match state
+        .rpc_client
+        .block(BlockReference::Finality(Finality::Final))
+        .await
+        .map(|block| block.header.hash)
+    {
+        Ok(hash) => hash,
+        Err(e) => {
+            tracing::error!(
+                "[{}] Failed to fetch block hash for OTC calls: {}",
+                relayer_id,
+                e
+            );
+            return;
+        }
+    };
 
-        let withdraw_action = Action::FunctionCall(Box::new(FunctionCallAction {
+    // Separate transactions, so that a failed registration doesn't hold back withdrawals.
+    // send_tx only waits for inclusion, so the nonces are counted here instead of fetched.
+    for (nonce, (method, args)) in (access_key.nonce + 1..).zip(dex_calls) {
+        let dex_call_action = Action::FunctionCall(Box::new(FunctionCallAction {
             method_name: "dex_call".to_string(),
             args: serde_json::to_vec(&serde_json::json!({
                 "dex_id": "slimedragon.near/otc",
-                "method": "withdraw_assets",
-                "args": BASE64_STANDARD.encode(borsh::to_vec(&WithdrawAssetsArgs {
-                    assets: assets_to_withdraw,
-                }).unwrap()),
+                "method": method,
+                "args": BASE64_STANDARD.encode(args),
                 "attached_assets": {},
             }))
             .unwrap(),
@@ -1944,10 +1985,10 @@ async fn check_otc_balances(state: &RelayerState, intear_dex: &AccountId, relaye
         let tx = Transaction::V0(TransactionV0 {
             signer_id: state.relayer_id.clone(),
             public_key: relayer_key.public_key(),
-            nonce: access_key.nonce + 1,
+            nonce,
             receiver_id: intear_dex.clone(),
             block_hash,
-            actions: vec![withdraw_action],
+            actions: vec![dex_call_action],
         });
 
         let (tx_hash, _) = tx.get_hash_and_size();
@@ -1956,12 +1997,18 @@ async fn check_otc_balances(state: &RelayerState, intear_dex: &AccountId, relaye
 
         match state.rpc_client.send_tx(signed_tx).await {
             Ok(_) => {
-                tracing::info!("[{}] Withdrawal transaction sent: {}", relayer_id, tx_hash);
+                tracing::info!(
+                    "[{}] OTC {} transaction sent: {}",
+                    relayer_id,
+                    method,
+                    tx_hash
+                );
             }
             Err(e) => {
                 tracing::error!(
-                    "[{}] Failed to send withdrawal transaction: {}",
+                    "[{}] Failed to send OTC {} transaction: {}",
                     relayer_id,
+                    method,
                     e
                 );
             }
