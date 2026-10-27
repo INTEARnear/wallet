@@ -487,6 +487,7 @@
   "pages.history.stake_near": "Stake {amount}",
   "pages.history.start_unstaking_near": "Start unstaking {amount}",
   "pages.history.storage_deposit_near": "Storage deposit {amount}",
+  "pages.history.storage_deposit_one_time": "{contract_id}, one-time",
   "pages.history.storage_deposit_refund_near": "Storage deposit refund {amount}",
   "pages.history.storage_deposit_tooltip": "Storage deposits are needed for dApps to store your data on NEAR blockchain. Once you stop using this dApp, some dApps allow you to withdraw this deposit.",
   "pages.history.storage_withdraw": "Withdraw {amount}",

@@ -487,6 +487,7 @@
   "pages.history.stake_near": "Stake {amount}",
   "pages.history.start_unstaking_near": "Bắt đầu hủy Stake (Unstake) {amount}",
   "pages.history.storage_deposit_near": "Cọc phí lưu trữ {amount}",
+  "pages.history.storage_deposit_one_time": "{contract_id}",
   "pages.history.storage_deposit_refund_near": "Hoàn trả cọc phí lưu trữ {amount}",
   "pages.history.storage_deposit_tooltip": "Cọc phí lưu trữ là cần thiết để dApps lưu trữ dữ liệu của bạn trên blockchain NEAR. Khi bạn ngừng sử dụng dApp này, một số dApps cho phép bạn rút lại khoản cọc này.",
   "pages.history.storage_withdraw": "Rút {amount}",

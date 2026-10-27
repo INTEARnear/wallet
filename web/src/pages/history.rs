@@ -1196,17 +1196,22 @@ fn add_near_actions(
                                             height="40"
                                             class="rounded-sm"
                                         />
-                                        <span>
-                                            {move || {
-                                                let amount = format_token_amount(
-                                                    incoming_deposit.as_yoctonear(),
-                                                    24,
-                                                    "NEAR",
-                                                );
-                                                TranslationKey::PagesHistoryStorageDepositRefundNear
-                                                    .format(&[("amount", amount.as_str())])
-                                            }}
-                                        </span>
+                                        <div class="flex flex-col">
+                                            <span>
+                                                {move || {
+                                                    let amount = format_token_amount(
+                                                        incoming_deposit.as_yoctonear(),
+                                                        24,
+                                                        "NEAR",
+                                                    );
+                                                    TranslationKey::PagesHistoryStorageDepositRefundNear
+                                                        .format(&[("amount", amount.as_str())])
+                                                }}
+                                            </span>
+                                            <span class="text-sm text-neutral-400">
+                                                {format_account_id(&receipt.predecessor_id)}
+                                            </span>
+                                        </div>
                                     </div>
                                 }
                                 .into_any()
@@ -1385,7 +1390,7 @@ fn add_storage_actions(
             for action in tx_actions.iter() {
                 if let ActionView::FunctionCall {
                     method_name,
-                    args: _,
+                    args,
                     deposit,
                     ..
                 } = action
@@ -1393,6 +1398,9 @@ fn add_storage_actions(
                     && receipt.predecessor_id == me
                 {
                     let deposit_amount = *deposit;
+                    let registration_only = serde_json::from_slice::<serde_json::Value>(args)
+                        .is_ok_and(|args| args["registration_only"] == true);
+                    let contract_id = receipt.receiver_id.clone();
                     let withdraw_button =
                         (deposit_amount > STORAGE_WITHDRAW_THRESHOLD).then(|| {
                             let contract_id = receipt.receiver_id.clone();
@@ -1412,23 +1420,40 @@ fn add_storage_actions(
                                     height="40"
                                     class="rounded-sm"
                                 />
-                                <span class="flex items-center gap-1">
-                                    {move || {
-                                        let amount = format_token_amount(
-                                            deposit_amount.as_yoctonear(),
-                                            24,
-                                            "NEAR",
-                                        );
-                                        let line = TranslationKey::PagesHistoryStorageDepositNear
-                                            .format(&[("amount", amount.as_str())]);
-                                        let tip = TranslationKey::PagesHistoryStorageDepositTooltip
-                                            .format(&[]);
-                                        view! {
-                                            {line}
-                                            <Tooltip text=tip />
-                                        }
-                                    }}
-                                </span>
+                                <div class="flex flex-col">
+                                    <span class="flex items-center gap-1">
+                                        {move || {
+                                            let amount = format_token_amount(
+                                                deposit_amount.as_yoctonear(),
+                                                24,
+                                                "NEAR",
+                                            );
+                                            let line = TranslationKey::PagesHistoryStorageDepositNear
+                                                .format(&[("amount", amount.as_str())]);
+                                            let tip = TranslationKey::PagesHistoryStorageDepositTooltip
+                                                .format(&[]);
+                                            view! {
+                                                {line}
+                                                <Tooltip text=tip />
+                                            }
+                                        }}
+                                    </span>
+                                    <span class="text-sm text-neutral-400">
+                                        {move || {
+                                            if registration_only {
+                                                TranslationKey::PagesHistoryStorageDepositOneTime
+                                                    .format_view(
+                                                        vec![
+                                                            ("contract_id", format_account_id(&contract_id)),
+                                                        ],
+                                                    )
+                                                    .into_any()
+                                            } else {
+                                                format_account_id(&contract_id)
+                                            }
+                                        }}
+                                    </span>
+                                </div>
                                 {withdraw_button}
                             </div>
                         }
@@ -1452,24 +1477,21 @@ fn token_conversion_view(
     amount_out: String,
 ) -> AnyView {
     view! {
-        <div class="flex gap-3 flex-col">
-            <div class="flex items-center gap-3">
-                {title_icon} <span>{move || title.format(&[])}</span>
-            </div>
-            <div class="flex items-center gap-2">
-                <div class="flex items-center gap-2">
-                    <img src=icon_in width="30" height="30" class="rounded-full" />
-                    <span class="text-sm sm:text-lg font-medium wrap-anywhere">{amount_in}</span>
-                </div>
-                <Icon
-                    icon=LuArrowRight
-                    width="16"
-                    height="16"
-                    attr:class="text-neutral-400 min-w-4 min-h-4"
-                />
-                <div class="flex items-center gap-2 wrap-anywhere">
-                    <img src=icon_out width="30" height="30" class="rounded-full" />
-                    <span class="text-sm sm:text-lg font-medium">{amount_out}</span>
+        <div class="flex items-center gap-2">
+            {title_icon}
+            <div class="flex flex-col">
+                <span class="text-sm text-neutral-400">{move || title.format(&[])}</span>
+                <div class="flex items-center gap-1.5 flex-wrap">
+                    <img src=icon_in width="20" height="20" class="rounded-full" />
+                    <span class="text-red-300 wrap-anywhere">{amount_in}</span>
+                    <Icon
+                        icon=LuArrowRight
+                        width="14"
+                        height="14"
+                        attr:class="text-neutral-400 min-w-[14px] min-h-[14px]"
+                    />
+                    <img src=icon_out width="20" height="20" class="rounded-full" />
+                    <span class="text-green-300 wrap-anywhere">{amount_out}</span>
                 </div>
             </div>
         </div>

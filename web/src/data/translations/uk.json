@@ -487,6 +487,7 @@
   "pages.history.stake_near": "Додано {amount} в стейкінг",
   "pages.history.start_unstaking_near": "Почато виведення зі стейкінгу {amount}",
   "pages.history.storage_deposit_near": "Депозит {amount} за зберігання даних",
+  "pages.history.storage_deposit_one_time": "{contract_id}, один раз",
   "pages.history.storage_deposit_refund_near": "Повернення {amount} депозиту за зберігання даних",
   "pages.history.storage_deposit_tooltip": "Депозити за зберігання даних потрібні смарт-контрактам, щоб зберігати ваші дані в блокчейні. Коли ви перестанете користуватися смарт-контрактом, деякі дозволяють вивести цей депозит.",
   "pages.history.storage_withdraw": "Вивести {amount}",

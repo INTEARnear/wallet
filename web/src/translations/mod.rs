@@ -775,6 +775,7 @@ translation_keys! {
                 StorageDepositRefundNear,
                 ReceiveNearFrom,
                 StorageDepositNear,
+                StorageDepositOneTime,
                 StorageDepositTooltip,
                 StorageWithdraw,
                 Wrap,
