@@ -234,6 +234,9 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
 
     let is_valid_without_account =
         Memo::new(move |_| location.pathname.get() == "/auto-import-secret-key");
+    // Pages are rebuilt only when the selected account changes, not on every accounts update
+    // (e.g. re-decrypting the same accounts), otherwise in-progress pages lose their state
+    let selected_account_id = Memo::new(move |_| accounts.read().selected_account_id.clone());
 
     view! {
         <ErrorBoundary fallback=|errors| {
@@ -283,7 +286,7 @@ pub fn Layout(children: ChildrenFn) -> impl IntoView {
                             style="transform: translateX(var(--slide-transform)); opacity: var(--slide-opacity);"
                         >
                             {move || {
-                                if accounts.get().selected_account_id.is_some()
+                                if selected_account_id.read().is_some()
                                     || is_valid_without_account()
                                 {
                                     children()

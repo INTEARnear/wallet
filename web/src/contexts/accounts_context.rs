@@ -890,6 +890,10 @@ pub fn provide_accounts_context() {
     let decrypt_accounts = Action::new(move |password: &String| {
         let password = password.clone();
         async move {
+            if cipher.get_untracked().is_some() {
+                log::error!("Tried to unlock the wallet while it's already unlocked");
+                return Err("The accounts are already unlocked".to_string());
+            }
             let decrypted_accounts = try_decrypt_accounts(password).await;
             match decrypted_accounts {
                 Ok((accounts, cipher, key_bytes)) => {

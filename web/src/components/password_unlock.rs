@@ -28,10 +28,19 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
 
     let input_ref = NodeRef::<leptos::html::Input>::new();
 
+    let should_show_unlock = move || {
+        accounts_context.is_encrypted.get()
+            && accounts_context.accounts.get().accounts.is_empty()
+            && !cipher_auto_loaded.get()
+    };
+
     Effect::new(move || {
-        // Re-focus whenever loading state changes or when the component mounts
-        let _ = accounts_context.is_loading_cipher.get();
-        if let Some(input) = input_ref.get() {
+        // Only focus while the form is visible: focusing the hidden input makes password
+        // managers offer to fill it, which re-unlocks an already unlocked wallet
+        if should_show_unlock()
+            && !accounts_context.is_loading_cipher.get()
+            && let Some(input) = input_ref.get()
+        {
             let _ = input.focus();
         }
     });
@@ -154,12 +163,6 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
         set_is_resetting(false);
     };
 
-    let should_show_unlock = move || {
-        accounts_context.is_encrypted.get()
-            && accounts_context.accounts.get().accounts.is_empty()
-            && !cipher_auto_loaded.get()
-    };
-
     view! {
         <div
             class="absolute inset-0 bg-neutral-950 lg:rounded-3xl transition-opacity duration-200 z-10000"
@@ -242,8 +245,9 @@ pub fn PasswordUnlockOverlay() -> impl IntoView {
                                     on:input=handle_input
                                     on:keydown=handle_keydown
                                     disabled=move || {
-                                        is_unlocking.get()
-                                            && auto_attempt_abortable.read_untracked().is_none()
+                                        !should_show_unlock()
+                                            || (is_unlocking.get()
+                                                && auto_attempt_abortable.read_untracked().is_none())
                                     }
                                 />
                                 <button
