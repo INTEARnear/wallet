@@ -1075,13 +1075,18 @@ pub struct WalletSelectorAccessKey {
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum WalletSelectorAccessKeyPermission {
-    FullAccess,
+    FullAccess(WalletSelectorFullAccess),
     #[serde(rename_all = "camelCase")]
     FunctionCall {
         receiver_id: AccountId,
         allowance: Option<NearToken>,
         method_names: Option<Vec<String>>,
     },
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub enum WalletSelectorFulAccess {
+    FullAccess,
 }
 
 impl From<WalletSelectorAction> for NearAction {
@@ -1121,7 +1126,7 @@ impl From<WalletSelectorAction> for NearAction {
                 access_key: NearAccessKey {
                     nonce: access_key.nonce.unwrap_or_default(),
                     permission: match access_key.permission {
-                        WalletSelectorAccessKeyPermission::FullAccess => {
+                        WalletSelectorAccessKeyPermission::FullAccess(_) => {
                             AccessKeyPermission::FullAccess
                         }
                         WalletSelectorAccessKeyPermission::FunctionCall {
