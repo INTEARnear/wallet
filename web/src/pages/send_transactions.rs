@@ -5,14 +5,15 @@ use icondata::*;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::Icon;
 use near_min_api::{
-    ExperimentalTxDetails,
+    ExperimentalTxDetails, QueryFinality, RpcClient,
     types::{
-        AccessKeyPermission, AccountId, Action, AddKeyAction, BlockHeightDelta, CryptoHash,
-        DeleteAccountAction, DeleteKeyAction, DeployContractAction, DeployGlobalContractAction,
-        DeterministicStateInitAction, FinalExecutionOutcomeViewEnum, FunctionCallAction,
+        AccessKeyPermission, AccessKeyPermissionView, AccountId, Action, AddKeyAction,
+        BlockHeightDelta, BlockReference, CryptoHash, DeleteAccountAction, DeleteKeyAction,
+        DeployContractAction, DeployGlobalContractAction, DeterministicStateInitAction,
+        FinalExecutionOutcomeViewEnum, FinalExecutionStatus, Finality, FunctionCallAction,
         FunctionCallPermission, GlobalContractDeployMode, GlobalContractIdentifier, NearGas,
-        NearToken, SignedDelegateAction, StakeAction, TransferAction, TransferToGasKeyAction,
-        UseGlobalContractAction, WithdrawFromGasKeyAction,
+        NearToken, SignedDelegateAction, StakeAction, Transaction, TransactionV0, TransferAction,
+        TransferToGasKeyAction, UseGlobalContractAction, WithdrawFromGasKeyAction,
         near_crypto::{PublicKey, PublicKeyHandle, Signature},
     },
 };
@@ -39,11 +40,13 @@ use crate::{
             is_dangerous_action,
         },
         network_context::Network,
+        rpc_context::RpcContext,
         security_log_context::{SecurityLogEvent, TransactionDanger, add_security_log},
         transaction_queue_context::{
             EnqueuedTransaction, TransactionQueueContext, TransactionType,
         },
     },
+    pages::history::display_transaction,
     utils::{
         SendTransactionsAction, WalletSelectorAction, WalletSelectorTransaction,
         format_token_amount_no_hide, is_debug_enabled, serialize_to_js_value,
@@ -553,6 +556,167 @@ fn TransactionItem<'a>(
     }
 }
 
+/// Builds unsigned versions of `transactions` with the nonces the transaction queue would use and
+/// simulates them one after another
+async fn simulate_transactions(
+    rpc_client: &RpcClient,
+    transactions: Vec<WalletSelectorTransaction>,
+    wallet_public_keys: &[PublicKey],
+) -> Result<Vec<ExperimentalTxDetails>, String> {
+    let mut signing_keys = HashMap::<AccountId, (PublicKey, u64)>::new();
+    let mut unsigned_transactions = Vec::with_capacity(transactions.len());
+    for transaction in transactions {
+        if !signing_keys.contains_key(&transaction.signer_id) {
+            let access_keys = rpc_client
+                .view_access_key_list(
+                    transaction.signer_id.clone(),
+                    QueryFinality::Finality(Finality::None),
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+            let full_keys = access_keys.keys.into_iter().filter_map(|key| {
+                let public_key = match key.public_key {
+                    PublicKeyHandle::ED25519(key) => PublicKey::ED25519(key),
+                    PublicKeyHandle::SECP256K1(key) => PublicKey::SECP256K1(key),
+                    PublicKeyHandle::MlDsa65(_) => return None,
+                };
+                Some((public_key, key.access_key))
+            });
+            // The wallet's own key gives the exact result. A view-only account has no key of the
+            // wallet on chain, but a preview signs nothing, so any full access key of the account
+            // shows the same result.
+            let (wallet_keys, other_keys): (Vec<_>, Vec<_>) =
+                full_keys.partition(|(public_key, _)| wallet_public_keys.contains(public_key));
+            let (public_key, access_key) = wallet_keys
+                .into_iter()
+                .chain(other_keys.into_iter().filter(|(_, access_key)| {
+                    access_key.permission == AccessKeyPermissionView::FullAccess
+                }))
+                .next()
+                .ok_or_else(|| format!("{} has no key to simulate with", transaction.signer_id))?;
+            signing_keys.insert(
+                transaction.signer_id.clone(),
+                (public_key, access_key.nonce),
+            );
+        }
+        let (public_key, nonce) = signing_keys.get_mut(&transaction.signer_id).unwrap();
+        *nonce += 1;
+        unsigned_transactions.push(Transaction::V0(TransactionV0 {
+            signer_id: transaction.signer_id,
+            public_key: public_key.clone(),
+            nonce: *nonce,
+            receiver_id: transaction.receiver_id,
+            block_hash: CryptoHash::default(),
+            actions: transaction.actions.into_iter().map(Into::into).collect(),
+        }));
+    }
+    rpc_client
+        .INTEAR_simulate_transactions(
+            &unsigned_transactions,
+            BlockReference::Finality(Finality::None),
+        )
+        .await
+        .map(|simulated| simulated.transactions)
+        .map_err(|error| error.to_string())
+}
+
+/// What the transactions would do, rendered like on the history page.
+#[component]
+fn TransactionsPreview(transactions: Vec<WalletSelectorTransaction>) -> impl IntoView {
+    let RpcContext { client, .. } = expect_context::<RpcContext>();
+    let accounts_context = expect_context::<AccountsContext>();
+    if !client.get_untracked().supports_intear_methods() {
+        return view! {
+            <p class="text-neutral-400 text-sm">
+                {move || TranslationKey::PagesSendTransactionsPreviewUnavailable.format(&[])}
+            </p>
+        }
+        .into_any();
+    }
+    let simulation = LocalResource::new(move || {
+        let transactions = transactions.clone();
+        let rpc_client = client.get();
+        let wallet_public_keys = accounts_context
+            .accounts
+            .get()
+            .accounts
+            .iter()
+            .map(|account| account.secret_key.public_key())
+            .collect::<Vec<_>>();
+        async move { simulate_transactions(&rpc_client, transactions, &wallet_public_keys).await }
+    });
+    view! {
+        <Suspense fallback=move || {
+            view! {
+                <p class="text-neutral-400 text-sm">
+                    {move || TranslationKey::PagesSendTransactionsPreviewSimulating.format(&[])}
+                </p>
+            }
+        }>
+            {move || {
+                simulation
+                    .get()
+                    .map(|result| match result {
+                        Ok(simulated) => {
+                            view! {
+                                <div class="flex flex-col gap-3 text-white font-medium">
+                                    {simulated
+                                        .into_iter()
+                                        .filter_map(|details| details.final_execution_outcome)
+                                        .map(|outcome| {
+                                            let failure = match &outcome.final_outcome.status {
+                                                FinalExecutionStatus::Failure(error) => {
+                                                    Some(error.to_string())
+                                                }
+                                                _ => None,
+                                            };
+                                            view! {
+                                                {display_transaction(&outcome).into_any()}
+                                                {failure
+                                                    .map(|error| {
+                                                        view! {
+                                                            <div class="flex items-start gap-2 text-red-400 text-sm font-normal">
+                                                                <Icon
+                                                                    icon=LuTriangleAlert
+                                                                    width="16"
+                                                                    height="16"
+                                                                    attr:class="min-w-4 min-h-4 mt-0.5"
+                                                                />
+                                                                <p class="wrap-anywhere">
+                                                                    {move || {
+                                                                        TranslationKey::PagesSendTransactionsPreviewLikelyFails
+                                                                            .format(&[("error", &error)])
+                                                                    }}
+                                                                </p>
+                                                            </div>
+                                                        }
+                                                    })}
+                                            }
+                                        })
+                                        .collect_view()}
+                                </div>
+                            }
+                                .into_any()
+                        }
+                        Err(error) => {
+                            log::error!("Failed to simulate transactions: {error}");
+                            view! {
+                                <p class="text-neutral-400 text-sm wrap-anywhere">
+                                    {move || {
+                                        TranslationKey::PagesSendTransactionsPreviewFailed
+                                            .format(&[("error", &error)])
+                                    }}
+                                </p>
+                            }
+                                .into_any()
+                        }
+                    })
+            }}
+        </Suspense>
+    }
+    .into_any()
+}
+
 #[component]
 fn TransactionList(
     transactions: Vec<WalletSelectorTransaction>,
@@ -562,11 +726,7 @@ fn TransactionList(
     view! {
         <div class="flex flex-col gap-4">
             <div class="p-3 bg-neutral-900/50 rounded-lg border border-neutral-800">
-                <p class="text-neutral-400 text-sm">
-                    {move || {
-                        TranslationKey::PagesSendTransactionsPreviewUnavailable.format(&[])
-                    }}
-                </p>
+                <TransactionsPreview transactions=transactions.clone() />
             </div>
 
             <div>

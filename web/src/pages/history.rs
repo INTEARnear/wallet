@@ -16,13 +16,15 @@ use crate::{
         config_context::{ConfigContext, TimestampFormat},
         network_context::{Network, NetworkContext},
         rpc_context::RpcContext,
+        tokens_context::{Token, near_metadata},
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
     translations::TranslationKey,
     utils::{
-        EventLogData, FtBurnLog, FtMintLog, FtTransferLog, NEP141_EVENT_STANDARD_STRING,
-        NftBurnLog, NftMintLog, NftTransferLog, RefDclSwapLog, StorageBalance, format_account_id,
-        format_duration, format_token_amount, get_ft_metadata, get_nft_collection_metadata,
+        EventLogData, FtBurnLog, FtMintLog, FtTransferLog, IntearDexSwapLog,
+        NEP141_EVENT_STANDARD_STRING, NftBurnLog, NftMintLog, NftTransferLog, RefDclSwapLog,
+        StorageBalance, format_account_id, format_duration, format_token_amount, get_ft_metadata,
+        get_nft_collection_metadata,
     },
 };
 use base64::{self, Engine};
@@ -662,7 +664,9 @@ fn TransactionRow(tx: Arc<HistoryTransaction>) -> impl IntoView {
     }
 }
 
-fn display_transaction(transaction: &FinalExecutionOutcomeWithReceiptView) -> impl IntoAny + use<> {
+pub(crate) fn display_transaction(
+    transaction: &FinalExecutionOutcomeWithReceiptView,
+) -> impl IntoAny + use<> {
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let RpcContext { client, .. } = expect_context::<RpcContext>();
     let Some(me) = accounts().selected_account_id else {
@@ -723,7 +727,11 @@ struct ActionsConfig {
     nft_event_format: TokenEventFormat,
     storage_deposit_to: HashSet<AccountId>,
     withdrawing_from_staking: HashMap<AccountId, NearToken>,
-    ft_events: Vec<FtBalanceEvent>,
+    /// Exchanges the account traded on, whose token transfers are shown as
+    /// part of the trade and not as transfers
+    swap_exchanges: HashSet<AccountId>,
+    /// NEAR paid out for trades and unwraps, by payer, shown as part of them
+    conversion_payouts: HashMap<AccountId, NearToken>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -732,13 +740,6 @@ enum TokenEventFormat {
     Full,
     Short,
     Hidden,
-}
-
-#[derive(Debug, Clone)]
-struct FtBalanceEvent {
-    token_id: AccountId,
-    amount: Balance,
-    is_positive: bool,
 }
 
 fn add_account_actions(
@@ -1170,6 +1171,13 @@ fn add_near_actions(
                         {
                             continue;
                         }
+                        if actions_config
+                            .conversion_payouts
+                            .get(&receipt.predecessor_id)
+                            == Some(deposit)
+                        {
+                            continue;
+                        }
                         let incoming_deposit = *deposit;
                         actions.push(
                             if actions_config
@@ -1203,6 +1211,7 @@ fn add_near_actions(
                                 }
                                 .into_any()
                             } else {
+                                let sender_id = receipt.predecessor_id.clone();
                                 view! {
                                     <div class="flex items-center gap-2">
                                         <img
@@ -1222,8 +1231,13 @@ fn add_near_actions(
                                                     24,
                                                     "NEAR",
                                                 );
-                                                TranslationKey::PagesHistoryReceiveNear
-                                                    .format(&[("amount", amount.as_str())])
+                                                TranslationKey::PagesHistoryReceiveNearFrom
+                                                    .format_view(
+                                                        vec![
+                                                            ("amount", amount.into_any()),
+                                                            ("sender", format_account_id(&sender_id)),
+                                                        ],
+                                                    )
                                             }}
                                         </span>
                                     </div>
@@ -1429,11 +1443,45 @@ fn add_storage_actions(
     }
 }
 
+fn token_conversion_view(
+    title_icon: AnyView,
+    title: TranslationKey,
+    icon_in: Option<String>,
+    amount_in: String,
+    icon_out: Option<String>,
+    amount_out: String,
+) -> AnyView {
+    view! {
+        <div class="flex gap-3 flex-col">
+            <div class="flex items-center gap-3">
+                {title_icon} <span>{move || title.format(&[])}</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2">
+                    <img src=icon_in width="30" height="30" class="rounded-full" />
+                    <span class="text-sm sm:text-lg font-medium wrap-anywhere">{amount_in}</span>
+                </div>
+                <Icon
+                    icon=LuArrowRight
+                    width="16"
+                    height="16"
+                    attr:class="text-neutral-400 min-w-4 min-h-4"
+                />
+                <div class="flex items-center gap-2 wrap-anywhere">
+                    <img src=icon_out width="30" height="30" class="rounded-full" />
+                    <span class="text-sm sm:text-lg font-medium">{amount_out}</span>
+                </div>
+            </div>
+        </div>
+    }
+    .into_any()
+}
+
 fn add_wrap_actions(
     actions: &mut Vec<AnyView>,
     transaction: &FinalExecutionOutcomeWithReceiptView,
     me: &AccountIdRef,
-    _actions_config: &mut ActionsConfig,
+    actions_config: &mut ActionsConfig,
     _rpc_client: RpcClient,
 ) {
     for receipt in transaction.receipts.iter() {
@@ -1456,26 +1504,22 @@ fn add_wrap_actions(
                     (amount.parse::<u128>(), receiver.parse::<AccountId>())
                 && depositor == me
             {
-                actions.push(
+                actions.push(token_conversion_view(
                     view! {
-                        <div class="flex items-center gap-2">
-                            <Icon
-                                icon=LuPackage
-                                width="40"
-                                height="40"
-                                attr:class="min-w-[40px] min-h-[40px]"
-                            />
-                            <span>
-                                {move || {
-                                    let amount = format_token_amount(amount, 24, "NEAR");
-                                    TranslationKey::PagesHistoryWrapNear
-                                        .format(&[("amount", amount.as_str())])
-                                }}
-                            </span>
-                        </div>
+                        <Icon
+                            icon=LuPackage
+                            width="40"
+                            height="40"
+                            attr:class="min-w-[40px] min-h-[40px]"
+                        />
                     }
                     .into_any(),
-                );
+                    TranslationKey::PagesHistoryWrap,
+                    near_metadata().icon,
+                    format_token_amount(amount, 24, "NEAR"),
+                    near_metadata().icon,
+                    format_token_amount(amount, 24, "wNEAR"),
+                ));
             }
             if let Some(withdraw_details) = log.strip_prefix("Withdraw ")
                 && let Some((amount, receiver)) = withdraw_details.split_once(" NEAR from ")
@@ -1483,28 +1527,125 @@ fn add_wrap_actions(
                     (amount.parse::<u128>(), receiver.parse::<AccountId>())
                 && withdrawer == me
             {
-                actions.push(
+                // The payout also returns the 1 yoctoNEAR that `near_withdraw` requires
+                actions_config.conversion_payouts.insert(
+                    receipt.receiver_id.clone(),
+                    NearToken::from_yoctonear(amount + 1),
+                );
+                actions.push(token_conversion_view(
                     view! {
-                        <div class="flex items-center gap-2">
-                            <Icon
-                                icon=LuPackageOpen
-                                width="40"
-                                height="40"
-                                attr:class="min-w-[40px] min-h-[40px]"
-                            />
-                            <span>
-                                {move || {
-                                    let amount = format_token_amount(amount, 24, "NEAR");
-                                    TranslationKey::PagesHistoryUnwrapNear
-                                        .format(&[("amount", amount.as_str())])
-                                }}
-                            </span>
-                        </div>
+                        <Icon
+                            icon=LuPackageOpen
+                            width="40"
+                            height="40"
+                            attr:class="min-w-[40px] min-h-[40px]"
+                        />
                     }
                     .into_any(),
-                );
+                    TranslationKey::PagesHistoryUnwrap,
+                    near_metadata().icon,
+                    format_token_amount(amount, 24, "wNEAR"),
+                    near_metadata().icon,
+                    format_token_amount(amount, 24, "NEAR"),
+                ));
             }
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Trade {
+    exchange_id: AccountId,
+    token_in: Token,
+    amount_in: Balance,
+    token_out: Token,
+    amount_out: Balance,
+}
+
+fn parse_trades(
+    exchange_id: &AccountIdRef,
+    log: &str,
+    me: &AccountIdRef,
+    signer_id: &AccountIdRef,
+) -> Vec<Trade> {
+    let trade =
+        |token_in: Token, amount_in: Balance, token_out: Token, amount_out: Balance| Trade {
+            exchange_id: exchange_id.to_owned(),
+            token_in,
+            amount_in,
+            token_out,
+            amount_out,
+        };
+    match exchange_id.as_str() {
+        // Rhea doesn't log who swapped, so only swaps in transactions `me` signed are counted
+        "v2.ref-finance.near" => {
+            if signer_id == me
+                && let Some(swap) = log.strip_prefix("Swapped ")
+                && let Some((input, output)) = swap
+                    .split(',')
+                    .next()
+                    .and_then(|swap| swap.split_once(" for "))
+                && let Some((amount_in, token_in)) = input.split_once(' ')
+                && let Some((amount_out, token_out)) = output.split_once(' ')
+                && let (Ok(amount_in), Ok(token_in), Ok(amount_out), Ok(token_out)) = (
+                    amount_in.parse(),
+                    token_in.parse(),
+                    amount_out.parse(),
+                    token_out.parse(),
+                )
+            {
+                vec![trade(
+                    Token::Nep141(token_in),
+                    amount_in,
+                    Token::Nep141(token_out),
+                    amount_out,
+                )]
+            } else {
+                vec![]
+            }
+        }
+        "dclv2.ref-labs.near" => match EventLogData::<RefDclSwapLog>::deserialize(log) {
+            Ok(log) if log.validate() => log
+                .data
+                .iter()
+                .filter(|swap| swap.swapper == me)
+                .map(|swap| {
+                    trade(
+                        Token::Nep141(swap.token_in.clone()),
+                        swap.amount_in,
+                        Token::Nep141(swap.token_out.clone()),
+                        swap.amount_out,
+                    )
+                })
+                .collect(),
+            _ => vec![],
+        },
+        "dex.intear.near" => match EventLogData::<IntearDexSwapLog>::deserialize(log) {
+            Ok(log) if log.validate() && log.data.trader == me => {
+                let token = |asset_id: &str| match asset_id {
+                    "near" => Some(Token::Near),
+                    _ => asset_id
+                        .strip_prefix("nep141:")?
+                        .parse()
+                        .ok()
+                        .map(Token::Nep141),
+                };
+                match (
+                    token(&log.data.request.asset_in),
+                    token(&log.data.request.asset_out),
+                ) {
+                    (Some(token_in), Some(token_out)) => vec![trade(
+                        token_in,
+                        log.data.amount_in,
+                        token_out,
+                        log.data.amount_out,
+                    )],
+                    _ => vec![],
+                }
+            }
+            _ => vec![],
+        },
+        _ => vec![],
     }
 }
 
@@ -1515,168 +1656,104 @@ fn add_dex_actions(
     actions_config: &mut ActionsConfig,
     rpc_client: RpcClient,
 ) {
-    let mut swap_exchange_logo = None;
-
-    for receipt in transaction.receipts.iter() {
-        if receipt.receiver_id == "dclv2.ref-labs.near" {
-            for log in transaction
-                .final_outcome
-                .receipts_outcome
-                .iter()
-                .find(|r| r.id == receipt.receipt_id)
-                .expect("receipt outcome not found")
-                .outcome
-                .logs
-                .iter()
-            {
-                if let Ok(log) = EventLogData::<RefDclSwapLog>::deserialize(log)
-                    && log.validate()
-                {
-                    for swap in log.data.iter().cloned() {
-                        if swap.swapper == me {
-                            actions_config.ft_event_format = TokenEventFormat::Short;
-                            swap_exchange_logo = Some("/history-rhea.svg");
-                        }
+    let signer_id = &transaction.final_outcome.transaction.signer_id;
+    let mut trades = Vec::<Trade>::new();
+    for receipt_outcome in transaction.final_outcome.receipts_outcome.iter() {
+        for log in receipt_outcome.outcome.logs.iter() {
+            for hop in parse_trades(&receipt_outcome.outcome.executor_id, log, me, signer_id) {
+                match trades.last_mut() {
+                    Some(trade)
+                        if trade.exchange_id == hop.exchange_id
+                            && trade.token_out == hop.token_in =>
+                    {
+                        trade.token_out = hop.token_out;
+                        trade.amount_out = hop.amount_out;
                     }
-                }
-            }
-        }
-        if receipt.receiver_id == "v2.ref-finance.near" {
-            for log in transaction
-                .final_outcome
-                .receipts_outcome
-                .iter()
-                .find(|r| r.id == receipt.receipt_id)
-                .expect("receipt outcome not found")
-                .outcome
-                .logs
-                .iter()
-            {
-                if log.starts_with("Swapped ") {
-                    actions_config.ft_event_format = TokenEventFormat::Short;
-                    swap_exchange_logo = Some("/history-rhea.svg");
-                    break;
+                    _ => trades.push(hop),
                 }
             }
         }
     }
 
-    if let Some(swap_exchange_logo) = swap_exchange_logo {
-        // Check if we have exactly 2 FT events (1 positive, 1 negative) for a clean swap display
-        let positive_events: Vec<_> = actions_config
-            .ft_events
-            .iter()
-            .filter(|e| e.is_positive)
-            .collect();
-        let negative_events: Vec<_> = actions_config
-            .ft_events
-            .iter()
-            .filter(|e| !e.is_positive)
-            .collect();
-
-        if positive_events.len() == 1 && negative_events.len() == 1 {
-            actions_config.ft_event_format = TokenEventFormat::Hidden;
-
-            let token_in_event = negative_events[0].clone();
-            let token_out_event = positive_events[0].clone();
-
-            let token_in_metadata = LocalResource::new({
-                let token_id = token_in_event.token_id.clone();
-                let rpc_client = rpc_client.clone();
-                move || get_ft_metadata(token_id.clone(), rpc_client.clone())
-            });
-            let token_out_metadata = LocalResource::new({
-                let token_id = token_out_event.token_id.clone();
-                let rpc_client = rpc_client.clone();
-                move || get_ft_metadata(token_id.clone(), rpc_client.clone())
-            });
-
-            actions.push(
-                view! {
-                    <div class="flex gap-3 flex-col">
-                        {move || {
-                            if let (Some(Ok(in_meta)), Some(Ok(out_meta))) = (
-                                token_in_metadata.get(),
-                                token_out_metadata.get(),
-                            ) {
-                                view! {
-                                    // Exchange logo
-                                    <div class="flex items-center gap-3">
-                                        <img
-                                            src=swap_exchange_logo
-                                            width="40"
-                                            height="40"
-                                            class="min-w-[40px] min-h-[40px]"
-                                        />
-                                        <span>
-                                            {move || TranslationKey::PagesHistorySwap.format(&[])}
-                                        </span>
-                                    </div>
-                                    <div class="flex items-center gap-2">
-                                        // Token IN
-                                        <div class="flex items-center gap-2">
-                                            <img
-                                                src=in_meta.icon.clone()
-                                                width="30"
-                                                height="30"
-                                                class="rounded-full"
-                                            />
-                                            <span class="text-sm sm:text-lg font-medium wrap-anywhere">
-                                                {format_token_amount(
-                                                    token_in_event.amount,
-                                                    in_meta.decimals,
-                                                    &in_meta.symbol,
-                                                )}
-                                            </span>
-                                        </div>
-
-                                        // Arrow
-                                        <Icon
-                                            icon=LuArrowRight
-                                            width="16"
-                                            height="16"
-                                            attr:class="text-neutral-400 min-w-4 min-h-4"
-                                        />
-
-                                        // Token OUT
-                                        <div class="flex items-center gap-2 wrap-anywhere">
-                                            <img
-                                                src=out_meta.icon.clone()
-                                                width="30"
-                                                height="30"
-                                                class="rounded-full"
-                                            />
-                                            <span class="text-sm sm:text-lg font-medium">
-                                                {format_token_amount(
-                                                    token_out_event.amount,
-                                                    out_meta.decimals,
-                                                    &out_meta.symbol,
-                                                )}
-                                            </span>
-                                        </div>
-                                    </div>
-                                }
-                                    .into_any()
-                            } else {
-                                ().into_any()
-                            }
-                        }}
-                    </div>
-                }
-                .into_any(),
-            );
-        } else {
-            // Fallback to simple swap display for complex swaps
-            actions.push(
-                view! {
-                    <div class="flex items-center gap-2">
-                        <img src=swap_exchange_logo width="40" height="40" />
-                        <span>{move || TranslationKey::PagesHistorySwap.format(&[])}</span>
-                    </div>
-                }
-                .into_any(),
+    for trade in trades.iter_mut() {
+        actions_config
+            .swap_exchanges
+            .insert(trade.exchange_id.clone());
+        // Exchanges can unwrap the output and pay it out as NEAR
+        let paid_out_as_near = transaction.receipts.iter().any(|receipt| {
+            receipt.predecessor_id == trade.exchange_id
+                && receipt.receiver_id == me
+                && matches!(
+                    &receipt.receipt,
+                    ReceiptEnumView::Action { actions, .. }
+                        if actions.iter().any(|action| matches!(
+                            action,
+                            ActionView::Transfer { deposit }
+                                if deposit.as_yoctonear() == trade.amount_out
+                        ))
+                )
+        });
+        if paid_out_as_near {
+            trade.token_out = Token::Near;
+            actions_config.conversion_payouts.insert(
+                trade.exchange_id.clone(),
+                NearToken::from_yoctonear(trade.amount_out),
             );
         }
+    }
+
+    for trade in trades {
+        let exchange_logo = match trade.exchange_id.as_str() {
+            "dex.intear.near" => "/intear.svg",
+            "v2.ref-finance.near" | "dclv2.ref-labs.near" => "/history-rhea.svg",
+            _ => continue,
+        };
+        let token_metadata = |token: Token| {
+            let rpc_client = rpc_client.clone();
+            LocalResource::new(move || {
+                let token = token.clone();
+                let rpc_client = rpc_client.clone();
+                async move {
+                    match token {
+                        Token::Near => Ok(near_metadata()),
+                        Token::Nep141(token_id) | Token::Rhea(token_id) => {
+                            get_ft_metadata(token_id, rpc_client).await
+                        }
+                    }
+                }
+            })
+        };
+        let token_in_metadata = token_metadata(trade.token_in);
+        let token_out_metadata = token_metadata(trade.token_out);
+        let (amount_in, amount_out) = (trade.amount_in, trade.amount_out);
+
+        actions.push(
+            (move || {
+                if let (Some(Ok(in_meta)), Some(Ok(out_meta))) =
+                    (token_in_metadata.get(), token_out_metadata.get())
+                {
+                    token_conversion_view(
+                        view! {
+                            <img
+                                src=exchange_logo
+                                width="40"
+                                height="40"
+                                class="min-w-[40px] min-h-[40px]"
+                            />
+                        }
+                        .into_any(),
+                        TranslationKey::PagesHistorySwap,
+                        in_meta.icon,
+                        format_token_amount(amount_in, in_meta.decimals, &in_meta.symbol),
+                        out_meta.icon,
+                        format_token_amount(amount_out, out_meta.decimals, &out_meta.symbol),
+                    )
+                } else {
+                    ().into_any()
+                }
+            })
+            .into_any(),
+        );
     }
 }
 
@@ -1713,16 +1790,12 @@ fn add_ft_actions(
                     get_ft_metadata(executor_id.clone(), rpc_client.clone())
                 });
                 if log.validate() {
-                    actions_config
-                        .ft_events
-                        .extend(log.data.iter().map(|transfer| FtBalanceEvent {
-                            token_id: receipt.receiver_id.clone(),
-                            amount: transfer.amount,
-                            is_positive: transfer.new_owner_id == me,
-                        }));
-
                     for transfer in log.data.iter().cloned() {
-                        if transfer.old_owner_id == me {
+                        if transfer.old_owner_id == me
+                            && !actions_config
+                                .swap_exchanges
+                                .contains(&transfer.new_owner_id)
+                        {
                             let transfer = transfer.clone();
                             let ft_event_format = actions_config.ft_event_format;
                             if ft_event_format == TokenEventFormat::Hidden {
@@ -1800,7 +1873,11 @@ fn add_ft_actions(
                                 .into_any(),
                             );
                         }
-                        if transfer.new_owner_id == me {
+                        if transfer.new_owner_id == me
+                            && !actions_config
+                                .swap_exchanges
+                                .contains(&transfer.old_owner_id)
+                        {
                             let transfer = transfer.clone();
                             let ft_event_format = actions_config.ft_event_format;
                             if ft_event_format == TokenEventFormat::Hidden {
@@ -1884,13 +1961,6 @@ fn add_ft_actions(
                     get_ft_metadata(executor_id.clone(), rpc_client.clone())
                 });
                 if log.validate() {
-                    actions_config
-                        .ft_events
-                        .extend(log.data.iter().map(|transfer| FtBalanceEvent {
-                            token_id: receipt.receiver_id.clone(),
-                            amount: transfer.amount,
-                            is_positive: true,
-                        }));
                     for mint in log.data.iter().cloned() {
                         if mint.owner_id == me {
                             let ft_event_format = actions_config.ft_event_format;
@@ -1972,13 +2042,6 @@ fn add_ft_actions(
                     get_ft_metadata(executor_id.clone(), rpc_client.clone())
                 });
                 if log.validate() {
-                    actions_config
-                        .ft_events
-                        .extend(log.data.iter().map(|transfer| FtBalanceEvent {
-                            token_id: receipt.receiver_id.clone(),
-                            amount: transfer.amount,
-                            is_positive: false,
-                        }));
                     for burn in log.data.iter().cloned() {
                         if burn.owner_id == me {
                             let ft_event_format = actions_config.ft_event_format;

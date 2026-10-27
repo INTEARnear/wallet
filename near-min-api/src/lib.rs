@@ -16,12 +16,12 @@ use types::{
     FinalExecutionOutcomeView, FinalExecutionOutcomeWithReceiptView, Finality, HandlerError,
     QueryRequest, QueryResponse, QueryResponseKind, ResultOrError, RpcError, RpcErrorKind,
     RpcLightClientProofError, RpcQueryError, RpcReceiptError, RpcStatusError, RpcTransactionError,
-    SignedTransaction, TxExecutionStatus,
+    SignedTransaction, Transaction, TxExecutionStatus,
 };
 
 use crate::types::{
-    BlockHeightDelta, ContractCodeView, EpochReference, EpochValidatorInfo, StateRecord,
-    StatusResponse, ViewStateResult,
+    BlockHeight, BlockHeightDelta, ContractCodeView, EpochReference, EpochValidatorInfo,
+    StateRecord, StatusResponse, ViewStateResult,
 };
 
 #[derive(Clone, Debug)]
@@ -374,6 +374,20 @@ impl RpcClient {
         })
     }
 
+    pub async fn INTEAR_simulate_transactions(
+        &self,
+        transactions: &[Transaction],
+        block_reference: BlockReference,
+    ) -> Result<SimulatedTransactions, Error> {
+        let rpc_method = "INTEAR_simulate_transactions";
+        let mut rpc_params = serde_json::to_value(block_reference).unwrap();
+        rpc_params["unsigned_txs_base64"] = transactions
+            .iter()
+            .map(|transaction| BASE64_STANDARD.encode(borsh::to_vec(transaction).unwrap()))
+            .collect();
+        self.request(rpc_method, rpc_params).await
+    }
+
     pub async fn INTEAR_batch_query(
         &self,
         requests: Vec<Query>,
@@ -650,6 +664,15 @@ pub struct ExperimentalTxDetails {
     #[serde(flatten)]
     pub final_execution_outcome: Option<FinalExecutionOutcomeWithReceiptView>,
     pub final_execution_status: TxExecutionStatus,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SimulatedTransactions {
+    /// One per simulated transaction, in order. Outcomes have an empty proof and a zero block
+    /// hash, since they are not part of any block.
+    pub transactions: Vec<ExperimentalTxDetails>,
+    pub block_height: BlockHeight,
+    pub block_hash: CryptoHash,
 }
 
 async fn jsonrpc_request<Request: Serialize, Response: DeserializeOwned>(

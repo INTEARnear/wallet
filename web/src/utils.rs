@@ -930,7 +930,6 @@ impl Deref for RefDclSwapLog {
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub struct RefDclSwapEvent {
     #[serde(with = "dec_format")]
     pub amount_in: Balance,
@@ -949,6 +948,28 @@ pub struct RefDclSwapEvent {
 impl EventLogData<RefDclSwapLog> {
     pub fn validate(&self) -> bool {
         self.standard == "dcl.ref" && self.event == "swap"
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct IntearDexSwapLog {
+    pub request: IntearDexSwapRequest,
+    #[serde(with = "dec_format")]
+    pub amount_in: Balance,
+    #[serde(with = "dec_format")]
+    pub amount_out: Balance,
+    pub trader: AccountId,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct IntearDexSwapRequest {
+    pub asset_in: String,
+    pub asset_out: String,
+}
+
+impl EventLogData<IntearDexSwapLog> {
+    pub fn validate(&self) -> bool {
+        self.standard == "inteardex" && self.event == "swap"
     }
 }
 

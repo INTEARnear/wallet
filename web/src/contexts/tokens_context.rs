@@ -343,7 +343,7 @@ fn wrap_near_of(network: &Network) -> Option<AccountId> {
     }
 }
 
-fn near_metadata() -> TokenMetadata {
+pub fn near_metadata() -> TokenMetadata {
     TokenMetadata {
         name: "NEAR".to_string(),
         symbol: "NEAR".to_string(),
