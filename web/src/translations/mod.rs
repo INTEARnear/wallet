@@ -789,10 +789,6 @@ translation_keys! {
                 NftReceiveFrom,
                 NftMint,
                 NftBurn,
-                HarvestMoonRecruitOne,
-                HarvestMoonRecruitN,
-                HarvestMoonHarvest,
-                LearnClubNlBalance,
             },
             Invoices {
                 Back,

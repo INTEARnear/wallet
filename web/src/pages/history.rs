@@ -16,15 +16,22 @@ use crate::{
         config_context::{ConfigContext, TimestampFormat},
         network_context::{Network, NetworkContext},
         rpc_context::RpcContext,
-        tokens_context::{Token, near_metadata},
+        tokens_context::{Token, TokenMetadata, near_metadata},
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
     translations::TranslationKey,
     utils::{
         EventLogData, FtBurnLog, FtMintLog, FtTransferLog, IntearDexSwapLog,
-        NEP141_EVENT_STANDARD_STRING, NftBurnLog, NftMintLog, NftTransferLog, RefDclSwapLog,
+        JustHootMemeLaunchedLog, JustHootRouterOrderFilledLog, MetaPoolLog,
+        NEP141_EVENT_STANDARD_STRING, NearCookingMarketLog, NearlyCreatorFeesClaimedLog,
+        NearlyLaunchLog, NftBurnLog, NftMintLog, NftTransferLog, NoaMarket, NoaMarketDepositLog,
+        NoaMarketOrderFilledLog, NoaMarketPayoutClaimedLog, NoaMarketSellFilledLog,
+        NoaMarketWithdrawCompletedLog, PlachAssetId, PlachUserDepositLog, PlachWithdrawLog,
+        RefDclSwapLog, Resolution, RheaDclLiquidityLog, RheaDclOrderLog, RheaLendLog,
         StorageBalance, format_account_id, format_duration, format_token_amount, get_ft_metadata,
-        get_nft_collection_metadata,
+        get_nft_collection_metadata, get_nft_token, get_noamarket_market,
+        get_sputnik_proposal_description, nft_media_url, parse_plach_liquidity_changes,
+        proxify_url,
     },
 };
 use base64::{self, Engine};
@@ -39,9 +46,10 @@ use near_min_api::{
     ExperimentalTxDetails, QueryFinality, RpcClient,
     types::{
         AccessKeyPermissionView, AccountId, AccountIdRef, Action, ActionView, Balance, CryptoHash,
-        FinalExecutionOutcomeWithReceiptView, FinalExecutionStatus, Finality, FunctionCallAction,
-        NearGas, NearToken, ReceiptEnumView, TxExecutionStatus,
+        ExecutionStatusView, FinalExecutionOutcomeWithReceiptView, FinalExecutionStatus, Finality,
+        FunctionCallAction, NearGas, NearToken, ReceiptEnumView, TxExecutionStatus,
     },
+    utils::{dec_format, dec_format_vec},
 };
 use serde::Deserialize;
 
@@ -558,7 +566,7 @@ fn TransactionRow(tx: Arc<HistoryTransaction>) -> impl IntoView {
             <div class="text-white font-medium text-lg md:text-xl transition-all duration-100">
                 {match &tx.transaction.final_execution_outcome {
                     Some(transaction) => {
-                        display_transaction(transaction)
+                        display_transaction(transaction, true)
                             .into_any()
                     }
                     None => {
@@ -664,8 +672,11 @@ fn TransactionRow(tx: Arc<HistoryTransaction>) -> impl IntoView {
     }
 }
 
+/// `show_balance_changes` adds short lines of the token and NEAR changes below app actions,
+/// which history shows and transaction previews leave out
 pub(crate) fn display_transaction(
     transaction: &FinalExecutionOutcomeWithReceiptView,
+    show_balance_changes: bool,
 ) -> impl IntoAny + use<> {
     let AccountsContext { accounts, .. } = expect_context::<AccountsContext>();
     let RpcContext { client, .. } = expect_context::<RpcContext>();
@@ -673,20 +684,37 @@ pub(crate) fn display_transaction(
         return view! { <div>{move || TranslationKey::PagesHistoryNoSelectedAccount.format(&[])}</div> }
         .into_any();
     };
-    let mut actions_config = ActionsConfig::default();
+    let mut actions_config = ActionsConfig {
+        show_balance_changes,
+        ..Default::default()
+    };
     let mut actions = Vec::<AnyView>::new();
     let fns = [
         add_storage_actions,
         add_lnc_actions,
         add_harvestmoon_actions,
+        add_justhoot_actions,
+        add_nearly_actions,
+        add_noamarket_actions,
+        add_trezu_actions,
+        add_near_cooking_actions,
+        add_near_social_actions,
+        add_rhea_liquidity_actions,
+        add_rhea_dcl_actions,
+        add_intear_dex_actions,
+        add_rhea_lend_actions,
+        add_rhea_balance_actions,
+        add_meta_pool_actions,
         add_wrap_actions,
-        add_ft_actions,
         add_near_actions,
         add_dex_actions,
-        add_nft_actions,
         add_staking_actions,
         add_key_actions,
         add_account_actions,
+        // Balance changes go last, to show below the actions of the transaction that caused them
+        add_near_balance_change,
+        add_ft_actions,
+        add_nft_actions,
     ];
     // First pass: build actions config
     for f in fns {
@@ -727,11 +755,26 @@ struct ActionsConfig {
     nft_event_format: TokenEventFormat,
     storage_deposit_to: HashSet<AccountId>,
     withdrawing_from_staking: HashMap<AccountId, NearToken>,
-    /// Exchanges the account traded on, whose token transfers are shown as
-    /// part of the trade and not as transfers
-    swap_exchanges: HashSet<AccountId>,
     /// NEAR paid out for trades and unwraps, by payer, shown as part of them
     conversion_payouts: HashMap<AccountId, NearToken>,
+    show_balance_changes: bool,
+    /// The transaction has an app's action, which its NEAR and token changes are part of
+    has_app_action: bool,
+}
+
+impl ActionsConfig {
+    /// Token and NEAR changes of a transaction with an app's action are shown as short
+    /// lines below the action, or not at all when balance changes aren't shown
+    fn app_action(&mut self) {
+        self.has_app_action = true;
+        let format = if self.show_balance_changes {
+            TokenEventFormat::Short
+        } else {
+            TokenEventFormat::Hidden
+        };
+        self.ft_event_format = format;
+        self.nft_event_format = format;
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -1122,6 +1165,10 @@ fn add_near_actions(
     actions_config: &mut ActionsConfig,
     _rpc_client: RpcClient,
 ) {
+    // NEAR an app's action moved is part of the action
+    if actions_config.has_app_action {
+        return;
+    }
     for receipt in transaction.receipts.iter() {
         if let ReceiptEnumView::Action {
             actions: tx_actions,
@@ -1481,19 +1528,31 @@ fn token_conversion_view(
             {title_icon}
             <div class="flex flex-col">
                 <span class="text-sm text-neutral-400">{move || title.format(&[])}</span>
-                <div class="flex items-center gap-1.5 flex-wrap">
-                    <img src=icon_in width="20" height="20" class="rounded-full" />
-                    <span class="text-red-300 wrap-anywhere">{amount_in}</span>
-                    <Icon
-                        icon=LuArrowRight
-                        width="14"
-                        height="14"
-                        attr:class="text-neutral-400 min-w-[14px] min-h-[14px]"
-                    />
-                    <img src=icon_out width="20" height="20" class="rounded-full" />
-                    <span class="text-green-300 wrap-anywhere">{amount_out}</span>
-                </div>
+                {token_trade_amounts_view(icon_in, amount_in, icon_out, amount_out)}
             </div>
+        </div>
+    }
+    .into_any()
+}
+
+fn token_trade_amounts_view(
+    icon_in: Option<String>,
+    amount_in: String,
+    icon_out: Option<String>,
+    amount_out: String,
+) -> AnyView {
+    view! {
+        <div class="flex items-center gap-1.5 flex-wrap">
+            {icon_in.map(|icon| view! { <img src=icon width="20" height="20" class="rounded-full" /> })}
+            <span class="text-red-300 wrap-anywhere">{amount_in}</span>
+            <Icon
+                icon=LuArrowRight
+                width="14"
+                height="14"
+                attr:class="text-neutral-400 min-w-[14px] min-h-[14px]"
+            />
+            {icon_out.map(|icon| view! { <img src=icon width="20" height="20" class="rounded-full" /> })}
+            <span class="text-green-300 wrap-anywhere">{amount_out}</span>
         </div>
     }
     .into_any()
@@ -1667,6 +1726,17 @@ fn parse_trades(
             }
             _ => vec![],
         },
+        "aa-router.justhoot.near" => {
+            match EventLogData::<JustHootRouterOrderFilledLog>::deserialize(log) {
+                Ok(log) if log.validate() && log.data.receiver_id == me => vec![trade(
+                    Token::Nep141(log.data.token_in),
+                    log.data.amount_in,
+                    Token::Nep141(log.data.token_out),
+                    log.data.amount_out,
+                )],
+                _ => vec![],
+            }
+        }
         _ => vec![],
     }
 }
@@ -1698,9 +1768,7 @@ fn add_dex_actions(
     }
 
     for trade in trades.iter_mut() {
-        actions_config
-            .swap_exchanges
-            .insert(trade.exchange_id.clone());
+        actions_config.app_action();
         // Exchanges can unwrap the output and pay it out as NEAR
         let paid_out_as_near = transaction.receipts.iter().any(|receipt| {
             receipt.predecessor_id == trade.exchange_id
@@ -1728,6 +1796,7 @@ fn add_dex_actions(
         let exchange_logo = match trade.exchange_id.as_str() {
             "dex.intear.near" => "/intear.svg",
             "v2.ref-finance.near" | "dclv2.ref-labs.near" => "/history-rhea.svg",
+            "aa-router.justhoot.near" => "/history-justhoot.png",
             _ => continue,
         };
         let token_metadata = |token: Token| {
@@ -1779,6 +1848,69 @@ fn add_dex_actions(
     }
 }
 
+/// Net NEAR change of a transaction with an app's action, as a short line below it.
+/// Gas is left out: it's refunded by `system`, which also refunds deposits of failed receipts,
+/// so those deposits aren't counted as sent
+fn add_near_balance_change(
+    actions: &mut Vec<AnyView>,
+    transaction: &FinalExecutionOutcomeWithReceiptView,
+    me: &AccountIdRef,
+    actions_config: &mut ActionsConfig,
+    _rpc_client: RpcClient,
+) {
+    // Leaves out the yoctoNEAR deposits that many calls require
+    const MIN_SHOWN_CHANGE: Balance = 10u128.pow(18);
+    if !actions_config.has_app_action || !actions_config.show_balance_changes {
+        return;
+    }
+    let mut change: i128 = 0;
+    for receipt in transaction.receipts.iter() {
+        let ReceiptEnumView::Action {
+            actions: receipt_actions,
+            ..
+        } = &receipt.receipt
+        else {
+            continue;
+        };
+        let sent =
+            receipt.predecessor_id == me && receipt_succeeded(transaction, &receipt.receipt_id);
+        let received = receipt.receiver_id == me
+            && receipt.predecessor_id != me
+            && receipt.predecessor_id != "system";
+        for action in receipt_actions.iter() {
+            match action {
+                ActionView::Transfer { deposit } | ActionView::FunctionCall { deposit, .. }
+                    if sent =>
+                {
+                    change -= deposit.as_yoctonear() as i128;
+                }
+                ActionView::Transfer { deposit } if received => {
+                    change += deposit.as_yoctonear() as i128;
+                }
+                _ => {}
+            }
+        }
+    }
+    if change.unsigned_abs() < MIN_SHOWN_CHANGE {
+        return;
+    }
+    let (sign, amount_class) = if change > 0 {
+        ("+", "text-green-300")
+    } else {
+        ("-", "text-red-300")
+    };
+    let amount = format_token_amount(change.unsigned_abs(), 24, "NEAR");
+    actions.push(
+        view! {
+            <div class="flex items-center gap-2 pl-12">
+                <img src=near_metadata().icon width="20" height="20" class="rounded-full" />
+                <span class=format!("{amount_class} text-sm")>{sign}{amount}</span>
+            </div>
+        }
+        .into_any(),
+    );
+}
+
 fn add_ft_actions(
     actions: &mut Vec<AnyView>,
     transaction: &FinalExecutionOutcomeWithReceiptView,
@@ -1786,6 +1918,9 @@ fn add_ft_actions(
     actions_config: &mut ActionsConfig,
     rpc_client: RpcClient,
 ) {
+    if actions_config.ft_event_format == TokenEventFormat::Hidden {
+        return;
+    }
     for receipt in transaction.receipts.iter() {
         for log in transaction
             .final_outcome
@@ -1813,19 +1948,12 @@ fn add_ft_actions(
                 });
                 if log.validate() {
                     for transfer in log.data.iter().cloned() {
-                        if transfer.old_owner_id == me
-                            && !actions_config
-                                .swap_exchanges
-                                .contains(&transfer.new_owner_id)
-                        {
+                        if transfer.old_owner_id == me {
                             let transfer = transfer.clone();
                             let ft_event_format = actions_config.ft_event_format;
-                            if ft_event_format == TokenEventFormat::Hidden {
-                                continue;
-                            }
                             actions.push(
                                 view! {
-                                    <div class="flex items-center gap-2">
+                                    <div class=if ft_event_format == TokenEventFormat::Short { "flex items-center gap-2 pl-12" } else { "flex items-center gap-2" }>
                                         {move || {
                                             let new_owner_id = transfer.new_owner_id.clone();
                                             if let Some(Ok(metadata)) = metadata.get() {
@@ -1834,12 +1962,12 @@ fn add_ft_actions(
                                                     <img
                                                         src=metadata.icon.clone()
                                                         width=if ft_event_format == TokenEventFormat::Short {
-                                                            "30"
+                                                            "20"
                                                         } else {
                                                             "40"
                                                         }
                                                         height=if ft_event_format == TokenEventFormat::Short {
-                                                            "30"
+                                                            "20"
                                                         } else {
                                                             "40"
                                                         }
@@ -1848,7 +1976,7 @@ fn add_ft_actions(
                                                     <span>
                                                         {if ft_event_format == TokenEventFormat::Short {
                                                             view! {
-                                                                <span class="text-red-300 text-lg">
+                                                                <span class="text-red-300 text-sm">
                                                                     "-"
                                                                     {move || format_token_amount(
                                                                         transfer.amount,
@@ -1895,30 +2023,23 @@ fn add_ft_actions(
                                 .into_any(),
                             );
                         }
-                        if transfer.new_owner_id == me
-                            && !actions_config
-                                .swap_exchanges
-                                .contains(&transfer.old_owner_id)
-                        {
+                        if transfer.new_owner_id == me {
                             let transfer = transfer.clone();
                             let ft_event_format = actions_config.ft_event_format;
-                            if ft_event_format == TokenEventFormat::Hidden {
-                                continue;
-                            }
                             actions.push(view! {
-                                <div class="flex items-center gap-2">
+                                <div class=if ft_event_format == TokenEventFormat::Short { "flex items-center gap-2 pl-12" } else { "flex items-center gap-2" }>
                                     {move || {
                                         if let Some(Ok(metadata)) = metadata.get() {
                                             view! {
                                                 <img
                                                     src=metadata.icon.clone()
                                                     width=if ft_event_format == TokenEventFormat::Short {
-                                                        "30"
+                                                        "20"
                                                     } else {
                                                         "40"
                                                     }
                                                     height=if ft_event_format == TokenEventFormat::Short {
-                                                        "30"
+                                                        "20"
                                                     } else {
                                                         "40"
                                                     }
@@ -1927,7 +2048,7 @@ fn add_ft_actions(
                                                 <span>
                                                     {if ft_event_format == TokenEventFormat::Short {
                                                         view! {
-                                                            <span class="text-green-300 text-lg">
+                                                            <span class="text-green-300 text-sm">
                                                                 "+"
                                                                 {format_token_amount(
                                                                     transfer.amount,
@@ -1986,24 +2107,21 @@ fn add_ft_actions(
                     for mint in log.data.iter().cloned() {
                         if mint.owner_id == me {
                             let ft_event_format = actions_config.ft_event_format;
-                            if ft_event_format == TokenEventFormat::Hidden {
-                                continue;
-                            }
                             actions.push(
                                 view! {
-                                    <div class="flex items-center gap-2">
+                                    <div class=if ft_event_format == TokenEventFormat::Short { "flex items-center gap-2 pl-12" } else { "flex items-center gap-2" }>
                                         {move || {
                                             if let Some(Ok(metadata)) = metadata.get() {
                                                 view! {
                                                     <img
                                                         src=metadata.icon.clone()
                                                         width=if ft_event_format == TokenEventFormat::Short {
-                                                            "30"
+                                                            "20"
                                                         } else {
                                                             "40"
                                                         }
                                                         height=if ft_event_format == TokenEventFormat::Short {
-                                                            "30"
+                                                            "20"
                                                         } else {
                                                             "40"
                                                         }
@@ -2012,7 +2130,7 @@ fn add_ft_actions(
                                                     <span>
                                                         {if ft_event_format == TokenEventFormat::Short {
                                                             view! {
-                                                                <span class="text-green-300 text-lg">
+                                                                <span class="text-green-300 text-sm">
                                                                     "+"
                                                                     {format_token_amount(
                                                                         mint.amount,
@@ -2067,24 +2185,21 @@ fn add_ft_actions(
                     for burn in log.data.iter().cloned() {
                         if burn.owner_id == me {
                             let ft_event_format = actions_config.ft_event_format;
-                            if ft_event_format == TokenEventFormat::Hidden {
-                                continue;
-                            }
                             actions.push(
                                 view! {
-                                    <div class="flex items-center gap-2">
+                                    <div class=if ft_event_format == TokenEventFormat::Short { "flex items-center gap-2 pl-12" } else { "flex items-center gap-2" }>
                                         {move || {
                                             if let Some(Ok(metadata)) = metadata.get() {
                                                 view! {
                                                     <img
                                                         src=metadata.icon.clone()
                                                         width=if ft_event_format == TokenEventFormat::Short {
-                                                            "30"
+                                                            "20"
                                                         } else {
                                                             "40"
                                                         }
                                                         height=if ft_event_format == TokenEventFormat::Short {
-                                                            "30"
+                                                            "20"
                                                         } else {
                                                             "40"
                                                         }
@@ -2093,7 +2208,7 @@ fn add_ft_actions(
                                                     <span>
                                                         {if ft_event_format == TokenEventFormat::Short {
                                                             view! {
-                                                                <span class="text-red-300 text-lg">
+                                                                <span class="text-red-300 text-sm">
                                                                     "-"
                                                                     {format_token_amount(
                                                                         burn.amount,
@@ -2149,6 +2264,9 @@ fn add_nft_actions(
     actions_config: &mut ActionsConfig,
     _rpc_client: RpcClient,
 ) {
+    if actions_config.nft_event_format == TokenEventFormat::Hidden {
+        return;
+    }
     for receipt in transaction.receipts.iter() {
         for log in transaction
             .final_outcome
@@ -2168,38 +2286,41 @@ fn add_nft_actions(
                     for transfer in log.data.iter().cloned() {
                         if transfer.old_owner_id == me {
                             let transfer = transfer.clone();
+                            let token_image =
+                                nft_token_image(receipt.receiver_id.clone(), &transfer.token_ids);
                             let nft_event_format = actions_config.nft_event_format;
-                            if nft_event_format == TokenEventFormat::Hidden {
-                                continue;
-                            }
                             actions.push(
                                 view! {
-                                    <div class="flex items-center gap-2">
+                                    <div class=if nft_event_format == TokenEventFormat::Short { "flex items-center gap-2 pl-12" } else { "flex items-center gap-2" }>
                                         {move || {
                                             let new_owner_id = transfer.new_owner_id.clone();
                                             if let Some(Ok(metadata)) = metadata.get() {
                                                 let metadata = metadata.clone();
+                                                let (image, image_class) = match token_image.get().flatten() {
+                                                    Some(image) => (Some(image), "rounded-md"),
+                                                    None => (metadata.icon.clone(), "rounded-full"),
+                                                };
                                                 let nft_count = transfer.token_ids.len();
                                                 let collection_name = metadata.name.clone();
                                                 view! {
                                                     <img
-                                                        src=metadata.icon.clone()
+                                                        src=image
                                                         width=if nft_event_format == TokenEventFormat::Short {
-                                                            "30"
+                                                            "20"
                                                         } else {
                                                             "40"
                                                         }
                                                         height=if nft_event_format == TokenEventFormat::Short {
-                                                            "30"
+                                                            "20"
                                                         } else {
                                                             "40"
                                                         }
-                                                        class="rounded-full"
+                                                        class=image_class
                                                     />
                                                     <span>
                                                         {if nft_event_format == TokenEventFormat::Short {
                                                             view! {
-                                                                <span class="text-red-300 text-lg">
+                                                                <span class="text-red-300 text-sm">
                                                                     "-" {transfer.token_ids.len().to_string()} " "
                                                                     {metadata.symbol.clone()}
                                                                 </span>
@@ -2240,37 +2361,40 @@ fn add_nft_actions(
                         }
                         if transfer.new_owner_id == me {
                             let transfer = transfer.clone();
+                            let token_image =
+                                nft_token_image(receipt.receiver_id.clone(), &transfer.token_ids);
                             let nft_event_format = actions_config.nft_event_format;
-                            if nft_event_format == TokenEventFormat::Hidden {
-                                continue;
-                            }
                             actions.push(view! {
-                                <div class="flex items-center gap-2">
+                                <div class=if nft_event_format == TokenEventFormat::Short { "flex items-center gap-2 pl-12" } else { "flex items-center gap-2" }>
                                     {move || {
                                         let old_owner_id = transfer.old_owner_id.clone();
                                         if let Some(Ok(metadata)) = metadata.get() {
                                             let metadata = metadata.clone();
+                                            let (image, image_class) = match token_image.get().flatten() {
+                                                Some(image) => (Some(image), "rounded-md"),
+                                                None => (metadata.icon.clone(), "rounded-full"),
+                                            };
                                             let nft_count = transfer.token_ids.len();
                                             let collection_name = metadata.name.clone();
                                             view! {
                                                 <img
-                                                    src=metadata.icon.clone()
+                                                    src=image
                                                     width=if nft_event_format == TokenEventFormat::Short {
-                                                        "30"
+                                                        "20"
                                                     } else {
                                                         "40"
                                                     }
                                                     height=if nft_event_format == TokenEventFormat::Short {
-                                                        "30"
+                                                        "20"
                                                     } else {
                                                         "40"
                                                     }
-                                                    class="rounded-full"
+                                                    class=image_class
                                                 />
                                                 <span>
                                                     {if nft_event_format == TokenEventFormat::Short {
                                                         view! {
-                                                            <span class="text-green-300 text-lg">
+                                                            <span class="text-green-300 text-sm">
                                                                 "+" {transfer.token_ids.len().to_string()} " "
                                                                 {metadata.symbol.clone()}
                                                             </span>
@@ -2317,37 +2441,40 @@ fn add_nft_actions(
                 if log.validate() {
                     for mint in log.data.iter().cloned() {
                         if mint.owner_id == me {
+                            let token_image =
+                                nft_token_image(receipt.receiver_id.clone(), &mint.token_ids);
                             let nft_event_format = actions_config.nft_event_format;
-                            if nft_event_format == TokenEventFormat::Hidden {
-                                continue;
-                            }
                             actions.push(
                                 view! {
-                                    <div class="flex items-center gap-2">
+                                    <div class=if nft_event_format == TokenEventFormat::Short { "flex items-center gap-2 pl-12" } else { "flex items-center gap-2" }>
                                         {move || {
                                             if let Some(Ok(metadata)) = metadata.get() {
                                                 let metadata = metadata.clone();
+                                                let (image, image_class) = match token_image.get().flatten() {
+                                                    Some(image) => (Some(image), "rounded-md"),
+                                                    None => (metadata.icon.clone(), "rounded-full"),
+                                                };
                                                 let nft_count = mint.token_ids.len();
                                                 let collection_name = metadata.name.clone();
                                                 view! {
                                                     <img
-                                                        src=metadata.icon.clone()
+                                                        src=image
                                                         width=if nft_event_format == TokenEventFormat::Short {
-                                                            "30"
+                                                            "20"
                                                         } else {
                                                             "40"
                                                         }
                                                         height=if nft_event_format == TokenEventFormat::Short {
-                                                            "30"
+                                                            "20"
                                                         } else {
                                                             "40"
                                                         }
-                                                        class="rounded-full"
+                                                        class=image_class
                                                     />
                                                     <span>
                                                         {if nft_event_format == TokenEventFormat::Short {
                                                             view! {
-                                                                <span class="text-green-300 text-lg">
+                                                                <span class="text-green-300 text-sm">
                                                                     "+" {mint.token_ids.len().to_string()} " "
                                                                     {metadata.symbol.clone()}
                                                                 </span>
@@ -2396,12 +2523,9 @@ fn add_nft_actions(
                     for burn in log.data.iter().cloned() {
                         if burn.owner_id == me {
                             let nft_event_format = actions_config.nft_event_format;
-                            if nft_event_format == TokenEventFormat::Hidden {
-                                continue;
-                            }
                             actions.push(
                                 view! {
-                                    <div class="flex items-center gap-2">
+                                    <div class=if nft_event_format == TokenEventFormat::Short { "flex items-center gap-2 pl-12" } else { "flex items-center gap-2" }>
                                         {move || {
                                             if let Some(Ok(metadata)) = metadata.get() {
                                                 let metadata = metadata.clone();
@@ -2411,12 +2535,12 @@ fn add_nft_actions(
                                                     <img
                                                         src=metadata.icon.clone()
                                                         width=if nft_event_format == TokenEventFormat::Short {
-                                                            "30"
+                                                            "20"
                                                         } else {
                                                             "40"
                                                         }
                                                         height=if nft_event_format == TokenEventFormat::Short {
-                                                            "30"
+                                                            "20"
                                                         } else {
                                                             "40"
                                                         }
@@ -2425,7 +2549,7 @@ fn add_nft_actions(
                                                     <span>
                                                         {if nft_event_format == TokenEventFormat::Short {
                                                             view! {
-                                                                <span class="text-red-300 text-lg">
+                                                                <span class="text-red-300 text-sm">
                                                                     "-" {burn.token_ids.len().to_string()} " "
                                                                     {metadata.symbol.clone()}
                                                                 </span>
@@ -2468,6 +2592,32 @@ fn add_nft_actions(
             }
         }
     }
+}
+
+/// Image of the only token in an NFT event, shown instead of the collection's icon
+fn nft_token_image(
+    nft_contract_id: AccountId,
+    token_ids: &[String],
+) -> LocalResource<Option<String>> {
+    let token_id = match token_ids {
+        [token_id] => Some(token_id.clone()),
+        _ => None,
+    };
+    LocalResource::new(move || {
+        let nft_contract_id = nft_contract_id.clone();
+        let token_id = token_id.clone();
+        async move {
+            let token = get_nft_token(nft_contract_id.clone(), token_id?)
+                .await
+                .ok()?;
+            let media = token.metadata.media?;
+            let collection = get_nft_collection_metadata(nft_contract_id).await.ok()?;
+            Some(proxify_url(
+                &nft_media_url(collection.base_uri.as_deref(), &media),
+                Resolution::Low,
+            ))
+        }
+    })
 }
 
 fn add_harvestmoon_actions(
@@ -2540,11 +2690,9 @@ fn add_harvestmoon_actions(
                                         <span>
                                             {move || {
                                                 if args.count == 1 {
-                                                    TranslationKey::PagesHistoryHarvestMoonRecruitOne
-                                                        .format(&[])
+                                                    "Recruit 1 tinker".to_string()
                                                 } else {
-                                                    TranslationKey::PagesHistoryHarvestMoonRecruitN
-                                                        .format(&[("count", &args.count.to_string())])
+                                                    format!("Recruit {} tinkers", args.count)
                                                 }
                                             }}
                                         </span>
@@ -2599,9 +2747,7 @@ fn add_harvestmoon_actions(
                                         style="animation: none !important;"
                                     />
                                     <span>
-                                        {move || {
-                                            TranslationKey::PagesHistoryHarvestMoonHarvest.format(&[])
-                                        }}
+                                        "Harvest"
                                     </span>
                                 </div>
                             }
@@ -2674,8 +2820,7 @@ fn add_lnc_actions(
                                     <div class="flex flex-col gap-1">
                                         <span>
                                             {move || {
-                                                TranslationKey::PagesHistoryLearnClubNlBalance
-                                                    .format(&[("amount", nlearns_line.as_str())])
+                                                format!("{nlearns_line} nL")
                                             }}
                                         </span>
                                         <span class="text-xs">{log}</span>
@@ -2688,5 +2833,1739 @@ fn add_lnc_actions(
                 }
             }
         }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct FtTransferArgs {
+    receiver_id: AccountId,
+    #[serde(with = "dec_format")]
+    amount: Balance,
+    memo: Option<String>,
+}
+
+fn receipt_succeeded(
+    transaction: &FinalExecutionOutcomeWithReceiptView,
+    receipt_id: &CryptoHash,
+) -> bool {
+    matches!(
+        transaction
+            .final_outcome
+            .receipts_outcome
+            .iter()
+            .find(|r| &r.id == receipt_id)
+            .expect("receipt outcome not found")
+            .outcome
+            .status,
+        ExecutionStatusView::SuccessValue(_) | ExecutionStatusView::SuccessReceiptId(_)
+    )
+}
+
+/// A launchpad's launch of `token`, or its payout of `amount` of `token` to the account
+fn launchpad_action_view(
+    logo: &'static str,
+    title: &'static str,
+    token: Token,
+    amount: Option<Balance>,
+    rpc_client: RpcClient,
+) -> AnyView {
+    let metadata = LocalResource::new(move || {
+        let token = token.clone();
+        let rpc_client = rpc_client.clone();
+        async move {
+            match token {
+                Token::Near => Ok(near_metadata()),
+                Token::Nep141(token_id) | Token::Rhea(token_id) => {
+                    get_ft_metadata(token_id, rpc_client).await
+                }
+            }
+        }
+    });
+    view! {
+        <div class="flex items-center gap-2">
+            <img src=logo width="40" height="40" class="min-w-[40px] min-h-[40px]" />
+            <div class="flex flex-col">
+                <span class="text-sm text-neutral-400">{title}</span>
+                {move || {
+                    if let Some(Ok(metadata)) = metadata.get() {
+                        view! {
+                            <div class="flex items-center gap-1.5">
+                                <img src=metadata.icon width="20" height="20" class="rounded-full" />
+                                {match amount {
+                                    Some(amount) => {
+                                        view! {
+                                            <span class="text-green-300 wrap-anywhere">
+                                                "+"
+                                                {format_token_amount(
+                                                    amount,
+                                                    metadata.decimals,
+                                                    &metadata.symbol,
+                                                )}
+                                            </span>
+                                        }
+                                            .into_any()
+                                    }
+                                    None => {
+                                        view! {
+                                            <span class="wrap-anywhere">{metadata.symbol}</span>
+                                        }
+                                            .into_any()
+                                    }
+                                }}
+                            </div>
+                        }
+                            .into_any()
+                    } else {
+                        ().into_any()
+                    }
+                }}
+            </div>
+        </div>
+    }
+    .into_any()
+}
+
+fn add_justhoot_actions(
+    actions: &mut Vec<AnyView>,
+    transaction: &FinalExecutionOutcomeWithReceiptView,
+    me: &AccountIdRef,
+    actions_config: &mut ActionsConfig,
+    rpc_client: RpcClient,
+) {
+    const LOGO: &str = "/history-justhoot.png";
+    for receipt_outcome in transaction.final_outcome.receipts_outcome.iter() {
+        if receipt_outcome.outcome.executor_id != "v2-launchpad.justhoot.near" {
+            continue;
+        }
+        for log in receipt_outcome.outcome.logs.iter() {
+            if let Ok(log) = EventLogData::<JustHootMemeLaunchedLog>::deserialize(log)
+                && log.validate()
+                && log.data.creator_id == me
+            {
+                actions.push(launchpad_action_view(
+                    LOGO,
+                    "Launch on JustHoot",
+                    Token::Nep141(log.data.token_id),
+                    None,
+                    rpc_client.clone(),
+                ));
+            }
+        }
+    }
+
+    for receipt in transaction.receipts.iter() {
+        if !receipt.predecessor_id.as_str().ends_with(".justhoot.near")
+            || !receipt_succeeded(transaction, &receipt.receipt_id)
+        {
+            continue;
+        }
+        let ReceiptEnumView::Action {
+            actions: receipt_actions,
+            ..
+        } = &receipt.receipt
+        else {
+            continue;
+        };
+        for action in receipt_actions.iter() {
+            #[derive(Debug, Deserialize)]
+            struct PayoutMemo {
+                purpose: String,
+                role: Option<String>,
+            }
+            if let ActionView::FunctionCall {
+                method_name, args, ..
+            } = action
+                && method_name == "ft_transfer"
+                && let Ok(transfer) = serde_json::from_slice::<FtTransferArgs>(args)
+                && transfer.receiver_id == me
+                && let Some(memo) = transfer.memo
+                && let Ok(memo) = serde_json::from_str::<PayoutMemo>(&memo)
+            {
+                let title = match (memo.purpose.as_str(), memo.role.as_deref()) {
+                    ("holders_distribution", _) => "JustHoot holder reward",
+                    ("fee_split", Some("token_owner")) => "JustHoot creator earnings",
+                    _ => continue,
+                };
+                actions_config.app_action();
+                actions.push(launchpad_action_view(
+                    LOGO,
+                    title,
+                    Token::Nep141(receipt.receiver_id.clone()),
+                    Some(transfer.amount),
+                    rpc_client.clone(),
+                ));
+            }
+        }
+    }
+}
+
+fn add_nearly_actions(
+    actions: &mut Vec<AnyView>,
+    transaction: &FinalExecutionOutcomeWithReceiptView,
+    me: &AccountIdRef,
+    actions_config: &mut ActionsConfig,
+    rpc_client: RpcClient,
+) {
+    const LOGO: &str = "/history-nearly.svg";
+    let mut payout_title = None;
+    for receipt_outcome in transaction.final_outcome.receipts_outcome.iter() {
+        if receipt_outcome.outcome.executor_id != "nearlytrade.near" {
+            continue;
+        }
+        for log in receipt_outcome.outcome.logs.iter() {
+            if let Ok(log) = EventLogData::<NearlyLaunchLog>::deserialize(log)
+                && log.validate()
+            {
+                for launch in log.data.0.into_iter().filter(|launch| launch.creator == me) {
+                    actions.push(launchpad_action_view(
+                        LOGO,
+                        "Launch on Nearly",
+                        Token::Nep141(launch.token),
+                        None,
+                        rpc_client.clone(),
+                    ));
+                }
+            }
+            if let Ok(log) = EventLogData::<NearlyCreatorFeesClaimedLog>::deserialize(log)
+                && log.validate()
+                && log.data.iter().any(|claim| claim.creator == me)
+            {
+                payout_title = Some("Nearly creator earnings");
+            }
+            if let Ok(log) = EventLogData::<serde::de::IgnoredAny>::deserialize(log)
+                && log.standard == "nearpad"
+                && (log.event == "holders_paid" || log.event == "tax_holders_paid")
+            {
+                payout_title = Some("Nearly holder reward");
+            }
+        }
+    }
+    let Some(payout_title) = payout_title else {
+        return;
+    };
+
+    for receipt in transaction.receipts.iter() {
+        if receipt.predecessor_id != "nearlytrade.near"
+            || !receipt_succeeded(transaction, &receipt.receipt_id)
+        {
+            continue;
+        }
+        let ReceiptEnumView::Action {
+            actions: receipt_actions,
+            ..
+        } = &receipt.receipt
+        else {
+            continue;
+        };
+        for action in receipt_actions.iter() {
+            let (token, amount) = match action {
+                ActionView::Transfer { deposit } if receipt.receiver_id == me => {
+                    (Token::Near, deposit.as_yoctonear())
+                }
+                ActionView::FunctionCall {
+                    method_name, args, ..
+                } if method_name == "ft_transfer" => {
+                    match serde_json::from_slice::<FtTransferArgs>(args) {
+                        Ok(transfer) if transfer.receiver_id == me => {
+                            (Token::Nep141(receipt.receiver_id.clone()), transfer.amount)
+                        }
+                        _ => continue,
+                    }
+                }
+                _ => continue,
+            };
+            actions_config.app_action();
+            actions.push(launchpad_action_view(
+                LOGO,
+                payout_title,
+                token,
+                Some(amount),
+                rpc_client.clone(),
+            ));
+        }
+    }
+}
+
+fn add_noamarket_actions(
+    actions: &mut Vec<AnyView>,
+    transaction: &FinalExecutionOutcomeWithReceiptView,
+    me: &AccountIdRef,
+    actions_config: &mut ActionsConfig,
+    rpc_client: RpcClient,
+) {
+    const CONTRACT_ID: &str = "v3.noamarket.near";
+    for receipt_outcome in transaction.final_outcome.receipts_outcome.iter() {
+        if receipt_outcome.outcome.executor_id != CONTRACT_ID {
+            continue;
+        }
+        for log in receipt_outcome.outcome.logs.iter() {
+            if let Ok(log) = EventLogData::<NoaMarketOrderFilledLog>::deserialize(log)
+                && log.validate()
+                && log.data.user == me
+            {
+                let order = log.data;
+                actions.push(noamarket_market_view(
+                    order.market_id,
+                    "Buy",
+                    rpc_client.clone(),
+                    move |market, token| {
+                        token_trade_amounts_view(
+                            token.icon.clone(),
+                            format_token_amount(order.amount_spent, token.decimals, &token.symbol),
+                            None,
+                            format_token_amount(
+                                order.shares_fp,
+                                token.decimals,
+                                &market.outcome_name(order.outcome_id),
+                            ),
+                        )
+                    },
+                ));
+            }
+            if let Ok(log) = EventLogData::<NoaMarketSellFilledLog>::deserialize(log)
+                && log.validate()
+                && log.data.user == me
+            {
+                let sell = log.data;
+                actions.push(noamarket_market_view(
+                    sell.market_id,
+                    "Sell",
+                    rpc_client.clone(),
+                    move |market, token| {
+                        token_trade_amounts_view(
+                            None,
+                            format_token_amount(
+                                sell.shares_fp,
+                                token.decimals,
+                                &market.outcome_name(sell.outcome_id),
+                            ),
+                            token.icon.clone(),
+                            format_token_amount(
+                                sell.amount_received,
+                                token.decimals,
+                                &token.symbol,
+                            ),
+                        )
+                    },
+                ));
+            }
+            if let Ok(log) = EventLogData::<NoaMarketPayoutClaimedLog>::deserialize(log)
+                && log.validate()
+                && log.data.user == me
+            {
+                let payout = log.data;
+                actions.push(noamarket_market_view(
+                    payout.market_id,
+                    "Winnings",
+                    rpc_client.clone(),
+                    move |_market, token| {
+                        view! {
+                            <div class="flex items-center gap-1.5">
+                                <img src=token.icon.clone() width="20" height="20" class="rounded-full" />
+                                <span class="text-green-300 wrap-anywhere">
+                                    "+"
+                                    {format_token_amount(payout.net_payout, token.decimals, &token.symbol)}
+                                </span>
+                            </div>
+                        }
+                        .into_any()
+                    },
+                ));
+            }
+            if let Ok(log) = EventLogData::<NoaMarketDepositLog>::deserialize(log)
+                && log.validate()
+                && log.data.account_id == me
+            {
+                actions_config.app_action();
+                actions.push(noamarket_balance_view(
+                    "Deposit to Noa Market",
+                    log.data.token_id,
+                    log.data.amount,
+                    "-",
+                    "text-red-300",
+                    rpc_client.clone(),
+                ));
+            }
+            if let Ok(log) = EventLogData::<NoaMarketWithdrawCompletedLog>::deserialize(log)
+                && log.validate()
+                && log.data.account_id == me
+                && log.data.success
+            {
+                actions_config.app_action();
+                actions.push(noamarket_balance_view(
+                    "Withdraw from Noa Market",
+                    log.data.token_id,
+                    log.data.amount,
+                    "+",
+                    "text-green-300",
+                    rpc_client.clone(),
+                ));
+            }
+        }
+    }
+}
+
+fn noamarket_view(title: AnyView, content: AnyView) -> AnyView {
+    view! {
+        <div class="flex items-center gap-2">
+            <img src="/history-noamarket.png" width="40" height="40" class="min-w-[40px] min-h-[40px]" />
+            <div class="flex flex-col">
+                <span class="text-sm text-neutral-400 wrap-anywhere">{title}</span>
+                {content}
+            </div>
+        </div>
+    }
+    .into_any()
+}
+
+/// A trade, payout or other action in one Noa Market market, titled with the market's question
+fn noamarket_market_view(
+    market_id: u64,
+    title: &'static str,
+    rpc_client: RpcClient,
+    content: impl Fn(&NoaMarket, &TokenMetadata) -> AnyView + Send + Sync + 'static,
+) -> AnyView {
+    let market_and_token = LocalResource::new(move || {
+        let rpc_client = rpc_client.clone();
+        async move {
+            let market = get_noamarket_market(market_id, rpc_client.clone()).await?;
+            let token = get_ft_metadata(market.token_id.clone(), rpc_client).await?;
+            Ok::<_, String>((market, token))
+        }
+    });
+    (move || {
+        if let Some(Ok((market, token))) = market_and_token.get() {
+            let content = content(&market, &token);
+            noamarket_view(
+                view! { {format!("{title} · {}", market.title)} }.into_any(),
+                content,
+            )
+        } else {
+            ().into_any()
+        }
+    })
+    .into_any()
+}
+
+fn noamarket_balance_view(
+    title: &'static str,
+    token_id: AccountId,
+    amount: Balance,
+    sign: &'static str,
+    amount_class: &'static str,
+    rpc_client: RpcClient,
+) -> AnyView {
+    let token = LocalResource::new(move || get_ft_metadata(token_id.clone(), rpc_client.clone()));
+    (move || {
+        if let Some(Ok(token)) = token.get() {
+            noamarket_view(
+                view! { {title} }.into_any(),
+                view! {
+                    <div class="flex items-center gap-1.5">
+                        <img src=token.icon.clone() width="20" height="20" class="rounded-full" />
+                        <span class=format!("{amount_class} wrap-anywhere")>
+                            {sign}
+                            {format_token_amount(amount, token.decimals, &token.symbol)}
+                        </span>
+                    </div>
+                }
+                .into_any(),
+            )
+        } else {
+            ().into_any()
+        }
+    })
+    .into_any()
+}
+
+fn add_trezu_actions(
+    actions: &mut Vec<AnyView>,
+    transaction: &FinalExecutionOutcomeWithReceiptView,
+    me: &AccountIdRef,
+    _actions_config: &mut ActionsConfig,
+    rpc_client: RpcClient,
+) {
+    // Trezu sends proposals and votes as meta transactions relayed by its sponsor
+    if transaction.final_outcome.transaction.signer_id != "sponsor.trezu.near" {
+        return;
+    }
+    for receipt in transaction.receipts.iter() {
+        let Some(dao_name) = receipt
+            .receiver_id
+            .as_str()
+            .strip_suffix(".sputnik-dao.near")
+            .map(str::to_owned)
+        else {
+            continue;
+        };
+        if receipt.predecessor_id != me {
+            continue;
+        }
+        let ReceiptEnumView::Action {
+            actions: receipt_actions,
+            ..
+        } = &receipt.receipt
+        else {
+            continue;
+        };
+        let outcome = &transaction
+            .final_outcome
+            .receipts_outcome
+            .iter()
+            .find(|r| r.id == receipt.receipt_id)
+            .expect("receipt outcome not found")
+            .outcome;
+        for action in receipt_actions.iter() {
+            let ActionView::FunctionCall {
+                method_name, args, ..
+            } = action
+            else {
+                continue;
+            };
+            match method_name.as_str() {
+                "add_proposal" => {
+                    #[derive(Debug, Deserialize)]
+                    struct Args {
+                        proposal: Proposal,
+                    }
+                    #[derive(Debug, Deserialize)]
+                    struct Proposal {
+                        description: String,
+                        kind: serde_json::Value,
+                    }
+                    #[derive(Debug, Clone, Deserialize)]
+                    struct TransferKind {
+                        token_id: String,
+                        receiver_id: AccountId,
+                        #[serde(with = "dec_format")]
+                        amount: Balance,
+                    }
+                    let (Ok(args), ExecutionStatusView::SuccessValue(proposal_id)) =
+                        (serde_json::from_slice::<Args>(args), &outcome.status)
+                    else {
+                        continue;
+                    };
+                    let Ok(proposal_id) = serde_json::from_slice::<u64>(proposal_id) else {
+                        continue;
+                    };
+                    let transfer =
+                        args.proposal.kind.get("Transfer").and_then(|kind| {
+                            serde_json::from_value::<TransferKind>(kind.clone()).ok()
+                        });
+                    let summary = trezu_proposal_summary(&args.proposal.description);
+                    let dao_name = dao_name.clone();
+                    let transfer_view = transfer.map(|transfer| {
+                        let token = if transfer.token_id.is_empty() {
+                            Token::Near
+                        } else {
+                            match transfer.token_id.parse() {
+                                Ok(token_id) => Token::Nep141(token_id),
+                                Err(_) => return ().into_any(),
+                            }
+                        };
+                        let rpc_client = rpc_client.clone();
+                        let metadata = LocalResource::new(move || {
+                            let token = token.clone();
+                            let rpc_client = rpc_client.clone();
+                            async move {
+                                match token {
+                                    Token::Near => Ok(near_metadata()),
+                                    Token::Nep141(token_id) | Token::Rhea(token_id) => {
+                                        get_ft_metadata(token_id, rpc_client).await
+                                    }
+                                }
+                            }
+                        });
+                        (move || {
+                            if let Some(Ok(metadata)) = metadata.get() {
+                                view! {
+                                    <div class="flex items-center gap-1.5 flex-wrap">
+                                        {metadata.icon.clone().map(|icon| view! { <img src=icon width="20" height="20" class="rounded-full" /> })}
+                                        <span class="wrap-anywhere">
+                                            {format_token_amount(transfer.amount, metadata.decimals, &metadata.symbol)}
+                                        </span>
+                                        <Icon
+                                            icon=LuArrowRight
+                                            width="14"
+                                            height="14"
+                                            attr:class="text-neutral-400 min-w-[14px] min-h-[14px]"
+                                        />
+                                        <span class="text-neutral-300 wrap-anywhere">
+                                            {format_account_id(&transfer.receiver_id)}
+                                        </span>
+                                    </div>
+                                }
+                                    .into_any()
+                            } else {
+                                ().into_any()
+                            }
+                        })
+                            .into_any()
+                    });
+                    let summary_class = if transfer_view.is_some() {
+                        "text-sm text-neutral-300 line-clamp-2 wrap-anywhere"
+                    } else {
+                        "line-clamp-2 wrap-anywhere"
+                    };
+                    actions.push(trezu_view(
+                        view! {
+                            {format!("Proposal #{proposal_id} · {dao_name}")}
+                        }
+                        .into_any(),
+                        view! {
+                            {transfer_view}
+                            <span class=summary_class>{summary}</span>
+                        }
+                        .into_any(),
+                    ));
+                }
+                "act_proposal" => {
+                    #[derive(Debug, Deserialize)]
+                    struct Args {
+                        id: u64,
+                        action: String,
+                    }
+                    if !receipt_succeeded(transaction, &receipt.receipt_id) {
+                        continue;
+                    }
+                    let Ok(args) = serde_json::from_slice::<Args>(args) else {
+                        continue;
+                    };
+                    let (vote, vote_class) = match args.action.as_str() {
+                        "VoteApprove" => ("Approve", "text-green-300"),
+                        "VoteReject" => ("Reject", "text-red-300"),
+                        "VoteRemove" => ("Remove", ""),
+                        _ => continue,
+                    };
+                    let dao_name = dao_name.clone();
+                    let dao_id = receipt.receiver_id.clone();
+                    let proposal_summary = LocalResource::new(move || {
+                        let dao_id = dao_id.clone();
+                        async move {
+                            get_sputnik_proposal_description(dao_id, args.id)
+                                .await
+                                .ok()
+                                .map(|description| trezu_proposal_summary(&description))
+                                .filter(|summary| !summary.is_empty())
+                        }
+                    });
+                    actions.push(trezu_view(
+                        view! {
+                            {format!("Vote · {dao_name}")}
+                        }
+                        .into_any(),
+                        view! {
+                            <span class=vote_class>
+                                {format!("{vote} proposal #{}", args.id)}
+                            </span>
+                            {move || {
+                                proposal_summary
+                                    .get()
+                                    .flatten()
+                                    .map(|summary| view! {
+                                        <span class="text-sm text-neutral-300 line-clamp-2 wrap-anywhere">{summary}</span>
+                                    })
+                            }}
+                        }
+                        .into_any(),
+                    ));
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Trezu writes proposal descriptions as `* Key: Value` lines separated by `<br>`
+fn trezu_proposal_summary(description: &str) -> String {
+    let fields = description
+        .split("<br>")
+        .filter_map(|line| line.trim().strip_prefix("* ")?.split_once(": "))
+        .collect::<HashMap<_, _>>();
+    let summary = ["Title", "Proposal Action", "Notes"]
+        .into_iter()
+        .filter_map(|key| fields.get(key).map(|value| value.trim()))
+        .find(|value| !value.is_empty())
+        .unwrap_or(description.trim());
+    shorten_text(summary)
+}
+
+/// Keeps user-written text from taking up too much of a history row
+fn shorten_text(text: &str) -> String {
+    const MAX_CHARS: usize = 80;
+    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if text.chars().count() > MAX_CHARS {
+        format!(
+            "{}…",
+            text.chars().take(MAX_CHARS).collect::<String>().trim_end()
+        )
+    } else {
+        text
+    }
+}
+
+fn trezu_view(title: AnyView, content: AnyView) -> AnyView {
+    view! {
+        <div class="flex items-center gap-2">
+            <img src="/history-trezu.svg" width="40" height="40" class="min-w-[40px] min-h-[40px]" />
+            <div class="flex flex-col">
+                <span class="text-sm text-neutral-400 wrap-anywhere">{title}</span>
+                {content}
+            </div>
+        </div>
+    }
+    .into_any()
+}
+
+fn add_near_cooking_actions(
+    actions: &mut Vec<AnyView>,
+    transaction: &FinalExecutionOutcomeWithReceiptView,
+    me: &AccountIdRef,
+    actions_config: &mut ActionsConfig,
+    rpc_client: RpcClient,
+) {
+    const MARKET_ID: &str = "nftmarket.cookon.near";
+    let is_me = |account_id: &Option<AccountId>| account_id.as_ref().is_some_and(|id| *id == me);
+    for receipt_outcome in transaction.final_outcome.receipts_outcome.iter() {
+        if receipt_outcome.outcome.executor_id != MARKET_ID {
+            continue;
+        }
+        for log in receipt_outcome.outcome.logs.iter() {
+            let Ok(log) = serde_json::from_str::<NearCookingMarketLog>(log) else {
+                continue;
+            };
+            let params = log.params;
+            let is_collection_offer = params.token_id.is_none();
+            let (title, price_class) = match log.kind.as_str() {
+                "add_market_data" if is_me(&params.owner_id) => ("List NFT for sale", ""),
+                "update_market_data" if is_me(&params.owner_id) => ("Change NFT price", ""),
+                "delete_market_data" if is_me(&params.owner_id) => ("Unlist NFT", ""),
+                "add_offer" if is_me(&params.buyer_id) && is_collection_offer => {
+                    ("Make collection offer", "")
+                }
+                "add_offer" if is_me(&params.buyer_id) => ("Make offer", ""),
+                "delete_offer" if is_me(&params.buyer_id) => ("Cancel offer", ""),
+                "resolve_purchase" if is_me(&params.buyer_id) => ("Buy NFT", "text-red-300"),
+                "resolve_purchase" if is_me(&params.owner_id) => ("Sell NFT", "text-green-300"),
+                _ => continue,
+            };
+            actions_config.app_action();
+            let price_token = match params.ft_token_id.as_deref() {
+                None | Some("near") => Token::Near,
+                Some(ft_token_id) => match ft_token_id.parse() {
+                    Ok(ft_token_id) => Token::Nep141(ft_token_id),
+                    Err(_) => continue,
+                },
+            };
+            // Sellers get the price minus fees and royalties, paid out in NEAR
+            let price = if title == "Sell NFT" && price_token == Token::Near {
+                Some(
+                    transaction
+                        .receipts
+                        .iter()
+                        .filter(|receipt| {
+                            receipt.predecessor_id == MARKET_ID
+                                && receipt.receiver_id == me
+                                && receipt_succeeded(transaction, &receipt.receipt_id)
+                        })
+                        .filter_map(|receipt| match &receipt.receipt {
+                            ReceiptEnumView::Action { actions, .. } => Some(actions),
+                            _ => None,
+                        })
+                        .flatten()
+                        .filter_map(|action| match action {
+                            ActionView::Transfer { deposit } => Some(deposit.as_yoctonear()),
+                            _ => None,
+                        })
+                        .sum::<Balance>(),
+                )
+            } else {
+                params.price
+            };
+            let price_sign = match title {
+                "Buy NFT" => "-",
+                "Sell NFT" => "+",
+                _ => "",
+            };
+            let nft_contract_id = params.nft_contract_id;
+            let token_id = params.token_id;
+            let token_image = nft_token_image(nft_contract_id.clone(), token_id.as_slice());
+            let rpc_client = rpc_client.clone();
+            let collection_and_price_token = LocalResource::new(move || {
+                let nft_contract_id = nft_contract_id.clone();
+                let price_token = price_token.clone();
+                let rpc_client = rpc_client.clone();
+                async move {
+                    let collection = get_nft_collection_metadata(nft_contract_id).await?;
+                    let price_token = match price_token {
+                        Token::Near => near_metadata(),
+                        Token::Nep141(token_id) | Token::Rhea(token_id) => {
+                            get_ft_metadata(token_id, rpc_client).await?
+                        }
+                    };
+                    Ok::<_, String>((collection, price_token))
+                }
+            });
+            actions.push(
+                (move || {
+                    let Some(Ok((collection, price_token))) = collection_and_price_token.get()
+                    else {
+                        return ().into_any();
+                    };
+                    let item = match &token_id {
+                        Some(token_id) => format!("{} #{token_id}", collection.name),
+                        None => collection.name.clone(),
+                    };
+                    view! {
+                        <div class="flex items-center gap-2">
+                            <img
+                                src="/history-near-cooking.png"
+                                width="40"
+                                height="40"
+                                class="min-w-[40px] min-h-[40px]"
+                            />
+                            <div class="flex flex-col">
+                                <span class="text-sm text-neutral-400">
+                                    {title}
+                                </span>
+                                <div class="flex items-center gap-1.5">
+                                    {token_image
+                                        .get()
+                                        .flatten()
+                                        .or(collection.icon)
+                                        .map(|image| view! { <img src=image width="20" height="20" class="rounded-sm min-w-[20px]" /> })}
+                                    <span class="wrap-anywhere">{item}</span>
+                                </div>
+                                {price.map(|price| {
+                                    view! {
+                                        <span class=format!("{price_class} wrap-anywhere")>
+                                            {price_sign}
+                                            {format_token_amount(price, price_token.decimals, &price_token.symbol)}
+                                        </span>
+                                    }
+                                })}
+                            </div>
+                        </div>
+                    }
+                    .into_any()
+                })
+                .into_any(),
+            );
+        }
+    }
+}
+
+fn add_near_social_actions(
+    actions: &mut Vec<AnyView>,
+    transaction: &FinalExecutionOutcomeWithReceiptView,
+    me: &AccountIdRef,
+    _actions_config: &mut ActionsConfig,
+    _rpc_client: RpcClient,
+) {
+    // near.social keeps its data on FastData KV: writes are `__fastdata_kv` calls to the
+    // contract-less `social` account, which fail on chain and are read by FastData indexers
+    for receipt in transaction.receipts.iter() {
+        if receipt.receiver_id != "social" || receipt.predecessor_id != me {
+            continue;
+        }
+        let ReceiptEnumView::Action {
+            actions: receipt_actions,
+            ..
+        } = &receipt.receipt
+        else {
+            continue;
+        };
+        for action in receipt_actions.iter() {
+            if let ActionView::FunctionCall {
+                method_name, args, ..
+            } = action
+                && method_name == "__fastdata_kv"
+                && let Ok(entries) =
+                    serde_json::from_slice::<serde_json::Map<String, serde_json::Value>>(args)
+            {
+                for (title, detail) in near_social_actions(&entries) {
+                    actions.push(
+                        view! {
+                            <div class="flex items-center gap-2">
+                                <img
+                                    src="/history-near-social.svg"
+                                    width="40"
+                                    height="40"
+                                    class="min-w-[40px] min-h-[40px]"
+                                />
+                                <div class="flex flex-col">
+                                    <span class="text-sm text-neutral-400">"near.social"</span>
+                                    <span class="wrap-anywhere">{title}</span>
+                                    {detail
+                                        .map(|detail| {
+                                            view! {
+                                                <span class="text-sm text-neutral-300 line-clamp-2 wrap-anywhere">
+                                                    {detail}
+                                                </span>
+                                            }
+                                        })}
+                                </div>
+                            </div>
+                        }
+                        .into_any(),
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// What the account did in one near.social write: (title, optional text excerpt).
+/// `null` values undo things: delete a post, unlike, unfollow
+fn near_social_actions(
+    entries: &serde_json::Map<String, serde_json::Value>,
+) -> Vec<(String, Option<String>)> {
+    // Posts are referenced as `author/post_id`
+    let post_author = |post_key: &str| post_key.split('/').next().unwrap_or_default().to_owned();
+    let mut social_actions = Vec::new();
+    let mut updated_profile = false;
+    for (key, value) in entries {
+        let path = key.split('/').collect::<Vec<_>>();
+        let removed = value.is_null();
+        match path.as_slice() {
+            ["post", _] if removed => social_actions.push(("Delete post".to_string(), None)),
+            ["post", _] => {
+                let reply_to = value.get("reply_to").and_then(|key| key.as_str());
+                let quote = value.get("quote").and_then(|key| key.as_str());
+                let title = match (reply_to, quote) {
+                    (Some(reply_to), _) => format!("Reply to {}", post_author(reply_to)),
+                    (None, Some(quote)) => format!("Quote {}'s post", post_author(quote)),
+                    (None, None) => "Post".to_string(),
+                };
+                let text = value
+                    .get("text")
+                    .and_then(|text| text.as_str())
+                    .map(shorten_text)
+                    .filter(|text| !text.is_empty());
+                social_actions.push((title, text));
+            }
+            ["like", author, _] => {
+                let verb = if removed { "Unlike" } else { "Like" };
+                social_actions.push((format!("{verb} {author}'s post"), None));
+            }
+            ["repost", author, _] => {
+                let verb = if removed { "Undo repost of" } else { "Repost" };
+                social_actions.push((format!("{verb} {author}'s post"), None));
+            }
+            ["graph", "follow", account_id] => {
+                let verb = if removed { "Unfollow" } else { "Follow" };
+                social_actions.push((format!("{verb} {account_id}"), None));
+            }
+            ["profile", ..] => updated_profile = true,
+            _ => {}
+        }
+    }
+    if updated_profile {
+        let name = entries
+            .get("profile/name")
+            .and_then(|name| name.as_str())
+            .map(shorten_text)
+            .filter(|name| !name.is_empty());
+        social_actions.push(("Update profile".to_string(), name));
+    }
+    social_actions
+}
+
+/// Metadata of each token, paired with its amount, in the order given
+fn token_amounts_resource(
+    amounts: Vec<(Token, Balance)>,
+    rpc_client: RpcClient,
+) -> LocalResource<Result<Vec<(TokenMetadata, Balance)>, String>> {
+    LocalResource::new(move || {
+        let amounts = amounts.clone();
+        let rpc_client = rpc_client.clone();
+        async move {
+            join_all(amounts.into_iter().map(|(token, amount)| {
+                let rpc_client = rpc_client.clone();
+                async move {
+                    let metadata = match token {
+                        Token::Near => near_metadata(),
+                        Token::Nep141(token_id) | Token::Rhea(token_id) => {
+                            get_ft_metadata(token_id, rpc_client).await?
+                        }
+                    };
+                    Ok((metadata, amount))
+                }
+            }))
+            .await
+            .into_iter()
+            .collect()
+        }
+    })
+}
+
+/// A DeFi app's action with the token amounts it moved, like "1 NEAR + 3 USDC"
+fn defi_action_view(
+    logo: &'static str,
+    title: String,
+    amounts: LocalResource<Result<Vec<(TokenMetadata, Balance)>, String>>,
+    sign: &'static str,
+    amount_class: &'static str,
+) -> AnyView {
+    view! {
+        <div class="flex items-center gap-2">
+            <img src=logo width="40" height="40" class="min-w-[40px] min-h-[40px]" />
+            <div class="flex flex-col">
+                <span class="text-sm text-neutral-400 wrap-anywhere">{title}</span>
+                {move || {
+                    let Some(Ok(amounts)) = amounts.get() else {
+                        return ().into_any();
+                    };
+                    let amount_count = amounts.len();
+                    view! {
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            {amounts
+                                .into_iter()
+                                .enumerate()
+                                .map(|(index, (metadata, amount))| {
+                                    view! {
+                                        <span class="flex items-center gap-1.5">
+                                        {metadata
+                                            .icon
+                                            .clone()
+                                            .map(|icon| {
+                                                view! {
+                                                    <img src=icon width="20" height="20" class="rounded-full" />
+                                                }
+                                            })}
+                                        <span class=format!("{amount_class} wrap-anywhere")>
+                                            {sign}
+                                            {format_token_amount(amount, metadata.decimals, &metadata.symbol)}
+                                        </span>
+                                        </span>
+                                        {(index + 1 < amount_count)
+                                            .then(|| view! { <span class="text-neutral-400">"+"</span> })}
+                                    }
+                                })
+                                .collect::<Vec<_>>()}
+                        </div>
+                    }
+                        .into_any()
+                }}
+            </div>
+        </div>
+    }
+    .into_any()
+}
+
+/// Rhea pools (v1): liquidity added from and removed to the account's Rhea balance
+fn add_rhea_liquidity_actions(
+    actions: &mut Vec<AnyView>,
+    transaction: &FinalExecutionOutcomeWithReceiptView,
+    me: &AccountIdRef,
+    actions_config: &mut ActionsConfig,
+    rpc_client: RpcClient,
+) {
+    const EXCHANGE_ID: &str = "v2.ref-finance.near";
+    for receipt in transaction.receipts.iter() {
+        if receipt.receiver_id != EXCHANGE_ID
+            || receipt.predecessor_id != me
+            || !receipt_succeeded(transaction, &receipt.receipt_id)
+        {
+            continue;
+        }
+        let ReceiptEnumView::Action {
+            actions: receipt_actions,
+            ..
+        } = &receipt.receipt
+        else {
+            continue;
+        };
+        let logs = &transaction
+            .final_outcome
+            .receipts_outcome
+            .iter()
+            .find(|r| r.id == receipt.receipt_id)
+            .expect("receipt outcome not found")
+            .outcome
+            .logs;
+        for action in receipt_actions.iter() {
+            #[derive(Debug, Deserialize)]
+            struct Args {
+                pool_id: u64,
+                #[serde(default, with = "dec_format_vec")]
+                amounts: Vec<Balance>,
+            }
+            let ActionView::FunctionCall {
+                method_name, args, ..
+            } = action
+            else {
+                continue;
+            };
+            let Ok(args) = serde_json::from_slice::<Args>(args) else {
+                continue;
+            };
+            let (title, sign, amount_class) = match method_name.as_str() {
+                "add_liquidity" | "add_stable_liquidity" => ("Add liquidity", "-", "text-red-300"),
+                "remove_liquidity" | "remove_liquidity_by_tokens" => {
+                    ("Remove liquidity", "+", "text-green-300")
+                }
+                _ => continue,
+            };
+            // Removing by shares only logs what came back, as `["amount token_id", ...]`
+            let logged_amounts = (method_name == "remove_liquidity")
+                .then(|| {
+                    logs.iter().find_map(|log| {
+                        let list = log.get(log.find('[')?..=log.rfind(']')?)?;
+                        serde_json::from_str::<Vec<String>>(list).ok()
+                    })
+                })
+                .flatten()
+                .map(|amounts| {
+                    amounts
+                        .iter()
+                        .filter_map(|amount| {
+                            let (amount, token_id) = amount.split_once(' ')?;
+                            Some((Token::Nep141(token_id.parse().ok()?), amount.parse().ok()?))
+                        })
+                        .collect::<Vec<_>>()
+                });
+            actions_config.app_action();
+            let amounts = match logged_amounts {
+                Some(amounts) => token_amounts_resource(amounts, rpc_client.clone()),
+                None => {
+                    let rpc_client = rpc_client.clone();
+                    let pool_amounts = args.amounts;
+                    let pool_id = args.pool_id;
+                    LocalResource::new(move || {
+                        let rpc_client = rpc_client.clone();
+                        let pool_amounts = pool_amounts.clone();
+                        async move {
+                            #[derive(Debug, Deserialize)]
+                            struct Pool {
+                                token_account_ids: Vec<AccountId>,
+                            }
+                            let pool = rpc_client
+                                .call::<Pool>(
+                                    EXCHANGE_ID.parse().unwrap(),
+                                    "get_pool",
+                                    serde_json::json!({ "pool_id": pool_id }),
+                                    Default::default(),
+                                )
+                                .await
+                                .map_err(|e| e.to_string())?;
+                            join_all(pool.token_account_ids.into_iter().zip(pool_amounts).map(
+                                |(token_id, amount)| {
+                                    let rpc_client = rpc_client.clone();
+                                    async move {
+                                        Ok((get_ft_metadata(token_id, rpc_client).await?, amount))
+                                    }
+                                },
+                            ))
+                            .await
+                            .into_iter()
+                            .collect()
+                        }
+                    })
+                }
+            };
+            actions.push(defi_action_view(
+                "/history-rhea.svg",
+                title.to_string(),
+                amounts,
+                sign,
+                amount_class,
+            ));
+        }
+    }
+}
+
+/// Rhea DCL liquidity positions and limit orders
+fn add_rhea_dcl_actions(
+    actions: &mut Vec<AnyView>,
+    transaction: &FinalExecutionOutcomeWithReceiptView,
+    me: &AccountIdRef,
+    actions_config: &mut ActionsConfig,
+    rpc_client: RpcClient,
+) {
+    const EXCHANGE_ID: &str = "dclv2.ref-labs.near";
+    // Pool ids look like `token_x|token_y|fee`
+    let pool_tokens = |pool_id: &str| -> Option<(Token, Token)> {
+        let mut parts = pool_id.split('|');
+        Some((
+            Token::Nep141(parts.next()?.parse().ok()?),
+            Token::Nep141(parts.next()?.parse().ok()?),
+        ))
+    };
+    let mut cancelled_orders = HashSet::new();
+    let mut liquidity_changes = Vec::<(&str, String, (Balance, Balance))>::new();
+    let logs = transaction
+        .final_outcome
+        .receipts_outcome
+        .iter()
+        .filter(|receipt_outcome| receipt_outcome.outcome.executor_id == EXCHANGE_ID)
+        .flat_map(|receipt_outcome| receipt_outcome.outcome.logs.iter());
+    let push = |actions: &mut Vec<AnyView>,
+                actions_config: &mut ActionsConfig,
+                title: &str,
+                amounts: Vec<(Token, Balance)>,
+                sign: &'static str,
+                amount_class: &'static str| {
+        actions_config.app_action();
+        let amounts = amounts
+            .into_iter()
+            .filter(|(_, amount)| *amount > 0)
+            .collect::<Vec<_>>();
+        actions.push(defi_action_view(
+            "/history-rhea.svg",
+            title.to_string(),
+            token_amounts_resource(amounts, rpc_client.clone()),
+            sign,
+            amount_class,
+        ));
+    };
+    for log in logs {
+        if let Ok(log) = EventLogData::<RheaDclLiquidityLog>::deserialize(log)
+            && log.validate()
+        {
+            for change in log.data.0.iter().filter(|change| change.owner_id == me) {
+                // Removing nothing only collects the fees the position earned
+                let (title, amount_x, amount_y) = match log.event.as_str() {
+                    "liquidity_added" => {
+                        ("Add liquidity", change.paid_token_x, change.paid_token_y)
+                    }
+                    "liquidity_removed" if change.removed_amount == Some(0) => (
+                        "Claim liquidity fees",
+                        change.claim_fee_token_x,
+                        change.claim_fee_token_y,
+                    ),
+                    "liquidity_removed" => (
+                        "Remove liquidity",
+                        change.refund_token_x,
+                        change.refund_token_y,
+                    ),
+                    _ => continue,
+                };
+                let amounts = (amount_x.unwrap_or_default(), amount_y.unwrap_or_default());
+                // Positions changed together in one pool are shown as one change
+                match liquidity_changes
+                    .iter_mut()
+                    .find(|(other_title, pool_id, _)| {
+                        *other_title == title && *pool_id == change.pool_id
+                    }) {
+                    Some((_, _, (total_x, total_y))) => {
+                        *total_x += amounts.0;
+                        *total_y += amounts.1;
+                    }
+                    None => liquidity_changes.push((title, change.pool_id.clone(), amounts)),
+                }
+            }
+        }
+        if let Ok(log) = EventLogData::<RheaDclOrderLog>::deserialize(log)
+            && log.validate()
+        {
+            for order in log.data.0.iter().filter(|order| order.owner_id == me) {
+                let sell_token = Token::Nep141(order.sell_token.clone());
+                let buy_token = Token::Nep141(order.buy_token.clone());
+                match log.event.as_str() {
+                    "order_added" => {
+                        // DCL prices are 1.0001^point of token y per token x, in the smallest units
+                        let price = 1.0001f64.powi(order.point);
+                        let sells_token_x = order
+                            .pool_id
+                            .split('|')
+                            .next()
+                            .is_some_and(|token_x| token_x == order.sell_token.as_str());
+                        let original_amount = order.original_amount.unwrap_or_default() as f64;
+                        let expected_amount = if sells_token_x {
+                            original_amount * price
+                        } else {
+                            original_amount / price
+                        };
+                        let rpc_client = rpc_client.clone();
+                        actions_config.app_action();
+                        let amounts = token_amounts_resource(
+                            vec![
+                                (sell_token, order.original_amount.unwrap_or_default()),
+                                (buy_token, expected_amount as Balance),
+                            ],
+                            rpc_client,
+                        );
+                        actions.push(
+                            view! {
+                                <div class="flex items-center gap-2">
+                                    <img
+                                        src="/history-rhea.svg"
+                                        width="40"
+                                        height="40"
+                                        class="min-w-[40px] min-h-[40px]"
+                                    />
+                                    <div class="flex flex-col">
+                                        <span class="text-sm text-neutral-400">"Place limit order"</span>
+                                        {move || {
+                                            let Some(Ok(amounts)) = amounts.get() else {
+                                                return ().into_any();
+                                            };
+                                            let [(sell, sell_amount), (buy, buy_amount)] = <[_; 2]>::try_from(
+                                                    amounts,
+                                                )
+                                                .expect("two amounts were requested");
+                                            token_trade_amounts_view(
+                                                sell.icon.clone(),
+                                                format_token_amount(sell_amount, sell.decimals, &sell.symbol),
+                                                buy.icon.clone(),
+                                                format_token_amount(buy_amount, buy.decimals, &buy.symbol),
+                                            )
+                                        }}
+                                    </div>
+                                </div>
+                            }
+                            .into_any(),
+                        );
+                    }
+                    "order_cancelled" => {
+                        cancelled_orders.insert(order.order_id.clone());
+                        push(
+                            actions,
+                            actions_config,
+                            "Cancel limit order",
+                            vec![
+                                (sell_token, order.actual_cancel_amount.unwrap_or_default()),
+                                (buy_token, order.bought_amount.unwrap_or_default()),
+                            ],
+                            "+",
+                            "text-green-300",
+                        );
+                    }
+                    // Cancelling an order completes it too, and the cancellation already shows it
+                    "order_completed" if !cancelled_orders.contains(&order.order_id) => push(
+                        actions,
+                        actions_config,
+                        "Limit order filled",
+                        vec![(buy_token, order.bought_amount.unwrap_or_default())],
+                        "+",
+                        "text-green-300",
+                    ),
+                    _ => {}
+                }
+            }
+        }
+    }
+    for (title, pool_id, (amount_x, amount_y)) in liquidity_changes {
+        let Some((token_x, token_y)) = pool_tokens(&pool_id) else {
+            continue;
+        };
+        let (sign, amount_class) = match title {
+            "Add liquidity" => ("-", "text-red-300"),
+            _ => ("+", "text-green-300"),
+        };
+        push(
+            actions,
+            actions_config,
+            title,
+            vec![(token_x, amount_x), (token_y, amount_y)],
+            sign,
+            amount_class,
+        );
+    }
+}
+
+/// Intear DEX: liquidity in its Plach (xyk) pools, and deposits to and withdrawals from the DEX balance
+fn add_intear_dex_actions(
+    actions: &mut Vec<AnyView>,
+    transaction: &FinalExecutionOutcomeWithReceiptView,
+    me: &AccountIdRef,
+    actions_config: &mut ActionsConfig,
+    rpc_client: RpcClient,
+) {
+    const DEX_ENGINE_ID: &str = "dex.intear.near";
+    let changes = transaction
+        .final_outcome
+        .receipts_outcome
+        .iter()
+        .filter(|receipt_outcome| receipt_outcome.outcome.executor_id == DEX_ENGINE_ID)
+        .flat_map(|receipt_outcome| receipt_outcome.outcome.logs.iter())
+        .flat_map(|log| parse_plach_liquidity_changes(log, me))
+        .collect::<Vec<_>>();
+    let logs = transaction
+        .final_outcome
+        .receipts_outcome
+        .iter()
+        .filter(|receipt_outcome| receipt_outcome.outcome.executor_id == DEX_ENGINE_ID)
+        .flat_map(|receipt_outcome| receipt_outcome.outcome.logs.iter())
+        .collect::<Vec<_>>();
+    // Deposits and withdrawals that only carry a trade or a liquidity change aren't actions of their own
+    let traded = logs.iter().any(|log| {
+        EventLogData::<IntearDexSwapLog>::deserialize(log)
+            .is_ok_and(|log| log.validate() && log.data.trader == me)
+    });
+    if !traded && changes.is_empty() {
+        let asset_token = |asset_id: &str| match asset_id {
+            "near" => Some(Token::Near),
+            _ => asset_id
+                .strip_prefix("nep141:")?
+                .parse()
+                .ok()
+                .map(Token::Nep141),
+        };
+        for log in logs.iter() {
+            let (title, token, amount, sign, amount_class) = if let Ok(log) =
+                EventLogData::<PlachUserDepositLog>::deserialize(log)
+                && log.validate()
+                && log.data.account_id == me
+            {
+                (
+                    "Deposit to Intear DEX",
+                    asset_token(&log.data.asset_id),
+                    log.data.amount,
+                    "-",
+                    "text-red-300",
+                )
+            } else if let Ok(log) = EventLogData::<PlachWithdrawLog>::deserialize(log)
+                && log.validate()
+                && log.data.to == me
+                && log
+                    .data
+                    .from
+                    .account
+                    .as_ref()
+                    .is_some_and(|account_id| *account_id == me)
+            {
+                (
+                    "Withdraw from Intear DEX",
+                    asset_token(&log.data.asset_id),
+                    log.data.amount,
+                    "+",
+                    "text-green-300",
+                )
+            } else {
+                continue;
+            };
+            let Some(token) = token else {
+                continue;
+            };
+            actions_config.app_action();
+            actions.push(defi_action_view(
+                "/intear.svg",
+                title.to_string(),
+                token_amounts_resource(vec![(token, amount)], rpc_client.clone()),
+                sign,
+                amount_class,
+            ));
+        }
+    }
+    for (added, change) in changes {
+        // Only fungible assets can be in xyk pools
+        let token = |asset_id: PlachAssetId| match asset_id {
+            PlachAssetId::Near => Some(Token::Near),
+            PlachAssetId::Nep141(token_id) => Some(Token::Nep141(token_id)),
+            PlachAssetId::Nep245(..) | PlachAssetId::Nep171(..) => None,
+        };
+        let (Some(token_0), Some(token_1)) = (token(change.asset_0), token(change.asset_1)) else {
+            continue;
+        };
+        let (title, sign, amount_class) = if added {
+            ("Add liquidity", "-", "text-red-300")
+        } else {
+            ("Remove liquidity", "+", "text-green-300")
+        };
+        actions_config.app_action();
+        actions.push(defi_action_view(
+            "/intear.svg",
+            title.to_string(),
+            token_amounts_resource(
+                vec![(token_0, change.amount_0), (token_1, change.amount_1)],
+                rpc_client.clone(),
+            ),
+            sign,
+            amount_class,
+        ));
+    }
+}
+
+/// Rhea Lend (Burrow): supplying, collateral, borrowing and repaying
+fn add_rhea_lend_actions(
+    actions: &mut Vec<AnyView>,
+    transaction: &FinalExecutionOutcomeWithReceiptView,
+    me: &AccountIdRef,
+    actions_config: &mut ActionsConfig,
+    rpc_client: RpcClient,
+) {
+    const LENDING_ID: &str = "contract.main.burrow.near";
+    let events = transaction
+        .final_outcome
+        .receipts_outcome
+        .iter()
+        .filter(|receipt_outcome| receipt_outcome.outcome.executor_id == LENDING_ID)
+        .flat_map(|receipt_outcome| receipt_outcome.outcome.logs.iter())
+        .filter_map(|log| EventLogData::<RheaLendLog>::deserialize(log).ok())
+        .filter(|log| log.validate())
+        .flat_map(|log| {
+            let event = log.event;
+            log.data
+                .0
+                .into_iter()
+                .map(move |change| (event.clone(), change))
+        })
+        .filter(|(_, change)| change.account_id == me)
+        .collect::<Vec<_>>();
+    let happened = |event: &str, token_id: &AccountId| {
+        events
+            .iter()
+            .any(|(other_event, change)| other_event == event && change.token_id == *token_id)
+    };
+    for (event, change) in events.iter() {
+        // Moves into and out of the supply are shown together with what they were for
+        let (title, sign, amount_class) = match event.as_str() {
+            "deposit" if happened("repay", &change.token_id) => continue,
+            "deposit" if happened("increase_collateral", &change.token_id) => {
+                ("Supply as collateral", "-", "text-red-300")
+            }
+            "deposit" => ("Supply", "-", "text-red-300"),
+            "increase_collateral" if happened("deposit", &change.token_id) => continue,
+            "increase_collateral" => ("Use as collateral", "", ""),
+            "withdraw_succeeded" if happened("borrow", &change.token_id) => continue,
+            "withdraw_succeeded" if happened("decrease_collateral", &change.token_id) => {
+                ("Withdraw collateral", "+", "text-green-300")
+            }
+            "withdraw_succeeded" => ("Withdraw", "+", "text-green-300"),
+            "decrease_collateral" if happened("withdraw_succeeded", &change.token_id) => continue,
+            "decrease_collateral" => ("Stop using as collateral", "", ""),
+            "borrow" => ("Borrow", "+", "text-green-300"),
+            "repay" => ("Repay", "-", "text-red-300"),
+            _ => continue,
+        };
+        actions_config.app_action();
+        let token_id = change.token_id.clone();
+        let amount = change.amount;
+        let rpc_client = rpc_client.clone();
+        // Rhea Lend keeps amounts with extra decimals added to each token's own
+        let amounts = LocalResource::new(move || {
+            let token_id = token_id.clone();
+            let rpc_client = rpc_client.clone();
+            async move {
+                #[derive(Debug, Deserialize)]
+                struct Asset {
+                    config: AssetConfig,
+                }
+                #[derive(Debug, Deserialize)]
+                struct AssetConfig {
+                    extra_decimals: u32,
+                }
+                let asset = rpc_client
+                    .call::<Asset>(
+                        LENDING_ID.parse().unwrap(),
+                        "get_asset",
+                        serde_json::json!({ "token_id": token_id }),
+                        Default::default(),
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let metadata = get_ft_metadata(token_id, rpc_client).await?;
+                Ok(vec![(
+                    metadata,
+                    amount / 10u128.pow(asset.config.extra_decimals),
+                )])
+            }
+        });
+        actions.push(defi_action_view(
+            "/history-rhea.svg",
+            format!("Rhea Lend · {title}"),
+            amounts,
+            sign,
+            amount_class,
+        ));
+    }
+}
+
+/// Rhea (v1) balance: tokens deposited with an empty `ft_transfer_call` message, and withdrawals
+fn add_rhea_balance_actions(
+    actions: &mut Vec<AnyView>,
+    transaction: &FinalExecutionOutcomeWithReceiptView,
+    me: &AccountIdRef,
+    actions_config: &mut ActionsConfig,
+    rpc_client: RpcClient,
+) {
+    const EXCHANGE_ID: &str = "v2.ref-finance.near";
+    for receipt in transaction.receipts.iter() {
+        if receipt.receiver_id != EXCHANGE_ID
+            || !receipt_succeeded(transaction, &receipt.receipt_id)
+        {
+            continue;
+        }
+        let ReceiptEnumView::Action {
+            actions: receipt_actions,
+            ..
+        } = &receipt.receipt
+        else {
+            continue;
+        };
+        for action in receipt_actions.iter() {
+            let ActionView::FunctionCall {
+                method_name, args, ..
+            } = action
+            else {
+                continue;
+            };
+            let (title, token, amount, sign, amount_class) = match method_name.as_str() {
+                "ft_on_transfer" => {
+                    #[derive(Debug, Deserialize)]
+                    struct Args {
+                        sender_id: AccountId,
+                        #[serde(with = "dec_format")]
+                        amount: Balance,
+                        msg: String,
+                    }
+                    // Messages with actions are trades, an empty one only deposits
+                    match serde_json::from_slice::<Args>(args) {
+                        Ok(args) if args.sender_id == me && args.msg.is_empty() => (
+                            "Deposit to Rhea",
+                            Token::Nep141(receipt.predecessor_id.clone()),
+                            args.amount,
+                            "-",
+                            "text-red-300",
+                        ),
+                        _ => continue,
+                    }
+                }
+                "withdraw" if receipt.predecessor_id == me => {
+                    #[derive(Debug, Deserialize)]
+                    struct Args {
+                        token_id: AccountId,
+                    }
+                    let Ok(args) = serde_json::from_slice::<Args>(args) else {
+                        continue;
+                    };
+                    // The requested amount can be 0 for everything, so the payout tells how much it was.
+                    // wNEAR can be paid out unwrapped
+                    let payout = transaction.receipts.iter().find_map(|payout| {
+                        if payout.predecessor_id != EXCHANGE_ID
+                            || payout.receiver_id != args.token_id
+                        {
+                            return None;
+                        }
+                        let ReceiptEnumView::Action { actions, .. } = &payout.receipt else {
+                            return None;
+                        };
+                        actions.iter().find_map(|action| match action {
+                            ActionView::FunctionCall {
+                                method_name, args, ..
+                            } if method_name == "ft_transfer" => {
+                                let transfer =
+                                    serde_json::from_slice::<FtTransferArgs>(args).ok()?;
+                                (transfer.receiver_id == me).then(|| {
+                                    (Token::Nep141(payout.receiver_id.clone()), transfer.amount)
+                                })
+                            }
+                            ActionView::FunctionCall {
+                                method_name, args, ..
+                            } if method_name == "near_withdraw" => {
+                                #[derive(Debug, Deserialize)]
+                                struct NearWithdrawArgs {
+                                    #[serde(with = "dec_format")]
+                                    amount: Balance,
+                                }
+                                let near_withdraw =
+                                    serde_json::from_slice::<NearWithdrawArgs>(args).ok()?;
+                                Some((Token::Near, near_withdraw.amount))
+                            }
+                            _ => None,
+                        })
+                    });
+                    let Some((token, amount)) = payout else {
+                        continue;
+                    };
+                    ("Withdraw from Rhea", token, amount, "+", "text-green-300")
+                }
+                _ => continue,
+            };
+            actions_config.app_action();
+            actions.push(defi_action_view(
+                "/history-rhea.svg",
+                title.to_string(),
+                token_amounts_resource(vec![(token, amount)], rpc_client.clone()),
+                sign,
+                amount_class,
+            ));
+        }
+    }
+}
+
+/// Meta Pool liquid staking of NEAR for stNEAR
+fn add_meta_pool_actions(
+    actions: &mut Vec<AnyView>,
+    transaction: &FinalExecutionOutcomeWithReceiptView,
+    me: &AccountIdRef,
+    actions_config: &mut ActionsConfig,
+    rpc_client: RpcClient,
+) {
+    const META_POOL_ID: &str = "meta-pool.near";
+    let logs = transaction
+        .final_outcome
+        .receipts_outcome
+        .iter()
+        .filter(|receipt_outcome| receipt_outcome.outcome.executor_id == META_POOL_ID)
+        .flat_map(|receipt_outcome| receipt_outcome.outcome.logs.iter())
+        .filter_map(|log| serde_json::from_str::<MetaPoolLog>(log).ok())
+        .filter(|log| log.account_id == me);
+    for log in logs {
+        let (title, sign, amount_class) = match log.event.as_str() {
+            "STAKE" => ("Meta Pool · Stake", "-", "text-red-300"),
+            // Delayed unstaking makes the NEAR withdrawable after a few epochs
+            "D-UNSTK" => ("Meta Pool · Start unstaking", "", ""),
+            "D-WITHD" => ("Meta Pool · Withdraw unstaked", "+", "text-green-300"),
+            "LIQ.U" => {
+                let (Some(stnear), Some(near)) = (log.stnear, log.near) else {
+                    continue;
+                };
+                actions_config.app_action();
+                let amounts = token_amounts_resource(
+                    vec![
+                        (Token::Nep141(META_POOL_ID.parse().unwrap()), stnear),
+                        (Token::Near, near),
+                    ],
+                    rpc_client.clone(),
+                );
+                actions.push(
+                    view! {
+                        <div class="flex items-center gap-2">
+                            <img
+                                src="/history-meta-pool.svg"
+                                width="40"
+                                height="40"
+                                class="min-w-[40px] min-h-[40px]"
+                            />
+                            <div class="flex flex-col">
+                                <span class="text-sm text-neutral-400">"Meta Pool · Liquid unstake"</span>
+                                {move || {
+                                    let Some(Ok(amounts)) = amounts.get() else {
+                                        return ().into_any();
+                                    };
+                                    let [(stnear, stnear_amount), (near, near_amount)] = <[_; 2]>::try_from(
+                                            amounts,
+                                        )
+                                        .expect("two amounts were requested");
+                                    token_trade_amounts_view(
+                                        stnear.icon.clone(),
+                                        format_token_amount(stnear_amount, stnear.decimals, &stnear.symbol),
+                                        near.icon.clone(),
+                                        format_token_amount(near_amount, near.decimals, &near.symbol),
+                                    )
+                                }}
+                            </div>
+                        </div>
+                    }
+                    .into_any(),
+                );
+                continue;
+            }
+            _ => continue,
+        };
+        let Some(amount) = log.amount else {
+            continue;
+        };
+        actions_config.app_action();
+        actions.push(defi_action_view(
+            "/history-meta-pool.svg",
+            title.to_string(),
+            token_amounts_resource(vec![(Token::Near, amount)], rpc_client.clone()),
+            sign,
+            amount_class,
+        ));
     }
 }

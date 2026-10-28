@@ -671,7 +671,7 @@ fn TransactionsPreview(transactions: Vec<WalletSelectorTransaction>) -> impl Int
                                                 _ => None,
                                             };
                                             view! {
-                                                {display_transaction(&outcome).into_any()}
+                                                {display_transaction(&outcome, false).into_any()}
                                                 {failure
                                                     .map(|error| {
                                                         view! {

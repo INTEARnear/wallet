@@ -1,6 +1,6 @@
 use base64::{Engine, prelude::BASE64_STANDARD};
 use bigdecimal::{BigDecimal, One, RoundingMode, ToPrimitive, Zero, num_bigint::BigInt};
-use borsh::BorshSerialize;
+use borsh::{BorshDeserialize, BorshSerialize};
 use cached::proc_macro::cached;
 use futures_util::lock::Mutex;
 use leptos::prelude::*;
@@ -867,9 +867,9 @@ pub async fn get_nft_collection_metadata(
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]
 pub struct NftToken {
-    token_id: String,
-    owner_id: AccountId,
-    metadata: NftTokenMetadata,
+    pub token_id: String,
+    pub owner_id: AccountId,
+    pub metadata: NftTokenMetadata,
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]
@@ -947,7 +947,8 @@ pub struct RefDclSwapEvent {
 
 impl EventLogData<RefDclSwapLog> {
     pub fn validate(&self) -> bool {
-        self.standard == "dcl.ref" && self.event == "swap"
+        // `swap_desire` is logged for swaps by exact output amount
+        self.standard == "dcl.ref" && (self.event == "swap" || self.event == "swap_desire")
     }
 }
 
@@ -971,6 +972,446 @@ impl EventLogData<IntearDexSwapLog> {
     pub fn validate(&self) -> bool {
         self.standard == "inteardex" && self.event == "swap"
     }
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct JustHootRouterOrderFilledLog {
+    pub receiver_id: AccountId,
+    pub token_in: AccountId,
+    #[serde(with = "dec_format")]
+    pub amount_in: Balance,
+    pub token_out: AccountId,
+    #[serde(with = "dec_format")]
+    pub amount_out: Balance,
+}
+
+impl EventLogData<JustHootRouterOrderFilledLog> {
+    pub fn validate(&self) -> bool {
+        self.standard == "hoot_router" && self.event == "order_filled"
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct JustHootMemeLaunchedLog {
+    pub token_id: AccountId,
+    pub creator_id: AccountId,
+}
+
+impl EventLogData<JustHootMemeLaunchedLog> {
+    pub fn validate(&self) -> bool {
+        self.standard == "hoot_launcher_v2" && self.event == "meme_launched"
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[serde(transparent)]
+pub struct NearlyLaunchLog(pub Vec<NearlyLaunchEvent>);
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct NearlyLaunchEvent {
+    pub token: AccountId,
+    pub creator: AccountId,
+}
+
+impl EventLogData<NearlyLaunchLog> {
+    pub fn validate(&self) -> bool {
+        self.standard == "nearpad" && self.event == "launch"
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[serde(transparent)]
+pub struct NearlyCreatorFeesClaimedLog(pub Vec<NearlyCreatorFeesClaimedEvent>);
+
+impl Deref for NearlyCreatorFeesClaimedLog {
+    type Target = Vec<NearlyCreatorFeesClaimedEvent>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct NearlyCreatorFeesClaimedEvent {
+    pub creator: AccountId,
+}
+
+impl EventLogData<NearlyCreatorFeesClaimedLog> {
+    pub fn validate(&self) -> bool {
+        self.standard == "nearpad" && self.event == "creator_fees_claimed"
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct NoaMarketOrderFilledLog {
+    pub market_id: u64,
+    pub user: AccountId,
+    pub outcome_id: u64,
+    /// Shares have the same decimals as the market's token
+    #[serde(with = "dec_format")]
+    pub shares_fp: Balance,
+    #[serde(with = "dec_format")]
+    pub amount_spent: Balance,
+}
+
+impl EventLogData<NoaMarketOrderFilledLog> {
+    pub fn validate(&self) -> bool {
+        self.standard == "noamarket" && self.event == "order_filled"
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct NoaMarketSellFilledLog {
+    pub market_id: u64,
+    pub user: AccountId,
+    pub outcome_id: u64,
+    /// Shares have the same decimals as the market's token
+    #[serde(with = "dec_format")]
+    pub shares_fp: Balance,
+    #[serde(with = "dec_format")]
+    pub amount_received: Balance,
+}
+
+impl EventLogData<NoaMarketSellFilledLog> {
+    pub fn validate(&self) -> bool {
+        self.standard == "noamarket" && self.event == "sell_filled"
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct NoaMarketPayoutClaimedLog {
+    pub market_id: u64,
+    pub user: AccountId,
+    #[serde(with = "dec_format")]
+    pub net_payout: Balance,
+}
+
+impl EventLogData<NoaMarketPayoutClaimedLog> {
+    pub fn validate(&self) -> bool {
+        self.standard == "noamarket" && self.event == "payout_claimed"
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct NoaMarketDepositLog {
+    pub account_id: AccountId,
+    pub token_id: AccountId,
+    #[serde(with = "dec_format")]
+    pub amount: Balance,
+}
+
+impl EventLogData<NoaMarketDepositLog> {
+    pub fn validate(&self) -> bool {
+        self.standard == "noamarket" && self.event == "deposit"
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct NoaMarketWithdrawCompletedLog {
+    pub account_id: AccountId,
+    pub token_id: AccountId,
+    #[serde(with = "dec_format")]
+    pub amount: Balance,
+    pub success: bool,
+}
+
+impl EventLogData<NoaMarketWithdrawCompletedLog> {
+    pub fn validate(&self) -> bool {
+        self.standard == "noamarket" && self.event == "withdraw_completed"
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct NoaMarket {
+    pub title: String,
+    pub token_id: AccountId,
+    pub outcomes: Vec<NoaMarketOutcome>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct NoaMarketOutcome {
+    pub id: u64,
+    pub name: String,
+}
+
+impl NoaMarket {
+    pub fn outcome_name(&self, outcome_id: u64) -> String {
+        self.outcomes
+            .iter()
+            .find(|outcome| outcome.id == outcome_id)
+            .map(|outcome| outcome.name.clone())
+            .unwrap_or_else(|| format!("#{outcome_id}"))
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[serde(transparent)]
+pub struct RheaDclLiquidityLog(pub Vec<RheaDclLiquidityChange>);
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct RheaDclLiquidityChange {
+    pub owner_id: AccountId,
+    pub pool_id: String,
+    #[serde(default, with = "dec_format")]
+    pub paid_token_x: Option<Balance>,
+    #[serde(default, with = "dec_format")]
+    pub paid_token_y: Option<Balance>,
+    #[serde(default, with = "dec_format")]
+    pub removed_amount: Option<Balance>,
+    #[serde(default, with = "dec_format")]
+    pub refund_token_x: Option<Balance>,
+    #[serde(default, with = "dec_format")]
+    pub refund_token_y: Option<Balance>,
+    #[serde(default, with = "dec_format")]
+    pub claim_fee_token_x: Option<Balance>,
+    #[serde(default, with = "dec_format")]
+    pub claim_fee_token_y: Option<Balance>,
+}
+
+impl EventLogData<RheaDclLiquidityLog> {
+    pub fn validate(&self) -> bool {
+        self.standard == "dcl.ref"
+            && (self.event == "liquidity_added" || self.event == "liquidity_removed")
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[serde(transparent)]
+pub struct RheaDclOrderLog(pub Vec<RheaDclOrder>);
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct RheaDclOrder {
+    pub order_id: String,
+    pub owner_id: AccountId,
+    pub pool_id: String,
+    pub point: i32,
+    pub sell_token: AccountId,
+    pub buy_token: AccountId,
+    #[serde(default, with = "dec_format")]
+    pub original_amount: Option<Balance>,
+    #[serde(default, with = "dec_format")]
+    pub actual_cancel_amount: Option<Balance>,
+    #[serde(default, with = "dec_format")]
+    pub bought_amount: Option<Balance>,
+}
+
+impl EventLogData<RheaDclOrderLog> {
+    pub fn validate(&self) -> bool {
+        self.standard == "dcl.ref"
+            && matches!(
+                self.event.as_str(),
+                "order_added" | "order_cancelled" | "order_completed"
+            )
+    }
+}
+
+#[derive(BorshDeserialize, Debug, Clone, PartialEq)]
+struct PlachDexEventData {
+    dex_id: PlachDexId,
+    event: Vec<u8>,
+    #[allow(dead_code)]
+    referrer: Option<String>,
+    user: Option<String>,
+}
+
+#[derive(BorshDeserialize, Debug, Clone, PartialEq)]
+struct PlachDexId {
+    deployer: String,
+    id: String,
+}
+
+#[derive(BorshDeserialize, Debug, Clone, PartialEq)]
+pub enum PlachAssetId {
+    Near,
+    Nep141(AccountId),
+    Nep245(AccountId, String),
+    Nep171(AccountId, String),
+}
+
+/// The start of xyk's `LiquidityAdded` and `LiquidityRemoved` events, which share their first fields
+#[derive(BorshDeserialize, Debug, Clone, PartialEq)]
+pub struct PlachLiquidityChange {
+    pub pool_id: u32,
+    pub asset_0: PlachAssetId,
+    pub asset_1: PlachAssetId,
+    pub amount_0: Balance,
+    pub amount_1: Balance,
+}
+
+/// Liquidity added (`true`) and removed (`false`) by `user` in Plach's xyk pools. Pool events are
+/// logged by the dex engine as one lz4-compressed borsh `dex_events_borsh` event
+pub fn parse_plach_liquidity_changes(
+    log: &str,
+    user: &AccountIdRef,
+) -> Vec<(bool, PlachLiquidityChange)> {
+    const XYK_LIQUIDITY_ADDED: u8 = 2;
+    const XYK_LIQUIDITY_REMOVED: u8 = 3;
+    let Ok(log) = EventLogData::<String>::deserialize(log) else {
+        return vec![];
+    };
+    if log.standard != "inteardex" || log.event != "dex_events_borsh" {
+        return vec![];
+    }
+    let Some(events) = BASE64_STANDARD
+        .decode(&log.data)
+        .ok()
+        .and_then(|compressed| lz4_flex::decompress_size_prepended(&compressed).ok())
+        .and_then(|events| borsh::from_slice::<Vec<PlachDexEventData>>(&events).ok())
+    else {
+        return vec![];
+    };
+    events
+        .into_iter()
+        .filter(|event| {
+            event.dex_id.deployer == "slimedragon.near"
+                && event.dex_id.id == "xyk"
+                && event.user.as_deref() == Some(user.as_str())
+        })
+        .filter_map(|event| {
+            let (variant, fields) = event.event.split_first()?;
+            let added = match *variant {
+                XYK_LIQUIDITY_ADDED => true,
+                XYK_LIQUIDITY_REMOVED => false,
+                _ => return None,
+            };
+            let change = PlachLiquidityChange::deserialize(&mut &fields[..]).ok()?;
+            Some((added, change))
+        })
+        .collect()
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct PlachUserDepositLog {
+    pub account_id: AccountId,
+    pub asset_id: String,
+    #[serde(with = "dec_format")]
+    pub amount: Balance,
+}
+
+impl EventLogData<PlachUserDepositLog> {
+    pub fn validate(&self) -> bool {
+        self.standard == "inteardex" && self.event == "user_deposit"
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct PlachWithdrawLog {
+    pub from: PlachBalanceOwner,
+    pub to: AccountId,
+    pub asset_id: String,
+    #[serde(with = "dec_format")]
+    pub amount: Balance,
+}
+
+/// Plach balances belong to an account or to one of its dexes
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct PlachBalanceOwner {
+    #[serde(rename = "Account")]
+    pub account: Option<AccountId>,
+}
+
+impl EventLogData<PlachWithdrawLog> {
+    pub fn validate(&self) -> bool {
+        self.standard == "inteardex" && self.event == "withdraw"
+    }
+}
+
+/// Meta Pool logs JSON objects without the NEP-297 prefix
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct MetaPoolLog {
+    pub event: String,
+    #[serde(alias = "account")]
+    pub account_id: AccountId,
+    #[serde(default, with = "dec_format")]
+    pub amount: Option<Balance>,
+    #[serde(default, with = "dec_format")]
+    pub stnear: Option<Balance>,
+    #[serde(default, with = "dec_format")]
+    pub near: Option<Balance>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[serde(transparent)]
+pub struct RheaLendLog(pub Vec<RheaLendChange>);
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct RheaLendChange {
+    pub account_id: AccountId,
+    pub token_id: AccountId,
+    /// Has the asset's extra decimals added to the token's own
+    #[serde(with = "dec_format")]
+    pub amount: Balance,
+}
+
+impl EventLogData<RheaLendLog> {
+    pub fn validate(&self) -> bool {
+        self.standard == "burrow"
+    }
+}
+
+/// near.cooking marketplace logs are JSON objects without the NEP-297 prefix
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct NearCookingMarketLog {
+    pub params: NearCookingMarketParams,
+    #[serde(rename = "type")]
+    pub kind: String,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct NearCookingMarketParams {
+    #[serde(default)]
+    pub owner_id: Option<AccountId>,
+    #[serde(default)]
+    pub buyer_id: Option<AccountId>,
+    pub nft_contract_id: AccountId,
+    #[serde(default)]
+    pub token_id: Option<String>,
+    #[serde(default)]
+    pub ft_token_id: Option<String>,
+    #[serde(default, with = "dec_format")]
+    pub price: Option<Balance>,
+}
+
+#[cached(
+    result = true,
+    key = "(AccountId, u64)",
+    convert = "{ (dao_id.clone(), proposal_id) }"
+)]
+pub async fn get_sputnik_proposal_description(
+    dao_id: AccountId,
+    proposal_id: u64,
+) -> Result<String, String> {
+    #[derive(Deserialize)]
+    struct Proposal {
+        description: String,
+    }
+    let RpcContext { client, .. } = expect_context::<RpcContext>();
+    client()
+        .call::<Proposal>(
+            dao_id,
+            "get_proposal",
+            serde_json::json!({ "id": proposal_id }),
+            Default::default(),
+        )
+        .await
+        .map(|proposal| proposal.description)
+        .map_err(|e| e.to_string())
+}
+
+#[cached(result = true, key = "u64", convert = "{ market_id }")]
+pub async fn get_noamarket_market(
+    market_id: u64,
+    rpc_client: RpcClient,
+) -> Result<NoaMarket, String> {
+    rpc_client
+        .call::<NoaMarket>(
+            "v3.noamarket.near".parse().unwrap(),
+            "get_market",
+            serde_json::json!({ "market_id": market_id }),
+            Default::default(),
+        )
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]
@@ -1338,6 +1779,16 @@ pub async fn sign_nep366(
 pub enum Resolution {
     Low,
     High,
+}
+
+/// Token media is either a full URL or a path relative to the collection's `base_uri`
+pub fn nft_media_url(base_uri: Option<&str>, media: &str) -> String {
+    match base_uri {
+        Some(base_uri) if !media.contains("://") && !media.starts_with("data:") => {
+            format!("{}/{media}", base_uri.trim_end_matches('/'))
+        }
+        _ => media.to_string(),
+    }
 }
 
 pub fn proxify_url(url: &str, resolution: Resolution) -> String {

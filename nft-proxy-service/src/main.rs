@@ -126,6 +126,8 @@ async fn main() {
 
     let state = AppState {
         client: Client::builder()
+            // Arweave gateways and Wikimedia reject requests without a User-Agent
+            .user_agent("IntearWalletNftProxy/1.0 (+https://wallet.intear.tech)")
             .timeout(Duration::from_secs(10))
             .dns_resolver(Arc::new(PublicAddressResolver))
             .redirect(public_redirect_policy())
