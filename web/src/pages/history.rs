@@ -1912,6 +1912,111 @@ fn add_near_balance_change(
     );
 }
 
+/// Net change of each token in a transaction with an app's action, as short lines below it.
+/// Tokens that come and go within the transaction, like NEAR wrapped to be swapped, cancel out
+fn add_net_ft_changes(
+    actions: &mut Vec<AnyView>,
+    transaction: &FinalExecutionOutcomeWithReceiptView,
+    me: &AccountIdRef,
+    rpc_client: RpcClient,
+) {
+    let mut changes = Vec::<(AccountId, i128)>::new();
+    let mut add_change = |token_id: &AccountId, amount: Balance, received: bool| {
+        let amount = amount as i128;
+        let change = if received { amount } else { -amount };
+        match changes
+            .iter_mut()
+            .find(|(other_token_id, _)| other_token_id == token_id)
+        {
+            Some((_, total)) => *total += change,
+            None => changes.push((token_id.clone(), change)),
+        }
+    };
+    for receipt_outcome in transaction.final_outcome.receipts_outcome.iter() {
+        let token_id = &receipt_outcome.outcome.executor_id;
+        for log in receipt_outcome.outcome.logs.iter() {
+            if let (Ok(log), _) | (_, Ok(log)) = (
+                EventLogData::<FtTransferLog>::deserialize(log),
+                FtTransferLog::deserialize_tkn_farm_log(log).map(|log| EventLogData {
+                    standard: NEP141_EVENT_STANDARD_STRING.to_string(),
+                    version: "0.0.0".to_string(), // not standard
+                    event: "ft_transfer".to_string(),
+                    data: log,
+                }),
+            ) && log.validate()
+            {
+                for transfer in log.data.iter() {
+                    if transfer.old_owner_id == me {
+                        add_change(token_id, transfer.amount, false);
+                    }
+                    if transfer.new_owner_id == me {
+                        add_change(token_id, transfer.amount, true);
+                    }
+                }
+            }
+            if let Ok(log) = EventLogData::<FtMintLog>::deserialize(log)
+                && log.validate()
+            {
+                for mint in log.data.iter().filter(|mint| mint.owner_id == me) {
+                    add_change(token_id, mint.amount, true);
+                }
+            }
+            if let Ok(log) = EventLogData::<FtBurnLog>::deserialize(log)
+                && log.validate()
+            {
+                for burn in log.data.iter().filter(|burn| burn.owner_id == me) {
+                    add_change(token_id, burn.amount, false);
+                }
+            }
+            // wNEAR logs wrapping and unwrapping as text and not as mints and burns
+            if token_id == "wrap.near" || token_id == "wrap.testnet" {
+                let wrap = log
+                    .strip_prefix("Deposit ")
+                    .and_then(|deposit| deposit.split_once(" NEAR to "))
+                    .map(|(amount, account_id)| (amount, account_id, true));
+                let unwrap = log
+                    .strip_prefix("Withdraw ")
+                    .and_then(|withdrawal| withdrawal.split_once(" NEAR from "))
+                    .map(|(amount, account_id)| (amount, account_id, false));
+                if let Some((amount, account_id, received)) = wrap.or(unwrap)
+                    && account_id == me.as_str()
+                    && let Ok(amount) = amount.parse()
+                {
+                    add_change(token_id, amount, received);
+                }
+            }
+        }
+    }
+    for (token_id, change) in changes.into_iter().filter(|(_, change)| *change != 0) {
+        let (sign, amount_class) = if change > 0 {
+            ("+", "text-green-300")
+        } else {
+            ("-", "text-red-300")
+        };
+        let rpc_client = rpc_client.clone();
+        let metadata =
+            LocalResource::new(move || get_ft_metadata(token_id.clone(), rpc_client.clone()));
+        actions.push(
+            (move || {
+                let Some(Ok(metadata)) = metadata.get() else {
+                    return ().into_any();
+                };
+                view! {
+                    <div class="flex items-center gap-2 pl-12">
+                        <img src=metadata.icon width="20" height="20" class="rounded-full" />
+                        <span class=format!("{amount_class} text-sm")>
+                            {sign}
+                            {format_token_amount(change.unsigned_abs(), metadata.decimals, &metadata.symbol)}
+                        </span>
+                    </div>
+                }
+                .into_any()
+            })
+            .into_any(),
+        );
+    }
+}
+
 fn add_ft_actions(
     actions: &mut Vec<AnyView>,
     transaction: &FinalExecutionOutcomeWithReceiptView,
@@ -1919,8 +2024,13 @@ fn add_ft_actions(
     actions_config: &mut ActionsConfig,
     rpc_client: RpcClient,
 ) {
-    if actions_config.ft_event_format == TokenEventFormat::Hidden {
-        return;
+    match actions_config.ft_event_format {
+        TokenEventFormat::Hidden => return,
+        TokenEventFormat::Short => {
+            add_net_ft_changes(actions, transaction, me, rpc_client);
+            return;
+        }
+        TokenEventFormat::Full => {}
     }
     for receipt in transaction.receipts.iter() {
         for log in transaction
@@ -1951,10 +2061,9 @@ fn add_ft_actions(
                     for transfer in log.data.iter().cloned() {
                         if transfer.old_owner_id == me {
                             let transfer = transfer.clone();
-                            let ft_event_format = actions_config.ft_event_format;
                             actions.push(
                                 view! {
-                                    <div class=if ft_event_format == TokenEventFormat::Short { "flex items-center gap-2 pl-12" } else { "flex items-center gap-2" }>
+                                    <div class="flex items-center gap-2">
                                         {move || {
                                             let new_owner_id = transfer.new_owner_id.clone();
                                             if let Some(Ok(metadata)) = metadata.get() {
@@ -1962,32 +2071,12 @@ fn add_ft_actions(
                                                 view! {
                                                     <img
                                                         src=metadata.icon.clone()
-                                                        width=if ft_event_format == TokenEventFormat::Short {
-                                                            "20"
-                                                        } else {
-                                                            "40"
-                                                        }
-                                                        height=if ft_event_format == TokenEventFormat::Short {
-                                                            "20"
-                                                        } else {
-                                                            "40"
-                                                        }
+                                                        width="40"
+                                                        height="40"
                                                         class="rounded-full"
                                                     />
                                                     <span>
-                                                        {if ft_event_format == TokenEventFormat::Short {
-                                                            view! {
-                                                                <span class="text-red-300 text-sm">
-                                                                    "-"
-                                                                    {move || format_token_amount(
-                                                                        transfer.amount,
-                                                                        metadata.decimals,
-                                                                        &metadata.symbol,
-                                                                    )}
-                                                                </span>
-                                                            }
-                                                                .into_any()
-                                                        } else {
+                                                        {{
                                                             let memo = transfer.memo.clone();
                                                             view! {
                                                                 <div class="flex flex-col gap-1">
@@ -2011,7 +2100,7 @@ fn add_ft_actions(
                                                                 </div>
                                                             }
                                                                 .into_any()
-                                                        }}
+}}
                                                     </span>
                                                 }
                                                     .into_any()
@@ -2026,40 +2115,19 @@ fn add_ft_actions(
                         }
                         if transfer.new_owner_id == me {
                             let transfer = transfer.clone();
-                            let ft_event_format = actions_config.ft_event_format;
                             actions.push(view! {
-                                <div class=if ft_event_format == TokenEventFormat::Short { "flex items-center gap-2 pl-12" } else { "flex items-center gap-2" }>
+                                <div class="flex items-center gap-2">
                                     {move || {
                                         if let Some(Ok(metadata)) = metadata.get() {
                                             view! {
                                                 <img
                                                     src=metadata.icon.clone()
-                                                    width=if ft_event_format == TokenEventFormat::Short {
-                                                        "20"
-                                                    } else {
-                                                        "40"
-                                                    }
-                                                    height=if ft_event_format == TokenEventFormat::Short {
-                                                        "20"
-                                                    } else {
-                                                        "40"
-                                                    }
+                                                    width="40"
+                                                    height="40"
                                                     class="rounded-full"
                                                 />
                                                 <span>
-                                                    {if ft_event_format == TokenEventFormat::Short {
-                                                        view! {
-                                                            <span class="text-green-300 text-sm">
-                                                                "+"
-                                                                {format_token_amount(
-                                                                    transfer.amount,
-                                                                    metadata.decimals,
-                                                                    &metadata.symbol,
-                                                                )}
-                                                            </span>
-                                                        }
-                                                            .into_any()
-                                                    } else {
+                                                    {{
                                                         let memo = transfer.memo.clone();
                                                         let sender_id = transfer.old_owner_id.clone();
                                                         view! {
@@ -2084,7 +2152,7 @@ fn add_ft_actions(
                                                             </div>
                                                         }
                                                             .into_any()
-                                                    }}
+}}
                                                 </span>
                                             }
                                                 .into_any()
@@ -2107,41 +2175,20 @@ fn add_ft_actions(
                 if log.validate() {
                     for mint in log.data.iter().cloned() {
                         if mint.owner_id == me {
-                            let ft_event_format = actions_config.ft_event_format;
                             actions.push(
                                 view! {
-                                    <div class=if ft_event_format == TokenEventFormat::Short { "flex items-center gap-2 pl-12" } else { "flex items-center gap-2" }>
+                                    <div class="flex items-center gap-2">
                                         {move || {
                                             if let Some(Ok(metadata)) = metadata.get() {
                                                 view! {
                                                     <img
                                                         src=metadata.icon.clone()
-                                                        width=if ft_event_format == TokenEventFormat::Short {
-                                                            "20"
-                                                        } else {
-                                                            "40"
-                                                        }
-                                                        height=if ft_event_format == TokenEventFormat::Short {
-                                                            "20"
-                                                        } else {
-                                                            "40"
-                                                        }
+                                                        width="40"
+                                                        height="40"
                                                         class="rounded-full"
                                                     />
                                                     <span>
-                                                        {if ft_event_format == TokenEventFormat::Short {
-                                                            view! {
-                                                                <span class="text-green-300 text-sm">
-                                                                    "+"
-                                                                    {format_token_amount(
-                                                                        mint.amount,
-                                                                        metadata.decimals,
-                                                                        &metadata.symbol,
-                                                                    )}
-                                                                </span>
-                                                            }
-                                                                .into_any()
-                                                        } else {
+                                                        {{
                                                             let memo = mint.memo.clone();
                                                             view! {
                                                                 <div class="flex flex-col gap-1">
@@ -2160,7 +2207,7 @@ fn add_ft_actions(
                                                                 </div>
                                                             }
                                                                 .into_any()
-                                                        }}
+}}
                                                     </span>
                                                 }
                                                     .into_any()
@@ -2185,41 +2232,20 @@ fn add_ft_actions(
                 if log.validate() {
                     for burn in log.data.iter().cloned() {
                         if burn.owner_id == me {
-                            let ft_event_format = actions_config.ft_event_format;
                             actions.push(
                                 view! {
-                                    <div class=if ft_event_format == TokenEventFormat::Short { "flex items-center gap-2 pl-12" } else { "flex items-center gap-2" }>
+                                    <div class="flex items-center gap-2">
                                         {move || {
                                             if let Some(Ok(metadata)) = metadata.get() {
                                                 view! {
                                                     <img
                                                         src=metadata.icon.clone()
-                                                        width=if ft_event_format == TokenEventFormat::Short {
-                                                            "20"
-                                                        } else {
-                                                            "40"
-                                                        }
-                                                        height=if ft_event_format == TokenEventFormat::Short {
-                                                            "20"
-                                                        } else {
-                                                            "40"
-                                                        }
+                                                        width="40"
+                                                        height="40"
                                                         class="rounded-full"
                                                     />
                                                     <span>
-                                                        {if ft_event_format == TokenEventFormat::Short {
-                                                            view! {
-                                                                <span class="text-red-300 text-sm">
-                                                                    "-"
-                                                                    {format_token_amount(
-                                                                        burn.amount,
-                                                                        metadata.decimals,
-                                                                        &metadata.symbol,
-                                                                    )}
-                                                                </span>
-                                                            }
-                                                                .into_any()
-                                                        } else {
+                                                        {{
                                                             let memo = burn.memo.clone();
                                                             view! {
                                                                 <div class="flex flex-col gap-1">
@@ -2238,7 +2264,7 @@ fn add_ft_actions(
                                                                 </div>
                                                             }
                                                                 .into_any()
-                                                        }}
+}}
                                                     </span>
                                                 }
                                                     .into_any()
