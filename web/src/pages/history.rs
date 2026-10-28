@@ -35,6 +35,7 @@ use crate::{
     },
 };
 use base64::{self, Engine};
+use bigdecimal::{BigDecimal, One, ToPrimitive};
 use chrono::{DateTime as ChronoDateTime, Local, NaiveDate, Utc};
 use futures_util::{future::join_all, lock::Mutex};
 use icondata::{LuArrowRight, LuCalendar, LuClock, LuPackage, LuPackageOpen};
@@ -3975,6 +3976,22 @@ fn add_rhea_liquidity_actions(
     }
 }
 
+/// DCL prices are 1.0001^point of token y per token x, in the smallest units
+fn dcl_point_price(point: i32) -> BigDecimal {
+    const PRECISION: u64 = 50;
+    let mut price = BigDecimal::one();
+    let mut base = BigDecimal::new(10001.into(), 4);
+    let mut exponent = point.unsigned_abs();
+    while exponent > 0 {
+        if exponent & 1 == 1 {
+            price = (price * &base).with_prec(PRECISION);
+        }
+        base = base.square().with_prec(PRECISION);
+        exponent >>= 1;
+    }
+    if point < 0 { price.inverse() } else { price }
+}
+
 /// Rhea DCL liquidity positions and limit orders
 fn add_rhea_dcl_actions(
     actions: &mut Vec<AnyView>,
@@ -4064,25 +4081,28 @@ fn add_rhea_dcl_actions(
                 let buy_token = Token::Nep141(order.buy_token.clone());
                 match log.event.as_str() {
                     "order_added" => {
-                        // DCL prices are 1.0001^point of token y per token x, in the smallest units
-                        let price = 1.0001f64.powi(order.point);
+                        let price = dcl_point_price(order.point);
                         let sells_token_x = order
                             .pool_id
                             .split('|')
                             .next()
                             .is_some_and(|token_x| token_x == order.sell_token.as_str());
-                        let original_amount = order.original_amount.unwrap_or_default() as f64;
-                        let expected_amount = if sells_token_x {
+                        let original_amount =
+                            BigDecimal::from(order.original_amount.unwrap_or_default());
+                        let Some(expected_amount) = (if sells_token_x {
                             original_amount * price
                         } else {
                             original_amount / price
+                        })
+                        .to_u128() else {
+                            continue;
                         };
                         let rpc_client = rpc_client.clone();
                         actions_config.app_action();
                         let amounts = token_amounts_resource(
                             vec![
                                 (sell_token, order.original_amount.unwrap_or_default()),
-                                (buy_token, expected_amount as Balance),
+                                (buy_token, expected_amount),
                             ],
                             rpc_client,
                         );

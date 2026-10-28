@@ -868,7 +868,7 @@ translation_keys! {
                 EnterAmount,
                 FetchingBestRoute,
                 RouteWrapDirectly,
-                RoutePlach,
+                RouteIntearDex,
                 BestRoute,
                 NoRoutesTitle,
                 NoRoutesHintExactIn,
@@ -936,7 +936,7 @@ translation_keys! {
                     Rhea,
                     Wrap,
                     RheaDcl,
-                    Plach,
+                    Intear,
                 },
             },
             Token {

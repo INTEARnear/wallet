@@ -196,8 +196,12 @@ fn SwapMainnet() -> impl IntoView {
     let ModalContext { modal } = expect_context::<ModalContext>();
     let (show_advanced_options, set_show_advanced_options) = signal(false);
 
-    let (selected_dexes, set_selected_dexes) =
-        signal(vec![DexId::Rhea, DexId::Wrap, DexId::RheaDcl, DexId::Plach]);
+    let (selected_dexes, set_selected_dexes) = signal(vec![
+        DexId::Rhea,
+        DexId::Wrap,
+        DexId::RheaDcl,
+        DexId::IntearDex,
+    ]);
 
     let (amount_entered, set_amount_entered) = signal("".to_string());
     let (swap_mode, set_swap_mode) = signal(SwapMode::ExactIn);
@@ -946,16 +950,16 @@ fn SwapMainnet() -> impl IntoView {
                                                         }
                                                             .into_any()
                                                     }
-                                                    DexId::Plach => {
+                                                    DexId::IntearDex => {
                                                         view! {
                                                             <div class="flex items-center gap-2">
                                                                 <img
                                                                     src="/intear.svg"
-                                                                    alt=move || pages_swap_dex_label(DexId::Plach)
+                                                                    alt=move || pages_swap_dex_label(DexId::IntearDex)
                                                                     class="w-auto h-8"
                                                                 />
                                                                 <span class="text-white font-medium text-sm">
-                                                                    {move || TranslationKey::PagesSwapRoutePlach.format(&[])}
+                                                                    {move || TranslationKey::PagesSwapRouteIntearDex.format(&[])}
                                                                 </span>
                                                             </div>
                                                         }
@@ -1461,7 +1465,7 @@ fn SwapMainnet() -> impl IntoView {
                                                         DexId::Rhea,
                                                         DexId::RheaDcl,
                                                         DexId::Wrap,
-                                                        DexId::Plach,
+                                                        DexId::IntearDex,
                                                     ];
                                                     all_dexes
                                                         .into_iter()
@@ -2151,8 +2155,7 @@ pub struct SwapRequest {
     /// NEAR Intents.
     pub signing_public_key: Option<PublicKey>,
     /// The account ID of the referrer. If provided, the route will include referral
-    /// parameter for DEXes that support it (DexId::Rhea, DexId::NearIntents,
-    /// DexId::Plach)
+    /// parameter for DEXes that support it
     pub referrer_id: Option<AccountId>,
     /// Accounts to pay a fee to, and the fee each one charges. `0.005` means 0.5%.
     #[serde(with = "json_encoded", default)]
@@ -2344,13 +2347,13 @@ pub enum DexId {
     /// AMM DEX
     ///
     /// Supports AmountIn and AmountOut
-    Plach,
+    IntearDex,
 }
 
 const RHEA_STR: &str = "Rhea";
 const WRAP_STR: &str = "Wrap";
 const RHEA_DCL_STR: &str = "RheaDcl";
-const PLACH_STR: &str = "Plach";
+const INTEAR_DEX_STR: &str = "IntearDex";
 
 impl Display for DexId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -2358,7 +2361,7 @@ impl Display for DexId {
             DexId::Rhea => f.write_str(RHEA_STR),
             DexId::Wrap => f.write_str(WRAP_STR),
             DexId::RheaDcl => f.write_str(RHEA_DCL_STR),
-            DexId::Plach => f.write_str(PLACH_STR),
+            DexId::IntearDex => f.write_str(INTEAR_DEX_STR),
         }
     }
 }
@@ -2368,7 +2371,7 @@ fn pages_swap_dex_label(dex: DexId) -> String {
         DexId::Rhea => TranslationKey::PagesSwapDexRhea.format(&[]),
         DexId::Wrap => TranslationKey::PagesSwapDexWrap.format(&[]),
         DexId::RheaDcl => TranslationKey::PagesSwapDexRheaDcl.format(&[]),
-        DexId::Plach => TranslationKey::PagesSwapDexPlach.format(&[]),
+        DexId::IntearDex => TranslationKey::PagesSwapDexIntear.format(&[]),
     }
 }
 
@@ -2380,7 +2383,7 @@ impl FromStr for DexId {
             RHEA_STR => DexId::Rhea,
             WRAP_STR => DexId::Wrap,
             RHEA_DCL_STR => DexId::RheaDcl,
-            PLACH_STR => DexId::Plach,
+            INTEAR_DEX_STR => DexId::IntearDex,
             _ => return Err(format!("Invalid dex id: {}", s)),
         })
     }
@@ -2775,16 +2778,16 @@ fn SwapConfirmationModal(
                                             }
                                                 .into_any()
                                         }
-                                        DexId::Plach => {
+                                        DexId::IntearDex => {
                                             view! {
                                                 <div class="flex items-center gap-1">
                                                     <img
                                                         src="/intear.svg"
-                                                        alt=move || pages_swap_dex_label(DexId::Plach)
+                                                        alt=move || pages_swap_dex_label(DexId::IntearDex)
                                                         class="w-auto h-5"
                                                     />
                                                     <span class="text-white text-sm">
-                                                        {move || TranslationKey::PagesSwapRoutePlach.format(&[])}
+                                                        {move || TranslationKey::PagesSwapRouteIntearDex.format(&[])}
                                                     </span>
                                                 </div>
                                             }
