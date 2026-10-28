@@ -685,6 +685,13 @@ pub(crate) fn display_transaction(
         return view! { <div>{move || TranslationKey::PagesHistoryNoSelectedAccount.format(&[])}</div> }
         .into_any();
     };
+    // Failed receipts keep their logs, but what they logged was reverted
+    let mut transaction = transaction.clone();
+    for receipt_outcome in transaction.final_outcome.receipts_outcome.iter_mut() {
+        if let ExecutionStatusView::Failure(_) = receipt_outcome.outcome.status {
+            receipt_outcome.outcome.logs.clear();
+        }
+    }
     let mut actions_config = ActionsConfig {
         show_balance_changes,
         ..Default::default()
@@ -721,7 +728,7 @@ pub(crate) fn display_transaction(
     for f in fns {
         f(
             &mut Vec::new(),
-            transaction,
+            &transaction,
             &me,
             &mut actions_config,
             client.get_untracked(),
@@ -731,7 +738,7 @@ pub(crate) fn display_transaction(
     for f in fns {
         f(
             &mut actions,
-            transaction,
+            &transaction,
             &me,
             &mut actions_config.clone(),
             client.get_untracked(),

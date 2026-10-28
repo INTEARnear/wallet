@@ -10,7 +10,7 @@ use near_min_api::{
         AccessKeyPermission, AccessKeyPermissionView, AccountId, Action, AddKeyAction,
         BlockHeightDelta, BlockReference, CryptoHash, DeleteAccountAction, DeleteKeyAction,
         DeployContractAction, DeployGlobalContractAction, DeterministicStateInitAction,
-        FinalExecutionOutcomeViewEnum, FinalExecutionStatus, Finality, FunctionCallAction,
+        ExecutionStatusView, FinalExecutionOutcomeViewEnum, Finality, FunctionCallAction,
         FunctionCallPermission, GlobalContractDeployMode, GlobalContractIdentifier, NearGas,
         NearToken, SignedDelegateAction, StakeAction, Transaction, TransactionV0, TransferAction,
         TransferToGasKeyAction, UseGlobalContractAction, WithdrawFromGasKeyAction,
@@ -664,12 +664,14 @@ fn TransactionsPreview(transactions: Vec<WalletSelectorTransaction>) -> impl Int
                                         .into_iter()
                                         .filter_map(|details| details.final_execution_outcome)
                                         .map(|outcome| {
-                                            let failure = match &outcome.final_outcome.status {
-                                                FinalExecutionStatus::Failure(error) => {
-                                                    Some(error.to_string())
-                                                }
-                                                _ => None,
-                                            };
+                                            let failure = outcome
+                                                .final_outcome
+                                                .receipts_outcome
+                                                .iter()
+                                                .find_map(|receipt_outcome| match &receipt_outcome.outcome.status {
+                                                    ExecutionStatusView::Failure(error) => Some(error.to_string()),
+                                                    _ => None,
+                                                });
                                             view! {
                                                 {display_transaction(&outcome, false).into_any()}
                                                 {failure
