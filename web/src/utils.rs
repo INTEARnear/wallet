@@ -1085,7 +1085,7 @@ pub enum WalletSelectorAccessKeyPermission {
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
-pub enum WalletSelectorFulAccess {
+pub enum WalletSelectorFullAccess {
     FullAccess,
 }
 
