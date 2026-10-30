@@ -8,7 +8,8 @@ use near_crypto::PublicKey;
 use reqwest::IntoUrl;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 use types::{
@@ -32,6 +33,8 @@ pub struct RpcClient {
     starting_delay: Duration,
     backoff_multiplier: f64,
     request_timeout: Option<Duration>,
+    /// Whether each RPC has `INTEAR_batch_query`, once it said
+    intear_batch_query_support: Arc<Mutex<HashMap<reqwest::Url, bool>>>,
 }
 
 #[allow(non_snake_case)]
@@ -49,6 +52,7 @@ impl RpcClient {
             starting_delay: Duration::from_millis(500),
             backoff_multiplier: 2.0,
             request_timeout: None,
+            intear_batch_query_support: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -133,49 +137,7 @@ impl RpcClient {
                     .await
                 {
                     Ok(response) => return Ok(response),
-                    Err(
-                        e @ Error::JsonRpc(RpcError {
-                            // Trying to add all cases that can happen because of node's issues,
-                            // including nodes configured to not store all blocks, or with limits.
-                            // This is because the user might have mroe than one RPC, and the
-                            // second one might work. Or if a transaction is pending / not finalized
-                            // yet, but will probably be available after exponential backoff.
-                            error_struct:
-                                Some(RpcErrorKind::HandlerError(
-                                    HandlerError::RpcQueryError(
-                                        RpcQueryError::GarbageCollectedBlock { .. }
-                                        | RpcQueryError::UnknownBlock { .. }
-                                        | RpcQueryError::UnavailableShard { .. }
-                                        | RpcQueryError::NoSyncedBlocks
-                                        | RpcQueryError::TooLargeContractState { .. },
-                                    )
-                                    | HandlerError::RpcReceiptError(
-                                        RpcReceiptError::UnknownReceipt { .. },
-                                    )
-                                    | HandlerError::RpcStatusError(
-                                        RpcStatusError::NodeIsSyncing
-                                        | RpcStatusError::NoNewBlocks { .. },
-                                    )
-                                    | HandlerError::RpcTransactionError(
-                                        RpcTransactionError::DoesNotTrackShard
-                                        | RpcTransactionError::RequestRouted { .. }
-                                        | RpcTransactionError::UnknownTransaction { .. }
-                                        | RpcTransactionError::TimeoutError,
-                                    )
-                                    | HandlerError::RpcLightClientProofError(
-                                        RpcLightClientProofError::UnknownBlock
-                                        | RpcLightClientProofError::InconsistentState { .. }
-                                        | RpcLightClientProofError::NotConfirmed { .. }
-                                        | RpcLightClientProofError::UnknownTransactionOrReceipt {
-                                            ..
-                                        }
-                                        | RpcLightClientProofError::UnavailableShard { .. },
-                                    ),
-                                )),
-                            ..
-                        })
-                        | e @ Error::Reqwest(_),
-                    ) => {
+                    Err(e) if is_node_issue(&e) => {
                         error = Some(e);
                         continue;
                     }
@@ -400,115 +362,198 @@ impl RpcClient {
         &self,
         requests: Vec<(AccountId, &str, impl Serialize, QueryFinality)>,
     ) -> Result<Vec<Result<R, CallError>>, Error> {
-        if self.supports_intear_methods() {
-            let mut queries = Vec::new();
-            let mut errors = HashMap::new();
-            let num_requests = requests.len();
-            for (i, (account_id, method, args, finality)) in requests.into_iter().enumerate() {
-                match serde_json::to_vec(&args) {
-                    Ok(args) => {
-                        queries.push(Query {
-                            request: QueryRequest::CallFunction {
-                                account_id,
-                                method_name: method.to_string(),
-                                args: args.into(),
-                            },
-                            finality,
-                        });
-                    }
-                    Err(error) => {
-                        // Skip, but mark as CallError::ArgsSerialization
-                        errors.insert(i, CallError::ArgsSerialization(error));
-                    }
+        let mut args_errors = HashMap::new();
+        let mut queries = Vec::new();
+        for (i, (account_id, method, args, finality)) in requests.into_iter().enumerate() {
+            match serde_json::to_vec(&args) {
+                Ok(args) => queries.push(Query {
+                    request: QueryRequest::CallFunction {
+                        account_id,
+                        method_name: method.to_string(),
+                        args: args.into(),
+                    },
+                    finality,
+                }),
+                Err(error) => {
+                    args_errors.insert(i, CallError::ArgsSerialization(error));
                 }
             }
-            let mut results = self.INTEAR_batch_query(queries).await.map(|r| {
-                r.into_iter()
-                    .map(|r| match r {
-                        ResultOrError::Result(result) => match result.kind {
-                            QueryResponseKind::CallResult(result) => match result.result_or_error {
-                                ResultOrError::Result(result) => {
-                                    serde_json::from_slice::<R>(&result)
-                                        .map_err(CallError::ResultDeserialization)
-                                }
-                                ResultOrError::Error(error) => {
-                                    Err(CallError::ExecutionError(error))
-                                }
-                            },
-                            _ => unreachable!("Unexpected query response kind: {:?}", result.kind),
-                        },
-                        ResultOrError::Error(error) => Err(CallError::Rpc(Error::JsonRpc(error))),
-                    })
-                    .collect::<VecDeque<_>>()
-            })?;
-            let mut final_results = Vec::new();
-            for i in 0..num_requests {
-                if let Some(error) = errors.remove(&i) {
-                    final_results.push(Err(error));
-                } else if let Some(result) = results.pop_front() {
-                    final_results.push(result);
-                } else {
-                    panic!(
-                        "Unexpected number of results: {:?}. This is a bug.",
-                        results.len()
-                    );
-                }
-            }
-            Ok(final_results)
-        } else {
-            let futures = requests
-                .into_iter()
-                .map(|(account_id, method, args, finality)| {
-                    self.call::<R>(account_id, method, args, finality)
-                });
-            Ok(futures_util::future::join_all(futures).await)
         }
+        let num_requests = queries.len() + args_errors.len();
+        let mut responses = self.batch_query(queries).await?.into_iter();
+        Ok((0..num_requests)
+            .map(|i| {
+                if let Some(error) = args_errors.remove(&i) {
+                    return Err(error);
+                }
+                let response = responses
+                    .next()
+                    .expect("A response for every query")
+                    .map_err(CallError::Rpc)?;
+                match response.kind {
+                    QueryResponseKind::CallResult(result) => match result.result_or_error {
+                        ResultOrError::Result(result) => serde_json::from_slice(&result)
+                            .map_err(CallError::ResultDeserialization),
+                        ResultOrError::Error(error) => Err(CallError::ExecutionError(error)),
+                    },
+                    _ => unreachable!("Unexpected query response kind: {:?}", response.kind),
+                }
+            })
+            .collect())
     }
 
     pub async fn batch_get_access_key(
         &self,
         requests: Vec<(AccountId, PublicKey, QueryFinality)>,
     ) -> Result<Vec<Result<AccessKeyView, Error>>, Error> {
-        if self.supports_intear_methods() {
-            let queries: Vec<Query> = requests
-                .iter()
-                .map(|(account_id, public_key, finality)| Query {
-                    request: QueryRequest::ViewAccessKey {
-                        account_id: account_id.clone(),
-                        public_key: public_key.clone(),
-                    },
-                    finality: finality.clone(),
-                })
-                .collect();
+        let queries = requests
+            .into_iter()
+            .map(|(account_id, public_key, finality)| Query {
+                request: QueryRequest::ViewAccessKey {
+                    account_id,
+                    public_key,
+                },
+                finality,
+            })
+            .collect();
+        Ok(self
+            .batch_query(queries)
+            .await?
+            .into_iter()
+            .map(|response| match response?.kind {
+                QueryResponseKind::AccessKey(access_key) => Ok(access_key),
+                QueryResponseKind::CallResult(result) => match result.result_or_error {
+                    ResultOrError::Result(result) => unreachable!(
+                        "Unexpected successful call result for view_access_key: {result:#X?}"
+                    ),
+                    ResultOrError::Error(err) => Err(Error::OtherQueryError(err)),
+                },
+                kind => unreachable!("Unexpected query response kind: {kind:?}"),
+            })
+            .collect())
+    }
 
-            let raw_results = self.INTEAR_batch_query(queries).await?;
-
-            let parsed_results = raw_results
-                .into_iter()
-                .map(|res| match res {
-                    ResultOrError::Result(query_response) => match query_response.kind {
-                        QueryResponseKind::AccessKey(access_key) => Ok(access_key),
-                        QueryResponseKind::CallResult(result) => match result.result_or_error {
-                            ResultOrError::Result(result) => unreachable!(
-                                "Unexpected successful call result for view_access_key: {result:#X?}"
-                            ),
-                            ResultOrError::Error(err) => Err(Error::OtherQueryError(err)),
-                        },
-                        _ => unreachable!("Unexpected query response kind: {:?}", query_response.kind),
-                    },
-                    ResultOrError::Error(err) => Err(Error::JsonRpc(err)),
-                })
-                .collect();
-
-            Ok(parsed_results)
-        } else {
-            let futures = requests
-                .into_iter()
-                .map(|(account_id, public_key, finality)| {
-                    self.get_access_key(account_id, public_key, finality)
-                });
-            Ok(futures_util::future::join_all(futures).await)
+    async fn batch_query(
+        &self,
+        queries: Vec<Query>,
+    ) -> Result<Vec<Result<QueryResponse, Error>>, Error> {
+        if self.urls.is_empty() {
+            return Err(Error::NoRpcUrls);
         }
+        let mut responses: Vec<Option<Result<QueryResponse, Error>>> =
+            queries.iter().map(|_| None).collect();
+        let mut retry_count = 0;
+        let mut delay = self.starting_delay;
+        loop {
+            for url in &self.urls {
+                let unanswered: Vec<usize> = responses
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, response)| match response {
+                        None => true,
+                        Some(Err(error)) => is_node_issue(error),
+                        Some(Ok(_)) => false,
+                    })
+                    .map(|(i, _)| i)
+                    .collect();
+                if unanswered.is_empty() {
+                    break;
+                }
+                let url_responses = self
+                    .query_at(url, unanswered.iter().map(|&i| &queries[i]).collect())
+                    .await;
+                for (i, response) in unanswered.into_iter().zip(url_responses) {
+                    responses[i] = Some(response);
+                }
+            }
+            let all_answered = responses
+                .iter()
+                .all(|response| !matches!(response, Some(Err(error)) if is_node_issue(error)));
+            if all_answered || retry_count >= self.max_retries {
+                return Ok(responses
+                    .into_iter()
+                    .map(|response| response.expect("Every query was asked of an RPC"))
+                    .collect());
+            }
+            retry_count += 1;
+            Delay::new(delay).await;
+            delay =
+                Duration::from_millis((delay.as_millis() as f64 * self.backoff_multiplier) as u64);
+        }
+    }
+
+    /// The queries' responses from one RPC. A batch request that fails as a whole is asked again
+    /// one query at a time, so each query has its own error.
+    async fn query_at(
+        &self,
+        url: &reqwest::Url,
+        queries: Vec<&Query>,
+    ) -> Vec<Result<QueryResponse, Error>> {
+        if self.has_intear_batch_query(url).await == Some(true)
+            && let Ok(responses) =
+                jsonrpc_request::<_, Vec<ResultOrError<QueryResponse, RpcError>>>(
+                    &self.client,
+                    url,
+                    self.request_timeout,
+                    "INTEAR_batch_query",
+                    &queries,
+                )
+                .await
+            && responses.len() == queries.len()
+        {
+            return responses
+                .into_iter()
+                .map(|response| match response {
+                    ResultOrError::Result(response) => Ok(response),
+                    ResultOrError::Error(error) => Err(Error::JsonRpc(error)),
+                })
+                .collect();
+        }
+        futures_util::future::join_all(
+            queries.into_iter().map(|query| {
+                jsonrpc_request(&self.client, url, self.request_timeout, "query", query)
+            }),
+        )
+        .await
+    }
+
+    /// Whether the RPC has `INTEAR_batch_query`, from how it answers an empty one, or `None` while
+    /// it hasn't answered. An RPC without it says so with JSON-RPC's "method not found", which
+    /// some send with an HTTP error status.
+    async fn has_intear_batch_query(&self, url: &reqwest::Url) -> Option<bool> {
+        if let Some(supported) = self.intear_batch_query_support.lock().unwrap().get(url) {
+            return Some(*supported);
+        }
+        let mut request = self.client.post(url.clone());
+        if let Some(timeout) = self.request_timeout {
+            request = request.timeout(timeout);
+        }
+        let response: serde_json::Value = request
+            .json(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "INTEAR_batch_query",
+                "params": [],
+                "id": "dontcare",
+            }))
+            .send()
+            .await
+            .ok()?
+            .json()
+            .await
+            .ok()?;
+        const METHOD_NOT_FOUND: i64 = -32601;
+        let supported = if response.get("result").is_some() {
+            true
+        } else if response["error"]["code"].as_i64() == Some(METHOD_NOT_FOUND) {
+            false
+        } else {
+            return None;
+        };
+        self.intear_batch_query_support
+            .lock()
+            .unwrap()
+            .insert(url.clone(), supported);
+        Some(supported)
     }
 
     pub async fn status(&self) -> Result<StatusResponse, Error> {
@@ -673,6 +718,47 @@ pub struct SimulatedTransactions {
     pub transactions: Vec<ExperimentalTxDetails>,
     pub block_height: BlockHeight,
     pub block_hash: CryptoHash,
+}
+
+/// Errors from the RPC's own state or limits, which the next RPC, or the same one later, may not
+/// have
+fn is_node_issue(error: &Error) -> bool {
+    matches!(
+        error,
+        Error::JsonRpc(RpcError {
+            // Trying to add all cases that can happen because of node's issues,
+            // including nodes configured to not store all blocks, or with limits.
+            // This is because the user might have mroe than one RPC, and the
+            // second one might work. Or if a transaction is pending / not finalized
+            // yet, but will probably be available after exponential backoff.
+            error_struct: Some(RpcErrorKind::HandlerError(
+                HandlerError::RpcQueryError(
+                    RpcQueryError::GarbageCollectedBlock { .. }
+                        | RpcQueryError::UnknownBlock { .. }
+                        | RpcQueryError::UnavailableShard { .. }
+                        | RpcQueryError::NoSyncedBlocks
+                        | RpcQueryError::TooLargeContractState { .. },
+                ) | HandlerError::RpcReceiptError(RpcReceiptError::UnknownReceipt { .. })
+                    | HandlerError::RpcStatusError(
+                        RpcStatusError::NodeIsSyncing | RpcStatusError::NoNewBlocks { .. },
+                    )
+                    | HandlerError::RpcTransactionError(
+                        RpcTransactionError::DoesNotTrackShard
+                            | RpcTransactionError::RequestRouted { .. }
+                            | RpcTransactionError::UnknownTransaction { .. }
+                            | RpcTransactionError::TimeoutError,
+                    )
+                    | HandlerError::RpcLightClientProofError(
+                        RpcLightClientProofError::UnknownBlock
+                            | RpcLightClientProofError::InconsistentState { .. }
+                            | RpcLightClientProofError::NotConfirmed { .. }
+                            | RpcLightClientProofError::UnknownTransactionOrReceipt { .. }
+                            | RpcLightClientProofError::UnavailableShard { .. },
+                    ),
+            )),
+            ..
+        }) | Error::Reqwest(_)
+    )
 }
 
 async fn jsonrpc_request<Request: Serialize, Response: DeserializeOwned>(
@@ -1120,6 +1206,41 @@ mod live_rpc_tests {
                 .signer_id
                 .as_str()
                 .is_empty()
+        );
+    }
+
+    /// An RPC with `INTEAR_batch_query` that no longer has the block answers the batch with an
+    /// error for each query, which an archival RPC without the method answers one by one
+    #[tokio::test]
+    async fn batch_call_asks_the_next_rpc_for_an_old_block() {
+        const ARCHIVAL_RPC_URL: &str = "https://archival-rpc.mainnet.fastnear.com";
+        let client = RpcClient::new([LIVE_RPC_URL, ARCHIVAL_RPC_URL]);
+        let old_block = QueryFinality::BlockId(BlockId::Height(183_837_064));
+        let results = client
+            .batch_call::<String>(vec![
+                (
+                    wrap_near(),
+                    "ft_total_supply",
+                    serde_json::json!({}),
+                    old_block.clone(),
+                ),
+                (
+                    wrap_near(),
+                    "ft_total_supply",
+                    serde_json::json!({}),
+                    old_block,
+                ),
+            ])
+            .await
+            .unwrap();
+        for result in results {
+            assert!(result.unwrap().parse::<u128>().unwrap() > 0);
+        }
+        let support = client.intear_batch_query_support.lock().unwrap().clone();
+        assert_eq!(support.get(&LIVE_RPC_URL.parse().unwrap()), Some(&true));
+        assert_eq!(
+            support.get(&ARCHIVAL_RPC_URL.parse().unwrap()),
+            Some(&false)
         );
     }
 }
