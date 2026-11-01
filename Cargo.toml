@@ -32,7 +32,6 @@ panic = "abort"
 [workspace]
 members = [
     "near-min-api",
-    "account-indexer",
     "account-creation-service",
     "password-storage-service",
     "nft-proxy-service",

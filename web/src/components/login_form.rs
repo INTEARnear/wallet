@@ -35,9 +35,9 @@ async fn find_accounts_by_public_key(
     let public_key_path = public_key_handle.to_string();
     let lookups = [
         (Network::Mainnet, "https://api.fastnear.com/v0"),
-        (Network::Mainnet, "https://account-indexer.intea.rs"),
+        (Network::Mainnet, "https://api.intea.rs"),
         (Network::Testnet, "https://test.api.fastnear.com/v0"),
-        (Network::Testnet, "https://account-indexer-testnet.intea.rs"),
+        (Network::Testnet, "https://api-testnet.intea.rs"),
     ]
     .into_iter()
     .map(|(network, api_url)| {
