@@ -823,6 +823,7 @@ pub enum Error {
 #[cfg(test)]
 mod live_rpc_tests {
     use super::*;
+    use near_crypto::PublicKeyHandle;
 
     const LIVE_RPC_URL: &str = "https://rpc.intea.rs";
     const WRAP_NEAR: &str = "wrap.near";
@@ -1122,7 +1123,15 @@ mod live_rpc_tests {
         let public_key = keys
             .keys
             .iter()
-            .find_map(|key| key.public_key.full_pubkey())
+            .find_map(|key| match &key.public_key {
+                PublicKeyHandle::ED25519(public_key) => {
+                    Some(PublicKey::ED25519(public_key.clone()))
+                }
+                PublicKeyHandle::SECP256K1(public_key) => {
+                    Some(PublicKey::SECP256K1(public_key.clone()))
+                }
+                PublicKeyHandle::MlDsa65(_) => None,
+            })
             .expect("aurora should have an ed25519 or secp256k1 access key");
         let _access_key = unwrap_rpc(
             "query",

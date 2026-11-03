@@ -10,6 +10,6 @@ bs58 = "0.5.1"
 ed25519-dalek = { version = "2.1.1", default-features = false }
 hmac = "0.13"
 k256 = "0.14.0"
-near-crypto = "0.37.3"
+near-crypto = "0.38.0"
 sha2 = "0.11"
 thiserror = "2.0.20"

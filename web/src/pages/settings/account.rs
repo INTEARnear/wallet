@@ -17,7 +17,8 @@ use crate::contexts::{
 };
 use crate::translations::TranslationKey;
 use crate::utils::{
-    intents_remove_public_key_batches, is_message_from_this_window, serialize_to_js_value,
+    get_full_public_keys_data, intents_remove_public_key_batches, is_message_from_this_window,
+    serialize_to_js_value,
 };
 use chrono::NaiveDate;
 use leptos::{prelude::*, task::spawn_local};
@@ -915,18 +916,18 @@ pub fn AccountSettings() -> impl IntoView {
             let current_public_key = account.secret_key.public_key();
             let current_public_key_handle = PublicKeyHandle::from(&current_public_key);
 
-            if keys.keys.iter().any(|key| {
-                key.public_key.full_pubkey().is_none()
-                    && key.public_key != current_public_key_handle
-            }) {
+            let Some(keys) =
+                get_full_public_keys_data(keys.keys, &current_public_key, &network.get_untracked())
+                    .await
+            else {
                 set_has_terminate_error(true);
                 set_terminating_sessions(false);
                 return;
-            }
+            };
 
             let mut delete_actions = Vec::new();
 
-            for key in keys.keys {
+            for (key, public_key) in keys {
                 if matches!(
                     key.access_key.permission,
                     AccessKeyPermissionView::FullAccess
@@ -934,10 +935,6 @@ pub fn AccountSettings() -> impl IntoView {
                     // For Ledger accounts, keep the current key, delete all others
                     // For non-Ledger accounts, delete all keys (will add new one later)
                     if !is_ledger || key.public_key != current_public_key_handle {
-                        let public_key = key
-                            .public_key
-                            .full_pubkey()
-                            .unwrap_or_else(|| current_public_key.clone());
                         delete_actions
                             .push(Action::DeleteKey(Box::new(DeleteKeyAction { public_key })));
                     }
@@ -1435,8 +1432,6 @@ pub fn AccountSettings() -> impl IntoView {
                                         .map(|acc| acc.secret_key.public_key()) else {
                                         return;
                                     };
-                                    let current_public_key_handle =
-                                        PublicKeyHandle::from(&current_public_key);
                                     set_ledger_error.set(None);
                                     let (new_mnemonic_string, new_secret_key) =
                                         intear_seed_phrase::generate(KeyType::ED25519).unwrap();
@@ -1451,29 +1446,24 @@ pub fn AccountSettings() -> impl IntoView {
                                             .await
                                         {
                                             Ok(keys) => {
-                                                if keys.keys.iter().any(|key| {
-                                                    key.public_key.full_pubkey().is_none()
-                                                        && key.public_key
-                                                            != current_public_key_handle
-                                                }) {
-                                                    set_ledger_error.set(Some(
+                                                let Some(keys) = get_full_public_keys_data(
+                                                    keys.keys,
+                                                    &current_public_key,
+                                                    &network.get_untracked(),
+                                                )
+                                                .await
+                                                else {
+                                                     set_ledger_error.set(Some(
                                                         TranslationKey::PagesSettingsAccountErrCannotRemoveMldsa65Key
                                                             .format(&[]),
                                                     ));
                                                     return;
-                                                }
+                                                };
                                                 let mut actions: Vec<Action> = Vec::new();
-                                                for key_info in keys.keys {
-                                                    if matches!(
+                                                for (key_info, public_key) in keys {                                                    if matches!(
                                                         key_info.access_key.permission,
                                                         AccessKeyPermissionView::FullAccess
                                                     ) {
-                                                        let public_key = key_info
-                                                            .public_key
-                                                            .full_pubkey()
-                                                            .unwrap_or_else(|| {
-                                                                current_public_key.clone()
-                                                            });
                                                         actions.push(Action::DeleteKey(Box::new(
                                                             DeleteKeyAction { public_key },
                                                         )));
@@ -1726,8 +1716,6 @@ pub fn AccountSettings() -> impl IntoView {
                                                     else {
                                                         return;
                                                     };
-                                                    let current_public_key_handle =
-                                                        PublicKeyHandle::from(&current_public_key);
                                                     match rpc_client
                                                         .view_access_key_list(
                                                             selected_account_id.clone(),
@@ -1736,29 +1724,23 @@ pub fn AccountSettings() -> impl IntoView {
                                                         .await
                                                     {
                                                         Ok(keys) => {
-                                                            if keys.keys.iter().any(|key| {
-                                                                key.public_key.full_pubkey().is_none()
-                                                                    && key.public_key
-                                                                        != current_public_key_handle
-                                                            }) {
-                                                                set_ledger_error.set(Some(
+                                                            let Some(keys) = get_full_public_keys_data(
+                                                                keys.keys,
+                                                                &current_public_key,
+                                                                &network.get_untracked(),
+                                                            )
+                                                            .await
+                                                            else {                                                                set_ledger_error.set(Some(
                                                                     TranslationKey::PagesSettingsAccountErrCannotRemoveMldsa65Key
                                                                         .format(&[]),
                                                                 ));
                                                                 return;
-                                                            }
+                                                            };
                                                             let mut actions: Vec<Action> = Vec::new();
-                                                            for key_info in keys.keys {
-                                                                if matches!(
+                                                            for (key_info, public_key) in keys {                                                                if matches!(
                                                                     key_info.access_key.permission,
                                                                     AccessKeyPermissionView::FullAccess
                                                                 ) {
-                                                                    let public_key = key_info
-                                                                        .public_key
-                                                                        .full_pubkey()
-                                                                        .unwrap_or_else(|| {
-                                                                            current_public_key.clone()
-                                                                        });
                                                                     actions.push(Action::DeleteKey(
                                                                         Box::new(DeleteKeyAction {
                                                                             public_key,

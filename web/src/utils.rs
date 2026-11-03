@@ -2,18 +2,19 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use bigdecimal::{BigDecimal, One, RoundingMode, ToPrimitive, Zero, num_bigint::BigInt};
 use borsh::{BorshDeserialize, BorshSerialize};
 use cached::proc_macro::cached;
+use deli::{Database, Model};
 use futures_util::lock::Mutex;
 use leptos::prelude::*;
 use near_min_api::{
     QueryFinality, RpcClient,
     types::{
-        AccessKey as NearAccessKey, AccessKeyPermission, AccountId, AccountIdRef,
-        Action as NearAction, AddKeyAction, Balance, CreateAccountAction, CryptoHash,
+        AccessKey as NearAccessKey, AccessKeyInfoView, AccessKeyPermission, AccountId,
+        AccountIdRef, Action as NearAction, AddKeyAction, Balance, CreateAccountAction, CryptoHash,
         DelegateAction, DeleteAccountAction, DeleteKeyAction, DeployContractAction,
         DeployGlobalContractAction, Finality, FunctionCallAction, FunctionCallPermission, Gas,
         GlobalContractDeployMode, GlobalContractIdentifier, NearGas, NearToken, StakeAction,
         TransferAction, UseGlobalContractAction,
-        near_crypto::{PublicKey, Signature},
+        near_crypto::{PublicKey, PublicKeyHandle, Signature},
     },
     utils::dec_format,
 };
@@ -1690,6 +1691,112 @@ pub async fn fetch_token_infos(
                 .map(|info| (account_id, info))
         })
         .collect()
+}
+
+pub async fn get_full_public_keys_data(
+    keys: Vec<AccessKeyInfoView>,
+    current_public_key: &PublicKey,
+    network: &Network,
+) -> Option<Vec<(AccessKeyInfoView, PublicKey)>> {
+    let current_public_key_handle = &PublicKeyHandle::from(current_public_key);
+    futures_util::future::join_all(keys.into_iter().map(|key| async move {
+        let public_key = match &key.public_key {
+            PublicKeyHandle::ED25519(public_key) => PublicKey::ED25519(public_key.clone()),
+            PublicKeyHandle::SECP256K1(public_key) => PublicKey::SECP256K1(public_key.clone()),
+            PublicKeyHandle::MlDsa65(_) if key.public_key == *current_public_key_handle => {
+                current_public_key.clone()
+            }
+            PublicKeyHandle::MlDsa65(_) => {
+                fetch_ml_dsa_65_public_key(&key.public_key, network).await?
+            }
+        };
+        Some((key, public_key))
+    }))
+    .await
+    .into_iter()
+    .collect()
+}
+
+const PUBLIC_KEYS_DB_NAME: &str = "intear_wallet_public_keys";
+
+#[derive(Clone, Serialize, Deserialize, Debug, Model)]
+struct MlDsa65PublicKey {
+    #[deli(key)]
+    public_key_handle: String,
+    public_key: PublicKey,
+}
+
+async fn fetch_ml_dsa_65_public_key(
+    public_key_handle: &PublicKeyHandle,
+    network: &Network,
+) -> Option<PublicKey> {
+    let db = Database::builder(PUBLIC_KEYS_DB_NAME)
+        .version(1)
+        .add_model::<MlDsa65PublicKey>()
+        .build()
+        .await
+        .inspect_err(|err| log::error!("Failed to open public keys database: {err}"))
+        .ok();
+    if let Some(db) = &db {
+        let tx = db
+            .transaction()
+            .with_model::<MlDsa65PublicKey>()
+            .build()
+            .unwrap();
+        let store = MlDsa65PublicKey::with_transaction(&tx).unwrap();
+        if let Ok(Some(cached)) = store.get(&public_key_handle.to_string()).await {
+            return Some(cached.public_key);
+        }
+    }
+
+    let api_urls = match network {
+        Network::Mainnet => vec!["https://api.intea.rs".to_string()],
+        Network::Testnet => vec!["https://api-testnet.intea.rs".to_string()],
+        Network::Localnet(network) => network
+            .fastnear_api_url
+            .iter()
+            .map(|host| format!("{host}/v0"))
+            .collect(),
+    };
+    #[derive(Deserialize)]
+    struct PublicKeyResponse {
+        public_key: PublicKey,
+    }
+    for api_url in api_urls {
+        let Ok(response) = reqwest::get(format!("{api_url}/public_key/{public_key_handle}")).await
+        else {
+            continue;
+        };
+        let Ok(response) = response.json::<PublicKeyResponse>().await else {
+            continue;
+        };
+        if PublicKeyHandle::from(&response.public_key) != *public_key_handle {
+            continue;
+        }
+        if let Some(db) = &db {
+            let tx = db
+                .transaction()
+                .writable()
+                .with_model::<MlDsa65PublicKey>()
+                .build()
+                .unwrap();
+            let store = MlDsa65PublicKey::with_transaction(&tx).unwrap();
+            if let Err(err) = store
+                .update(&MlDsa65PublicKey {
+                    public_key_handle: public_key_handle.to_string(),
+                    public_key: response.public_key.clone(),
+                })
+                .await
+            {
+                log::error!("Failed to cache public key {public_key_handle}: {err}");
+            }
+            if let Err(err) = tx.commit().await {
+                log::error!("Failed to commit transaction: {err}");
+            }
+        }
+        return Some(response.public_key);
+    }
+    None
 }
 
 pub async fn intents_remove_public_key_batches(

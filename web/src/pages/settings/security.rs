@@ -12,7 +12,7 @@ use crate::{
         transaction_queue_context::{EnqueuedTransaction, TransactionQueueContext},
     },
     translations::TranslationKey,
-    utils::intents_remove_public_key_batches,
+    utils::{get_full_public_keys_data, intents_remove_public_key_batches},
 };
 use argon2::{Argon2, ParamsBuilder};
 use leptos::prelude::*;
@@ -21,7 +21,7 @@ use leptos_icons::*;
 use leptos_router::components::A;
 use leptos_router::hooks::use_location;
 use near_min_api::QueryFinality;
-use near_min_api::types::near_crypto::{KeyType, PublicKeyHandle};
+use near_min_api::types::near_crypto::KeyType;
 use near_min_api::types::{
     AccessKey, AccessKeyPermission, AccessKeyPermissionView, Action, AddKeyAction, DeleteKeyAction,
     Finality,
@@ -180,7 +180,6 @@ pub fn SecuritySettings() -> impl IntoView {
             let account = account?;
             let current_public_key = account.secret_key.public_key();
             let key_type = current_public_key.key_type();
-            let current_public_key_handle = PublicKeyHandle::from(&current_public_key);
             let keys = rpc_client
                 .view_access_key_list(
                     account.account_id.clone(),
@@ -190,7 +189,7 @@ pub fn SecuritySettings() -> impl IntoView {
                 .ok()?;
             let full_access_keys = keys
                 .keys
-                .iter()
+                .into_iter()
                 .filter(|key| {
                     matches!(
                         key.access_key.permission,
@@ -201,12 +200,10 @@ pub fn SecuritySettings() -> impl IntoView {
             let has_mixed_key_types = full_access_keys
                 .iter()
                 .any(|key| !is_same_key_type(key.public_key.key_type(), key_type));
-            // ML-DSA-65 keys are stored on-chain as a hash, so someone else's key can't
-            // be turned back into a public key to delete it
-            let has_undeletable_key = full_access_keys.iter().any(|key| {
-                key.public_key.full_pubkey().is_none()
-                    && key.public_key != current_public_key_handle
-            });
+            let has_undeletable_key =
+                get_full_public_keys_data(full_access_keys, &current_public_key, &account.network)
+                    .await
+                    .is_none();
             Some(if has_mixed_key_types || has_undeletable_key {
                 PostQuantumStatus::ManualMigration
             } else {
@@ -259,7 +256,23 @@ pub fn SecuritySettings() -> impl IntoView {
                 }
             };
 
-            let current_public_key_handle = PublicKeyHandle::from(&current_public_key);
+            let full_access_keys = keys
+                .keys
+                .into_iter()
+                .filter(|key| {
+                    matches!(
+                        key.access_key.permission,
+                        AccessKeyPermissionView::FullAccess
+                    )
+                })
+                .collect();
+            let Some(full_access_keys) =
+                get_full_public_keys_data(full_access_keys, &current_public_key, &network).await
+            else {
+                log::error!("Can't delete an ML-DSA-65 access key of {account_id}");
+                set_switching_key_type(false);
+                return;
+            };
             let mut actions = vec![Action::AddKey(Box::new(AddKeyAction {
                 access_key: AccessKey {
                     nonce: 0,
@@ -267,24 +280,7 @@ pub fn SecuritySettings() -> impl IntoView {
                 },
                 public_key: new_public_key.clone(),
             }))];
-            for key in keys.keys {
-                if !matches!(
-                    key.access_key.permission,
-                    AccessKeyPermissionView::FullAccess
-                ) {
-                    continue;
-                }
-                let public_key = match key.public_key.full_pubkey() {
-                    Some(public_key) => public_key,
-                    None if key.public_key == current_public_key_handle => {
-                        current_public_key.clone()
-                    }
-                    None => {
-                        log::error!("Can't delete access key {} of {account_id}", key.public_key);
-                        set_switching_key_type(false);
-                        return;
-                    }
-                };
+            for (_, public_key) in full_access_keys {
                 actions.insert(
                     0,
                     Action::DeleteKey(Box::new(DeleteKeyAction { public_key })),
