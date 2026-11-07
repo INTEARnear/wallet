@@ -1453,7 +1453,7 @@ pub fn AccountSettings() -> impl IntoView {
                                                 )
                                                 .await
                                                 else {
-                                                     set_ledger_error.set(Some(
+                                                    set_ledger_error.set(Some(
                                                         TranslationKey::PagesSettingsAccountErrCannotRemoveMldsa65Key
                                                             .format(&[]),
                                                     ));
