@@ -338,14 +338,26 @@ impl RpcClient {
 
     pub async fn INTEAR_simulate_transactions(
         &self,
-        transactions: &[Transaction],
+        sequences: &[Vec<SimulationStep>],
         block_reference: BlockReference,
-    ) -> Result<SimulatedTransactions, Error> {
+    ) -> Result<SimulatedSequences, Error> {
         let rpc_method = "INTEAR_simulate_transactions";
         let mut rpc_params = serde_json::to_value(block_reference).unwrap();
-        rpc_params["unsigned_txs_base64"] = transactions
+        rpc_params["sequences"] = sequences
             .iter()
-            .map(|transaction| BASE64_STANDARD.encode(borsh::to_vec(transaction).unwrap()))
+            .map(|steps| {
+                steps
+                    .iter()
+                    .map(|step| match step {
+                        SimulationStep::Transaction(transaction) => serde_json::json!({
+                            "Transaction": BASE64_STANDARD.encode(borsh::to_vec(transaction).unwrap()),
+                        }),
+                        SimulationStep::Wait { blocks } => {
+                            serde_json::json!({ "Wait": { "blocks": blocks } })
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
             .collect();
         self.request(rpc_method, rpc_params).await
     }
@@ -711,11 +723,26 @@ pub struct ExperimentalTxDetails {
     pub final_execution_status: TxExecutionStatus,
 }
 
+#[derive(Debug, Clone)]
+pub enum SimulationStep {
+    Transaction(Transaction),
+    Wait { blocks: BlockHeightDelta },
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SimulatedTransactions {
-    /// One per simulated transaction, in order. Outcomes have an empty proof and a zero block
-    /// hash, since they are not part of any block.
-    pub transactions: Vec<ExperimentalTxDetails>,
+pub struct SimulatedTransaction {
+    #[serde(flatten)]
+    pub details: ExperimentalTxDetails,
+    /// Outcomes have an empty proof and a zero block hash, since they are not part of any block.
+    /// This has the height of the simulated block where each ran, by transaction hash and
+    /// receipt id.
+    pub outcome_block_heights: HashMap<CryptoHash, BlockHeight>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SimulatedSequences {
+    /// For each sequence, one per transaction, in order.
+    pub sequences: Vec<Vec<SimulatedTransaction>>,
     pub block_height: BlockHeight,
     pub block_hash: CryptoHash,
 }

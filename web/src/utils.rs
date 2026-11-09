@@ -1,9 +1,11 @@
+use amp_dex_types::AmpDexEvent;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use bigdecimal::{BigDecimal, One, RoundingMode, ToPrimitive, Zero, num_bigint::BigInt};
 use borsh::{BorshDeserialize, BorshSerialize};
 use cached::proc_macro::cached;
 use deli::{Database, Model};
 use futures_util::lock::Mutex;
+use intear_dex_types::DexEventData;
 use leptos::prelude::*;
 use near_min_api::{
     QueryFinality, RpcClient,
@@ -24,6 +26,7 @@ use std::{
 };
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use web_sys::js_sys::{Array, Function, Object, Reflect};
+use xyk_dex_types::XykDexEvent;
 
 use crate::contexts::{
     accounts_context::{AccountsContext, SecretKeyHolder, UserCancelledSigning},
@@ -1206,47 +1209,9 @@ impl EventLogData<RheaDclOrderLog> {
     }
 }
 
-#[derive(BorshDeserialize, Debug, Clone, PartialEq)]
-struct PlachDexEventData {
-    dex_id: PlachDexId,
-    event: Vec<u8>,
-    #[allow(dead_code)]
-    referrer: Option<String>,
-    user: Option<String>,
-}
-
-#[derive(BorshDeserialize, Debug, Clone, PartialEq)]
-struct PlachDexId {
-    deployer: String,
-    id: String,
-}
-
-#[derive(BorshDeserialize, Debug, Clone, PartialEq)]
-pub enum PlachAssetId {
-    Near,
-    Nep141(AccountId),
-    Nep245(AccountId, String),
-    Nep171(AccountId, String),
-}
-
-/// The start of xyk's `LiquidityAdded` and `LiquidityRemoved` events, which share their first fields
-#[derive(BorshDeserialize, Debug, Clone, PartialEq)]
-pub struct PlachLiquidityChange {
-    pub pool_id: u32,
-    pub asset_0: PlachAssetId,
-    pub asset_1: PlachAssetId,
-    pub amount_0: Balance,
-    pub amount_1: Balance,
-}
-
-/// Liquidity added (`true`) and removed (`false`) by `user` in Plach's xyk pools. Pool events are
-/// logged by the dex engine as one lz4-compressed borsh `dex_events_borsh` event
-pub fn parse_plach_liquidity_changes(
-    log: &str,
-    user: &AccountIdRef,
-) -> Vec<(bool, PlachLiquidityChange)> {
-    const XYK_LIQUIDITY_ADDED: u8 = 2;
-    const XYK_LIQUIDITY_REMOVED: u8 = 3;
+/// Events of Plach's `dex_id` dex that `user` made, as the borsh of the dex's event enum. The dex
+/// engine logs them as one lz4-compressed borsh `dex_events_borsh` event
+fn plach_dex_events(log: &str, dex_id: &str, user: &AccountIdRef) -> Vec<Vec<u8>> {
     let Ok(log) = EventLogData::<String>::deserialize(log) else {
         return vec![];
     };
@@ -1257,7 +1222,7 @@ pub fn parse_plach_liquidity_changes(
         .decode(&log.data)
         .ok()
         .and_then(|compressed| lz4_flex::decompress_size_prepended(&compressed).ok())
-        .and_then(|events| borsh::from_slice::<Vec<PlachDexEventData>>(&events).ok())
+        .and_then(|events| borsh::from_slice::<Vec<DexEventData>>(&events).ok())
     else {
         return vec![];
     };
@@ -1265,19 +1230,26 @@ pub fn parse_plach_liquidity_changes(
         .into_iter()
         .filter(|event| {
             event.dex_id.deployer == "slimedragon.near"
-                && event.dex_id.id == "xyk"
-                && event.user.as_deref() == Some(user.as_str())
+                && event.dex_id.id == dex_id
+                && event.user.as_deref() == Some(user)
         })
-        .filter_map(|event| {
-            let (variant, fields) = event.event.split_first()?;
-            let added = match *variant {
-                XYK_LIQUIDITY_ADDED => true,
-                XYK_LIQUIDITY_REMOVED => false,
-                _ => return None,
-            };
-            let change = PlachLiquidityChange::deserialize(&mut &fields[..]).ok()?;
-            Some((added, change))
-        })
+        .map(|event| event.event)
+        .collect()
+}
+
+/// What `user` did in Plach's xyk pools
+pub fn parse_plach_xyk_events(log: &str, user: &AccountIdRef) -> Vec<XykDexEvent> {
+    plach_dex_events(log, "xyk", user)
+        .into_iter()
+        .filter_map(|event| XykDexEvent::try_from_slice(&event).ok())
+        .collect()
+}
+
+/// What `user` did in Plach's amp pools
+pub fn parse_plach_amp_events(log: &str, user: &AccountIdRef) -> Vec<AmpDexEvent> {
+    plach_dex_events(log, "amp", user)
+        .into_iter()
+        .filter_map(|event| AmpDexEvent::try_from_slice(&event).ok())
         .collect()
 }
 

@@ -88,6 +88,11 @@ serde_with = "3.14"
 itertools = "0.13"
 translation-macros = { path = "../translation-macros" }
 near-crypto = "=0.38.0"
+intear-dex-common = { git = "https://github.com/INTEARnear/dex", rev = "624482e05f00b5f7bcfaf89c8a226b00fc7ae6a6" }
+intear-dex-types = { git = "https://github.com/INTEARnear/dex", rev = "624482e05f00b5f7bcfaf89c8a226b00fc7ae6a6" }
+xyk-dex-types = { git = "https://github.com/INTEARnear/dex", rev = "624482e05f00b5f7bcfaf89c8a226b00fc7ae6a6" }
+amp-dex-types = { git = "https://github.com/INTEARnear/dex", rev = "624482e05f00b5f7bcfaf89c8a226b00fc7ae6a6" }
+near-sdk = { version = "5.30", default-features = false, features = ["non-contract-usage"] }
 
 [dev-dependencies]
 tokio = { version = "1.40.0", features = ["full"] }

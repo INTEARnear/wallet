@@ -26,19 +26,21 @@ use crate::{
         NEP141_EVENT_STANDARD_STRING, NearCookingMarketLog, NearlyCreatorFeesClaimedLog,
         NearlyLaunchLog, NftBurnLog, NftMintLog, NftTransferLog, NoaMarket, NoaMarketDepositLog,
         NoaMarketOrderFilledLog, NoaMarketPayoutClaimedLog, NoaMarketSellFilledLog,
-        NoaMarketWithdrawCompletedLog, PlachAssetId, PlachUserDepositLog, PlachWithdrawLog,
-        RefDclSwapLog, Resolution, RheaDclLiquidityLog, RheaDclOrderLog, RheaLendLog,
-        StorageBalance, format_account_id, format_duration, format_token_amount, get_ft_metadata,
+        NoaMarketWithdrawCompletedLog, PlachUserDepositLog, PlachWithdrawLog, RefDclSwapLog,
+        Resolution, RheaDclLiquidityLog, RheaDclOrderLog, RheaLendLog, StorageBalance,
+        format_account_id, format_duration, format_token_amount, get_ft_metadata,
         get_nft_collection_metadata, get_nft_token, get_noamarket_market,
-        get_sputnik_proposal_description, nft_media_url, parse_plach_liquidity_changes,
-        proxify_url,
+        get_sputnik_proposal_description, nft_media_url, parse_plach_amp_events,
+        parse_plach_xyk_events, proxify_url,
     },
 };
+use amp_dex_types::{AmpDexEvent, FeePayoutType};
 use base64::{self, Engine};
 use bigdecimal::{BigDecimal, One, ToPrimitive};
 use chrono::{DateTime as ChronoDateTime, Local, NaiveDate, Utc};
 use futures_util::{future::join_all, lock::Mutex};
 use icondata::{LuArrowRight, LuCalendar, LuClock, LuPackage, LuPackageOpen};
+use intear_dex_common::AssetId;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_icons::Icon;
@@ -53,6 +55,7 @@ use near_min_api::{
     utils::{dec_format, dec_format_vec},
 };
 use serde::Deserialize;
+use xyk_dex_types::XykDexEvent;
 
 /// Rows in a page of history: transfers and the transactions they're part of, so a few
 /// transactions' worth
@@ -765,6 +768,8 @@ struct ActionsConfig {
     withdrawing_from_staking: HashMap<AccountId, NearToken>,
     /// NEAR paid out for trades and unwraps, by payer, shown as part of them
     conversion_payouts: HashMap<AccountId, NearToken>,
+    /// Receipts whose attached NEAR is already shown as part of their action
+    attached_deposit_shown_in_action: HashSet<CryptoHash>,
     show_balance_changes: bool,
     /// The transaction has an app's action, which its NEAR and token changes are part of
     has_app_action: bool,
@@ -1083,6 +1088,9 @@ fn add_staking_actions(
                     if let Some((amount, _)) = rest.split_once(".")
                         && let Ok(amount) = amount.parse::<u128>()
                     {
+                        actions_config
+                            .attached_deposit_shown_in_action
+                            .insert(receipt.receipt_id);
                         actions.push(
                             view! {
                                 <div class="flex items-center gap-2">
@@ -1173,6 +1181,8 @@ fn add_near_actions(
     actions_config: &mut ActionsConfig,
     _rpc_client: RpcClient,
 ) {
+    // Leaves out the yoctoNEAR and storage deposits that many calls require
+    const MIN_SHOWN_ATTACHED_DEPOSIT: NearToken = NearToken::from_millinear(5);
     // NEAR an app's action moved is part of the action
     if actions_config.has_app_action {
         return;
@@ -1184,39 +1194,20 @@ fn add_near_actions(
         } = &receipt.receipt
         {
             for action in tx_actions.iter() {
+                if let ActionView::FunctionCall { deposit, .. } = action
+                    && *deposit > MIN_SHOWN_ATTACHED_DEPOSIT
+                    && receipt.predecessor_id == me
+                    && !actions_config
+                        .attached_deposit_shown_in_action
+                        .contains(&receipt.receipt_id)
+                {
+                    actions.push(near_transfer_view(*deposit));
+                }
                 if let ActionView::Transfer { deposit } = action
                     && !deposit.is_zero()
                 {
                     if receipt.predecessor_id == me {
-                        let deposit = *deposit;
-                        actions.push(
-                            view! {
-                                <div class="flex items-center gap-2">
-                                    <img
-                                        src=format!(
-                                            "data:image/svg+xml;base64,{}",
-                                            base64::prelude::BASE64_STANDARD
-                                                .encode(include_bytes!("../data/near.svg")),
-                                        )
-                                        width="40"
-                                        height="40"
-                                        class="rounded-full"
-                                    />
-                                    <span>
-                                        {move || {
-                                            let amount = format_token_amount(
-                                                deposit.as_yoctonear(),
-                                                24,
-                                                "NEAR",
-                                            );
-                                            TranslationKey::PagesHistoryTransferNear
-                                                .format(&[("amount", amount.as_str())])
-                                        }}
-                                    </span>
-                                </div>
-                            }
-                            .into_any(),
-                        );
+                        actions.push(near_transfer_view(*deposit));
                     }
                     if receipt.receiver_id == me && receipt.predecessor_id != "system" {
                         if let Some(withdraw_amount) = actions_config
@@ -1310,6 +1301,29 @@ fn add_near_actions(
             }
         }
     }
+}
+
+fn near_transfer_view(deposit: NearToken) -> AnyView {
+    view! {
+        <div class="flex items-center gap-2">
+            <img
+                src=format!(
+                    "data:image/svg+xml;base64,{}",
+                    base64::prelude::BASE64_STANDARD.encode(include_bytes!("../data/near.svg")),
+                )
+                width="40"
+                height="40"
+                class="rounded-full"
+            />
+            <span>
+                {move || {
+                    let amount = format_token_amount(deposit.as_yoctonear(), 24, "NEAR");
+                    TranslationKey::PagesHistoryTransferNear.format(&[("amount", amount.as_str())])
+                }}
+            </span>
+        </div>
+    }
+    .into_any()
 }
 
 const STORAGE_WITHDRAW_THRESHOLD: NearToken = NearToken::from_millinear(100);
@@ -1452,6 +1466,9 @@ fn add_storage_actions(
                     && method_name == "storage_deposit"
                     && receipt.predecessor_id == me
                 {
+                    actions_config
+                        .attached_deposit_shown_in_action
+                        .insert(receipt.receipt_id);
                     let deposit_amount = *deposit;
                     let registration_only = serde_json::from_slice::<serde_json::Value>(args)
                         .is_ok_and(|args| args["registration_only"] == true);
@@ -1593,6 +1610,9 @@ fn add_wrap_actions(
                     (amount.parse::<u128>(), receiver.parse::<AccountId>())
                 && depositor == me
             {
+                actions_config
+                    .attached_deposit_shown_in_action
+                    .insert(receipt.receipt_id);
                 actions.push(token_conversion_view(
                     view! {
                         <Icon
@@ -4227,14 +4247,6 @@ fn add_intear_dex_actions(
     rpc_client: RpcClient,
 ) {
     const DEX_ENGINE_ID: &str = "dex.intear.near";
-    let changes = transaction
-        .final_outcome
-        .receipts_outcome
-        .iter()
-        .filter(|receipt_outcome| receipt_outcome.outcome.executor_id == DEX_ENGINE_ID)
-        .flat_map(|receipt_outcome| receipt_outcome.outcome.logs.iter())
-        .flat_map(|log| parse_plach_liquidity_changes(log, me))
-        .collect::<Vec<_>>();
     let logs = transaction
         .final_outcome
         .receipts_outcome
@@ -4242,6 +4254,87 @@ fn add_intear_dex_actions(
         .filter(|receipt_outcome| receipt_outcome.outcome.executor_id == DEX_ENGINE_ID)
         .flat_map(|receipt_outcome| receipt_outcome.outcome.logs.iter())
         .collect::<Vec<_>>();
+    let amp_events = logs
+        .iter()
+        .flat_map(|log| parse_plach_amp_events(log, me))
+        .collect::<Vec<_>>();
+    // Pools are named after their protocol fee receivers, plach.intear.near and qoq.intear.near
+    let xyk_changes = logs
+        .iter()
+        .flat_map(|log| parse_plach_xyk_events(log, me))
+        .filter_map(|event| match event {
+            XykDexEvent::LiquidityAdded {
+                pool_id,
+                asset_0,
+                asset_1,
+                added_amount_0,
+                added_amount_1,
+                ..
+            } => Some((
+                true,
+                format!("PLACH-{pool_id}"),
+                asset_0,
+                asset_1,
+                added_amount_0,
+                added_amount_1,
+            )),
+            XykDexEvent::LiquidityRemoved {
+                pool_id,
+                asset_0,
+                asset_1,
+                removed_amount_0,
+                removed_amount_1,
+                ..
+            } => Some((
+                false,
+                format!("PLACH-{pool_id}"),
+                asset_0,
+                asset_1,
+                removed_amount_0,
+                removed_amount_1,
+            )),
+            _ => None,
+        });
+    let amp_changes = amp_events.iter().filter_map(|event| match event {
+        AmpDexEvent::LiquidityAdded {
+            pool_id,
+            asset_0,
+            asset_1,
+            added_amount_0,
+            added_amount_1,
+            ..
+        } => Some((
+            true,
+            format!("QOQ-{pool_id}"),
+            asset_0.clone(),
+            asset_1.clone(),
+            *added_amount_0,
+            *added_amount_1,
+        )),
+        AmpDexEvent::LiquidityRemoved {
+            pool_id,
+            asset_0,
+            asset_1,
+            removed_amount_0,
+            removed_amount_1,
+            ..
+        } => Some((
+            false,
+            format!("QOQ-{pool_id}"),
+            asset_0.clone(),
+            asset_1.clone(),
+            *removed_amount_0,
+            *removed_amount_1,
+        )),
+        _ => None,
+    });
+    let changes = xyk_changes.chain(amp_changes).collect::<Vec<_>>();
+    // Only fungible assets can be in pools
+    let pool_token = |asset_id: AssetId| match asset_id {
+        AssetId::Near => Some(Token::Near),
+        AssetId::Nep141(token_id) => Some(Token::Nep141(token_id)),
+        AssetId::Nep245(..) | AssetId::Nep171(..) => None,
+    };
     // Deposits and withdrawals that only carry a trade or a liquidity change aren't actions of their own
     let traded = logs.iter().any(|log| {
         EventLogData::<IntearDexSwapLog>::deserialize(log)
@@ -4302,32 +4395,139 @@ fn add_intear_dex_actions(
             ));
         }
     }
-    for (added, change) in changes {
-        // Only fungible assets can be in xyk pools
-        let token = |asset_id: PlachAssetId| match asset_id {
-            PlachAssetId::Near => Some(Token::Near),
-            PlachAssetId::Nep141(token_id) => Some(Token::Nep141(token_id)),
-            PlachAssetId::Nep245(..) | PlachAssetId::Nep171(..) => None,
-        };
-        let (Some(token_0), Some(token_1)) = (token(change.asset_0), token(change.asset_1)) else {
+    for (added, pool_name, asset_0, asset_1, amount_0, amount_1) in changes {
+        let (Some(token_0), Some(token_1)) = (pool_token(asset_0), pool_token(asset_1)) else {
             continue;
         };
-        let (title, sign, amount_class) = if added {
-            ("Add liquidity", "-", "text-red-300")
+        let title = if added {
+            format!("Add liquidity to {pool_name}")
         } else {
-            ("Remove liquidity", "+", "text-green-300")
+            format!("Remove liquidity from {pool_name}")
         };
         actions_config.app_action();
         actions.push(defi_action_view(
             "/intear.svg",
-            title.to_string(),
+            title,
             token_amounts_resource(
-                vec![(token_0, change.amount_0), (token_1, change.amount_1)],
+                vec![(token_0, amount_0.get()), (token_1, amount_1.get())],
                 rpc_client.clone(),
             ),
-            sign,
-            amount_class,
+            "",
+            "",
         ));
+    }
+    for event in amp_events.iter() {
+        match event {
+            AmpDexEvent::LiquidityFeesCollected {
+                asset_0,
+                asset_1,
+                amount_0,
+                amount_1,
+                ..
+            } => {
+                // Changing a position collects its fees too, which are often none yet
+                let Some(amounts) = [(asset_0.clone(), amount_0), (asset_1.clone(), amount_1)]
+                    .into_iter()
+                    .filter(|(_, amount)| !amount.is_zero())
+                    .map(|(asset_id, amount)| Some((pool_token(asset_id)?, amount.get())))
+                    .collect::<Option<Vec<_>>>()
+                    .filter(|amounts| !amounts.is_empty())
+                else {
+                    continue;
+                };
+                actions_config.app_action();
+                actions.push(defi_action_view(
+                    "/intear.svg",
+                    "Collect liquidity fees".to_string(),
+                    token_amounts_resource(amounts, rpc_client.clone()),
+                    "+",
+                    "text-green-300",
+                ));
+            }
+            AmpDexEvent::LiquidityFeePayoutSet {
+                pool_id,
+                payout_type,
+                ..
+            } => {
+                // Changing the payout collects the fees first, whose event names the pool's assets
+                let Some((asset_0, asset_1)) = amp_events.iter().find_map(|event| match event {
+                    AmpDexEvent::LiquidityFeesCollected {
+                        pool_id: collected_pool_id,
+                        asset_0,
+                        asset_1,
+                        ..
+                    } if collected_pool_id == pool_id => Some((asset_0, asset_1)),
+                    _ => None,
+                }) else {
+                    continue;
+                };
+                let payout_assets = match payout_type {
+                    FeePayoutType::KeepBoth => vec![asset_0.clone(), asset_1.clone()],
+                    FeePayoutType::ConvertToFirstAsset => vec![asset_0.clone()],
+                    FeePayoutType::ConvertToSecondAsset => vec![asset_1.clone()],
+                };
+                let Some(payout_tokens) = payout_assets
+                    .into_iter()
+                    .map(|asset_id| Some((pool_token(asset_id)?, 0)))
+                    .collect::<Option<Vec<_>>>()
+                else {
+                    continue;
+                };
+                actions_config.app_action();
+                let payout_tokens = token_amounts_resource(payout_tokens, rpc_client.clone());
+                actions.push(
+                    view! {
+                        <div class="flex items-center gap-2">
+                            <img
+                                src="/intear.svg"
+                                width="40"
+                                height="40"
+                                class="min-w-[40px] min-h-[40px]"
+                            />
+                            <div class="flex flex-col">
+                                <span class="text-sm text-neutral-400">
+                                    "Take liquidity fees in"
+                                </span>
+                                {move || {
+                                    let Some(Ok(payout_tokens)) = payout_tokens.get() else {
+                                        return ().into_any();
+                                    };
+                                    let token_count = payout_tokens.len();
+                                    view! {
+                                        <div class="flex items-center gap-1.5 flex-wrap">
+                                            {payout_tokens
+                                                .into_iter()
+                                                .enumerate()
+                                                .map(|(index, (metadata, _))| {
+                                                    view! {
+                                                        <span class="flex items-center gap-1.5">
+                                                            {metadata
+                                                                .icon
+                                                                .map(|icon| {
+                                                                    view! {
+                                                                        <img src=icon width="20" height="20" class="rounded-full" />
+                                                                    }
+                                                                })} <span class="wrap-anywhere">{metadata.symbol}</span>
+                                                        </span>
+                                                        {(index + 1 < token_count)
+                                                            .then(|| {
+                                                                view! { <span class="text-neutral-400">"+"</span> }
+                                                            })}
+                                                    }
+                                                })
+                                                .collect::<Vec<_>>()}
+                                        </div>
+                                    }
+                                        .into_any()
+                                }}
+                            </div>
+                        </div>
+                    }
+                    .into_any(),
+                );
+            }
+            _ => {}
+        }
     }
 }
 

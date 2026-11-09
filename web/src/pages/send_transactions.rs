@@ -1,18 +1,23 @@
 use crate::translations::TranslationKey;
+use amp_dex_types::{ExchangePrices, PricesRequest, PricesResponse};
 use base64::{Engine, prelude::BASE64_STANDARD};
+use borsh::BorshDeserialize;
 use futures_channel::oneshot;
 use icondata::*;
+use intear_dex_common::AssetId;
+use intear_dex_types::IntearDexEvent;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::Icon;
 use near_min_api::{
-    ExperimentalTxDetails, QueryFinality, RpcClient,
+    ExperimentalTxDetails, QueryFinality, RpcClient, SimulationStep,
     types::{
         AccessKeyPermission, AccessKeyPermissionView, AccountId, Action, AddKeyAction,
-        BlockHeightDelta, BlockReference, CryptoHash, DeleteAccountAction, DeleteKeyAction,
-        DeployContractAction, DeployGlobalContractAction, DeterministicStateInitAction,
-        ExecutionStatusView, FinalExecutionOutcomeViewEnum, Finality, FunctionCallAction,
-        FunctionCallPermission, GlobalContractDeployMode, GlobalContractIdentifier, NearGas,
-        NearToken, SignedDelegateAction, StakeAction, Transaction, TransactionV0, TransferAction,
+        BlockHeightDelta, BlockId, BlockReference, CryptoHash, DeleteAccountAction,
+        DeleteKeyAction, DeployContractAction, DeployGlobalContractAction,
+        DeterministicStateInitAction, ExecutionStatusView, FinalExecutionOutcomeViewEnum, Finality,
+        FunctionCallAction, FunctionCallPermission, Gas, GlobalContractDeployMode,
+        GlobalContractIdentifier, NearGas, NearToken, NonceMode, SignedDelegateAction, StakeAction,
+        Transaction, TransactionNonce, TransactionV0, TransactionV1, TransferAction,
         TransferToGasKeyAction, UseGlobalContractAction, WithdrawFromGasKeyAction,
         near_crypto::{PublicKey, PublicKeyHandle, Signature},
     },
@@ -20,6 +25,7 @@ use near_min_api::{
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
+    slice,
     time::Duration,
 };
 use wasm_bindgen::JsCast;
@@ -556,8 +562,20 @@ fn TransactionItem<'a>(
     }
 }
 
+const QOQ_ORACLE_KEY: &str = "ed25519:7EK1MhudQrXZBZjvnvvcNXiQ2ByYBkXg8rUhbKL69CGo";
+const QOQ_ORACLE_PRICES_URL: &str = "https://qoq-oracle.intear.tech/prices";
+const QOQ_ORACLE_RESPONSE_DELAY: BlockHeightDelta = 2;
+
+/// The prices of every asset the QOQ oracle knows
+#[derive(Deserialize, Debug)]
+struct QoqOraclePrices {
+    oracle_key: String,
+    asset_ids: Vec<AssetId>,
+    response: PricesResponse,
+}
+
 /// Builds unsigned versions of `transactions` with the nonces the transaction queue would use and
-/// simulates them one after another
+/// simulates them one after another, with the QOQ oracle answering the requests they make
 async fn simulate_transactions(
     rpc_client: &RpcClient,
     transactions: Vec<WalletSelectorTransaction>,
@@ -610,14 +628,154 @@ async fn simulate_transactions(
             actions: transaction.actions.into_iter().map(Into::into).collect(),
         }));
     }
-    rpc_client
+    let wallet_sequence: Vec<SimulationStep> = unsigned_transactions
+        .into_iter()
+        .map(SimulationStep::Transaction)
+        .collect();
+    let simulation = rpc_client
         .INTEAR_simulate_transactions(
-            &unsigned_transactions,
+            slice::from_ref(&wallet_sequence),
             BlockReference::Finality(Finality::None),
         )
         .await
-        .map(|simulated| simulated.transactions)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    let [wallet_transactions] = <[_; 1]>::try_from(simulation.sequences)
+        .expect("simulating one sequence returns one sequence");
+
+    // Swaps through Intear DEX amp pools wait for the QOQ oracle to answer their request, and time
+    // out without an answer, so the oracle answers them in simulated parallel sequences
+    let oracle_requests = wallet_transactions
+        .iter()
+        .flat_map(|transaction| {
+            transaction
+                .details
+                .final_execution_outcome
+                .iter()
+                .flat_map(|outcome| outcome.final_outcome.receipts_outcome.iter())
+                .flat_map(|outcome| {
+                    outcome
+                        .outcome
+                        .logs
+                        .iter()
+                        .filter_map(|log| {
+                            let event = log.strip_prefix("EVENT_JSON:")?;
+                            match serde_json::from_str::<IntearDexEvent>(event).ok()? {
+                                IntearDexEvent::OracleRequest {
+                                    oracle_key,
+                                    request,
+                                    nonce,
+                                    ..
+                                } if oracle_key.to_string() == QOQ_ORACLE_KEY => {
+                                    Some((request.0, nonce.0))
+                                }
+                                _ => None,
+                            }
+                        })
+                        .map(|(request, nonce)| {
+                            (
+                                transaction.outcome_block_heights[&outcome.id],
+                                request,
+                                nonce,
+                            )
+                        })
+                })
+        })
+        .collect::<Vec<_>>();
+    if oracle_requests.is_empty() {
+        return Ok(wallet_transactions
+            .into_iter()
+            .map(|transaction| transaction.details)
+            .collect());
+    }
+    let prices = reqwest::get(QOQ_ORACLE_PRICES_URL)
+        .await
+        .map_err(|error| format!("Couldn't fetch the QOQ oracle's prices: {error}"))?
+        .json::<QoqOraclePrices>()
+        .await
+        .map_err(|error| format!("Couldn't read the QOQ oracle's prices: {error}"))?;
+    if prices.oracle_key != QOQ_ORACLE_KEY {
+        return Err(format!(
+            "The QOQ oracle's prices are for the oracle key {}, not {QOQ_ORACLE_KEY}",
+            prices.oracle_key
+        ));
+    }
+    let dex_id: AccountId = "dex.intear.near".parse().unwrap();
+    let mut sequences = vec![wallet_sequence];
+    for (nonce_index, (request_height, request, nonce)) in oracle_requests.into_iter().enumerate() {
+        let requested_assets = PricesRequest::try_from_slice(&request)
+            .map_err(|error| format!("Couldn't read the QOQ oracle request: {error}"))?
+            .asset_ids;
+        let price_indices = requested_assets
+            .iter()
+            .map(|asset_id| {
+                prices
+                    .asset_ids
+                    .iter()
+                    .position(|priced| priced == asset_id)
+                    .ok_or_else(|| format!("The QOQ oracle has no price of {asset_id}"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let response = PricesResponse {
+            exchanges: prices
+                .response
+                .exchanges
+                .iter()
+                .map(|exchange| ExchangePrices {
+                    exchange: exchange.exchange.clone(),
+                    prices: price_indices
+                        .iter()
+                        .map(|&index| exchange.prices[index])
+                        .collect(),
+                })
+                .collect(),
+        };
+        let oracle_response = Transaction::V1(TransactionV1 {
+            signer_id: dex_id.clone(),
+            public_key: QOQ_ORACLE_KEY.parse().unwrap(),
+            nonce: TransactionNonce::GasKeyNonce {
+                // Higher than the key's nonces, which start at their block's height times 10^6
+                nonce: simulation.block_height * 1_000_000,
+                nonce_index: u16::try_from(nonce_index)
+                    .map_err(|_| "Too many QOQ oracle requests".to_string())?,
+            },
+            receiver_id: dex_id.clone(),
+            block_hash: CryptoHash::default(),
+            actions: vec![Action::FunctionCall(Box::new(FunctionCallAction {
+                method_name: "oracle_respond".to_string(),
+                args: serde_json::to_vec(&serde_json::json!({
+                    "request_hash": CryptoHash::hash_bytes(&request).to_string(),
+                    "response": BASE64_STANDARD.encode(borsh::to_vec(&response).unwrap()),
+                    "nonces": [BASE64_STANDARD.encode(&nonce)],
+                }))
+                .unwrap(),
+                gas: Gas(NearGas::from_tgas(300)),
+                deposit: NearToken::ZERO,
+            }))],
+            nonce_mode: NonceMode::Monotonic,
+        });
+        sequences.push(vec![
+            SimulationStep::Wait {
+                blocks: request_height + QOQ_ORACLE_RESPONSE_DELAY - simulation.block_height - 1,
+            },
+            SimulationStep::Transaction(oracle_response),
+        ]);
+    }
+    // The same base block gives the same requests, whose nonces come from its random seed
+    let simulation = rpc_client
+        .INTEAR_simulate_transactions(
+            &sequences,
+            BlockReference::BlockId(BlockId::Hash(simulation.block_hash)),
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(simulation
+        .sequences
+        .into_iter()
+        .next()
+        .expect("the wallet's sequence is the first one")
+        .into_iter()
+        .map(|transaction| transaction.details)
+        .collect())
 }
 
 /// What the transactions would do, rendered like on the history page.
