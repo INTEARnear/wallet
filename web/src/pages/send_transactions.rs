@@ -567,7 +567,7 @@ const QOQ_ORACLE_PRICES_URL: &str = "https://qoq-oracle.intear.tech/prices";
 const QOQ_ORACLE_RESPONSE_DELAY: BlockHeightDelta = 2;
 
 /// The prices of every asset the QOQ oracle knows
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct QoqOraclePrices {
     oracle_key: String,
     asset_ids: Vec<AssetId>,
