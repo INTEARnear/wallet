@@ -11,14 +11,14 @@ use leptos_icons::Icon;
 use near_min_api::{
     ExperimentalTxDetails, QueryFinality, RpcClient, SimulationStep,
     types::{
-        AccessKeyPermission, AccessKeyPermissionView, AccountId, Action, AddKeyAction,
-        BlockHeightDelta, BlockId, BlockReference, CryptoHash, DeleteAccountAction,
-        DeleteKeyAction, DeployContractAction, DeployGlobalContractAction,
-        DeterministicStateInitAction, ExecutionStatusView, FinalExecutionOutcomeViewEnum, Finality,
-        FunctionCallAction, FunctionCallPermission, Gas, GlobalContractDeployMode,
-        GlobalContractIdentifier, NearGas, NearToken, NonceMode, SignedDelegateAction, StakeAction,
-        Transaction, TransactionNonce, TransactionV0, TransactionV1, TransferAction,
-        TransferToGasKeyAction, UseGlobalContractAction, WithdrawFromGasKeyAction,
+        AccessKeyPermission, AccountId, Action, AddKeyAction, BlockHeightDelta, BlockId,
+        BlockReference, CryptoHash, DeleteAccountAction, DeleteKeyAction, DeployContractAction,
+        DeployGlobalContractAction, DeterministicStateInitAction, ExecutionStatusView,
+        FinalExecutionOutcomeViewEnum, Finality, FunctionCallAction, FunctionCallPermission, Gas,
+        GlobalContractDeployMode, GlobalContractIdentifier, NearGas, NearToken, NonceMode,
+        SignedDelegateAction, StakeAction, Transaction, TransactionNonce, TransactionV0,
+        TransactionV1, TransferAction, TransferToGasKeyAction, UseGlobalContractAction,
+        WithdrawFromGasKeyAction,
         near_crypto::{PublicKey, PublicKeyHandle, Signature},
     },
 };
@@ -579,39 +579,24 @@ struct QoqOraclePrices {
 async fn simulate_transactions(
     rpc_client: &RpcClient,
     transactions: Vec<WalletSelectorTransaction>,
-    wallet_public_keys: &[PublicKey],
+    wallet_public_keys: &HashMap<AccountId, PublicKey>,
 ) -> Result<Vec<ExperimentalTxDetails>, String> {
     let mut signing_keys = HashMap::<AccountId, (PublicKey, u64)>::new();
     let mut unsigned_transactions = Vec::with_capacity(transactions.len());
     for transaction in transactions {
         if !signing_keys.contains_key(&transaction.signer_id) {
-            let access_keys = rpc_client
-                .view_access_key_list(
+            let public_key = wallet_public_keys
+                .get(&transaction.signer_id)
+                .ok_or_else(|| format!("{} is not in the wallet", transaction.signer_id))?
+                .clone();
+            let access_key = rpc_client
+                .get_access_key(
                     transaction.signer_id.clone(),
+                    public_key.clone(),
                     QueryFinality::Finality(Finality::None),
                 )
                 .await
                 .map_err(|error| error.to_string())?;
-            let full_keys = access_keys.keys.into_iter().filter_map(|key| {
-                let public_key = match key.public_key {
-                    PublicKeyHandle::ED25519(key) => PublicKey::ED25519(key),
-                    PublicKeyHandle::SECP256K1(key) => PublicKey::SECP256K1(key),
-                    PublicKeyHandle::MlDsa65(_) => return None,
-                };
-                Some((public_key, key.access_key))
-            });
-            // The wallet's own key gives the exact result. A view-only account has no key of the
-            // wallet on chain, but a preview signs nothing, so any full access key of the account
-            // shows the same result.
-            let (wallet_keys, other_keys): (Vec<_>, Vec<_>) =
-                full_keys.partition(|(public_key, _)| wallet_public_keys.contains(public_key));
-            let (public_key, access_key) = wallet_keys
-                .into_iter()
-                .chain(other_keys.into_iter().filter(|(_, access_key)| {
-                    access_key.permission == AccessKeyPermissionView::FullAccess
-                }))
-                .next()
-                .ok_or_else(|| format!("{} has no key to simulate with", transaction.signer_id))?;
             signing_keys.insert(
                 transaction.signer_id.clone(),
                 (public_key, access_key.nonce),
@@ -799,8 +784,8 @@ fn TransactionsPreview(transactions: Vec<WalletSelectorTransaction>) -> impl Int
             .get()
             .accounts
             .iter()
-            .map(|account| account.secret_key.public_key())
-            .collect::<Vec<_>>();
+            .map(|account| (account.account_id.clone(), account.secret_key.public_key()))
+            .collect::<HashMap<_, _>>();
         async move { simulate_transactions(&rpc_client, transactions, &wallet_public_keys).await }
     });
     view! {
