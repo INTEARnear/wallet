@@ -9,17 +9,8 @@ use intear_dex_types::IntearDexEvent;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::Icon;
 use near_min_api::{
-    ExperimentalTxDetails, QueryFinality, RpcClient, SimulationStep,
-    types::{
-        AccessKeyPermission, AccountId, Action, AddKeyAction, BlockHeightDelta, BlockId,
-        BlockReference, CryptoHash, DeleteAccountAction, DeleteKeyAction, DeployContractAction,
-        DeployGlobalContractAction, DeterministicStateInitAction, ExecutionStatusView,
-        FinalExecutionOutcomeViewEnum, Finality, FunctionCallAction, FunctionCallPermission, Gas,
-        GlobalContractDeployMode, GlobalContractIdentifier, NearGas, NearToken, NonceMode,
-        SignedDelegateAction, StakeAction, Transaction, TransactionNonce, TransactionV0,
-        TransactionV1, TransferAction, TransferToGasKeyAction, UseGlobalContractAction,
-        WithdrawFromGasKeyAction,
-        near_crypto::{PublicKey, PublicKeyHandle, Signature},
+    ExperimentalTxDetails, QueryFinality, RpcClient, SimulationStep, types::{
+        AccessKeyPermission, AccountId, Action, AddKeyAction, BlockHeightDelta, BlockId, BlockReference, CryptoHash, DeleteAccountAction, DeleteKeyAction, DeployContractAction, DeployGlobalContractAction, DeterministicStateInitAction, ExecutionStatusView, FinalExecutionOutcomeViewEnum, Finality, FunctionCallAction, FunctionCallPermission, Gas, GlobalContractDeployMode, GlobalContractIdentifier, NearGas, NearToken, NonceMode, SignedDelegateAction, StakeAction, Transaction, TransactionNonce, TransactionV0, TransactionV1, TransferAction, TransferToGasKeyAction, UniversalStateInitAction, UseGlobalContractAction, WithdrawFromGasKeyAction, near_crypto::{PublicKey, PublicKeyHandle, Signature},
     },
 };
 use serde::{Deserialize, Serialize};
@@ -371,6 +362,10 @@ fn TransactionAction(
                 deref!(DeterministicStateInitAction { deposit, .. }),
             ) => TranslationKey::PagesSendTransactionsActionDeterministicStateInit
                 .format(&[("deposit", &deposit.exact_amount_display())]),
+            Action::UniversalStateInit(deref!(UniversalStateInitAction { deposit, .. })) => {
+                TranslationKey::PagesSendTransactionsActionUniversalStateInit
+                    .format(&[("deposit", &deposit.exact_amount_display())])
+            }
             Action::TransferToGasKey(
                 deref!(TransferToGasKeyAction {
                     public_key,

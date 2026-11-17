@@ -473,6 +473,8 @@ pub enum StateChangeCause {
     _UnusedReshardingV2,
     /// Update persistent state kept by Bandwidth Scheduler after running the scheduling algorithm.
     BandwidthSchedulerStateUpdate,
+    /// Persist compilation attempts independently of receipt success or cache eviction.
+    ContractCompilationStatusUpdate,
 }
 
 /// This represents the committed changes in the Trie with a change cause.
@@ -708,6 +710,7 @@ impl StateChanges {
                 TrieKey::PromiseYieldStatus { .. } => {}
                 TrieKey::YieldIdToDataId { .. } => {}
                 TrieKey::DataIdToYieldId { .. } => {}
+                TrieKey::ContractCompilationStatus { .. } => {}
             }
         }
 
@@ -1294,15 +1297,62 @@ pub enum AccountVersion {
     V2,
 }
 
+/// Whether an account's state has been installed.
+///
+/// Only universal accounts can be uninitialized: they come into existence when
+/// a transfer funds a `0u` id whose state init has not been applied yet. A
+/// deterministic `0s` account waiting for its state init is an ordinary V1
+/// account with no contract, not this.
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountState {
+    #[default]
+    Initialized,
+    Uninitialized,
+}
+
+impl AccountState {
+    pub fn is_initialized(&self) -> bool {
+        match self {
+            Self::Initialized => true,
+            Self::Uninitialized => false,
+        }
+    }
+}
+
+/// Error returned when a change does not fit the account's [`AccountState`].
+///
+/// Unreachable on a healthy chain: an uninitialized account has no access keys,
+/// so no receipt can name one as its actor. Seeing this means corrupted state
+/// or a bug, not anything a user did.
+#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
+pub enum InvalidAccountState {
+    #[error("account state has not been installed yet")]
+    Uninitialized,
+    #[error("account state has already been installed")]
+    AlreadyInitialized,
+}
+
 /// Per account information stored in the state.
+///
+/// Two independent axes: whether the account's state has been installed, and,
+/// for an initialized account, the version of its storage layout.
 /// When introducing new version:
 /// - introduce new AccountV[NewVersion] struct
-/// - add new Account enum option V[NewVersion](AccountV[NewVersion])
+/// - add new InitializedAccount enum option V[NewVersion](AccountV[NewVersion])
 /// - add new BorshVersionedAccount enum option V[NewVersion](AccountV[NewVersion])
 /// - update SerdeAccount with newly added fields
 /// - update serde ser/deser to properly handle conversions
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Account {
+    Uninitialized(UninitializedAccountV1),
+    Initialized(InitializedAccount),
+}
+
+/// An account with its state in place. It can hold a contract, access keys and
+/// contract data, and it can stake.
+#[derive(PartialEq, Eq, Debug, Clone)]
+pub enum InitializedAccount {
     V1(AccountV1),
     V2(AccountV2),
 }
@@ -1359,11 +1409,21 @@ impl AccountContract {
     }
 
     pub fn is_none(&self) -> bool {
-        matches!(self, Self::None)
+        match self {
+            Self::None => true,
+            Self::Local(_) | Self::Global(_) | Self::GlobalByAccount(_) => false,
+        }
+    }
+
+    pub fn is_some(&self) -> bool {
+        !self.is_none()
     }
 
     pub fn is_local(&self) -> bool {
-        matches!(self, Self::Local(_))
+        match self {
+            Self::Local(_) => true,
+            Self::None | Self::Global(_) | Self::GlobalByAccount(_) => false,
+        }
     }
 
     pub fn identifier_storage_usage(&self) -> u64 {
@@ -1410,6 +1470,38 @@ pub struct AccountV2 {
     contract: AccountContract,
 }
 
+/// A universal account funded before its state init was installed.
+///
+/// It carries a balance and a [`UninitializedAccountV1::bootstrap_nonce`], and
+/// no contract, access keys or data. Installing the state init is the only thing
+/// that can add any of those, and doing so moves the account out of this state,
+/// so everything else that writes to an account is unreachable while it stays
+/// uninitialized.
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Eq, Debug, Clone)]
+pub struct UninitializedAccountV1 {
+    /// The total not locked tokens.
+    amount: NearToken,
+    /// Storage used by the account record itself.
+    storage_usage: StorageUsage,
+    /// Nonce for the account's own transactions while it is uninitialized, used
+    /// by the self-signed state init, and what makes that transaction one-shot.
+    ///
+    /// It closes two different replays. Consuming it closes the first: a failed
+    /// init leaves the account uninitialized, so without it the same signed
+    /// bytes would stay admissible and anyone could resubmit them, burning the
+    /// conversion fee each time for as long as the transaction stayed inside its
+    /// validity window. Seeding it from the creation height closes the second: a
+    /// re-created account starts above every nonce its previous incarnation
+    /// could have signed for, so the old bytes cannot bootstrap it either.
+    ///
+    /// Seeded exactly as a newly created access key is, from the creation height; see
+    /// [`AccessKey::nonce`].
+    ///
+    /// Dropped by [`Account::initialize`]: once the state init has installed
+    /// the access keys, each of them carries its own nonce.
+    bootstrap_nonce: Nonce,
+}
+
 impl Account {
     /// Max number of bytes an account can have in its state (excluding contract code)
     /// before it is infeasible to delete.
@@ -1425,30 +1517,227 @@ impl Account {
         contract: AccountContract,
         storage_usage: StorageUsage,
     ) -> Self {
-        match contract {
-            AccountContract::None => Self::V1(AccountV1 {
+        let account = match contract {
+            AccountContract::None => InitializedAccount::V1(AccountV1 {
                 amount,
                 locked,
                 code_hash: CryptoHash::default(),
                 storage_usage,
             }),
-            AccountContract::Local(code_hash) => Self::V1(AccountV1 {
+            AccountContract::Local(code_hash) => InitializedAccount::V1(AccountV1 {
                 amount,
                 locked,
                 code_hash,
                 storage_usage,
             }),
-            _ => Self::V2(AccountV2 {
-                amount,
-                locked,
-                storage_usage,
-                contract,
-            }),
+            AccountContract::Global(_) | AccountContract::GlobalByAccount(_) => {
+                InitializedAccount::V2(AccountV2 {
+                    amount,
+                    locked,
+                    storage_usage,
+                    contract,
+                })
+            }
+        };
+        Self::Initialized(account)
+    }
+
+    /// A universal account funded before its state init was installed. It stays
+    /// uninitialized, with no access keys, code or data, until
+    /// [`Self::initialize`] is called.
+    ///
+    /// `bootstrap_nonce` should be the initial access key nonce at the height of the
+    /// block creating the account; see [`UninitializedAccountV1::bootstrap_nonce`].
+    pub fn new_uninitialized(
+        amount: NearToken,
+        storage_usage: StorageUsage,
+        bootstrap_nonce: Nonce,
+    ) -> Self {
+        Self::Uninitialized(UninitializedAccountV1 {
+            amount,
+            storage_usage,
+            bootstrap_nonce,
+        })
+    }
+
+    /// The nonce for this account's own transactions while it has no access keys.
+    #[inline]
+    pub fn bootstrap_nonce(&self) -> Option<Nonce> {
+        match self {
+            Self::Uninitialized(account) => Some(account.bootstrap_nonce),
+            Self::Initialized(_) => None,
+        }
+    }
+
+    /// Record that a self-signed transaction consumed `nonce`.
+    ///
+    /// Only reached for an already authorized transaction, and `nonce` is not
+    /// the caller's to choose: `verify_and_charge_bootstrap_tx_ephemeral` admits
+    /// nothing but the account's own state init, at exactly the successor of the
+    /// current nonce.
+    pub fn set_bootstrap_nonce(&mut self, nonce: Nonce) -> Result<(), InvalidAccountState> {
+        let Self::Uninitialized(account) = self else {
+            return Err(InvalidAccountState::AlreadyInitialized);
+        };
+        account.bootstrap_nonce = nonce;
+        Ok(())
+    }
+
+    /// Whether the account's state has been installed.
+    ///
+    /// This is about the [`Account::Uninitialized`] representation, which only
+    /// universal accounts use. A deterministic `0s` account still waiting for
+    /// its state init is an ordinary V1 account with no contract, so this
+    /// returns `true` for it.
+    #[inline]
+    pub fn is_initialized(&self) -> bool {
+        match self {
+            Self::Initialized(_) => true,
+            Self::Uninitialized(_) => false,
+        }
+    }
+
+    /// Move an uninitialized account to the initialized state, keeping its
+    /// balance and storage usage. The caller then installs the state itself.
+    pub fn initialize(&mut self) -> Result<(), InvalidAccountState> {
+        let Self::Uninitialized(account) = self else {
+            return Err(InvalidAccountState::AlreadyInitialized);
+        };
+        *self = Self::Initialized(InitializedAccount::V1(AccountV1 {
+            amount: account.amount,
+            locked: NearToken::ZERO,
+            code_hash: CryptoHash::default(),
+            storage_usage: account.storage_usage,
+        }));
+        Ok(())
+    }
+
+    /// Initialized or uninitialized, as an [`AccountState`] rather than the bool
+    /// [`Self::is_initialized`] returns. Exposed so views can report it: a
+    /// client cannot otherwise tell an uninitialized account from an ordinary
+    /// one, and has to, to know which transaction shape to send.
+    #[inline]
+    pub fn state(&self) -> AccountState {
+        match self {
+            Self::Uninitialized(_) => AccountState::Uninitialized,
+            Self::Initialized(_) => AccountState::Initialized,
         }
     }
 
     #[inline]
     pub fn amount(&self) -> NearToken {
+        match self {
+            Self::Uninitialized(account) => account.amount,
+            Self::Initialized(account) => account.amount(),
+        }
+    }
+
+    /// Always zero while uninitialized: nothing can stake on the account's
+    /// behalf before its state init is installed.
+    #[inline]
+    pub fn locked(&self) -> NearToken {
+        match self {
+            Self::Uninitialized(_) => NearToken::ZERO,
+            Self::Initialized(account) => account.locked(),
+        }
+    }
+
+    #[inline]
+    pub fn contract(&self) -> Cow<'_, AccountContract> {
+        // NOTE: Returning `AccountContract::None` for uninitialized accounts is
+        // a conscious choice. It's almost always treated by the callers exactly
+        // the same way as an initialized account with no contract.
+        match self {
+            Self::Uninitialized(_) => Cow::Owned(AccountContract::None),
+            Self::Initialized(account) => account.contract(),
+        }
+    }
+
+    #[inline]
+    pub fn storage_usage(&self) -> StorageUsage {
+        match self {
+            Self::Uninitialized(account) => account.storage_usage,
+            Self::Initialized(account) => account.storage_usage(),
+        }
+    }
+
+    /// Layout version within the account's [`AccountState`].
+    #[inline]
+    pub fn version(&self) -> AccountVersion {
+        match self {
+            Self::Uninitialized(_) => AccountVersion::V1,
+            Self::Initialized(account) => account.version(),
+        }
+    }
+
+    #[inline]
+    pub fn global_contract_hash(&self) -> Option<CryptoHash> {
+        match self {
+            Self::Uninitialized(_) => None,
+            Self::Initialized(account) => account.global_contract_hash(),
+        }
+    }
+
+    #[inline]
+    pub fn global_contract_account_id(&self) -> Option<&AccountId> {
+        match self {
+            Self::Uninitialized(_) => None,
+            Self::Initialized(account) => account.global_contract_account_id(),
+        }
+    }
+
+    #[inline]
+    pub fn local_contract_hash(&self) -> Option<CryptoHash> {
+        match self {
+            Self::Uninitialized(_) => None,
+            Self::Initialized(account) => account.local_contract_hash(),
+        }
+    }
+
+    #[inline]
+    pub fn set_amount(&mut self, amount: NearToken) {
+        match self {
+            Self::Uninitialized(account) => account.amount = amount,
+            Self::Initialized(account) => account.set_amount(amount),
+        }
+    }
+
+    /// Fails on an uninitialized account, which can never have locked balance.
+    #[inline]
+    pub fn set_locked(&mut self, locked: NearToken) -> Result<(), InvalidAccountState> {
+        match self {
+            Self::Uninitialized(_) => Err(InvalidAccountState::Uninitialized),
+            Self::Initialized(account) => {
+                account.set_locked(locked);
+                Ok(())
+            }
+        }
+    }
+
+    /// Fails on an uninitialized account. Call [`Self::initialize`] first.
+    #[inline]
+    pub fn set_contract(&mut self, contract: AccountContract) -> Result<(), InvalidAccountState> {
+        match self {
+            Self::Uninitialized(_) => Err(InvalidAccountState::Uninitialized),
+            Self::Initialized(account) => {
+                account.set_contract(contract);
+                Ok(())
+            }
+        }
+    }
+
+    #[inline]
+    pub fn set_storage_usage(&mut self, storage_usage: StorageUsage) {
+        match self {
+            Self::Uninitialized(account) => account.storage_usage = storage_usage,
+            Self::Initialized(account) => account.set_storage_usage(storage_usage),
+        }
+    }
+}
+
+impl InitializedAccount {
+    #[inline]
+    fn amount(&self) -> NearToken {
         match self {
             Self::V1(account) => account.amount,
             Self::V2(account) => account.amount,
@@ -1456,7 +1745,7 @@ impl Account {
     }
 
     #[inline]
-    pub fn locked(&self) -> NearToken {
+    fn locked(&self) -> NearToken {
         match self {
             Self::V1(account) => account.locked,
             Self::V2(account) => account.locked,
@@ -1464,7 +1753,7 @@ impl Account {
     }
 
     #[inline]
-    pub fn contract(&self) -> Cow<'_, AccountContract> {
+    fn contract(&self) -> Cow<'_, AccountContract> {
         match self {
             Self::V1(account) => {
                 Cow::Owned(AccountContract::from_local_code_hash(account.code_hash))
@@ -1474,7 +1763,7 @@ impl Account {
     }
 
     #[inline]
-    pub fn storage_usage(&self) -> StorageUsage {
+    fn storage_usage(&self) -> StorageUsage {
         match self {
             Self::V1(account) => account.storage_usage,
             Self::V2(account) => account.storage_usage,
@@ -1482,7 +1771,7 @@ impl Account {
     }
 
     #[inline]
-    pub fn version(&self) -> AccountVersion {
+    fn version(&self) -> AccountVersion {
         match self {
             Self::V1(_) => AccountVersion::V1,
             Self::V2(_) => AccountVersion::V2,
@@ -1490,7 +1779,7 @@ impl Account {
     }
 
     #[inline]
-    pub fn global_contract_hash(&self) -> Option<CryptoHash> {
+    fn global_contract_hash(&self) -> Option<CryptoHash> {
         match self {
             Self::V2(AccountV2 {
                 contract: AccountContract::Global(hash),
@@ -1501,7 +1790,7 @@ impl Account {
     }
 
     #[inline]
-    pub fn global_contract_account_id(&self) -> Option<&AccountId> {
+    fn global_contract_account_id(&self) -> Option<&AccountId> {
         match self {
             Self::V2(AccountV2 {
                 contract: AccountContract::GlobalByAccount(account),
@@ -1512,7 +1801,7 @@ impl Account {
     }
 
     #[inline]
-    pub fn local_contract_hash(&self) -> Option<CryptoHash> {
+    fn local_contract_hash(&self) -> Option<CryptoHash> {
         match self {
             Self::V1(account) => {
                 AccountContract::from_local_code_hash(account.code_hash).local_code()
@@ -1537,7 +1826,7 @@ impl Account {
     }
 
     #[inline]
-    pub fn set_amount(&mut self, amount: NearToken) {
+    fn set_amount(&mut self, amount: NearToken) {
         match self {
             Self::V1(account) => account.amount = amount,
             Self::V2(account) => account.amount = amount,
@@ -1545,7 +1834,7 @@ impl Account {
     }
 
     #[inline]
-    pub fn set_locked(&mut self, locked: NearToken) {
+    fn set_locked(&mut self, locked: NearToken) {
         match self {
             Self::V1(account) => account.locked = locked,
             Self::V2(account) => account.locked = locked,
@@ -1553,13 +1842,13 @@ impl Account {
     }
 
     #[inline]
-    pub fn set_contract(&mut self, contract: AccountContract) {
+    fn set_contract(&mut self, contract: AccountContract) {
         match self {
             Self::V1(account) => match contract {
                 AccountContract::None | AccountContract::Local(_) => {
                     account.code_hash = contract.local_code().unwrap_or_default();
                 }
-                _ => {
+                AccountContract::Global(_) | AccountContract::GlobalByAccount(_) => {
                     let mut account_v2 = account.to_v2();
                     account_v2.contract = contract;
                     *self = Self::V2(account_v2);
@@ -1572,7 +1861,7 @@ impl Account {
     }
 
     #[inline]
-    pub fn set_storage_usage(&mut self, storage_usage: StorageUsage) {
+    fn set_storage_usage(&mut self, storage_usage: StorageUsage) {
         match self {
             Self::V1(account) => account.storage_usage = storage_usage,
             Self::V2(account) => account.storage_usage = storage_usage,
@@ -1588,9 +1877,20 @@ struct SerdeAccount {
     locked: NearToken,
     code_hash: CryptoHash,
     storage_usage: StorageUsage,
-    /// Version of Account in re migrations and similar.
+    /// Account storage layout version, used for migrations and similar.
+    /// Scoped to `state`.
     #[serde(default)]
     version: AccountVersion,
+    /// Whether the account's state has been installed. Absent from documents
+    /// written before universal accounts existed, which are all initialized.
+    #[serde(default, skip_serializing_if = "AccountState::is_initialized")]
+    state: AccountState,
+    /// Only ever present on an uninitialized account, where it is mandatory:
+    /// see [`UninitializedAccountV1::bootstrap_nonce`]. Kept as an `Option` so
+    /// that a document which omits it is rejected rather than silently reset to
+    /// zero, which would let a state init be replayed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    bootstrap_nonce: Option<Nonce>,
     /// Global contracts fields
     #[serde(default, skip_serializing_if = "Option::is_none")]
     global_contract_hash: Option<CryptoHash>,
@@ -1620,13 +1920,23 @@ impl<'de> Deserialize<'de> for Account {
             ));
         }
 
+        if !account_data.state.is_initialized() {
+            return uninitialized_account_from_serde(account_data)
+                .map_err(serde::de::Error::custom);
+        }
+        if account_data.bootstrap_nonce.is_some() {
+            return Err(serde::de::Error::custom(
+                "an initialized account can't have a bootstrap nonce",
+            ));
+        }
+
         match account_data.version {
-            AccountVersion::V1 => Ok(Account::V1(AccountV1 {
+            AccountVersion::V1 => Ok(Account::Initialized(InitializedAccount::V1(AccountV1 {
                 amount: account_data.amount,
                 locked: account_data.locked,
                 code_hash: account_data.code_hash,
                 storage_usage: account_data.storage_usage,
-            })),
+            }))),
             AccountVersion::V2 => {
                 let contract = match account_data.global_contract_account_id {
                     Some(account_id) => AccountContract::GlobalByAccount(account_id),
@@ -1636,15 +1946,41 @@ impl<'de> Deserialize<'de> for Account {
                     },
                 };
 
-                Ok(Account::V2(AccountV2 {
+                Ok(Account::Initialized(InitializedAccount::V2(AccountV2 {
                     amount: account_data.amount,
                     locked: account_data.locked,
                     storage_usage: account_data.storage_usage,
                     contract,
-                }))
+                })))
             }
         }
     }
+}
+
+/// Rebuild an uninitialized account, rejecting the fields it can never carry.
+fn uninitialized_account_from_serde(account: SerdeAccount) -> Result<Account, &'static str> {
+    if account.version != AccountVersion::V1 {
+        return Err("an uninitialized account must be version V1");
+    }
+    if account.locked != NearToken::ZERO {
+        return Err("an uninitialized account can't have locked balance");
+    }
+    if account.code_hash != CryptoHash::default()
+        || account.global_contract_hash.is_some()
+        || account.global_contract_account_id.is_some()
+    {
+        return Err("an uninitialized account can't have a contract");
+    }
+    // Defaulting this would reset the account's replay barrier, so a document
+    // that omits it is malformed rather than merely incomplete.
+    let Some(bootstrap_nonce) = account.bootstrap_nonce else {
+        return Err("an uninitialized account must carry a bootstrap nonce");
+    };
+    Ok(Account::new_uninitialized(
+        account.amount,
+        account.storage_usage,
+        bootstrap_nonce,
+    ))
 }
 
 impl Serialize for Account {
@@ -1660,6 +1996,8 @@ impl Serialize for Account {
             code_hash,
             storage_usage: self.storage_usage(),
             version,
+            state: self.state(),
+            bootstrap_nonce: self.bootstrap_nonce(),
             global_contract_hash: self.global_contract_hash(),
             global_contract_account_id: self.global_contract_account_id().cloned(),
         };
@@ -1668,9 +2006,12 @@ impl Serialize for Account {
 }
 
 #[derive(BorshSerialize, BorshDeserialize)]
+#[borsh(use_discriminant = true)]
+#[repr(u8)]
 enum BorshVersionedAccount {
     // V1 is not included since it is serialized directly without being wrapped in enum
-    V2(AccountV2),
+    V2(AccountV2) = 0,
+    Uninitialized(UninitializedAccountV1) = 1,
 }
 
 impl BorshDeserialize for Account {
@@ -1681,7 +2022,10 @@ impl BorshDeserialize for Account {
         if sentinel_or_amount == Account::SERIALIZATION_SENTINEL {
             let versioned_account = BorshVersionedAccount::deserialize_reader(rd)?;
             let account = match versioned_account {
-                BorshVersionedAccount::V2(account_v2) => Account::V2(account_v2),
+                BorshVersionedAccount::V2(account_v2) => {
+                    Account::Initialized(InitializedAccount::V2(account_v2))
+                }
+                BorshVersionedAccount::Uninitialized(account) => Account::Uninitialized(account),
             };
             Ok(account)
         } else {
@@ -1690,12 +2034,13 @@ impl BorshDeserialize for Account {
             let code_hash = CryptoHash::deserialize_reader(rd)?;
             let storage_usage = StorageUsage::deserialize_reader(rd)?;
 
-            Ok(Account::V1(AccountV1 {
+            let account_v1 = AccountV1 {
                 amount: NearToken::from_yoctonear(sentinel_or_amount),
-                locked: locked,
+                locked,
                 code_hash,
                 storage_usage,
-            }))
+            };
+            Ok(Account::Initialized(InitializedAccount::V1(account_v1)))
         }
     }
 }
@@ -1703,8 +2048,15 @@ impl BorshDeserialize for Account {
 impl BorshSerialize for Account {
     fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         let versioned_account = match self {
-            Account::V1(account_v1) => return BorshSerialize::serialize(&account_v1, writer),
-            Account::V2(account_v2) => BorshVersionedAccount::V2(account_v2.clone()),
+            Account::Initialized(InitializedAccount::V1(account_v1)) => {
+                return BorshSerialize::serialize(account_v1, writer);
+            }
+            Account::Initialized(InitializedAccount::V2(account_v2)) => {
+                BorshVersionedAccount::V2(account_v2.clone())
+            }
+            Account::Uninitialized(account) => {
+                BorshVersionedAccount::Uninitialized(account.clone())
+            }
         };
         let sentinel = Account::SERIALIZATION_SENTINEL;
         BorshSerialize::serialize(&sentinel, writer)?;
@@ -1924,6 +2276,10 @@ pub enum TrieKey {
         receiver_id: AccountId,
         data_id: CryptoHash,
     },
+    /// Stores a `ContractCompilationStatus` per contract code hash.
+    ContractCompilationStatus {
+        code_hash: CryptoHash,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, BorshDeserialize, BorshSerialize)]
@@ -1995,6 +2351,10 @@ pub enum RuntimeError {
     ReceiptValidationError(ReceiptValidationError),
     /// Error when accessing validator information. Happens inside epoch manager.
     ValidatorError(EpochError),
+    /// An external contract call was run on a trie that doesn't record the storage proof, so
+    /// what the call records can't be capped. A bug in the node: a chunk is always applied on a
+    /// trie that records, by its producer and by the validators that replay it.
+    ExternalCallWithoutRecorder,
 }
 
 impl std::fmt::Display for RuntimeError {
@@ -2059,6 +2419,11 @@ pub enum StorageError {
     FlatStorageBlockNotSupported(String),
     /// In-memory trie could not be loaded for some reason.
     MemTrieLoadingError(String),
+    /// A read would record more of the trie than the recording budget set on it allows.
+    RecordingBudgetExceeded {
+        /// The budget, in bytes of recorded storage proof.
+        limit: u64,
+    },
 }
 
 impl std::fmt::Display for StorageError {
@@ -2166,6 +2531,30 @@ pub enum InvalidTxError {
         cost: NearToken,
         reason: DepositCostFailureReason,
     },
+    /// The target of an external contract call has no contract, or no account.
+    ContractNotFound {
+        contract_id: AccountId,
+    },
+    /// An external contract call didn't run because the chunk's external calls reached one of
+    /// their shares of the chunk's limits.
+    ExternalCallChunkShareReached {
+        /// The share that was reached: what the chunk's earlier external calls used, and the
+        /// share.
+        share: ExternalCallChunkLimit,
+    },
+}
+
+/// A share of a chunk's limits that the chunk's external contract calls can use.
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[borsh(use_discriminant = true)]
+#[repr(u8)]
+pub enum ExternalCallChunkLimit {
+    /// The compute used by the chunk's earlier external calls reached their share of the chunk's
+    /// compute limit.
+    Compute { used: Compute, limit: Compute } = 0,
+    /// The storage proof recorded by the chunk's earlier external calls reached their share of
+    /// the chunk's storage proof limit.
+    StorageProof { used: u64, limit: u64 } = 1,
 }
 
 /// Reason why a gas key transaction failed at the deposit/account level.
@@ -2312,6 +2701,52 @@ pub enum ActionsValidationError {
     TotalNumberOfDeployActionsExceeded {
         number_of_deploy_actions: u64,
         limit: u64,
+    },
+    /// The method name in a FunctionCall action must not be empty.
+    FunctionCallEmptyMethodName,
+    /// The receiver id of a `UniversalStateInit` action does not match the id
+    /// derived from its state init.
+    InvalidUniversalStateInitReceiver {
+        receiver_id: AccountId,
+        derived_id: AccountId,
+    },
+    /// A storage key in a `UniversalStateInit` state init exceeds the limit.
+    UniversalStateInitKeyLengthExceeded {
+        length: u64,
+        limit: u64,
+    },
+    /// A storage value in a `UniversalStateInit` state init exceeds the limit.
+    UniversalStateInitValueLengthExceeded {
+        length: u64,
+        limit: u64,
+    },
+    /// The bytes in `RawStateInit` do not decode into `UniversalStateInit`, or they are not the
+    /// canonical representation of the struct.
+    MalformedUniversalStateInit,
+    /// The transaction includes a feature that was removed at or before the
+    /// current protocol version. The counterpart of
+    /// `UnsupportedProtocolFeature`, which covers features not yet available.
+    RemovedProtocolFeature {
+        protocol_feature: String,
+        version: ProtocolVersion,
+    },
+    /// A `WithdrawFromGasKey` action must not be nested inside a delegate action.
+    WithdrawFromGasKeyNotAllowedInDelegate,
+    /// The state-init actions in one receipt commit to more access keys in total
+    /// than allowed.
+    TotalNumberOfStateInitKeysExceeded {
+        number_of_keys: u64,
+        limit: u64,
+    },
+    /// The state-init actions in one receipt carry more storage entries in total
+    /// than allowed.
+    TotalNumberOfStateInitEntriesExceeded {
+        number_of_entries: u64,
+        limit: u64,
+    },
+    /// A transfer to a universal account while transfers to them are banned.
+    TransferToUniversalAccountNotAllowed {
+        account_id: AccountId,
     },
 }
 
@@ -2545,6 +2980,65 @@ impl Display for ActionsValidationError {
                 "The total number of deploy actions {} exceeds the per-receipt limit {}",
                 number_of_deploy_actions, limit
             ),
+            ActionsValidationError::FunctionCallEmptyMethodName => {
+                write!(
+                    f,
+                    "The method name in a FunctionCall action must not be empty"
+                )
+            }
+            ActionsValidationError::InvalidUniversalStateInitReceiver {
+                receiver_id,
+                derived_id,
+            } => write!(
+                f,
+                "UniversalStateInit action payload is invalid for account {receiver_id}, derived id is {derived_id}",
+            ),
+            ActionsValidationError::UniversalStateInitKeyLengthExceeded { length, limit } => {
+                write!(
+                    f,
+                    "UniversalStateInit contains key of length {length} but at most {limit} is allowed",
+                )
+            }
+            ActionsValidationError::UniversalStateInitValueLengthExceeded { length, limit } => {
+                write!(
+                    f,
+                    "UniversalStateInit contains value of length {length} but at most {limit} is allowed",
+                )
+            }
+            ActionsValidationError::MalformedUniversalStateInit => write!(
+                f,
+                "RawStateInit bytes are not a canonical borsh encoding of UniversalStateInit"
+            ),
+            ActionsValidationError::RemovedProtocolFeature {
+                protocol_feature,
+                version,
+            } => write!(
+                f,
+                "Transaction requires protocol feature {} which was removed and is not supported at protocol version {}",
+                protocol_feature, version,
+            ),
+            ActionsValidationError::WithdrawFromGasKeyNotAllowedInDelegate => write!(
+                f,
+                "A WithdrawFromGasKey action is not allowed inside a delegate action"
+            ),
+            ActionsValidationError::TotalNumberOfStateInitKeysExceeded {
+                number_of_keys,
+                limit,
+            } => write!(
+                f,
+                "the state inits in this receipt commit to {number_of_keys} access keys in total but at most {limit} is allowed",
+            ),
+            ActionsValidationError::TotalNumberOfStateInitEntriesExceeded {
+                number_of_entries,
+                limit,
+            } => write!(
+                f,
+                "the state inits in this receipt carry {number_of_entries} storage entries in total but at most {limit} is allowed",
+            ),
+            ActionsValidationError::TransferToUniversalAccountNotAllowed { account_id } => write!(
+                f,
+                "transfers to the universal account {account_id} are not allowed yet"
+            ),
         }
     }
 }
@@ -2691,6 +3185,23 @@ pub enum ActionErrorKind {
         nonce_index: NonceIndex,
         num_nonces: NonceIndex,
     },
+    /// The combined size of the resolved promise inputs (the `DataReceipt`s
+    /// referenced by the receipt's `input_data_ids`) exceeded the limit.
+    TotalPromiseInputSizeExceeded { size: u64, limit: u64 },
+    /// The receipt recorded more storage proof than
+    /// `per_receipt_storage_proof_size_limit` allows.
+    ReceiptStorageProofSizeExceeded { limit: u64 },
+    /// The bytes of a `UniversalStateInit` action are not the canonical borsh of a
+    /// state init. Action validation rejects such an action before it runs, so this
+    /// only fires if that check was bypassed.
+    MalformedUniversalStateInit,
+    /// The action needs a set-up account, but the receiver is an uninitialized
+    /// universal account. Distinct from `AccountDoesNotExist`: the account is
+    /// there, it just has no access keys, code or data yet.
+    AccountNotInitialized { account_id: AccountId },
+    /// A `FunctionCall` action called the method reserved for external contract calls.
+    /// That method only runs in an external call or a view call.
+    ReservedMethodName { method_name: String },
 }
 
 impl From<ActionErrorKind> for ActionError {
@@ -2840,6 +3351,25 @@ impl Display for InvalidTxError {
                     signer_id, cost
                 ),
             },
+            InvalidTxError::ContractNotFound { contract_id } => {
+                write!(f, "account {:?} does not hold a contract", contract_id)
+            }
+            InvalidTxError::ExternalCallChunkShareReached {
+                share: ExternalCallChunkLimit::Compute { used, limit },
+            } => write!(
+                f,
+                "external calls in the chunk used {} of compute, reaching their share of {}",
+                NearGas::from_gas(*used),
+                NearGas::from_gas(*limit)
+            ),
+            InvalidTxError::ExternalCallChunkShareReached {
+                share: ExternalCallChunkLimit::StorageProof { used, limit },
+            } => write!(
+                f,
+                "external calls in the chunk recorded {} bytes of storage proof, reaching their \
+                 share of {} bytes",
+                used, limit
+            ),
         }
     }
 }
@@ -3152,6 +3682,31 @@ impl Display for ActionErrorKind {
                 "DelegateAction nonce index {} must be smaller than the gas key nonce count {}",
                 nonce_index, num_nonces
             ),
+            ActionErrorKind::TotalPromiseInputSizeExceeded { size, limit } => write!(
+                f,
+                "The combined size of the receipt's promise inputs {} exceeded the limit {}",
+                size, limit
+            ),
+            ActionErrorKind::ReceiptStorageProofSizeExceeded { limit } => {
+                write!(
+                    f,
+                    "Receipt exceeded the storage proof size limit of {} bytes",
+                    limit
+                )
+            }
+            ActionErrorKind::MalformedUniversalStateInit => {
+                write!(f, "UniversalStateInit payload is not a valid state init")
+            }
+            ActionErrorKind::AccountNotInitialized { account_id } => write!(
+                f,
+                "Can't complete the action because account {:?} is uninitialized",
+                account_id
+            ),
+            ActionErrorKind::ReservedMethodName { method_name } => write!(
+                f,
+                "Method {:?} is reserved for external contract calls and can't be called by a FunctionCall action",
+                method_name
+            ),
         }
     }
 }
@@ -3326,6 +3881,8 @@ pub enum PrepareError {
     /// A function's max operand-stack size (in bytes) exceeds
     /// `max_operand_stack_bytes_per_function`.
     OperandStackTooLarge,
+    /// Contract declares too many entries in the wasm global section.
+    TooManyGlobals,
 }
 
 /// A kind of a trap happened during execution of a binary
@@ -3428,6 +3985,15 @@ pub enum HostError {
     /// bytes or public key is not 33 bytes). Parse failures of otherwise
     /// well-sized inputs return 0 from the host function instead of aborting.
     P256VerifyInvalidInput { msg: String },
+    /// Input length mismatch for ML-DSA-65 signature verification (signature is
+    /// not 3309 bytes or public key is not 1952 bytes). Parse failures of
+    /// otherwise well-sized inputs return 0 from the host function instead of
+    /// aborting.
+    MlDsaVerifyInvalidInput { msg: String },
+    /// `method_name` is not allowed in external contract calls, or in the receipts they lead to
+    ProhibitedInExternalCall { method_name: String },
+    /// An external contract call has an attached deposit, which it cannot have
+    DepositInExternalCall,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, BorshDeserialize, BorshSerialize, Deserialize, Serialize)]
@@ -3735,6 +4301,21 @@ pub struct DeterministicStateInitAction {
     pub deposit: NearToken,
 }
 
+/// The state init of a `0u` universal account, as the bytes its producer serialized: the
+/// account id commits to exactly these bytes. Over serde the bytes are base64.
+#[serde_as]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+pub struct RawStateInit(#[serde_as(as = "Base64")] pub Vec<u8>);
+
+/// Create a `0u` universal account from its state init. The receiver id must
+/// equal the id derived from `state_init`; the attached `deposit`
+/// covers the new account's storage staking.
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+pub struct UniversalStateInitAction {
+    pub state_init: RawStateInit,
+    pub deposit: NearToken,
+}
+
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
 #[borsh(use_discriminant = true)]
 #[repr(u8)]
@@ -3759,6 +4340,7 @@ pub enum Action {
     WithdrawFromGasKey(Box<WithdrawFromGasKeyAction>) = 13,
     /// Meta transaction carrying a `DelegateActionV2`, which supports gas keys.
     DelegateV2(Box<VersionedSignedDelegateAction>) = 14,
+    UniversalStateInit(Box<UniversalStateInitAction>) = 15,
 }
 
 const _: () = assert!(
@@ -3787,6 +4369,7 @@ impl Action {
             | Action::DeployGlobalContract(_)
             | Action::UseGlobalContract(_)
             | Action::DeterministicStateInit(_)
+            | Action::UniversalStateInit(_)
             | Action::TransferToGasKey(_)
             | Action::WithdrawFromGasKey(_) => false,
         }
@@ -3803,6 +4386,7 @@ impl Action {
             Action::FunctionCall(a) => a.deposit,
             Action::Transfer(a) => a.deposit,
             Action::DeterministicStateInit(a) => a.deposit,
+            Action::UniversalStateInit(a) => a.deposit,
             Action::TransferToGasKey(a) => a.deposit,
             _ => NearToken::from_yoctonear(0),
         }
@@ -3878,6 +4462,12 @@ impl From<WithdrawFromGasKeyAction> for Action {
 impl From<DeterministicStateInitAction> for Action {
     fn from(action: DeterministicStateInitAction) -> Self {
         Self::DeterministicStateInit(Box::new(action))
+    }
+}
+
+impl From<UniversalStateInitAction> for Action {
+    fn from(action: UniversalStateInitAction) -> Self {
+        Self::UniversalStateInit(Box::new(action))
     }
 }
 
@@ -4528,6 +5118,17 @@ pub struct AccountView {
     pub global_contract_hash: Option<CryptoHash>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub global_contract_account_id: Option<AccountId>,
+    /// Whether the account is initialized. Only a universal account can be
+    /// uninitialized: it has no access keys, code or data until a
+    /// `UniversalStateInit` arrives. Omitted for initialized accounts.
+    #[serde(default, skip_serializing_if = "AccountState::is_initialized")]
+    pub state: AccountState,
+    /// The nonce an uninitialized account's own transactions must use, present
+    /// only while it is uninitialized. A self-signed state init is the one
+    /// transaction such an account can send, and this is the only way for a
+    /// client to learn the nonce it must carry: there is no access key to query.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bootstrap_nonce: Option<Nonce>,
 }
 
 /// A view of the contract code.
@@ -4556,6 +5157,8 @@ impl From<&Account> for AccountView {
             storage_paid_at: 0,
             global_contract_hash,
             global_contract_account_id,
+            state: account.state(),
+            bootstrap_nonce: account.bootstrap_nonce(),
         }
     }
 }
@@ -4568,6 +5171,12 @@ impl From<Account> for AccountView {
 
 impl From<&AccountView> for Account {
     fn from(view: &AccountView) -> Self {
+        if !view.state.is_initialized() {
+            let bootstrap_nonce = view
+                .bootstrap_nonce
+                .expect("an uninitialized account view always has a bootstrap nonce");
+            return Account::new_uninitialized(view.amount, view.storage_usage, bootstrap_nonce);
+        }
         let contract = match &view.global_contract_account_id {
             Some(account_id) => AccountContract::GlobalByAccount(account_id.clone()),
             None => match view.global_contract_hash {
@@ -4795,12 +5404,18 @@ pub struct AccessKeyInfoView {
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct AccessKeyList {
     pub keys: Vec<AccessKeyInfoView>,
+    /// Pagination cursor. When `Some`, the listing was truncated and the caller
+    /// should issue another request with `after_key` set to this handle to fetch
+    /// the next page. `None` means this was the last page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_key: Option<PublicKeyHandle>,
 }
 
 impl FromIterator<AccessKeyInfoView> for AccessKeyList {
     fn from_iter<I: IntoIterator<Item = AccessKeyInfoView>>(iter: I) -> Self {
         Self {
             keys: iter.into_iter().collect(),
+            last_key: None,
         }
     }
 }
@@ -4820,6 +5435,19 @@ pub enum QueryResponseKind {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct GasKeyNoncesView {
     pub nonces: Vec<Nonce>,
+}
+
+/// The initial state of a `0s` or `0u` account, as its state-init action carries it.
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum StateInitView {
+    Deterministic {
+        code: GlobalContractIdentifierView,
+        #[serde_as(as = "BTreeMap<Base64, Base64>")]
+        data: BTreeMap<Vec<u8>, Vec<u8>>,
+    },
+    Universal(RawStateInit),
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
@@ -4852,6 +5480,10 @@ pub enum QueryRequest {
     },
     ViewAccessKeyList {
         account_id: AccountId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        after_key: Option<PublicKeyHandle>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<NonZeroU32>,
     },
     ViewGasKeyNonces {
         account_id: AccountId,
@@ -4862,6 +5494,9 @@ pub enum QueryRequest {
         method_name: String,
         #[serde(rename = "args_base64")]
         args: FunctionArgs,
+        /// Runs the call as if this were installed, unless the account already has its state.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        state_init: Option<StateInitView>,
     },
     ViewGlobalContractCode {
         code_hash: CryptoHash,
@@ -5238,10 +5873,10 @@ pub struct BlockHeaderView {
     pub gas_price: Balance,
     pub block_ordinal: Option<NumBlocks>,
     /// TODO(2271): deprecated.
-    #[serde(with = "dec_format")]
+    #[serde(default, with = "dec_format")]
     pub rent_paid: Balance,
     /// TODO(2271): deprecated.
-    #[serde(with = "dec_format")]
+    #[serde(default, with = "dec_format")]
     pub validator_reward: Balance,
     #[serde(with = "dec_format")]
     pub total_supply: Balance,
@@ -5261,6 +5896,8 @@ pub struct BlockHeaderView {
     pub prev_last_certified_block_epoch_id: Option<EpochId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spice_chunk_endorsement_stats: Option<Vec<SpiceChunkEndorsementStats>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chunk_execution_root: Option<CryptoHash>,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -5288,6 +5925,10 @@ pub struct BlockHeaderInnerLiteView {
     pub timestamp_nanosec: u64,
     pub next_bp_hash: CryptoHash,
     pub block_merkle_root: CryptoHash,
+    /// Merkle root over the block's certified chunk execution results.
+    /// `None` for pre-spice headers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chunk_execution_root: Option<CryptoHash>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -5304,10 +5945,10 @@ pub struct ChunkHeaderView {
     pub gas_used: Gas,
     pub gas_limit: Gas,
     /// TODO(2271): deprecated.
-    #[serde(with = "dec_format")]
+    #[serde(default, with = "dec_format")]
     pub rent_paid: Balance,
     /// TODO(2271): deprecated.
-    #[serde(with = "dec_format")]
+    #[serde(default, with = "dec_format")]
     pub validator_reward: Balance,
     #[serde(with = "dec_format")]
     pub balance_burnt: Balance,
@@ -5394,8 +6035,26 @@ pub struct BlockView {
 pub struct ChunkView {
     pub author: AccountId,
     pub header: ChunkHeaderView,
-    pub transactions: Vec<SignedTransactionView>,
+    pub transactions: Vec<TransactionEnvelopeView>,
     pub receipts: Vec<ReceiptView>,
+}
+
+#[serde_as]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub struct EccTransactionView {
+    pub contract_id: AccountId,
+    #[serde_as(as = "Base64")]
+    pub payload: Vec<u8>,
+    pub hash: CryptoHash,
+}
+
+/// A transaction in a chunk. Untagged so that a signed transaction keeps the JSON shape it
+/// always had.
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum TransactionEnvelopeView {
+    Signed(SignedTransactionView),
+    Unsigned(EccTransactionView),
 }
 
 #[derive(Deserialize)]
@@ -5530,6 +6189,10 @@ pub enum ActionView {
         public_key: PublicKey,
         amount: NearToken,
     } = 15,
+    UniversalStateInit {
+        state_init: RawStateInit,
+        deposit: NearToken,
+    } = 17,
 }
 
 impl From<Action> for ActionView {
@@ -5603,6 +6266,10 @@ impl From<Action> for ActionView {
             Action::WithdrawFromGasKey(action) => ActionView::WithdrawFromGasKey {
                 public_key: action.public_key,
                 amount: action.amount,
+            },
+            Action::UniversalStateInit(action) => ActionView::UniversalStateInit {
+                state_init: action.state_init,
+                deposit: action.deposit,
             },
         }
     }
@@ -5705,6 +6372,13 @@ impl TryFrom<ActionView> for Action {
                     amount,
                 }))
             }
+            ActionView::UniversalStateInit {
+                state_init,
+                deposit,
+            } => Action::UniversalStateInit(Box::new(UniversalStateInitAction {
+                state_init,
+                deposit,
+            })),
         })
     }
 }
@@ -6362,12 +7036,24 @@ pub struct DataReceiverView {
     pub receiver_id: AccountId,
 }
 
+/// What authorized a chain of receipts: an access key that signed a transaction, or an
+/// external call its contract accepted.
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[borsh(use_discriminant = true)]
+#[repr(u8)]
+pub enum AuthorizationContext {
+    AccessKey(PublicKey) = 0,
+    ExternalContractCall = 1,
+}
+
 #[serde_as]
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ReceiptEnumView {
     Action {
         signer_id: AccountId,
-        signer_public_key: PublicKey,
+        /// The key of the transaction that started the chain, absent in an external call's chain
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        signer_public_key: Option<PublicKey>,
         #[serde(with = "dec_format")]
         gas_price: Balance,
         output_data_receivers: Vec<DataReceiverView>,
@@ -6377,6 +7063,9 @@ pub enum ReceiptEnumView {
         is_promise_yield: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         refund_to: Option<AccountId>,
+        /// What authorized the chain, absent in views written before external calls
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        authorization_context: Option<AuthorizationContext>,
     },
     Data {
         data_id: CryptoHash,
@@ -6470,6 +7159,7 @@ pub struct CurrentEpochValidatorInfo {
     #[serde(default)]
     pub num_expected_endorsements_per_shard: Vec<NumBlocks>,
     /// Shards this validator is assigned to as chunk validator in the current epoch.
+    #[serde(default)]
     pub shards_endorsed: Vec<ShardId>,
 }
 
@@ -6625,6 +7315,7 @@ pub enum StateChangeCauseView {
     ValidatorAccountsUpdate,
     Migration,
     BandwidthSchedulerStateUpdate,
+    ContractCompilationStatusUpdate,
 }
 
 impl From<StateChangeCause> for StateChangeCauseView {
@@ -6652,6 +7343,9 @@ impl From<StateChangeCause> for StateChangeCauseView {
             StateChangeCause::Migration => Self::Migration,
             StateChangeCause::_UnusedReshardingV2 => Self::BandwidthSchedulerStateUpdate,
             StateChangeCause::BandwidthSchedulerStateUpdate => Self::BandwidthSchedulerStateUpdate,
+            StateChangeCause::ContractCompilationStatusUpdate => {
+                Self::ContractCompilationStatusUpdate
+            }
         }
     }
 }
@@ -7636,6 +8330,18 @@ pub enum RpcQueryError {
         block_height: BlockHeight,
         block_hash: CryptoHash,
     },
+    #[error("account {requested_account_id} exists but is not initialized")]
+    UninitializedAccount {
+        requested_account_id: AccountId,
+        block_height: BlockHeight,
+        block_hash: CryptoHash,
+    },
+    #[error("invalid state init: {error}")]
+    InvalidStateInit {
+        error: Box<ActionsValidationError>,
+        block_height: BlockHeight,
+        block_hash: CryptoHash,
+    },
     #[error(
         "Contract code for contract ID #{contract_account_id} has never been observed on the node"
     )]
@@ -7650,7 +8356,7 @@ pub enum RpcQueryError {
         block_height: BlockHeight,
         block_hash: CryptoHash,
     },
-    #[error("Access key for public key {public_key} has never been observed on the node")]
+    #[error("Access key for public key {public_key} does not exist while viewing")]
     UnknownAccessKey {
         public_key: near_crypto::PublicKey,
         block_height: BlockHeight,
@@ -7659,6 +8365,15 @@ pub enum RpcQueryError {
     #[error("Gas key for public key {public_key} does not exist while viewing")]
     UnknownGasKey {
         public_key: near_crypto::PublicKey,
+        block_height: BlockHeight,
+        block_hash: CryptoHash,
+    },
+    #[error(
+        "Account {requested_account_id} has more than {limit} access keys; use a paginated view_access_key_list request"
+    )]
+    TooManyAccessKeys {
+        requested_account_id: AccountId,
+        limit: u32,
         block_height: BlockHeight,
         block_hash: CryptoHash,
     },
@@ -7713,15 +8428,39 @@ pub enum HandlerError {
     RpcReceiptError(RpcReceiptError),
     RpcStatusError(RpcStatusError),
     RpcTransactionError(RpcTransactionError),
+    RpcBlockError(RpcBlockError),
+    RpcValidatorError(RpcValidatorError),
     RpcLightClientProofError(RpcLightClientProofError),
     Other(serde_json::Value),
 }
 
 #[derive(thiserror::Error, Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "name", content = "info", rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum RpcBlockError {
+    #[error("Block not found")]
+    UnknownBlock {},
+    #[error("There are no fully synchronized blocks yet")]
+    NotSyncedYet,
+    #[error("The node reached its limits. Try again later. More details: {error_message}")]
+    InternalError { error_message: String },
+}
+
+#[derive(thiserror::Error, Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "name", content = "info", rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum RpcValidatorError {
+    #[error("Epoch not found")]
+    UnknownEpoch,
+    #[error("Validator info unavailable")]
+    ValidatorInfoUnavailable,
+    #[error("The node reached its limits. Try again later. More details: {error_message}")]
+    InternalError { error_message: String },
+}
+
+#[derive(thiserror::Error, Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "name", content = "info", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RpcLightClientProofError {
     #[error("Block either has never been observed on the node or has been garbage collected")]
-    UnknownBlock,
+    UnknownBlock {},
     #[error(
         "Inconsistent state. Total number of shards is {number_or_shards} but the execution outcome is in shard {execution_outcome_shard_id}"
     )]
@@ -7742,6 +8481,51 @@ pub enum RpcLightClientProofError {
         transaction_or_receipt_id: CryptoHash,
         shard_id: ShardId,
     },
+    #[error("Node does not track shard {shard_id}")]
+    ShardNotTracked { shard_id: ShardId },
+    #[error(
+        "Account {account_id} is in shard {account_shard_id}, not the requested shard \
+         {requested_shard_id}"
+    )]
+    TargetShardMismatch {
+        account_id: AccountId,
+        account_shard_id: ShardId,
+        requested_shard_id: ShardId,
+    },
+    #[error("State for chunk {chunk_id:?} is not available on this node")]
+    StateNotAvailable { chunk_id: SpiceChunkId },
+    #[error("Chunk {chunk_id:?} is not yet certified")]
+    ChunkNotCertified { chunk_id: SpiceChunkId },
+    #[error(
+        "Light client head height {head_height} must be greater than height \
+         {certifying_block_height} of the block certifying chunk {chunk_id:?}"
+    )]
+    LightClientHeadTooOld {
+        chunk_id: SpiceChunkId,
+        certifying_block_height: BlockHeight,
+        head_height: BlockHeight,
+    },
+    #[error("Internal error: {error_message}")]
+    InternalError { error_message: String },
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    BorshSerialize,
+    BorshDeserialize,
+    Serialize,
+    Deserialize,
+)]
+pub struct SpiceChunkId {
+    pub block_hash: CryptoHash,
+    pub shard_id: ShardId,
 }
 
 #[derive(thiserror::Error, Debug, Clone, Serialize, Deserialize)]
@@ -7757,8 +8541,36 @@ pub enum RpcTransactionError {
     UnknownTransaction {
         requested_transaction_hash: CryptoHash,
     },
+    #[error("The node reached its limits. Try again later. More details: {debug_info}")]
+    InternalError { debug_info: String },
+    /// `None` when the response comes from a node running an older version that omitted the
+    /// cause.
     #[error("Timeout")]
-    TimeoutError,
+    TimeoutError(Option<TimeoutErrorCause>),
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct RpcTransactionResponse {
+    #[serde(flatten)]
+    pub final_execution_outcome: Option<FinalExecutionOutcomeViewEnum>,
+    pub final_execution_status: TxExecutionStatus,
+}
+
+/// Explains why a transaction status request returned a `RpcTransactionError::TimeoutError`:
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "cause", rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum TimeoutErrorCause {
+    /// The node never observed the transaction on chain.
+    NotObserved,
+    /// The transaction was observed but is still pending the requested finality. The
+    /// last-known status is included so the caller can re-poll for a higher finality.
+    Pending { status: Box<RpcTransactionResponse> },
+    /// The node does not track the transaction's shard and could not get an answer from a
+    /// chunk producer that does before the timeout.
+    DoesNotTrackShard { shard_id: ShardId },
+    /// The node could not produce a usable transaction status before the timeout (for
+    /// example a repeated internal error, or no response at all).
+    Error { debug_info: String },
 }
 
 #[derive(thiserror::Error, Debug, Clone, Serialize, Deserialize)]
@@ -7770,11 +8582,15 @@ pub enum RpcStatusError {
     NoNewBlocks { elapsed: Duration },
     #[error("Epoch Out Of Bounds {epoch_id:?}")]
     EpochOutOfBounds { epoch_id: EpochId },
+    #[error("The node reached its limits. Try again later. More details: {error_message}")]
+    InternalError { error_message: String },
 }
 
 #[derive(thiserror::Error, Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "name", content = "info", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RpcReceiptError {
+    #[error("The node reached its limits. Try again later. More details: {error_message}")]
+    InternalError { error_message: String },
     #[error("Receipt with id {receipt_id} has never been observed on this node")]
     UnknownReceipt { receipt_id: CryptoHash },
 }

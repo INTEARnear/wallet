@@ -646,6 +646,7 @@
   "pages.send_transactions.action.use_global_contract": "Deploy Global Contract on this account from {source}",
   "pages.send_transactions.action.withdraw_from_gas_key": "Withdraw {amount} from gas key {public_key}",
   "pages.send_transactions.action.deterministic_state_init": "Initialize deterministic account with {deposit}",
+  "pages.send_transactions.action.universal_state_init": "Initialize universal account with {deposit}",
   "pages.send_transactions.approve": "Approve",
   "pages.send_transactions.args_binary_prefix": "binary: {content}",
   "pages.send_transactions.auto_confirming": "Auto-confirming…",

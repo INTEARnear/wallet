@@ -366,6 +366,7 @@ fn format_tx_error(error: &near_min_api::Error) -> String {
                     RpcStatusError::NodeIsSyncing => "RPC node is syncing".to_string(),
                     RpcStatusError::NoNewBlocks { elapsed } => format!("No blocks for {elapsed:?}"),
                     RpcStatusError::EpochOutOfBounds { epoch_id } => format!("Epoch Out Of Bounds {epoch_id:?}"),
+                    RpcStatusError::InternalError { error_message } => format!("RPC node reached its limits: {error_message}"),
                 },
                 HandlerError::RpcTransactionError(tx_error) => match tx_error {
                     RpcTransactionError::InvalidTransaction {} => {
@@ -435,6 +436,16 @@ fn format_tx_error(error: &near_min_api::Error) -> String {
                                             }
                                             ActionErrorKind::DelegateActionInvalidNonceIndex { nonce_index, num_nonces } =>
                                                 format!("Delegate action nonce index {nonce_index} must be smaller than the gas key nonce count {num_nonces}"),
+                                            ActionErrorKind::TotalPromiseInputSizeExceeded { size, limit } =>
+                                                format!("The combined size of the receipt's promise inputs {size} exceeds the limit {limit}"),
+                                            ActionErrorKind::ReceiptStorageProofSizeExceeded { limit } =>
+                                                format!("Receipt exceeded the storage proof size limit of {limit} bytes"),
+                                            ActionErrorKind::MalformedUniversalStateInit =>
+                                                "Universal account state init is malformed".to_string(),
+                                            ActionErrorKind::AccountNotInitialized { account_id } =>
+                                                format!("Account {account_id} is not initialized yet"),
+                                            ActionErrorKind::ReservedMethodName { method_name } =>
+                                                format!("Method {method_name} is reserved for external contract calls"),
                                         }),
                                         TxExecutionError::InvalidTxError(e) => match e {
                                             InvalidTxError::InvalidAccessKeyError(access_key_error) =>
@@ -484,6 +495,10 @@ fn format_tx_error(error: &near_min_api::Error) -> String {
                                                     DepositCostFailureReason::LackBalanceForState =>
                                                         format!("Sender {signer_id} would not have enough balance for storage after covering deposit (required {cost} more)"),
                                                 },
+                                            InvalidTxError::ContractNotFound { contract_id } =>
+                                                format!("Account {contract_id} does not have a contract"),
+                                            InvalidTxError::ExternalCallChunkShareReached { .. } =>
+                                                "External contract calls reached their share of the block's limits, try again later".to_string(),
                                         },
                                     },
                                 }
@@ -499,8 +514,11 @@ fn format_tx_error(error: &near_min_api::Error) -> String {
                         format!("Transaction with hash {transaction_hash} was routed"),
                     RpcTransactionError::UnknownTransaction { requested_transaction_hash } =>
                         format!("Transaction {requested_transaction_hash} doesn't exist"),
-                    RpcTransactionError::TimeoutError => "Timeout".to_string(),
+                    RpcTransactionError::InternalError { debug_info } => format!("RPC node reached its limits: {debug_info}"),
+                    RpcTransactionError::TimeoutError(_) => "Timeout".to_string(),
                 },
+                HandlerError::RpcBlockError(_) => unreachable!(),
+                HandlerError::RpcValidatorError(_) => unreachable!(),
                 HandlerError::RpcLightClientProofError(_) => unreachable!(),
                 HandlerError::Other(value) => format!("Other handler error: {value}"),
             },

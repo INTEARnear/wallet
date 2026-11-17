@@ -646,6 +646,7 @@
   "pages.send_transactions.action.use_global_contract": "Deploy Global Contract trên tài khoản này từ {source}",
   "pages.send_transactions.action.withdraw_from_gas_key": "{amount}{public_key}",
   "pages.send_transactions.action.deterministic_state_init": "{deposit}",
+  "pages.send_transactions.action.universal_state_init": "{deposit}",
   "pages.send_transactions.approve": "Phê duyệt",
   "pages.send_transactions.args_binary_prefix": "Binary: {content}",
   "pages.send_transactions.auto_confirming": "Đang tự động xác nhận…",

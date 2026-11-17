@@ -692,6 +692,7 @@ translation_keys! {
                     GlobalContractBindCodeHash,
                     GlobalContractBindThisAccount,
                     DeterministicStateInit,
+                    UniversalStateInit,
                     TransferToGasKey,
                     WithdrawFromGasKey,
                 },

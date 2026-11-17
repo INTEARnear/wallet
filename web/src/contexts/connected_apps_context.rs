@@ -129,6 +129,7 @@ pub fn is_dangerous_action(action: &Action) -> bool {
             | Action::Stake(_)
             | Action::UseGlobalContract(_)
             | Action::DeterministicStateInit(_)
+            | Action::UniversalStateInit(_)
             | Action::WithdrawFromGasKey(_)
             | Action::DeployGlobalContract(DeployGlobalContractAction {
                 deploy_mode: GlobalContractDeployMode::AccountId,

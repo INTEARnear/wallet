@@ -9,15 +9,16 @@ use reqwest::IntoUrl;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{
     collections::HashMap,
+    num::NonZeroU32,
     sync::{Arc, Mutex},
     time::Duration,
 };
 use types::{
     AccessKeyList, AccessKeyView, AccountView, BlockId, BlockReference, BlockView, CryptoHash,
     FinalExecutionOutcomeView, FinalExecutionOutcomeWithReceiptView, Finality, HandlerError,
-    QueryRequest, QueryResponse, QueryResponseKind, ResultOrError, RpcError, RpcErrorKind,
-    RpcLightClientProofError, RpcQueryError, RpcReceiptError, RpcStatusError, RpcTransactionError,
-    SignedTransaction, Transaction, TxExecutionStatus,
+    QueryRequest, QueryResponse, QueryResponseKind, ResultOrError, RpcBlockError, RpcError,
+    RpcErrorKind, RpcLightClientProofError, RpcQueryError, RpcReceiptError, RpcStatusError,
+    RpcTransactionError, RpcValidatorError, SignedTransaction, Transaction, TxExecutionStatus,
 };
 
 use crate::types::{
@@ -195,6 +196,7 @@ impl RpcClient {
                 args: serde_json::to_vec(&args)
                     .map_err(CallError::ArgsSerialization)?
                     .into(),
+                state_init: None,
             },
             finality,
         };
@@ -315,17 +317,34 @@ impl RpcClient {
     pub async fn view_access_key_list(
         &self,
         account_id: AccountId,
-        finality: QueryFinality,
+        mut finality: QueryFinality,
     ) -> Result<AccessKeyList, Error> {
         let rpc_method = "query";
-        let rpc_params = Query {
-            request: QueryRequest::ViewAccessKeyList { account_id },
-            finality,
-        };
-        let response: QueryResponse = self.request(rpc_method, rpc_params).await?;
-        match response.kind {
-            QueryResponseKind::AccessKeyList(access_key_list) => Ok(access_key_list),
-            _ => unreachable!("Unexpected query response kind: {:?}", response.kind),
+        let mut keys = Vec::new();
+        let mut after_key = None;
+        loop {
+            let rpc_params = Query {
+                request: QueryRequest::ViewAccessKeyList {
+                    account_id: account_id.clone(),
+                    after_key,
+                    // The RPC lowers it to the largest page it allows
+                    limit: Some(NonZeroU32::MAX),
+                },
+                finality,
+            };
+            let response: QueryResponse = self.request(rpc_method, rpc_params).await?;
+            let QueryResponseKind::AccessKeyList(page) = response.kind else {
+                unreachable!("Unexpected query response kind: {:?}", response.kind)
+            };
+            keys.extend(page.keys);
+            let Some(last_key) = page.last_key else {
+                return Ok(AccessKeyList {
+                    keys,
+                    last_key: None,
+                });
+            };
+            after_key = Some(last_key);
+            finality = QueryFinality::BlockId(BlockId::Hash(response.block_hash));
         }
     }
 
@@ -383,6 +402,7 @@ impl RpcClient {
                         account_id,
                         method_name: method.to_string(),
                         args: args.into(),
+                        state_init: None,
                     },
                     finality,
                 }),
@@ -764,24 +784,39 @@ fn is_node_issue(error: &Error) -> bool {
                         | RpcQueryError::UnknownBlock { .. }
                         | RpcQueryError::UnavailableShard { .. }
                         | RpcQueryError::NoSyncedBlocks
-                        | RpcQueryError::TooLargeContractState { .. },
-                ) | HandlerError::RpcReceiptError(RpcReceiptError::UnknownReceipt { .. })
-                    | HandlerError::RpcStatusError(
-                        RpcStatusError::NodeIsSyncing | RpcStatusError::NoNewBlocks { .. },
-                    )
-                    | HandlerError::RpcTransactionError(
-                        RpcTransactionError::DoesNotTrackShard
-                            | RpcTransactionError::RequestRouted { .. }
-                            | RpcTransactionError::UnknownTransaction { .. }
-                            | RpcTransactionError::TimeoutError,
-                    )
-                    | HandlerError::RpcLightClientProofError(
-                        RpcLightClientProofError::UnknownBlock
-                            | RpcLightClientProofError::InconsistentState { .. }
-                            | RpcLightClientProofError::NotConfirmed { .. }
-                            | RpcLightClientProofError::UnknownTransactionOrReceipt { .. }
-                            | RpcLightClientProofError::UnavailableShard { .. },
-                    ),
+                        | RpcQueryError::TooLargeContractState { .. }
+                        | RpcQueryError::InternalError { .. },
+                ) | HandlerError::RpcReceiptError(
+                    RpcReceiptError::UnknownReceipt { .. } | RpcReceiptError::InternalError { .. },
+                ) | HandlerError::RpcStatusError(
+                    RpcStatusError::NodeIsSyncing
+                        | RpcStatusError::NoNewBlocks { .. }
+                        | RpcStatusError::InternalError { .. },
+                ) | HandlerError::RpcTransactionError(
+                    RpcTransactionError::DoesNotTrackShard
+                        | RpcTransactionError::RequestRouted { .. }
+                        | RpcTransactionError::UnknownTransaction { .. }
+                        | RpcTransactionError::InternalError { .. }
+                        | RpcTransactionError::TimeoutError(_),
+                ) | HandlerError::RpcBlockError(
+                    RpcBlockError::UnknownBlock {}
+                        | RpcBlockError::NotSyncedYet
+                        | RpcBlockError::InternalError { .. },
+                ) | HandlerError::RpcValidatorError(
+                    RpcValidatorError::UnknownEpoch
+                        | RpcValidatorError::ValidatorInfoUnavailable
+                        | RpcValidatorError::InternalError { .. },
+                ) | HandlerError::RpcLightClientProofError(
+                    RpcLightClientProofError::UnknownBlock {}
+                        | RpcLightClientProofError::InconsistentState { .. }
+                        | RpcLightClientProofError::NotConfirmed { .. }
+                        | RpcLightClientProofError::UnknownTransactionOrReceipt { .. }
+                        | RpcLightClientProofError::UnavailableShard { .. }
+                        | RpcLightClientProofError::ShardNotTracked { .. }
+                        | RpcLightClientProofError::StateNotAvailable { .. }
+                        | RpcLightClientProofError::ChunkNotCertified { .. }
+                        | RpcLightClientProofError::InternalError { .. },
+                ),
             )),
             ..
         }) | Error::Reqwest(_)
@@ -1190,6 +1225,7 @@ mod live_rpc_tests {
                             account_id: wrap_near(),
                             method_name: "ft_metadata".to_string(),
                             args: serde_json::to_vec(&serde_json::json!({})).unwrap().into(),
+                            state_init: None,
                         },
                         finality: QueryFinality::Finality(Finality::Final),
                     },

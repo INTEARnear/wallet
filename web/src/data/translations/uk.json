@@ -646,6 +646,7 @@
   "pages.send_transactions.action.use_global_contract": "Створити глобальний контракт на цьому акаунті з {source}",
   "pages.send_transactions.action.withdraw_from_gas_key": "Вивід {amount} з gas-ключа {public_key}",
   "pages.send_transactions.action.deterministic_state_init": "Ініціалізація deterministic акаунту з {deposit}",
+  "pages.send_transactions.action.universal_state_init": "Ініціалізація universal акаунту з {deposit}",
   "pages.send_transactions.approve": "Схвалити",
   "pages.send_transactions.args_binary_prefix": "двійкові дані: {content}",
   "pages.send_transactions.auto_confirming": "Автопідтвердження…",
