@@ -261,6 +261,7 @@ fn SwapMainnet() -> impl IntoView {
                 SWAP_FEE_RECIPIENT.parse().unwrap(),
                 SWAP_FEE,
             )])),
+            quote_improvement_receiver: Some(SWAP_FEE_RECIPIENT.parse().unwrap()),
         };
         Some(serde_urlencoded::to_string(request).unwrap())
     });
@@ -2160,6 +2161,8 @@ pub struct SwapRequest {
     /// Accounts to pay a fee to, and the fee each one charges. `0.005` means 0.5%.
     #[serde(with = "json_encoded", default)]
     pub fees: Option<HashMap<AccountId, f64>>,
+    /// Takes what swaps on Intear DEX give above the quote's estimate, or take below it
+    pub quote_improvement_receiver: Option<AccountId>,
 }
 
 mod json_encoded {
