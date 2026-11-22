@@ -1,28 +1,28 @@
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     fmt::{self, Display},
     num::NonZeroU64,
     str::FromStr,
-    time::Duration,
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
-use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, Zero, num_bigint::Sign};
-use codee::string::FromToStringCodec;
-use futures_channel::oneshot;
+use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, ToPrimitive, Zero, num_bigint::Sign};
+use dex_aggregator_rs::{
+    CheckedQuote, ConnectionStatus, OutcomeWaitUntil, Quote, RouterAmount, RouterConnection,
+    RouterConnectionOptions, SwapAmount, SwapRequest, TokenId, Transaction, TransactionSender,
+};
+use futures_util::future::{AbortHandle, abortable};
 use leptos::prelude::AnyView;
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use leptos_icons::Icon;
 use leptos_router::{components::A, hooks::use_location, location::Location};
-use leptos_use::{
-    ReconnectLimit, UseWebSocketOptions, core::ConnectionReadyState, use_websocket_with_options,
-};
 use near_min_api::{
     QueryFinality, RpcClient,
     types::{
-        AccountId, AccountIdRef, Action, Balance, CryptoHash, Finality, U128,
+        AccountId, AccountIdRef, Action, Balance, Finality, FunctionCallAction, Gas, U128,
         near_crypto::PublicKey,
     },
-    utils::dec_format,
 };
 use serde::{Deserialize, Serialize};
 
@@ -230,8 +230,8 @@ fn SwapMainnet() -> impl IntoView {
         Some(amount_raw)
     });
 
-    // Compare the serialized request so balance and unrelated config updates don't resend it.
-    let route_query = Memo::new(move |_| {
+    // Compared, so that balance and unrelated config updates don't route it again
+    let swap_request = Memo::new(move |_| {
         let token_in = token_in.get()?.token.account_id;
         let token_out = token_out.get()?.token.account_id;
         let amount_raw = validated_amount_entered.get()?;
@@ -245,25 +245,24 @@ fn SwapMainnet() -> impl IntoView {
                 .then(|| (account.account_id.clone(), account.secret_key.public_key()))
         })?;
         let dexes = selected_dexes.get();
-        let request = SwapRequest {
-            token_in: token_in.into(),
-            token_out: token_out.into(),
-            amount: match swap_mode_memo.get() {
-                SwapMode::ExactIn => Amount::AmountIn(amount_raw),
-                SwapMode::ExactOut => Amount::AmountOut(amount_raw),
-            },
-            slippage: config.get().slippage,
-            dexes: if dexes.is_empty() { None } else { Some(dexes) },
-            trader_account_id: Some(trader_account_id),
-            signing_public_key: Some(signing_public_key),
-            referrer_id: Some(SWAP_FEE_RECIPIENT.parse().unwrap()),
-            fees: Some(HashMap::from([(
-                SWAP_FEE_RECIPIENT.parse().unwrap(),
-                SWAP_FEE,
-            )])),
-            quote_improvement_receiver: Some(SWAP_FEE_RECIPIENT.parse().unwrap()),
+        let amount = match swap_mode_memo.get() {
+            SwapMode::ExactIn => SwapAmount::ExactIn(amount_raw),
+            SwapMode::ExactOut => SwapAmount::ExactOut(amount_raw),
         };
-        Some(serde_urlencoded::to_string(request).unwrap())
+        Some(SwapRequest {
+            signing_public_key: Some(signing_public_key.to_string()),
+            dexes: (!dexes.is_empty()).then(|| dexes.iter().map(ToString::to_string).collect()),
+            referrer_id: Some(SWAP_FEE_RECIPIENT.parse().unwrap()),
+            fees: BTreeMap::from([(SWAP_FEE_RECIPIENT.parse().unwrap(), SWAP_FEE)]),
+            quote_improvement_receiver: Some(SWAP_FEE_RECIPIENT.parse().unwrap()),
+            ..SwapRequest::new(
+                router_token_id(token_in),
+                router_token_id(token_out),
+                amount,
+                config.get().slippage.to_router_slippage(),
+                trader_account_id,
+            )
+        })
     });
 
     let router_url = Memo::new(move |_| {
@@ -276,7 +275,17 @@ fn SwapMainnet() -> impl IntoView {
     });
     let router_ws_url =
         Memo::new(move |_| format!("{}/route/subscribe", router_url().replacen("http", "ws", 1)));
-    let (routes, is_fetching_route) = use_route_subscription(router_ws_url, route_query);
+    // Closes once every clone is dropped, so a swap that's executing keeps it after the page
+    let connection = RwSignal::new(None::<RouterConnection>);
+    Effect::new(move |_| {
+        let (new_connection, driver) = RouterConnection::new(RouterConnectionOptions {
+            url: router_ws_url.get(),
+            ..Default::default()
+        });
+        spawn_local(driver);
+        connection.set(Some(new_connection));
+    });
+    let (routes, is_fetching_route) = use_route_subscription(connection.read_only(), swap_request);
     let best_route = move || {
         routes.with(|result| {
             result
@@ -303,8 +312,8 @@ fn SwapMainnet() -> impl IntoView {
                 SwapMode::ExactOut => {
                     if let (Some(Ok(routes)), Some(input_token)) = (routes.get(), token_in.get()) {
                         if let Some(route) = routes.first() {
-                            match route.estimated_amount {
-                                Amount::AmountIn(estimated_input_needed) => {
+                            match route.quote().estimated_amount {
+                                RouterAmount::AmountIn(estimated_input_needed) => {
                                     estimated_input_needed <= input_token.balance
                                 }
                                 _ => false, // Should not happen in ExactOut mode
@@ -378,7 +387,7 @@ fn SwapMainnet() -> impl IntoView {
         if !is_max_near_input {
             return;
         }
-        let required = route.gas_reserve() + route.storage_deposits;
+        let required = route.gas_reserve() + route.storage_deposits();
         // Keeps the amount so the missing NEAR error shows
         if token.balance <= required {
             return;
@@ -402,12 +411,14 @@ fn SwapMainnet() -> impl IntoView {
     let missing_near = Memo::new(move |_| {
         let route = best_route()?;
         let token = token_in.get()?;
-        let mut required = route.gas_reserve() + route.storage_deposits;
+        let mut required = route.gas_reserve() + route.storage_deposits();
         if token.token.account_id == Token::Near {
             required += match swap_mode_memo.get() {
                 SwapMode::ExactIn => validated_amount_entered.get()?,
                 SwapMode::ExactOut => {
-                    let Amount::AmountIn(worst_case_amount_in) = route.worst_case_amount else {
+                    let RouterAmount::AmountIn(worst_case_amount_in) =
+                        route.quote().worst_case_amount
+                    else {
                         return None;
                     };
                     worst_case_amount_in
@@ -448,14 +459,14 @@ fn SwapMainnet() -> impl IntoView {
                 .as_ref()
                 .and_then(|result| result.as_ref().ok())
                 .and_then(|routes| routes.first())
-                .map(|route| route.estimated_amount)
+                .map(|route| route.quote().estimated_amount)
         })?;
         match (estimated, swap_mode.get()) {
-            (Amount::AmountIn(amount), SwapMode::ExactOut) => Some(balance_to_decimal(
+            (RouterAmount::AmountIn(amount), SwapMode::ExactOut) => Some(balance_to_decimal(
                 amount,
                 token_in.get()?.token.metadata.decimals,
             )),
-            (Amount::AmountOut(amount), SwapMode::ExactIn) => Some(balance_to_decimal(
+            (RouterAmount::AmountOut(amount), SwapMode::ExactIn) => Some(balance_to_decimal(
                 amount,
                 token_out.get()?.token.metadata.decimals,
             )),
@@ -501,8 +512,12 @@ fn SwapMainnet() -> impl IntoView {
         move |(confirmation, account): &(SwapConfirmation, Account)| {
             let confirmation = confirmation.clone();
             let account = account.clone();
-            let router_url = router_url.get_untracked();
+            let connection = connection.get_untracked();
             async move {
+                let Some(connection) = connection else {
+                    log::error!("Swapped before connecting to the router");
+                    return;
+                };
                 execute_route(
                     match confirmation.swap_mode {
                         SwapMode::ExactIn => confirmation.amount_in,
@@ -515,7 +530,7 @@ fn SwapMainnet() -> impl IntoView {
                     account,
                     add_transaction,
                     overlay_mode,
-                    router_url,
+                    connection,
                     modal,
                 )
                 .await;
@@ -1058,12 +1073,12 @@ fn SwapMainnet() -> impl IntoView {
                                         ) = match swap_mode_memo.get() {
                                             SwapMode::ExactIn => {
                                                 match (
-                                                    best_route.estimated_amount,
-                                                    best_route.worst_case_amount,
+                                                    best_route.quote().estimated_amount,
+                                                    best_route.quote().worst_case_amount,
                                                 ) {
                                                     (
-                                                        Amount::AmountOut(estimated),
-                                                        Amount::AmountOut(worst_case),
+                                                        RouterAmount::AmountOut(estimated),
+                                                        RouterAmount::AmountOut(worst_case),
                                                     ) => {
                                                         (
                                                             validated_amount_entered,
@@ -1080,12 +1095,12 @@ fn SwapMainnet() -> impl IntoView {
                                             }
                                             SwapMode::ExactOut => {
                                                 match (
-                                                    best_route.estimated_amount,
-                                                    best_route.worst_case_amount,
+                                                    best_route.quote().estimated_amount,
+                                                    best_route.quote().worst_case_amount,
                                                 ) {
                                                     (
-                                                        Amount::AmountIn(estimated_in),
-                                                        Amount::AmountIn(worst_case_in),
+                                                        RouterAmount::AmountIn(estimated_in),
+                                                        RouterAmount::AmountIn(worst_case_in),
                                                     ) => {
                                                         (
                                                             estimated_in,
@@ -1173,7 +1188,7 @@ fn SwapMainnet() -> impl IntoView {
                                             <span>
                                                 {move || {
                                                     if best_route()
-                                                        .is_some_and(|route| route.storage_deposits > 0)
+                                                        .is_some_and(|route| route.storage_deposits() > 0)
                                                     {
                                                         TranslationKey::PagesSwapButtonNotEnoughNearForGasAndStorage
                                                             .format(&[])
@@ -1219,13 +1234,13 @@ fn SwapMainnet() -> impl IntoView {
                                     .as_ref()
                                     .map_or_else(
                                         || "-".to_string(),
-                                        |route| format_near(route.estimated_gas_usage),
+                                        |route| format_near(route.quote().estimated_gas_usage.as_yoctonear()),
                                     );
                                 let storage_deposit = route
                                     .as_ref()
                                     .map_or_else(
                                         || "-".to_string(),
-                                        |route| format_near(route.storage_deposits),
+                                        |route| format_near(route.storage_deposits()),
                                     );
                                 view! {
                                     <div class="bg-neutral-800 rounded-lg px-4 py-3 space-y-2 text-sm">
@@ -1244,7 +1259,7 @@ fn SwapMainnet() -> impl IntoView {
                                             </span>
                                             <span class="text-white">{gas_fee}</span>
                                         </div>
-                                        <Show when=move || route.as_ref().is_some_and(|r| !r.storage_deposits.is_zero())>
+                                        <Show when=move || route.as_ref().is_some_and(|r| r.storage_deposits() > 0)>
                                             <div class="flex items-center justify-between gap-3">
                                                 <span class="flex items-center gap-1 text-gray-400">
                                                     {TranslationKey::PagesSwapStorageDeposit.format(&[])}
@@ -1270,14 +1285,14 @@ fn SwapMainnet() -> impl IntoView {
                                             ("gas_reserve", format_near(route.gas_reserve()).as_str()),
                                         ],
                                     );
-                                if route.storage_deposits > 0 {
+                                if route.storage_deposits() > 0 {
                                     message
                                         += &TranslationKey::PagesSwapNearRequiredStorageDeposit
                                             .format(
                                                 &[
                                                     (
                                                         "storage_deposit",
-                                                        format_near(route.storage_deposits).as_str(),
+                                                        format_near(route.storage_deposits()).as_str(),
                                                     ),
                                                 ],
                                             );
@@ -1359,8 +1374,8 @@ fn SwapMainnet() -> impl IntoView {
                                             if let Some(Ok(routes)) = routes.get() {
                                                 if let Some(best_route) = routes.first() {
                                                     let current_mode = swap_mode_memo.get();
-                                                    match best_route.worst_case_amount {
-                                                        Amount::AmountIn(amount) => {
+                                                    match best_route.quote().worst_case_amount {
+                                                        RouterAmount::AmountIn(amount) => {
                                                             if let (Some(token_in), SwapMode::ExactOut) = (
                                                                 token_in.get(),
                                                                 current_mode,
@@ -1393,7 +1408,7 @@ fn SwapMainnet() -> impl IntoView {
                                                                 ().into_any()
                                                             }
                                                         }
-                                                        Amount::AmountOut(amount) => {
+                                                        RouterAmount::AmountOut(amount) => {
                                                             if let (Some(token_out), SwapMode::ExactIn) = (
                                                                 token_out.get(),
                                                                 current_mode,
@@ -1680,7 +1695,7 @@ async fn execute_route(
     account: Account,
     add_transaction: WriteSignal<Vec<EnqueuedTransaction>>,
     set_tx_overlay_mode: RwSignal<OverlayMode>,
-    router_url: String,
+    connection: RouterConnection,
     modal: RwSignal<Option<Box<dyn Fn() -> AnyView>>, LocalStorage>,
 ) {
     let description = TranslationKey::MiscTransactionSwap.format(&[
@@ -1708,159 +1723,151 @@ async fn execute_route(
         ),
     ]);
 
-    let (fee_instructions, swap_instructions): (Vec<_>, Vec<_>) =
-        route.execution_instructions.into_iter().partition(
-            |ExecutionInstruction::NearTransaction {
-                 is_fee_transaction, ..
-             }| { *is_fee_transaction },
-        );
-    let steps = swap_instructions.len() + fee_instructions.len();
-    let describe_step = |index: usize| {
-        if steps > 1 {
-            TranslationKey::MiscTransactionSwapStep.format(&[
-                ("description", &description),
-                ("step", &(index + 1).to_string()),
-                ("steps", &steps.to_string()),
-            ])
-        } else {
-            description.clone()
+    let steps = route.checked.transactions().len();
+    let quote_id = route.quote().quote_id;
+    let swap_sender = QueueSender {
+        account_id: account.account_id.clone(),
+        add_transaction,
+        describe: |index: usize| {
+            if steps > 1 {
+                TranslationKey::MiscTransactionSwapStep.format(&[
+                    ("description", &description),
+                    ("step", &(index + 1).to_string()),
+                    ("steps", &steps.to_string()),
+                ])
+            } else {
+                description.clone()
+            }
+        },
+        sent: AtomicUsize::new(0),
+    };
+    let executed = match route.checked.execute(&swap_sender).await {
+        Ok(executed) => executed,
+        Err(error) => {
+            log::error!("The swap's transactions failed: {error}");
+            modal.set(Some(Box::new(move || {
+                view! { <SwapErrorModal error=None /> }.into_any()
+            })));
+            return;
         }
     };
 
-    let swap_hash_receivers = enqueue_route_transactions(
-        swap_instructions,
-        describe_step,
-        &account.account_id,
-        add_transaction,
-    );
-    // The outcome endpoint waits for the transactions to execute, so the hashes are enough
-    let Ok(tx_hashes) = futures_util::future::try_join_all(swap_hash_receivers).await else {
-        modal.set(Some(Box::new(move || {
-            view! { <SwapErrorModal error=None /> }.into_any()
-        })));
-        return;
-    };
-
-    let token_in_id = TokenId::from(token_in.account_id.clone());
-    let token_out_id = TokenId::from(token_out.account_id.clone());
-    let tx_hashes = tx_hashes
-        .iter()
-        .map(|hash| hash.to_string())
-        .collect::<Vec<_>>()
-        .join(",");
-    let outcome_request = |wait_until| SwapOutcomeRequest {
-        token_in: &token_in_id,
-        token_out: &token_out_id,
-        trader_account_id: &account.account_id,
-        tx_hashes: &tx_hashes,
-        fee_amount: route.fee_amount,
-        wait_until,
-    };
-
-    let optimistic_outcome =
-        match fetch_swap_outcome(&router_url, &outcome_request(OutcomeWaitUntil::Swap)).await {
-            Ok(outcome) => outcome,
-            Err(error) => {
-                log::error!("Failed to fetch swap outcome: {error}");
-                modal.set(Some(Box::new(move || {
-                    view! { <SwapErrorModal error=None /> }.into_any()
-                })));
-                return;
-            }
-        };
-
+    // As soon as the swap executed, to tell what it did before its next steps
+    let optimistic_outcome = connection
+        .outcome(quote_id, executed.tx_hashes(), OutcomeWaitUntil::Swap)
+        .await;
     set_tx_overlay_mode.set(OverlayMode::Background);
-    if optimistic_outcome.charge_fee {
-        let result = SwapResult {
-            token_in,
-            token_out,
-            amount_in: optimistic_outcome.amount_in,
-            amount_out: optimistic_outcome.amount_out,
-        };
-        modal.set(Some(Box::new(move || {
-            view! { <SwapSuccessModal result=result.clone() /> }.into_any()
-        })));
-        let first_fee_step = steps - fee_instructions.len();
-        enqueue_route_transactions(
-            fee_instructions,
-            |index| describe_step(first_fee_step + index),
-            &account.account_id,
-            add_transaction,
-        );
-    } else {
-        let error = optimistic_outcome.error.clone();
-        modal.set(Some(Box::new(move || {
-            view! { <SwapErrorModal error=error.clone() /> }.into_any()
-        })));
+    match optimistic_outcome {
+        Ok(outcome) if outcome.charge_fee => {
+            let result = SwapResult {
+                token_in,
+                token_out,
+                amount_in: outcome.amount_in,
+                amount_out: outcome.amount_out,
+            };
+            modal.set(Some(Box::new(move || {
+                view! { <SwapSuccessModal result=result.clone() /> }.into_any()
+            })));
+        }
+        Ok(outcome) => {
+            let error = outcome.error;
+            modal.set(Some(Box::new(move || {
+                view! { <SwapErrorModal error=error.clone() /> }.into_any()
+            })));
+        }
+        // The next steps still return what a swap left behind
+        Err(error) => {
+            log::error!("Failed to fetch swap outcome: {error}");
+            modal.set(Some(Box::new(move || {
+                view! { <SwapErrorModal error=None /> }.into_any()
+            })));
+        }
     }
 
-    let next_steps = if optimistic_outcome.settled {
-        optimistic_outcome.next_steps
-    } else {
-        match fetch_swap_outcome(&router_url, &outcome_request(OutcomeWaitUntil::Executed)).await {
-            Ok(outcome) => outcome.next_steps,
-            Err(error) => {
-                log::error!("Failed to fetch settled swap outcome: {error}");
-                return;
-            }
+    // Pay the fees once the swap went through, and move the tokens where the trader asked for them
+    let next_steps = match executed.next_steps(&connection).await {
+        Ok(next_steps) => next_steps,
+        Err(error) => {
+            log::error!("Failed to get the swap's next steps: {error}");
+            return;
         }
     };
-    enqueue_route_transactions(
-        next_steps,
-        |_| description.clone(),
-        &account.account_id,
+    let next_steps_sender = QueueSender {
+        account_id: account.account_id,
         add_transaction,
-    );
+        describe: |_| description.clone(),
+        sent: AtomicUsize::new(0),
+    };
+    if let Err(error) = next_steps.execute(&next_steps_sender).await {
+        log::error!("The swap's next steps failed: {error}");
+    }
 }
 
-/// Links the transactions into one queue, so a failed one cancels the ones after it
-fn enqueue_route_transactions(
-    instructions: Vec<ExecutionInstruction>,
-    describe_step: impl Fn(usize) -> String,
-    signer_id: &AccountId,
+/// Signs and sends through the transaction queue, which asks the user when it has to, like with a
+/// Ledger, and tells once a transaction executed
+struct QueueSender<Describe> {
+    account_id: AccountId,
     add_transaction: WriteSignal<Vec<EnqueuedTransaction>>,
-) -> Vec<oneshot::Receiver<CryptoHash>> {
-    let mut transactions: Vec<EnqueuedTransaction> = Vec::new();
-    let mut hash_receivers = Vec::new();
-    for (index, instruction) in instructions.into_iter().enumerate() {
-        let ExecutionInstruction::NearTransaction {
-            receiver_id,
-            actions,
-            ..
-        } = instruction;
-        let (_, transaction) = EnqueuedTransaction::create(
-            describe_step(index),
-            signer_id.clone(),
-            receiver_id,
+    /// Of the transaction of each index
+    describe: Describe,
+    sent: AtomicUsize,
+}
+
+#[derive(Debug)]
+struct QueueError(String);
+
+impl Display for QueueError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for QueueError {}
+
+impl<Describe: Fn(usize) -> String + Sync> TransactionSender for QueueSender<Describe> {
+    type Error = QueueError;
+
+    fn account_id(&self) -> &str {
+        self.account_id.as_str()
+    }
+
+    async fn send_transaction(
+        &self,
+        transaction: Transaction,
+    ) -> Result<dex_aggregator_rs::CryptoHash, QueueError> {
+        let index = self.sent.fetch_add(1, Ordering::SeqCst);
+        let actions = transaction
+            .actions
+            .into_iter()
+            .map(|call| {
+                Action::FunctionCall(Box::new(FunctionCallAction {
+                    method_name: call.method_name,
+                    args: call.args.into_bytes(),
+                    gas: Gas(call.gas),
+                    deposit: call.deposit,
+                }))
+            })
+            .collect();
+        let (details, enqueued) = EnqueuedTransaction::create(
+            (self.describe)(index),
+            self.account_id.clone(),
+            transaction.receiver_id,
             actions,
             false,
         );
-        let (hash_rx, transaction) = transaction.with_hash_notification();
-        let transaction = match transactions.first() {
-            Some(first_transaction) => transaction.in_same_queue_as(first_transaction),
-            None => transaction,
-        };
-        transactions.push(transaction);
-        hash_receivers.push(hash_rx);
+        let (hash, enqueued) = enqueued.with_hash_notification();
+        self.add_transaction
+            .update(|transactions| transactions.push(enqueued));
+        // Once it executed, also when a receipt of it failed
+        details
+            .await
+            .map_err(|_| QueueError("The transaction queue dropped the transaction".into()))?
+            .map_err(QueueError)?;
+        let hash = hash
+            .await
+            .map_err(|_| QueueError("The transaction queue didn't tell the hash".into()))?;
+        Ok(dex_aggregator_rs::CryptoHash(hash.0))
     }
-    add_transaction.update(|txs| txs.extend(transactions));
-    hash_receivers
-}
-
-async fn fetch_swap_outcome(
-    router_url: &str,
-    request: &SwapOutcomeRequest<'_>,
-) -> Result<SwapOutcome, String> {
-    let response = reqwest::get(format!(
-        "{router_url}/route/outcome?{}",
-        serde_urlencoded::to_string(request).unwrap()
-    ))
-    .await
-    .map_err(|error| error.to_string())?;
-    if !response.status().is_success() {
-        return Err(response.text().await.map_err(|error| error.to_string())?);
-    }
-    response.json().await.map_err(|error| error.to_string())
 }
 
 async fn get_ft_balance(
@@ -1893,160 +1900,125 @@ async fn get_ft_balance(
     }
 }
 
-const ROUTE_REQUEST_INITIAL_RETRY_DELAY: Duration = Duration::from_millis(1500);
-const ROUTE_REQUEST_MAX_RETRY_DELAY: Duration = Duration::from_secs(30);
-
 type RoutesState = Option<Result<Vec<Route>, String>>;
 
-/// Owns the socket, request generations, and application-level retries for a route stream.
 fn use_route_subscription(
-    url: Memo<String>,
-    query: Memo<Option<String>>,
+    connection: ReadSignal<Option<RouterConnection>>,
+    request: Memo<Option<SwapRequest>>,
 ) -> (ReadSignal<RoutesState>, ReadSignal<bool>) {
     let (routes, set_routes) = signal(None);
     let (is_fetching, set_is_fetching) = signal(false);
-    let (socket, set_socket) = signal(None);
-    let request_id = StoredValue::new(0u64);
-    let active_query = StoredValue::new(None::<String>);
-    let retry_timer = StoredValue::new(None::<TimeoutHandle>);
-    let retry_delay = StoredValue::new(ROUTE_REQUEST_INITIAL_RETRY_DELAY);
-    let retry_tick = RwSignal::new(0u64);
-
-    let clear_retry = move || {
-        if let Some(timer) = retry_timer.get_value() {
-            timer.clear();
-            retry_timer.set_value(None);
+    let subscription = StoredValue::new(None::<AbortHandle>);
+    let stop_subscription = move || {
+        if let Some(subscription) = subscription.get_value() {
+            subscription.abort();
         }
     };
-    on_cleanup(clear_retry);
+    on_cleanup(stop_subscription);
 
-    let on_message = move |message: &String| {
-        let update = match serde_json::from_str::<RouteUpdate>(message) {
-            Ok(update) => update,
+    Effect::new(move |_| {
+        let request = request.get();
+        let connection = connection.get();
+        stop_subscription();
+        set_routes.set(None);
+        let (Some(request), Some(connection)) = (request, connection) else {
+            set_is_fetching.set(false);
+            return;
+        };
+        set_is_fetching.set(true);
+        let mut quotes = match connection.subscribe(request) {
+            Ok(quotes) => quotes,
             Err(error) => {
-                log::error!("Failed to parse route update: {error}");
+                set_is_fetching.set(false);
+                set_routes.set(Some(Err(error.to_string())));
                 return;
             }
         };
-        let current_query = query.get_untracked();
-        if update.id != request_id.get_value()
-            || current_query.is_none()
-            || current_query != active_query.get_value()
-        {
-            return;
-        }
-
-        // A successful update cancels a pending retry; repeated errors replace it.
-        clear_retry();
-        set_is_fetching.set(false);
-        match update.result {
-            RouteUpdateResult::Routes(new_routes) => {
-                retry_delay.set_value(ROUTE_REQUEST_INITIAL_RETRY_DELAY);
-                set_routes.set(Some(Ok(new_routes)));
-            }
-            RouteUpdateResult::Error(error) => {
-                log::error!("Route request failed, retrying: {error}");
-                set_routes.set(Some(Err(error)));
-                let delay = retry_delay.get_value();
-                let failed_id = update.id;
-                match set_timeout_with_handle(
-                    move || {
-                        retry_timer.set_value(None);
-                        if request_id.get_value() == failed_id && query.get_untracked().is_some() {
-                            retry_tick.update(|tick| *tick += 1);
+        let (updates, abort) = abortable(async move {
+            while let Some(update) = quotes.next().await {
+                set_is_fetching.set(false);
+                match update {
+                    Ok(update) => {
+                        for rejected in &update.rejected {
+                            log::warn!("Left out a quote: {}", rejected.error);
                         }
-                    },
-                    delay,
-                ) {
-                    Ok(timer) => {
-                        retry_timer.set_value(Some(timer));
-                        retry_delay
-                            .set_value(delay.mul_f32(1.8).min(ROUTE_REQUEST_MAX_RETRY_DELAY));
+                        let routes = update
+                            .quotes
+                            .into_iter()
+                            .filter_map(|checked| match checked.quote().dex_id.parse() {
+                                Ok(dex_id) => Some(Route { dex_id, checked }),
+                                Err(error) => {
+                                    log::warn!("Left out a quote the wallet can't show: {error}");
+                                    None
+                                }
+                            })
+                            .collect();
+                        set_routes.set(Some(Ok(routes)));
                     }
-                    Err(error) => log::error!("Failed to schedule route retry: {error:?}"),
+                    // The connection sends the route request again after it
+                    Err(error) => {
+                        log::error!("Route request failed, retrying: {error}");
+                        set_routes.set(Some(Err(error.0)));
+                    }
                 }
             }
-        }
-    };
-
-    // The hook takes a static URL. This effect intentionally owns each socket so a URL
-    // change disposes the old hook (including its reconnect timer) before creating another.
-    Effect::new(move |_| {
-        let url = url.get();
-        clear_retry();
-        request_id.update_value(|id| *id += 1);
-        active_query.set_value(None);
-        set_routes.set(None);
-        set_is_fetching.set(query.get_untracked().is_some());
-        set_socket.set(Some(use_websocket_with_options::<
-            String,
-            String,
-            FromToStringCodec,
-            _,
-            _,
-        >(
-            &url,
-            UseWebSocketOptions::default()
-                .reconnect_limit(ReconnectLimit::Infinite)
-                .reconnect_interval(1500)
-                .on_message(on_message),
-        )));
+        });
+        subscription.set_value(Some(abort));
+        spawn_local(async move {
+            // Aborted when the request changes
+            updates.await.ok();
+        });
     });
 
-    Effect::watch(
-        move || {
-            // Track readiness even with no query, so the first request and reconnects
-            // cannot be missed while waiting for the socket to open.
-            let ready_state = socket.get().map(|ws| ws.ready_state.get());
-            (query.get(), ready_state, retry_tick.get())
-        },
-        move |(query, ready_state, _), previous, _| {
-            let query_changed = previous.is_none_or(|(old_query, _, _)| old_query != query);
-            let connection_changed =
-                previous.is_none_or(|(_, old_state, _)| old_state != ready_state);
-            clear_retry();
-            request_id.update_value(|id| *id += 1);
-            active_query.set_value(query.clone());
-
-            if query_changed {
-                retry_delay.set_value(ROUTE_REQUEST_INITIAL_RETRY_DELAY);
+    // The quotes of a lost connection are of prices that may have moved since
+    Effect::new(move |_| {
+        let Some(connection) = connection.get() else {
+            return;
+        };
+        let mut status = connection.status();
+        spawn_local(async move {
+            while status.changed().await.is_ok() {
+                if matches!(*status.borrow(), ConnectionStatus::Reconnecting { .. }) {
+                    // A swap that's executing keeps the connection after the page
+                    set_routes.try_set(None);
+                    set_is_fetching.try_set(true);
+                }
             }
-            if query_changed || connection_changed {
-                set_routes.set(None);
-            }
-            set_is_fetching.set(query.is_some());
-
-            if *ready_state != Some(ConnectionReadyState::Open) {
-                return;
-            }
-            let Some(ws) = socket.get_untracked() else {
-                return;
-            };
-            let id = request_id.get_value();
-            let request = match query {
-                Some(query) => serde_json::json!({ "id": id, "query": query }),
-                None => serde_json::json!({ "id": id }),
-            };
-            (ws.send)(&request.to_string());
-        },
-        true,
-    );
+        });
+    });
 
     (routes, is_fetching)
 }
 
-#[derive(Debug, Deserialize)]
-struct RouteUpdate {
-    id: u64,
-    #[serde(flatten)]
-    result: RouteUpdateResult,
+/// A quote of the router that's safe to sign, of a DEX the wallet shows
+#[derive(Debug, Clone)]
+pub struct Route {
+    pub dex_id: DexId,
+    pub checked: CheckedQuote,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum RouteUpdateResult {
-    Routes(Vec<Route>),
-    Error(String),
+impl Route {
+    fn quote(&self) -> &Quote {
+        self.checked.quote()
+    }
+
+    fn storage_deposits(&self) -> Balance {
+        self.quote().storage_deposits.as_yoctonear()
+    }
+
+    /// Attached gas is bought at the minimum gas purchase price, 10x the gas price, and the
+    /// unused part is refunded after the transaction
+    fn gas_reserve(&self) -> Balance {
+        self.quote().estimated_max_gas_cost.as_yoctonear() * 10
+    }
+}
+
+fn router_token_id(token: Token) -> TokenId {
+    match token {
+        Token::Near => TokenId::Near,
+        Token::Nep141(account_id) => TokenId::Nep141(account_id),
+        Token::Rhea(account_id) => TokenId::Nep141OnRhea(account_id),
+    }
 }
 
 impl Default for Slippage {
@@ -2068,171 +2040,6 @@ impl Display for Slippage {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-#[serde(rename_all = "snake_case")]
-pub enum Amount {
-    AmountIn(#[serde(with = "dec_format")] Balance),
-    AmountOut(#[serde(with = "dec_format")] Balance),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TokenId {
-    Near,
-    Nep141(AccountId),
-}
-
-impl Serialize for TokenId {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(self.to_string().as_str())
-    }
-}
-
-impl<'de> Deserialize<'de> for TokenId {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        s.parse().map_err(serde::de::Error::custom)
-    }
-}
-
-impl Display for TokenId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TokenId::Near => write!(f, "near"),
-            TokenId::Nep141(account_id) => write!(f, "{account_id}"),
-        }
-    }
-}
-
-impl From<Token> for TokenId {
-    fn from(token: Token) -> Self {
-        match token {
-            Token::Near => TokenId::Near,
-            Token::Nep141(account_id) => TokenId::Nep141(account_id),
-            Token::Rhea(_) => unreachable!(),
-        }
-    }
-}
-
-impl FromStr for TokenId {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s == "near" {
-            Ok(TokenId::Near)
-        } else {
-            Ok(TokenId::Nep141(s.parse().map_err(|_| "Invalid token ID")?))
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SwapRequest {
-    /// The token to swap from. This and token_out must be different.
-    pub token_in: TokenId,
-    /// The token to swap to. This and token_in must be different.
-    pub token_out: TokenId,
-    /// The amount to swap. If it's AmountOut, some dexes might not support this.
-    #[serde(flatten)]
-    pub amount: Amount,
-    /// The slippage tolerance. `1.00` means 100%, `0.001` means 0.1%.
-    #[serde(flatten)]
-    pub slippage: Slippage,
-    /// The dexes to use. You might want to remove Near Intents if you don't want
-    /// to implement its own swap logic, which relies on signing and sending messages
-    /// to a centralized RPC rather than just sending a transaction. If not provided,
-    /// all dexes will be used. Must not be an empty array.
-    #[serde(with = "comma_separated", default)]
-    pub dexes: Option<Vec<DexId>>,
-    /// The account ID of the trader. If provided, the route will include storage
-    /// deposit actions.
-    pub trader_account_id: Option<AccountId>,
-    /// The public key to use for signing. Can be used for `add_public_key` method in
-    /// NEAR Intents.
-    pub signing_public_key: Option<PublicKey>,
-    /// The account ID of the referrer. If provided, the route will include referral
-    /// parameter for DEXes that support it
-    pub referrer_id: Option<AccountId>,
-    /// Accounts to pay a fee to, and the fee each one charges. `0.005` means 0.5%.
-    #[serde(with = "json_encoded", default)]
-    pub fees: Option<HashMap<AccountId, f64>>,
-    /// Takes what swaps on Intear DEX give above the quote's estimate, or take below it
-    pub quote_improvement_receiver: Option<AccountId>,
-}
-
-mod json_encoded {
-    use serde::{Deserialize, Deserializer, Serialize, Serializer, de::DeserializeOwned};
-
-    pub fn serialize<S, T>(value: &Option<T>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-        T: Serialize,
-    {
-        value
-            .as_ref()
-            .map(|value| serde_json::to_string(value).map_err(serde::ser::Error::custom))
-            .transpose()?
-            .serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
-    where
-        D: Deserializer<'de>,
-        T: DeserializeOwned,
-    {
-        Option::<String>::deserialize(deserializer)?
-            .map(|s| serde_json::from_str(&s).map_err(serde::de::Error::custom))
-            .transpose()
-    }
-}
-
-mod comma_separated {
-    use std::{fmt::Display, str::FromStr};
-
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-    pub fn serialize<S, T>(value: &Option<Vec<T>>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-        T: Display,
-    {
-        if let Some(value) = value {
-            let s = value
-                .iter()
-                .map(|v| v.to_string())
-                .collect::<Vec<_>>()
-                .join(",");
-            Some(s).serialize(serializer)
-        } else {
-            None::<String>.serialize(serializer)
-        }
-    }
-
-    pub fn deserialize<'de, D, T>(deserializer: D) -> Result<Option<Vec<T>>, D::Error>
-    where
-        D: Deserializer<'de>,
-        T: FromStr,
-        T::Err: Display,
-    {
-        let s = Option::<String>::deserialize(deserializer)?;
-        if let Some(s) = s {
-            let values = s
-                .split(',')
-                .map(|v| v.parse::<T>())
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(serde::de::Error::custom)?;
-            Ok(Some(values))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "slippage_type")]
 pub enum Slippage {
@@ -2246,89 +2053,24 @@ pub enum Slippage {
     Fixed { slippage: BigDecimal },
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Route {
-    /// The amount of tokens this route will swap. If you provided `Amount::AmountOut`,
-    /// this amount will be `Amount::AmountIn` and vice versa.
-    pub estimated_amount: Amount,
-    /// The amount of tokens this route will swap in the worst case scenario (with
-    /// slippage). If you provided `Amount::AmountOut`, this amount will be
-    /// `Amount::AmountIn` and vice versa. If you set slippage to `0.01`, this will be
-    /// 1% more / less than `estimated_amount`. If it's a dex like Near Intents,
-    /// this will be the same as `estimated_amount`.
-    pub worst_case_amount: Amount,
-    /// The id of the dex that provided this route.
-    pub dex_id: DexId,
-    /// How to execute the swap. Need to be executed sequentially.
-    pub execution_instructions: Vec<ExecutionInstruction>,
-    /// What the fee transactions pay out of the wallet balance of the input token
-    #[serde(with = "dec_format")]
-    pub fee_amount: Balance,
-    /// yoctoNEAR the transactions cost in gas if all attached gas is burnt
-    #[serde(with = "dec_format")]
-    pub estimated_max_gas_cost: Balance,
-    /// yoctoNEAR the transactions are expected to cost in gas
-    #[serde(with = "dec_format")]
-    pub estimated_gas_usage: Balance,
-    /// yoctoNEAR the transactions attach to storage deposits, less what they withdraw right after
-    #[serde(with = "dec_format")]
-    pub storage_deposits: Balance,
-}
-
-impl Route {
-    /// Attached gas is bought at the minimum gas purchase price, 10x the gas price, and the
-    /// unused part is refunded after the transaction
-    fn gas_reserve(&self) -> Balance {
-        self.estimated_max_gas_cost * 10
+impl Slippage {
+    fn to_router_slippage(&self) -> dex_aggregator_rs::Slippage {
+        let fraction = |fraction: &BigDecimal| {
+            fraction
+                .to_f64()
+                .expect("Slippage is a fraction between 0 and 1")
+        };
+        match self {
+            Slippage::Auto {
+                max_slippage,
+                min_slippage,
+            } => dex_aggregator_rs::Slippage::Auto {
+                min: fraction(min_slippage),
+                max: fraction(max_slippage),
+            },
+            Slippage::Fixed { slippage } => dex_aggregator_rs::Slippage::Fixed(fraction(slippage)),
+        }
     }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum ExecutionInstruction {
-    /// Sign a transaction with the given actions and send it to the RPC.
-    NearTransaction {
-        receiver_id: AccountId,
-        actions: Vec<Action>,
-        is_fee_transaction: bool,
-    },
-}
-
-#[derive(Debug, Serialize)]
-struct SwapOutcomeRequest<'a> {
-    token_in: &'a TokenId,
-    token_out: &'a TokenId,
-    trader_account_id: &'a AccountId,
-    tx_hashes: &'a str,
-    #[serde(with = "dec_format")]
-    fee_amount: Balance,
-    wait_until: OutcomeWaitUntil,
-}
-
-#[derive(Debug, Serialize, Clone, Copy)]
-#[serde(rename_all = "snake_case")]
-enum OutcomeWaitUntil {
-    /// As soon as the swap executed optimistically, before the output reaches the trader
-    Swap,
-    /// Once every transaction and receipt executed and the balances were compared
-    Executed,
-}
-
-#[derive(Debug, Deserialize)]
-struct SwapOutcome {
-    /// Whether the swap went through and fee should be charged
-    charge_fee: bool,
-    /// Spent from all places the input token is held in, without gas and storage deposits
-    #[serde(with = "dec_format")]
-    amount_in: Balance,
-    /// Received to all places the output token is held in
-    #[serde(with = "dec_format")]
-    amount_out: Balance,
-    /// Move what ended up somewhere other than token_in or token_out, after the fee transactions
-    next_steps: Vec<ExecutionInstruction>,
-    /// Why the swap failed, written to show to the trader
-    error: Option<String>,
-    /// False for an answer at the swap, which has no `next_steps` yet
-    settled: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]

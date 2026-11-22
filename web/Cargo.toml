@@ -55,6 +55,7 @@ lazy_static = "1.5.0"
 # Not actually needed for the wallet, but need to add a feature in transitive dependencies
 getrandom = { version = "0.2", features = ["js"] }
 near-min-api = { path = "../near-min-api" }
+dex-aggregator-rs = { git = "https://github.com/INTEARnear/dex-aggregator-rs" }
 rand = "0.8.5"
 chrono = "0.4.40"
 futures-timer = { version = "3", features = ["wasm-bindgen"] }
