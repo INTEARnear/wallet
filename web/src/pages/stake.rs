@@ -493,14 +493,14 @@ fn ValidatorCard(
                                                                                                     Box::new(FunctionCallAction {
                                                                                                         method_name: "storage_deposit".to_string(),
                                                                                                         args: serde_json::to_vec(
-                                                                                                                &serde_json::json!(
-                                                                                                                    {
+                                                                                                            &serde_json::json!(
+                                                                                                                {
                                                                                                                     "registration_only": true
                                                                                                                 }
-                                                                                                                ),
-                                                                                                            )
-                                                                                                            .unwrap(),
-                                                                                                        gas: NearGas::from_tgas(5).into(),
+                                                                                                            ),
+                                                                                                        )
+                                                                                                        .unwrap(),
+                                                                                                        gas: NearGas::from_tgas(10).into(),
                                                                                                         deposit: "0.00125 NEAR".parse().unwrap(),
                                                                                                     }),
                                                                                                 ),

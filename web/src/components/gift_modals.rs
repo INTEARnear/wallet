@@ -1131,7 +1131,7 @@ fn create_gift(
                         "registration_only": true,
                     }))
                     .unwrap(),
-                    gas: NearGas::from_tgas(5).into(),
+                    gas: NearGas::from_tgas(10).into(),
                     deposit: "0.00125 NEAR".parse().unwrap(),
                 }));
                 actions.push(storage_action);

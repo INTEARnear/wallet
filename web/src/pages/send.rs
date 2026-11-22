@@ -2059,7 +2059,7 @@ pub async fn execute_send(
                                         "amount": transfer.amount.to_string(),
                                     }))
                                     .unwrap(),
-                                    gas: NearGas::from_tgas(10).into(),
+                                    gas: NearGas::from_tgas(15).into(),
                                     deposit: NearToken::from_yoctonear(1),
                                 }));
 
@@ -2072,7 +2072,7 @@ pub async fn execute_send(
                                         "registration_only": true,
                                     }))
                                     .unwrap(),
-                                    gas: NearGas::from_tgas(5).into(),
+                                    gas: NearGas::from_tgas(10).into(),
                                     deposit: "0.00125 NEAR".parse().unwrap(),
                                 })));
                             }

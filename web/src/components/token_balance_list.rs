@@ -257,13 +257,13 @@ fn RheaBalanceModal(rhea_tokens: Vec<TokenData>) -> impl IntoView {
                                                                             method_name: "storage_deposit".to_string(),
                                                                             args: serde_json::json!(
                                                                                 {
-                                                                    "account_id": signer_clone,
-                                                                    "registration_only": true,
-                                                                }
+                                                                                    "account_id": signer_clone,
+                                                                                    "registration_only": true,
+                                                                                }
                                                                             )
                                                                                 .to_string()
                                                                                 .into_bytes(),
-                                                                            gas: NearGas::from_tgas(5).into(),
+                                                                            gas: NearGas::from_tgas(10).into(),
                                                                             deposit: "0.00125 NEAR".parse().unwrap(),
                                                                         }),
                                                                     ),

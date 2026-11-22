@@ -1763,7 +1763,7 @@ pub fn SendNft() -> impl IntoView {
                         "registration_only": false,
                     }))
                     .unwrap(),
-                    gas: NearGas::from_tgas(5).into(),
+                    gas: NearGas::from_tgas(10).into(),
                     deposit: "0.01 NEAR".parse().unwrap(),
                 }));
                 actions.push(storage_action);
