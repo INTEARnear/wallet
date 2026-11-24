@@ -374,6 +374,9 @@ impl RpcClient {
                         SimulationStep::Wait { blocks } => {
                             serde_json::json!({ "Wait": { "blocks": blocks } })
                         }
+                        SimulationStep::PatchState { records } => {
+                            serde_json::json!({ "PatchState": { "records": records } })
+                        }
                     })
                     .collect::<Vec<_>>()
             })
@@ -747,6 +750,7 @@ pub struct ExperimentalTxDetails {
 pub enum SimulationStep {
     Transaction(Transaction),
     Wait { blocks: BlockHeightDelta },
+    PatchState { records: Vec<StateRecord> },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
